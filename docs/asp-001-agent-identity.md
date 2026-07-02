@@ -178,7 +178,7 @@ MVP 可以先不实现 `iid`。
 
 ## 8. 密钥轮换
 
-MVP 可以不做自动轮换，但规范要留接口。
+MVP 不做自动轮换，但支持 rotation proof primitive。
 
 轮换需要双签：
 
@@ -199,6 +199,19 @@ Descriptor 中保留：
 没有旧私钥时不能无缝继承身份，只能创建新 Agent。
 
 这是故意的：身份独立性来自私钥，丢了私钥就丢了身份控制权。
+
+当前 proof body：
+
+```json
+{
+  "previous_aid": "aid:ed25519:...",
+  "next_aid": "aid:ed25519:..."
+}
+```
+
+`previous_signature` 由旧私钥签名，`next_signature` 由新私钥签名。
+
+注意：rotation proof 不让 `aid` 保持不变。它证明的是旧 `aid` 到新 `aid` 的连续性。
 
 ## 9. 克隆问题
 

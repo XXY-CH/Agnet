@@ -229,6 +229,41 @@ export function verifyZoneBinding(entry, descriptor, alias) {
   }
 }
 
+export function rotationBody(previousDescriptor, nextDescriptor) {
+  return {
+    previous_aid: previousDescriptor.aid,
+    next_aid: nextDescriptor.aid,
+  };
+}
+
+export function rotationProof(previousAgent, nextAgent) {
+  const body = rotationBody(previousAgent.descriptor, nextAgent.descriptor);
+  return {
+    ...body,
+    previous_signature: signObject(previousAgent.privateKey, body),
+    next_signature: signObject(nextAgent.privateKey, body),
+  };
+}
+
+export function verifyRotationProof(proof, previousDescriptor, nextDescriptor) {
+  const previousPublicKey = publicKeyFromDescriptor(previousDescriptor);
+  const nextPublicKey = publicKeyFromDescriptor(nextDescriptor);
+  if (computeAid(previousPublicKey) !== previousDescriptor.aid) return false;
+  if (computeAid(nextPublicKey) !== nextDescriptor.aid) return false;
+  if (!verifyObject(previousPublicKey, descriptorBody(previousDescriptor), previousDescriptor.descriptor_signature)) {
+    return false;
+  }
+  if (!verifyObject(nextPublicKey, descriptorBody(nextDescriptor), nextDescriptor.descriptor_signature)) {
+    return false;
+  }
+  const body = rotationBody(previousDescriptor, nextDescriptor);
+  if (proof.previous_aid !== body.previous_aid || proof.next_aid !== body.next_aid) return false;
+  return (
+    verifyObject(previousPublicKey, body, proof.previous_signature) &&
+    verifyObject(nextPublicKey, body, proof.next_signature)
+  );
+}
+
 export function enforcePolicy(descriptor, task) {
   const policy = descriptor.policy ?? {};
   const scope = task.scope ?? {};
