@@ -12,6 +12,7 @@ Run the check:
 
 ```bash
 node --test --test-concurrency=1 *.test.mjs
+go test ./...
 ```
 
 Run two local Agent processes:

@@ -99,3 +99,5 @@ node agent-runtime.mjs request agent://local/summarizer
 v0 不是 Agent Internet。
 
 v0 是 Agent Space 的最小活体样本：两个独立进程，不通过 HTTP API 语义，而通过 Agent ID、Signed Task、ASP frame、Policy、Approval、Artifact 和 Receipt 完成一次可审计协作。
+
+后续跨语言协议向量见 `docs/v0.1-boundary.md`。

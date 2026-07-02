@@ -1,0 +1,49 @@
+{
+  "version": "asp-v0",
+  "domain_separator": "asp-agent-id-v1\\0",
+  "agents": {
+    "requester": {
+      "alias": "agent://local/requester",
+      "seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "aid": "aid:ed25519:VZK4n6fL2PQc8YN8n9aWV9UbOiEaAWh-V2O_JO-X08g",
+      "public_key_spki": "MCowBQYDK2VwAyEAA6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+    },
+    "worker": {
+      "alias": "agent://local/summarizer",
+      "seed_hex": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+      "aid": "aid:ed25519:LSSF9z6y_NtWaBOAO17MBjp91ctgimFd50bzqKnz5nA",
+      "public_key_spki": "MCowBQYDK2VwAyEAKay64UG8yvCyLhqU000LxzYeUm0L_hLIl5S8kyKWbdc"
+    }
+  },
+  "task": {
+    "task_id": "task_vector_001",
+    "from": "aid:ed25519:VZK4n6fL2PQc8YN8n9aWV9UbOiEaAWh-V2O_JO-X08g",
+    "to": "agent://local/summarizer",
+    "intent": "Verify ASP v0 task signing.",
+    "scope": {
+      "network": false,
+      "write": [
+        "artifact://local/task_vector_001/"
+      ]
+    },
+    "budget": {
+      "time_seconds": 30
+    }
+  },
+  "task_canonical": "{\"budget\":{\"time_seconds\":30},\"from\":\"aid:ed25519:VZK4n6fL2PQc8YN8n9aWV9UbOiEaAWh-V2O_JO-X08g\",\"intent\":\"Verify ASP v0 task signing.\",\"scope\":{\"network\":false,\"write\":[\"artifact://local/task_vector_001/\"]},\"task_id\":\"task_vector_001\",\"to\":\"agent://local/summarizer\"}",
+  "task_signature": "bwvWoXdU1ku7G2pAv9Zp5mPwgraIp-wj23zoSXEGPeact6FpdrhsSw-e_nlev0rK8gvqalkezNbkyuLYnMSjBg",
+  "receipt": {
+    "task_id": "task_vector_001",
+    "from": "aid:ed25519:VZK4n6fL2PQc8YN8n9aWV9UbOiEaAWh-V2O_JO-X08g",
+    "to": "aid:ed25519:LSSF9z6y_NtWaBOAO17MBjp91ctgimFd50bzqKnz5nA",
+    "artifact_refs": [
+      "artifact://local/task_vector_001/summary.md"
+    ],
+    "event_count": 7,
+    "approvals": [
+      "write"
+    ]
+  },
+  "receipt_canonical": "{\"approvals\":[\"write\"],\"artifact_refs\":[\"artifact://local/task_vector_001/summary.md\"],\"event_count\":7,\"from\":\"aid:ed25519:VZK4n6fL2PQc8YN8n9aWV9UbOiEaAWh-V2O_JO-X08g\",\"task_id\":\"task_vector_001\",\"to\":\"aid:ed25519:LSSF9z6y_NtWaBOAO17MBjp91ctgimFd50bzqKnz5nA\"}",
+  "receipt_signature": "Vrt1T5zXqL3ob_3ol5MTV1o6aJTzO9_3ixgp8WIQRSerYw-JxS_oZlexd0kAktf3-PHh04i5t-to1UO7WXDqDw"
+}
