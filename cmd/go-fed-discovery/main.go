@@ -128,6 +128,19 @@ func handle(conn net.Conn, fixture Fixture, trusted map[string]map[string]any) {
 				"matches":    matches,
 			})
 			send(conn, map[string]any{"type": "FED_QUERY_CLOSE", "capability": frame["capability"]})
+		case "FED_TASK_OPEN":
+			task, err := fixture.verifyTaskOpen(frame)
+			if err != nil {
+				send(conn, map[string]any{"type": "FED_TASK_ERROR", "error": err.Error()})
+				return
+			}
+			send(conn, map[string]any{
+				"type":    "FED_TASK_VERIFIED",
+				"task_id": task["task_id"],
+				"by":      fixture.Worker["aid"],
+				"zone":    fixture.Authority["zid"],
+			})
+			send(conn, map[string]any{"type": "FED_TASK_CLOSE", "task_id": task["task_id"]})
 		default:
 			send(conn, map[string]any{"type": "FED_TASK_ERROR", "error": "unsupported frame"})
 			return
@@ -239,6 +252,72 @@ func (f Fixture) capabilityCredential(capability string) map[string]any {
 		"capability": capability,
 		"claims":     f.Credential["claims"],
 	})
+}
+
+func (f Fixture) verifyTaskOpen(frame map[string]any) (map[string]any, error) {
+	requester, ok := frame["requester"].(map[string]any)
+	if !ok {
+		return nil, errors.New("missing requester")
+	}
+	if err := verifyAgentDescriptor(requester); err != nil {
+		return nil, err
+	}
+	task, ok := frame["task"].(map[string]any)
+	if !ok {
+		return nil, errors.New("missing task")
+	}
+	if task["from"] != requester["aid"] {
+		return nil, errors.New("task sender does not match requester descriptor")
+	}
+	if task["to"] != f.Worker["alias"] {
+		return nil, errors.New("task target does not match worker alias")
+	}
+	requesterKey, _, err := publicKey(requester)
+	if err != nil {
+		return nil, err
+	}
+	if err := verifyMapSignature(requesterKey, task, "signature"); err != nil {
+		return nil, errors.New("task signature verification failed")
+	}
+	if err := enforcePolicy(f.Worker, task); err != nil {
+		return nil, err
+	}
+	return task, nil
+}
+
+func enforcePolicy(worker, task map[string]any) error {
+	policy, _ := worker["policy"].(map[string]any)
+	scope, _ := task["scope"].(map[string]any)
+	if scope["network"] == true && policy["allow_network"] != true {
+		return errors.New("policy denied network access")
+	}
+	for _, target := range stringsFromAny(scope["write"]) {
+		if !hasPrefix(target, stringsFromAny(policy["write_prefixes"])) {
+			return errors.New("policy denied write scope: " + target)
+		}
+	}
+	return nil
+}
+
+func stringsFromAny(value any) []string {
+	items, _ := value.([]any)
+	out := []string{}
+	for _, item := range items {
+		text, ok := item.(string)
+		if ok {
+			out = append(out, text)
+		}
+	}
+	return out
+}
+
+func hasPrefix(value string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(value, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func signBody(key ed25519.PrivateKey, body map[string]any) map[string]any {
