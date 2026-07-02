@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	"crypto/ed25519"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -18,9 +20,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Fixture struct {
@@ -37,6 +41,7 @@ type WorkerProfile struct {
 	KeyFile      string         `json:"key_file,omitempty"`
 	Alias        string         `json:"alias"`
 	Tool         string         `json:"tool,omitempty"`
+	ToolCommand  []string       `json:"tool_command,omitempty"`
 	Transports   []string       `json:"transports"`
 	Capabilities []string       `json:"capabilities"`
 	Policy       map[string]any `json:"policy"`
@@ -664,7 +669,10 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	}
 
 	artifactURI := "artifact://local/" + taskID + "/go-summary.md"
-	toolName, artifactText := runTool(worker.Profile, task, origin)
+	toolName, artifactText, err := runTool(worker.Profile, task, origin)
+	if err != nil {
+		return err
+	}
 	if err := writeArtifact(artifactURI, artifactText); err != nil {
 		return err
 	}
@@ -708,7 +716,7 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	return nil
 }
 
-func runTool(profile WorkerProfile, task, origin map[string]any) (string, string) {
+func runTool(profile WorkerProfile, task, origin map[string]any) (string, string, error) {
 	tool := profile.Tool
 	if tool == "" {
 		tool = "text.echo"
@@ -717,12 +725,65 @@ func runTool(profile WorkerProfile, task, origin map[string]any) (string, string
 	intent := fmt.Sprint(task["intent"])
 	switch tool {
 	case "summarize.mock":
-		return tool, "# Go Tool Summary\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nSummary: " + intent + "\n"
+		return tool, "# Go Tool Summary\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nSummary: " + intent + "\n", nil
 	case "translate.mock":
-		return tool, "# Go Tool Translation\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nTranslation: " + strings.ToUpper(intent) + "\n"
+		return tool, "# Go Tool Translation\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nTranslation: " + strings.ToUpper(intent) + "\n", nil
+	case "external.stdio":
+		text, err := runExternalTool(profile, task, origin)
+		return tool, text, err
 	default:
-		return tool, "# Go Tool Output\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nOutput: " + intent + "\n"
+		return tool, "# Go Tool Output\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nOutput: " + intent + "\n", nil
 	}
+}
+
+func runExternalTool(profile WorkerProfile, task, origin map[string]any) (string, error) {
+	if len(profile.ToolCommand) == 0 {
+		return "", errors.New("external.stdio tool_command missing")
+	}
+	dir, err := os.MkdirTemp("", "agnet-tool-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(dir)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, profile.ToolCommand[0], profile.ToolCommand[1:]...)
+	cmd.Dir = dir
+	cmd.Env = []string{"PATH=/usr/bin:/bin"}
+	input := map[string]any{
+		"task_id": task["task_id"],
+		"intent":  task["intent"],
+		"to":      task["to"],
+		"origin":  origin["zid"],
+		"tool":    profile.Tool,
+	}
+	data, err := json.Marshal(input)
+	if err != nil {
+		return "", err
+	}
+	cmd.Stdin = bytes.NewReader(data)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	output, err := cmd.Output()
+	if ctx.Err() == context.DeadlineExceeded {
+		return "", errors.New("external tool timed out")
+	}
+	if err != nil {
+		message := strings.TrimSpace(stderr.String())
+		if message == "" {
+			message = err.Error()
+		}
+		return "", errors.New("external tool failed: " + message)
+	}
+	var result map[string]any
+	if err := json.Unmarshal(output, &result); err != nil {
+		return "", err
+	}
+	text, ok := result["text"].(string)
+	if !ok || text == "" {
+		return "", errors.New("external tool text missing")
+	}
+	return text, nil
 }
 
 func (f Fixture) sendTaskEvent(send sendFunc, event map[string]any) error {
