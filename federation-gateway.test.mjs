@@ -84,3 +84,35 @@ test("Federation Gateway rejects an untrusted origin Zone", async () => {
     gateway.kill("SIGINT");
   }
 });
+
+test("Federation Gateway resolves a remote agent alias", async () => {
+  const port = 8993;
+  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  await writeTrustedZones("state/zone-a-resolve-trust.json", [zoneB]);
+  await writeTrustedZones("state/zone-b-resolve-trust.json", [zoneA]);
+
+  const gateway = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-resolve-trust.json"], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  try {
+    await waitForGateway(gateway);
+
+    const { stdout } = await execFileAsync(process.execPath, [
+      "federation-gateway.mjs",
+      "resolve",
+      String(port),
+      "state/zone-a-resolve-trust.json",
+      "agent://zone-b/summarizer",
+    ]);
+    const result = JSON.parse(stdout);
+
+    assert.equal(result.zone, zoneB.zid);
+    assert.equal(result.alias, "agent://zone-b/summarizer");
+    assert.match(result.aid, /^aid:ed25519:/);
+  } finally {
+    gateway.kill("SIGINT");
+  }
+});

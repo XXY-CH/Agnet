@@ -65,6 +65,18 @@ async function serve(port, trustedZonesFile) {
   const server = net.createServer((socket) => {
     readFrames(socket, async (frame) => {
       try {
+        if (frame.type === "FED_RESOLVE") {
+          verifyTrustedZone(trustedZones, frame.origin_zone);
+          if (frame.alias !== worker.alias) throw new Error(`remote alias not found: ${frame.alias}`);
+          send(socket, {
+            type: "FED_RESOLVE_RESULT",
+            zone: zone.descriptor,
+            worker: worker.descriptor,
+            zone_binding: zoneBinding(zone, worker.descriptor),
+          });
+          send(socket, { type: "FED_RESOLVE_CLOSE", alias: frame.alias });
+          return;
+        }
         if (frame.type !== "FED_TASK_OPEN") throw new Error(`unsupported frame: ${frame.type}`);
         const originZone = verifyTrustedZone(trustedZones, frame.origin_zone);
         const requesterPublicKey = publicKeyFromDescriptor(frame.requester);
@@ -176,14 +188,47 @@ async function request(port, trustedZonesFile) {
   console.log(JSON.stringify({ zone: zone.zid, requester: requester.aid, events, receipt }, null, 2));
 }
 
+async function resolveRemote(port, trustedZonesFile, alias = "agent://zone-b/summarizer") {
+  const trustedZones = await loadTrustedZones(trustedZonesFile);
+  const zone = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const socket = net.createConnection(port, "127.0.0.1");
+  let result;
+  const done = new Promise((resolve, reject) => {
+    socket.on("error", reject);
+    readFrames(socket, (frame) => {
+      if (frame.type === "FED_RESOLVE_RESULT") {
+        verifyTrustedZone(trustedZones, frame.zone);
+        const resolved = resolveAgent(
+          new Map([[frame.worker.alias, { descriptor: frame.worker, zone: frame.zone, zone_binding: frame.zone_binding }]]),
+          frame.worker.alias,
+        );
+        result = { zone: frame.zone.zid, alias: frame.worker.alias, aid: resolved.descriptor.aid };
+      }
+      if (frame.type === "FED_TASK_ERROR") reject(new Error(frame.error));
+      if (frame.type === "FED_RESOLVE_CLOSE") resolve();
+    });
+  });
+
+  socket.on("connect", () => {
+    send(socket, { type: "FED_RESOLVE", origin_zone: zone.descriptor, alias });
+  });
+  await done;
+  socket.end();
+  console.log(JSON.stringify(result, null, 2));
+}
+
 async function main() {
-  const [mode, portArg, trustedZonesFile] = process.argv.slice(2);
+  const [mode, portArg, trustedZonesFile, alias] = process.argv.slice(2);
   if (mode === "serve") {
     await serve(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json");
   } else if (mode === "request") {
     await request(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json");
+  } else if (mode === "resolve") {
+    await resolveRemote(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", alias);
   } else {
-    console.error("usage: node federation-gateway.mjs serve <port> <trusted-zones.json> | request <port> <trusted-zones.json>");
+    console.error(
+      "usage: node federation-gateway.mjs serve <port> <trusted-zones.json> | request <port> <trusted-zones.json> | resolve <port> <trusted-zones.json> [agent://alias]",
+    );
     process.exitCode = 2;
   }
 }
