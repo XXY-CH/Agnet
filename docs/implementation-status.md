@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v3.6 complete
-当前代码基线：`v3.6`
+状态：v3.7 complete
+当前代码基线：`v3.7`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter，以及 external stdio tool adapter。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter，以及最小 MCP stdio `tools/call`。
 
 还不是可产品化的 Agent Net。
 
@@ -16,7 +16,7 @@
 | Agent identity | done | verify/generate subset | `asp-core.mjs`, `cmd/go-fed-discovery` | Go shared library/package shape |
 | Zone identity | done | verify/generate subset | `trusted-zones.test.mjs`, Go descriptor verification | Zone lifecycle tooling |
 | Local registry | done | multi-worker profile registry | `zone-registry.test.mjs`, `go-fed-discovery.test.mjs` | worker lifecycle API |
-| Local task execution | done | built-in + external stdio tool adapter | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | MCP wire protocol / container sandbox |
+| Local task execution | done | built-in + external stdio + MCP stdio tools/call | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | container sandbox / long-running MCP sessions |
 | Events | done | minimal federation events | `agent-runtime.test.mjs`, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | richer event lifecycle |
 | Artifact write | done | deterministic local artifact | `mvp-demo.test.mjs`, `go-fed-discovery.test.mjs` | artifact store |
 | Receipt signing | done | done for minimal Go execution | `test-vectors.test.mjs`, `go-fed-discovery.test.mjs` | receipt verification CLI |
@@ -50,6 +50,7 @@ Go
   -> read-only Human Gateway
   -> built-in pure-text tool adapter
   -> external stdio tool adapter with process envelope
+  -> minimal MCP stdio tools/call adapter
 ```
 
 ## Next Boundary
@@ -57,8 +58,8 @@ Go
 Next natural boundary:
 
 ```text
-MCP wire protocol + stronger sandbox
-  -> move from stdio proof to MCP-compatible tool sessions
+Tool approval + stronger sandbox
+  -> approval-gated tool capabilities and isolation
 ```
 
 Skipped until later: multi-worker registry, encrypted key store, public transport, real approval UI, sandbox/tool execution, scheduling, semantic routing.

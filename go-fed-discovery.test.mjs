@@ -159,8 +159,9 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
     {
       key_file: "state/go-fed-discovery-translator.seed",
       alias: "agent://zone-b/translator",
-      tool: "external.stdio",
-      tool_command: [process.execPath, `${process.cwd()}/state/go-fed-external-tool.mjs`],
+      tool: "mcp.stdio",
+      tool_name: "translate",
+      tool_command: [process.execPath, `${process.cwd()}/state/go-fed-mcp-server.mjs`],
       transports: ["fed+tcp://127.0.0.1:8991"],
       capabilities: ["translate.text"],
       policy: { allow_network: false },
@@ -171,13 +172,27 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
   await writeFile("state/go-fed-discovery-authority.seed", `${fixture.authority_seed_hex}\n`);
   await writeFile("state/go-fed-discovery-worker.seed", `${fixture.worker_seed_hex}\n`);
   await writeFile("state/go-fed-discovery-translator.seed", "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f\n");
-  await writeFile("state/go-fed-external-tool.mjs", `
-let input = "";
-for await (const chunk of process.stdin) input += chunk;
-const request = JSON.parse(input);
-process.stdout.write(JSON.stringify({
-  text: \`# External Tool Translation\\n\\nTask: \${request.task_id}\\nTranslation: \${String(request.intent).toUpperCase()}\\n\`
-}));
+  await writeFile("state/go-fed-mcp-server.mjs", `
+import readline from "node:readline";
+const rl = readline.createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+  const message = JSON.parse(line);
+  if (message.method === "initialize") {
+    process.stdout.write(JSON.stringify({
+      jsonrpc: "2.0",
+      id: message.id,
+      result: { protocolVersion: message.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "test-mcp", version: "0" } }
+    }) + "\\n");
+  } else if (message.method === "tools/call") {
+    const args = message.params.arguments;
+    process.stdout.write(JSON.stringify({
+      jsonrpc: "2.0",
+      id: message.id,
+      result: { content: [{ type: "text", text: \`# MCP Tool Translation\\n\\nTask: \${args.task_id}\\nTranslation: \${String(args.intent).toUpperCase()}\\n\` }] }
+    }) + "\\n");
+    process.exit(0);
+  }
+});
 `);
   await rm("state/go-fed-discovery-audit.log", { force: true });
   await writeTrustedZones("state/go-fed-discovery-trusted-origin.json", [zoneA]);
@@ -309,9 +324,9 @@ process.stdout.write(JSON.stringify({
     assert.equal(receiptFrame.receipt.to, receiptFrame.worker.aid);
     assert.equal(receiptFrame.receipt.artifact_refs[0], "artifact://local/go_fed_task_verified/go-summary.md");
     assert.equal(receiptFrame.receipt.event_count, 4);
-    assert.equal(receiptFrame.receipt.tool, "external.stdio");
+    assert.equal(receiptFrame.receipt.tool, "mcp.stdio");
     const artifactText = await readFile("artifacts/go_fed_task_verified/go-summary.md", "utf8");
-    assert.match(artifactText, /External Tool Translation/);
+    assert.match(artifactText, /MCP Tool Translation/);
     assert.match(artifactText, /VERIFY FED_TASK_OPEN IN GO\./);
 
     const deniedTask = {
@@ -349,7 +364,7 @@ process.stdout.write(JSON.stringify({
 
     const artifactResponse = await fetch(`http://127.0.0.1:${humanPort}/artifacts/go_fed_task_verified/go-summary.md`);
     assert.equal(artifactResponse.status, 200);
-    assert.match(await artifactResponse.text(), /External Tool Translation/);
+    assert.match(await artifactResponse.text(), /MCP Tool Translation/);
   } finally {
     gateway.kill("SIGINT");
   }

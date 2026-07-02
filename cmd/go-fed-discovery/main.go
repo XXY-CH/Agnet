@@ -41,6 +41,7 @@ type WorkerProfile struct {
 	KeyFile      string         `json:"key_file,omitempty"`
 	Alias        string         `json:"alias"`
 	Tool         string         `json:"tool,omitempty"`
+	ToolName     string         `json:"tool_name,omitempty"`
 	ToolCommand  []string       `json:"tool_command,omitempty"`
 	Transports   []string       `json:"transports"`
 	Capabilities []string       `json:"capabilities"`
@@ -731,6 +732,9 @@ func runTool(profile WorkerProfile, task, origin map[string]any) (string, string
 	case "external.stdio":
 		text, err := runExternalTool(profile, task, origin)
 		return tool, text, err
+	case "mcp.stdio":
+		text, err := runMCPTool(profile, task, origin)
+		return tool, text, err
 	default:
 		return tool, "# Go Tool Output\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nOutput: " + intent + "\n", nil
 	}
@@ -784,6 +788,130 @@ func runExternalTool(profile WorkerProfile, task, origin map[string]any) (string
 		return "", errors.New("external tool text missing")
 	}
 	return text, nil
+}
+
+func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, error) {
+	if len(profile.ToolCommand) == 0 {
+		return "", errors.New("mcp.stdio tool_command missing")
+	}
+	toolName := profile.ToolName
+	if toolName == "" {
+		return "", errors.New("mcp.stdio tool_name missing")
+	}
+	dir, err := os.MkdirTemp("", "agnet-mcp-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(dir)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, profile.ToolCommand[0], profile.ToolCommand[1:]...)
+	cmd.Dir = dir
+	cmd.Env = []string{"PATH=/usr/bin:/bin"}
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return "", err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", err
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		return "", err
+	}
+	scanner := bufio.NewScanner(stdout)
+	writeRPC := func(message map[string]any) error {
+		data, err := json.Marshal(message)
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintln(stdin, string(data))
+		return err
+	}
+	if err := writeRPC(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "initialize",
+		"params": map[string]any{
+			"protocolVersion": "2025-11-25",
+			"capabilities":    map[string]any{},
+			"clientInfo":      map[string]any{"name": "agnet-go", "version": "v3.7"},
+		},
+	}); err != nil {
+		return "", err
+	}
+	if _, err := readRPCResponse(scanner, 1); err != nil {
+		return "", err
+	}
+	if err := writeRPC(map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized", "params": map[string]any{}}); err != nil {
+		return "", err
+	}
+	args := map[string]any{
+		"task_id": task["task_id"],
+		"intent":  task["intent"],
+		"to":      task["to"],
+		"origin":  origin["zid"],
+	}
+	if err := writeRPC(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params":  map[string]any{"name": toolName, "arguments": args},
+	}); err != nil {
+		return "", err
+	}
+	response, err := readRPCResponse(scanner, 2)
+	if err != nil {
+		return "", err
+	}
+	_ = stdin.Close()
+	if err := cmd.Wait(); err != nil && ctx.Err() == nil {
+		message := strings.TrimSpace(stderr.String())
+		if message == "" {
+			message = err.Error()
+		}
+		return "", errors.New("mcp tool failed: " + message)
+	}
+	if ctx.Err() == context.DeadlineExceeded {
+		return "", errors.New("mcp tool timed out")
+	}
+	return mcpText(response)
+}
+
+func readRPCResponse(scanner *bufio.Scanner, id float64) (map[string]any, error) {
+	for scanner.Scan() {
+		var message map[string]any
+		if err := json.Unmarshal(scanner.Bytes(), &message); err != nil {
+			return nil, err
+		}
+		if message["id"] == id {
+			if message["error"] != nil {
+				return nil, errors.New("mcp error: " + fmt.Sprint(message["error"]))
+			}
+			return message, nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return nil, errors.New("mcp response missing")
+}
+
+func mcpText(response map[string]any) (string, error) {
+	result, _ := response["result"].(map[string]any)
+	content, _ := result["content"].([]any)
+	for _, item := range content {
+		entry, _ := item.(map[string]any)
+		if entry["type"] == "text" {
+			text, _ := entry["text"].(string)
+			if text != "" {
+				return text, nil
+			}
+		}
+	}
+	return "", errors.New("mcp text content missing")
 }
 
 func (f Fixture) sendTaskEvent(send sendFunc, event map[string]any) error {
