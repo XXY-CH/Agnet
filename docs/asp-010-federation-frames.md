@@ -74,13 +74,27 @@ Zone B must reject the frame unless `origin_zone` exists in its trusted Zone sto
   "matches": [
     {
       "worker": { "...": "Zone B worker descriptor" },
-      "zone_binding": { "...": "Zone B alias -> aid binding" }
+      "zone_binding": { "...": "Zone B alias -> aid binding" },
+      "credentials": [
+        {
+          "issuer": "zid:ed25519:...",
+          "subject": "aid:ed25519:...",
+          "capability": "summarize.text",
+          "claims": {
+            "level": "L1",
+            "evidence": ["zone-b-local-worker"]
+          },
+          "signature": "..."
+        }
+      ]
     }
   ]
 }
 ```
 
 v1.3 only supports exact string matching against `worker.capabilities`. No vectors, rankings, or semantic expansion.
+
+v1.5 adds signed capability credentials to each match. The credential issuer is a Zone/authority, the subject is the worker `aid`, and the capability must also appear inside the worker's signed descriptor.
 
 `request-capability` is a convenience flow:
 

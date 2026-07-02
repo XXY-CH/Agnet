@@ -2,6 +2,7 @@ import net from "node:net";
 import {
   appendAudit,
   approvalReasons,
+  capabilityCredential,
   enforcePolicy,
   loadOrCreateAgent,
   loadOrCreateZone,
@@ -10,6 +11,7 @@ import {
   resolveAgent,
   signObject,
   verifyObject,
+  verifyCapabilityCredential,
   verifyZoneDescriptor,
   writeArtifact,
   zoneBinding,
@@ -81,7 +83,16 @@ async function serve(port, trustedZonesFile) {
         if (frame.type === "FED_QUERY") {
           verifyTrustedZone(trustedZones, frame.origin_zone);
           const matches = worker.descriptor.capabilities.includes(frame.capability)
-            ? [{ worker: worker.descriptor, zone_binding: zoneBinding(zone, worker.descriptor) }]
+            ? [{
+                worker: worker.descriptor,
+                zone_binding: zoneBinding(zone, worker.descriptor),
+                credentials: [
+                  capabilityCredential(zone, worker.descriptor, frame.capability, {
+                    level: "L1",
+                    evidence: ["zone-b-local-worker"],
+                  }),
+                ],
+              }]
             : [];
           send(socket, { type: "FED_QUERY_RESULT", zone: zone.descriptor, capability: frame.capability, matches });
           send(socket, { type: "FED_QUERY_CLOSE", capability: frame.capability });
@@ -243,7 +254,18 @@ async function queryRemote(port, trustedZonesFile, capability = "summarize.text"
             new Map([[match.worker.alias, { descriptor: match.worker, zone: frame.zone, zone_binding: match.zone_binding }]]),
             match.worker.alias,
           );
-          return { alias: resolved.descriptor.alias, aid: resolved.descriptor.aid, capabilities: resolved.descriptor.capabilities };
+          const credentials = match.credentials ?? [];
+          for (const credential of credentials) {
+            if (!verifyCapabilityCredential(credential, frame.zone, resolved.descriptor)) {
+              throw new Error(`capability credential verification failed: ${credential.capability}`);
+            }
+          }
+          return {
+            alias: resolved.descriptor.alias,
+            aid: resolved.descriptor.aid,
+            capabilities: resolved.descriptor.capabilities,
+            credentials,
+          };
         });
         result = { zone: remoteZone.zid, capability: frame.capability, matches };
       }

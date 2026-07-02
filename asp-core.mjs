@@ -362,6 +362,35 @@ export function verifyAliasRebindingProof(proof, zoneDescriptor, previousDescrip
   );
 }
 
+export function capabilityCredential(authorityZone, subjectDescriptor, capability, claims = {}) {
+  const body = {
+    issuer: authorityZone.zid,
+    subject: subjectDescriptor.aid,
+    capability,
+    claims,
+  };
+  return { ...body, signature: signObject(authorityZone.privateKey, body) };
+}
+
+export function verifyCapabilityCredential(credential, authorityDescriptor, subjectDescriptor) {
+  const { publicKey: authorityPublicKey } = verifyZoneDescriptor(authorityDescriptor);
+  const subjectPublicKey = publicKeyFromDescriptor(subjectDescriptor);
+  if (computeAid(subjectPublicKey) !== subjectDescriptor.aid) return false;
+  if (!verifyObject(subjectPublicKey, descriptorBody(subjectDescriptor), subjectDescriptor.descriptor_signature)) return false;
+  if (!subjectDescriptor.capabilities.includes(credential.capability)) return false;
+  const body = {
+    issuer: credential.issuer,
+    subject: credential.subject,
+    capability: credential.capability,
+    claims: credential.claims,
+  };
+  return (
+    credential.issuer === authorityDescriptor.zid &&
+    credential.subject === subjectDescriptor.aid &&
+    verifyObject(authorityPublicKey, body, credential.signature)
+  );
+}
+
 export function enforcePolicy(descriptor, task) {
   const policy = descriptor.policy ?? {};
   const scope = task.scope ?? {};

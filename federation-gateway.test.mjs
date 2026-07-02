@@ -144,6 +144,8 @@ test("Federation Gateway queries exact remote capabilities", async () => {
     assert.equal(hitResult.matches.length, 1);
     assert.equal(hitResult.matches[0].alias, "agent://zone-b/summarizer");
     assert.deepEqual(hitResult.matches[0].capabilities, ["summarize.text"]);
+    assert.equal(hitResult.matches[0].credentials[0].capability, "summarize.text");
+    assert.equal(hitResult.matches[0].credentials[0].claims.level, "L1");
 
     const miss = await execFileAsync(process.execPath, [
       "federation-gateway.mjs",
