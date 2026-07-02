@@ -51,3 +51,23 @@ test("local ASP runtime connects two processes", async () => {
     worker.kill("SIGINT");
   }
 });
+
+test("worker aid survives runtime restart", async () => {
+  const first = spawn(process.execPath, ["agent-runtime.mjs", "worker", "8891"], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const firstStarted = await waitForWorker(first);
+  first.kill("SIGINT");
+
+  const second = spawn(process.execPath, ["agent-runtime.mjs", "worker", "8892"], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  try {
+    const secondStarted = await waitForWorker(second);
+    assert.equal(secondStarted.worker, firstStarted.worker);
+  } finally {
+    second.kill("SIGINT");
+  }
+});

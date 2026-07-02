@@ -1,6 +1,6 @@
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { appendFile, chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { createHash, createPublicKey, generateKeyPairSync, sign, verify } from "node:crypto";
+import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from "node:crypto";
 
 const AGENT_DOMAIN = Buffer.from("asp-agent-id-v1\0");
 const ZONE_DOMAIN = Buffer.from("asp-zone-id-v1\0");
@@ -20,6 +20,10 @@ export function canonical(value) {
 
 export function publicKeyDer(publicKey) {
   return publicKey.export({ type: "spki", format: "der" });
+}
+
+export function privateKeyDer(privateKey) {
+  return privateKey.export({ type: "pkcs8", format: "der" });
 }
 
 export function computeAid(publicKey) {
@@ -60,6 +64,11 @@ export function zoneDescriptorBody(descriptor) {
 
 export function createAgent(alias, policy = {}, transports = ["asp+local://demo"]) {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  return agentFromPrivateKey(alias, privateKey, policy, transports);
+}
+
+export function agentFromPrivateKey(alias, privateKey, policy = {}, transports = ["asp+local://demo"]) {
+  const publicKey = createPublicKey(privateKey);
   const aid = computeAid(publicKey);
   const descriptor = {
     alias,
@@ -79,6 +88,11 @@ export function createAgent(alias, policy = {}, transports = ["asp+local://demo"
 
 export function createZone(name) {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  return zoneFromPrivateKey(name, privateKey);
+}
+
+export function zoneFromPrivateKey(name, privateKey) {
+  const publicKey = createPublicKey(privateKey);
   const zid = computeZid(publicKey);
   const descriptor = {
     name,
@@ -92,6 +106,27 @@ export function createZone(name) {
     privateKey,
     publicKey,
   };
+}
+
+export async function loadOrCreatePrivateKey(file) {
+  try {
+    return createPrivateKey({ key: await readFile(file), format: "der", type: "pkcs8" });
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  const { privateKey } = generateKeyPairSync("ed25519");
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, privateKeyDer(privateKey), { mode: 0o600 });
+  await chmod(file, 0o600);
+  return privateKey;
+}
+
+export async function loadOrCreateAgent(alias, keyFile, policy = {}, transports = ["asp+local://demo"]) {
+  return agentFromPrivateKey(alias, await loadOrCreatePrivateKey(keyFile), policy, transports);
+}
+
+export async function loadOrCreateZone(name, keyFile) {
+  return zoneFromPrivateKey(name, await loadOrCreatePrivateKey(keyFile));
 }
 
 export function zoneBinding(zone, descriptor) {

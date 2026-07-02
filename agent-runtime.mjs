@@ -2,9 +2,9 @@ import net from "node:net";
 import {
   appendAudit,
   approvalReasons,
-  createAgent,
-  createZone,
   enforcePolicy,
+  loadOrCreateAgent,
+  loadOrCreateZone,
   loadRegistry,
   publicKeyFromDescriptor,
   resolveAgent,
@@ -43,12 +43,13 @@ async function sendEvent(socket, event) {
 }
 
 async function runWorker(port = 8787) {
-  const worker = createAgent(
+  const worker = await loadOrCreateAgent(
     "agent://local/summarizer",
+    "state/keys/agent-local-summarizer.pkcs8",
     { allow_network: false, approval_required: ["write"], write_prefixes: ["artifact://local/"] },
     [`asp+tcp://127.0.0.1:${port}`],
   );
-  const zone = createZone("zone://local");
+  const zone = await loadOrCreateZone("zone://local", "state/keys/zone-local.pkcs8");
   await writeRegistry("state/registry.json", zone, [worker.descriptor]);
 
   const server = net.createServer((socket) => {
@@ -110,7 +111,7 @@ async function runWorker(port = 8787) {
 }
 
 async function runRequest(alias = "agent://local/summarizer") {
-  const requester = createAgent("agent://local/requester");
+  const requester = await loadOrCreateAgent("agent://local/requester", "state/keys/agent-local-requester.pkcs8");
   const registry = await loadRegistry("state/registry.json");
   const { descriptor } = resolveAgent(registry, alias);
   const transport = descriptor.transports.find((item) => item.startsWith("asp+tcp://"));
