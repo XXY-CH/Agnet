@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v3.4 assessment
+状态：v3.5 assessment
 
 ## 一句话
 
@@ -14,7 +14,7 @@
 
 ### Protocol core
 
-进度：约 58%。
+进度：约 60%。
 
 已有：
 
@@ -34,6 +34,7 @@
 - Go multi-worker registry in v3.2。
 - WebSocket binding in v3.3。
 - Thin Human Gateway in v3.4。
+- Built-in pure-text tool adapter in v3.5。
 
 主要缺：
 
@@ -44,7 +45,7 @@
 
 ### Runtime core
 
-进度：约 38%。
+进度：约 42%。
 
 已有：
 
@@ -53,10 +54,11 @@
 - Go discovery gateway with minimal deterministic execution。
 - Go audit verifier for execution evidence。
 - Go exact-match multi-worker routing。
+- Go built-in pure-text tool execution。
 
 主要缺：
 
-- tool adapter / MCP integration。
+- external MCP integration。
 - sandbox。
 - concurrency model。
 - durable task state。
@@ -159,7 +161,7 @@ Trying to clone Octo now would pull this project sideways into chat/product surf
 The right path is:
 
 ```text
-v3.5 MCP/tool adapter + sandbox
+v3.6 external MCP/tool adapter + real sandbox
 ```
 
 After v3.3 or v3.4, comparing directly with Octo becomes useful.

@@ -36,6 +36,7 @@ type Fixture struct {
 type WorkerProfile struct {
 	KeyFile      string         `json:"key_file,omitempty"`
 	Alias        string         `json:"alias"`
+	Tool         string         `json:"tool,omitempty"`
 	Transports   []string       `json:"transports"`
 	Capabilities []string       `json:"capabilities"`
 	Policy       map[string]any `json:"policy"`
@@ -663,7 +664,8 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	}
 
 	artifactURI := "artifact://local/" + taskID + "/go-summary.md"
-	if err := writeArtifact(artifactURI, "# Go Federated Summary\n\nCompleted "+taskID+" from "+fmt.Sprint(origin["zid"])+".\n"); err != nil {
+	toolName, artifactText := runTool(worker.Profile, task, origin)
+	if err := writeArtifact(artifactURI, artifactText); err != nil {
 		return err
 	}
 	if err := f.sendTaskEvent(send, map[string]any{"type": "artifact.created", "task_id": taskID, "uri": artifactURI}); err != nil {
@@ -682,6 +684,7 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		"artifact_refs":  []string{artifactURI},
 		"event_count":    float64(4),
 		"approvals":      []string{},
+		"tool":           toolName,
 	}
 	signedReceipt := signBody(worker.PrivateKey, receipt)
 	receiptRecord := map[string]any{
@@ -703,6 +706,23 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	})
 	send(map[string]any{"type": "FED_TASK_CLOSE", "task_id": taskID})
 	return nil
+}
+
+func runTool(profile WorkerProfile, task, origin map[string]any) (string, string) {
+	tool := profile.Tool
+	if tool == "" {
+		tool = "text.echo"
+	}
+	taskID := fmt.Sprint(task["task_id"])
+	intent := fmt.Sprint(task["intent"])
+	switch tool {
+	case "summarize.mock":
+		return tool, "# Go Tool Summary\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nSummary: " + intent + "\n"
+	case "translate.mock":
+		return tool, "# Go Tool Translation\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nTranslation: " + strings.ToUpper(intent) + "\n"
+	default:
+		return tool, "# Go Tool Output\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nOutput: " + intent + "\n"
+	}
 }
 
 func (f Fixture) sendTaskEvent(send sendFunc, event map[string]any) error {

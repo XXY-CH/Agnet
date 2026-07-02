@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v3.4 complete
-当前代码基线：`v3.4`
+状态：v3.5 complete
+当前代码基线：`v3.5`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding，以及 thin Human Gateway。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway，以及 Go 内置 tool adapter。
 
 还不是可产品化的 Agent Net。
 
@@ -16,7 +16,7 @@
 | Agent identity | done | verify/generate subset | `asp-core.mjs`, `cmd/go-fed-discovery` | Go shared library/package shape |
 | Zone identity | done | verify/generate subset | `trusted-zones.test.mjs`, Go descriptor verification | Zone lifecycle tooling |
 | Local registry | done | multi-worker profile registry | `zone-registry.test.mjs`, `go-fed-discovery.test.mjs` | worker lifecycle API |
-| Local task execution | done | minimal deterministic worker | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | real tool execution |
+| Local task execution | done | built-in pure-text tool adapter | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | external MCP/tools |
 | Events | done | minimal federation events | `agent-runtime.test.mjs`, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | richer event lifecycle |
 | Artifact write | done | deterministic local artifact | `mvp-demo.test.mjs`, `go-fed-discovery.test.mjs` | artifact store |
 | Receipt signing | done | done for minimal Go execution | `test-vectors.test.mjs`, `go-fed-discovery.test.mjs` | receipt verification CLI |
@@ -48,6 +48,7 @@ Go
   -> multi-worker profile registry
   -> WebSocket transport binding
   -> read-only Human Gateway
+  -> built-in pure-text tool adapter
 ```
 
 ## Next Boundary
@@ -55,8 +56,8 @@ Go
 Next natural boundary:
 
 ```text
-MCP/tool adapter + sandbox
-  -> replace deterministic worker text with controlled tool execution
+External MCP/tool adapter + real sandbox
+  -> controlled process or MCP tool execution
 ```
 
 Skipped until later: multi-worker registry, encrypted key store, public transport, real approval UI, sandbox/tool execution, scheduling, semantic routing.

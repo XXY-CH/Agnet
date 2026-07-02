@@ -155,10 +155,11 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
   delete goFixture.worker;
   delete goFixture.zone_binding;
   goFixture.worker_profiles = [
-    { ...fixture.worker_profile },
+    { ...fixture.worker_profile, tool: "summarize.mock" },
     {
       key_file: "state/go-fed-discovery-translator.seed",
       alias: "agent://zone-b/translator",
+      tool: "translate.mock",
       transports: ["fed+tcp://127.0.0.1:8991"],
       capabilities: ["translate.text"],
       policy: { allow_network: false },
@@ -299,8 +300,10 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
     assert.equal(receiptFrame.receipt.to, receiptFrame.worker.aid);
     assert.equal(receiptFrame.receipt.artifact_refs[0], "artifact://local/go_fed_task_verified/go-summary.md");
     assert.equal(receiptFrame.receipt.event_count, 4);
+    assert.equal(receiptFrame.receipt.tool, "translate.mock");
     const artifactText = await readFile("artifacts/go_fed_task_verified/go-summary.md", "utf8");
-    assert.match(artifactText, /Completed go_fed_task_verified/);
+    assert.match(artifactText, /Go Tool Translation/);
+    assert.match(artifactText, /VERIFY FED_TASK_OPEN IN GO\./);
 
     const deniedTask = {
       ...task,
@@ -337,7 +340,7 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
 
     const artifactResponse = await fetch(`http://127.0.0.1:${humanPort}/artifacts/go_fed_task_verified/go-summary.md`);
     assert.equal(artifactResponse.status, 200);
-    assert.match(await artifactResponse.text(), /Completed go_fed_task_verified/);
+    assert.match(await artifactResponse.text(), /Go Tool Translation/);
   } finally {
     gateway.kill("SIGINT");
   }
