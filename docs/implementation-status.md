@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v3 complete
-当前代码基线：`v3`
+状态：v3.1 complete
+当前代码基线：`v3.1`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification，以及 Go 最小 task execution path。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path，以及 Go audit/receipt verification。
 
 还不是可产品化的 Agent Net。
 
@@ -20,7 +20,7 @@
 | Events | done | minimal federation events | `agent-runtime.test.mjs`, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | richer event lifecycle |
 | Artifact write | done | deterministic local artifact | `mvp-demo.test.mjs`, `go-fed-discovery.test.mjs` | artifact store |
 | Receipt signing | done | done for minimal Go execution | `test-vectors.test.mjs`, `go-fed-discovery.test.mjs` | receipt verification CLI |
-| Audit hash chain | done | no | `audit-chain.test.mjs` | Go audit writer/verifier |
+| Audit hash chain | done | done for Go execution | `audit-chain.test.mjs`, `go-fed-discovery.test.mjs` | remote audit query |
 | Federation resolve | done | done | `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | public transport |
 | Capability query | done | done | `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | ranking / scheduling |
 | Capability credential | done | done | `capability-credential.test.mjs`, Go dynamic signing | credential status feed |
@@ -44,6 +44,7 @@ Go
   -> key files
   -> FED_TASK_OPEN verification
   -> minimal task events, artifact, signed receipt
+  -> audit JSONL hash chain and verifier
 ```
 
 ## Next Boundary
@@ -51,8 +52,8 @@ Go
 Next natural boundary:
 
 ```text
-Go writes/verifies audit entries for task events and receipts
-  -> Node or Go CLI can verify the audit chain
+Go multi-worker registry
+  -> query and route across more than one worker profile
 ```
 
 Skipped until later: multi-worker registry, encrypted key store, public transport, real approval UI, sandbox/tool execution, scheduling, semantic routing.

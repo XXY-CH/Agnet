@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
@@ -67,6 +67,7 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
   await writeFile("state/go-fed-discovery-dynamic-worker.json", `${JSON.stringify(goFixture, null, 2)}\n`);
   await writeFile("state/go-fed-discovery-authority.seed", `${fixture.authority_seed_hex}\n`);
   await writeFile("state/go-fed-discovery-worker.seed", `${fixture.worker_seed_hex}\n`);
+  await rm("state/go-fed-discovery-audit.log", { force: true });
   await writeTrustedZones("state/go-fed-discovery-trusted-origin.json", [zoneA]);
   await writeFile("state/node-trusts-go-discovery.json", `${JSON.stringify({ zones: [fixture.authority] }, null, 2)}\n`);
   await execFileAsync("go", ["build", "-o", "state/go-fed-discovery-test", "./cmd/go-fed-discovery"]);
@@ -82,6 +83,8 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
     "state/go-fed-discovery-authority.seed",
     "--worker-key",
     "state/go-fed-discovery-worker.seed",
+    "--audit",
+    "state/go-fed-discovery-audit.log",
   ], {
     cwd: process.cwd(),
     stdio: ["ignore", "pipe", "pipe"],
@@ -175,6 +178,13 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
     });
     assert.equal(deniedFrames[0].type, "FED_TASK_ERROR");
     assert.match(deniedFrames[0].error, /policy denied network access/);
+
+    const verifiedAudit = await execFileAsync("./state/go-fed-discovery-test", [
+      "--verify-audit",
+      "--audit",
+      "state/go-fed-discovery-audit.log",
+    ]);
+    assert.match(verifiedAudit.stdout, /"go_audit_verify":"ok"/);
   } finally {
     gateway.kill("SIGINT");
   }

@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v3 assessment
+状态：v3.1 assessment
 
 ## 一句话
 
@@ -14,7 +14,7 @@
 
 ### Protocol core
 
-进度：约 50%。
+进度：约 52%。
 
 已有：
 
@@ -30,10 +30,10 @@
 - capability credential。
 - Go discovery/trust path through v2.4。
 - Go minimal execution path in v3。
+- Go audit path in v3.1。
 
 主要缺：
 
-- Go audit path。
 - richer policy schema。
 - cancellation / checkpoint / retry。
 - credential status / revocation feed。
@@ -41,13 +41,14 @@
 
 ### Runtime core
 
-进度：约 30%。
+进度：约 32%。
 
 已有：
 
 - Node prototype runtime。
 - Node federation execution path。
 - Go discovery gateway with minimal deterministic execution。
+- Go audit verifier for execution evidence。
 
 主要缺：
 
@@ -152,7 +153,6 @@ Trying to clone Octo now would pull this project sideways into chat/product surf
 The right path is:
 
 ```text
-v3.1 Go audit + receipt verification CLI
 v3.2 Go multi-worker registry
 v3.3 WebSocket transport
 v3.4 thin Human Gateway

@@ -11,10 +11,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 type Fixture struct {
@@ -24,6 +26,7 @@ type Fixture struct {
 	Credential          map[string]any     `json:"credential"`
 	AuthorityPrivateKey ed25519.PrivateKey `json:"-"`
 	WorkerPrivateKey    ed25519.PrivateKey `json:"-"`
+	Audit               *AuditLog          `json:"-"`
 }
 
 type WorkerProfile struct {
@@ -37,21 +40,38 @@ type TrustStore struct {
 	Zones []map[string]any `json:"zones"`
 }
 
+type AuditLog struct {
+	Path string
+	Head string
+	mu   sync.Mutex
+}
+
 func main() {
 	port := flag.String("port", "9090", "listen port")
 	fixturePath := flag.String("fixture", "test-vectors/asp-v1.5-capability-credential.json", "signed descriptor fixture")
 	trustPath := flag.String("trusted", "state/go-fed-trusted-zones.json", "trusted origin zones")
 	authorityKeyPath := flag.String("authority-key", "state/keys/go-fed-authority.seed", "authority seed key file")
 	workerKeyPath := flag.String("worker-key", "state/keys/go-fed-worker.seed", "worker seed key file")
+	auditPath := flag.String("audit", "state/go-fed-audit.log", "audit JSONL file")
+	verifyAudit := flag.Bool("verify-audit", false, "verify audit JSONL file and exit")
 	flag.Parse()
 
-	if err := serve(*port, *fixturePath, *trustPath, *authorityKeyPath, *workerKeyPath); err != nil {
+	if *verifyAudit {
+		if err := verifyAuditFile(*auditPath); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println(`{"go_audit_verify":"ok"}`)
+		return
+	}
+
+	if err := serve(*port, *fixturePath, *trustPath, *authorityKeyPath, *workerKeyPath, *auditPath); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func serve(port, fixturePath, trustPath, authorityKeyPath, workerKeyPath string) error {
+func serve(port, fixturePath, trustPath, authorityKeyPath, workerKeyPath, auditPath string) error {
 	authorityKey, err := loadPrivateKey(authorityKeyPath, "authority")
 	if err != nil {
 		return err
@@ -64,6 +84,11 @@ func serve(port, fixturePath, trustPath, authorityKeyPath, workerKeyPath string)
 	if err != nil {
 		return err
 	}
+	audit, err := openAuditLog(auditPath)
+	if err != nil {
+		return err
+	}
+	fixture.Audit = audit
 	trusted, err := loadTrustedZones(trustPath)
 	if err != nil {
 		return err
@@ -285,15 +310,23 @@ func (f Fixture) verifyTaskOpen(frame map[string]any) (map[string]any, error) {
 
 func (f Fixture) executeTask(conn net.Conn, origin, task map[string]any) error {
 	taskID := fmt.Sprint(task["task_id"])
-	sendTaskEvent(conn, map[string]any{"type": "task.accepted", "task_id": taskID, "by": f.Worker["aid"], "zone": f.Authority["zid"]})
-	sendTaskEvent(conn, map[string]any{"type": "task.started", "task_id": taskID, "by": f.Worker["aid"], "zone": f.Authority["zid"]})
+	if err := f.sendTaskEvent(conn, map[string]any{"type": "task.accepted", "task_id": taskID, "by": f.Worker["aid"], "zone": f.Authority["zid"]}); err != nil {
+		return err
+	}
+	if err := f.sendTaskEvent(conn, map[string]any{"type": "task.started", "task_id": taskID, "by": f.Worker["aid"], "zone": f.Authority["zid"]}); err != nil {
+		return err
+	}
 
 	artifactURI := "artifact://local/" + taskID + "/go-summary.md"
 	if err := writeArtifact(artifactURI, "# Go Federated Summary\n\nCompleted "+taskID+" from "+fmt.Sprint(origin["zid"])+".\n"); err != nil {
 		return err
 	}
-	sendTaskEvent(conn, map[string]any{"type": "artifact.created", "task_id": taskID, "uri": artifactURI})
-	sendTaskEvent(conn, map[string]any{"type": "task.completed", "task_id": taskID, "by": f.Worker["aid"], "zone": f.Authority["zid"]})
+	if err := f.sendTaskEvent(conn, map[string]any{"type": "artifact.created", "task_id": taskID, "uri": artifactURI}); err != nil {
+		return err
+	}
+	if err := f.sendTaskEvent(conn, map[string]any{"type": "task.completed", "task_id": taskID, "by": f.Worker["aid"], "zone": f.Authority["zid"]}); err != nil {
+		return err
+	}
 
 	receipt := map[string]any{
 		"task_id":        taskID,
@@ -305,19 +338,41 @@ func (f Fixture) executeTask(conn net.Conn, origin, task map[string]any) error {
 		"event_count":    float64(4),
 		"approvals":      []string{},
 	}
-	send(conn, map[string]any{
-		"type":         "FED_RECEIPT",
+	signedReceipt := signBody(f.WorkerPrivateKey, receipt)
+	receiptRecord := map[string]any{
+		"kind":         "go_fed_receipt",
 		"zone":         f.Authority,
 		"worker":       f.Worker,
 		"zone_binding": f.zoneBinding(),
-		"receipt":      signBody(f.WorkerPrivateKey, receipt),
+		"receipt":      signedReceipt,
+	}
+	if err := f.appendAudit(receiptRecord); err != nil {
+		return err
+	}
+	send(conn, map[string]any{
+		"type":         "FED_RECEIPT",
+		"zone":         receiptRecord["zone"],
+		"worker":       receiptRecord["worker"],
+		"zone_binding": receiptRecord["zone_binding"],
+		"receipt":      receiptRecord["receipt"],
 	})
 	send(conn, map[string]any{"type": "FED_TASK_CLOSE", "task_id": taskID})
 	return nil
 }
 
-func sendTaskEvent(conn net.Conn, event map[string]any) {
+func (f Fixture) sendTaskEvent(conn net.Conn, event map[string]any) error {
+	if err := f.appendAudit(map[string]any{"kind": "go_fed_event", "event": event}); err != nil {
+		return err
+	}
 	send(conn, map[string]any{"type": "FED_TASK_EVENT", "event": event})
+	return nil
+}
+
+func (f Fixture) appendAudit(record map[string]any) error {
+	if f.Audit == nil {
+		return nil
+	}
+	return f.Audit.Append(record)
 }
 
 func writeArtifact(uri, text string) error {
@@ -330,6 +385,188 @@ func writeArtifact(uri, text string) error {
 		return err
 	}
 	return os.WriteFile(path, []byte(text), 0o644)
+}
+
+const auditZeroHash = "0000000000000000000000000000000000000000000000000000000000000000"
+
+func openAuditLog(path string) (*AuditLog, error) {
+	audit := &AuditLog{Path: path, Head: auditZeroHash}
+	entries, err := readAuditEntries(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return audit, nil
+		}
+		return nil, err
+	}
+	prev := auditZeroHash
+	for _, entry := range entries {
+		if err := verifyAuditEntry(entry, prev); err != nil {
+			return nil, err
+		}
+		prev = fmt.Sprint(entry["hash"])
+	}
+	audit.Head = prev
+	return audit, nil
+}
+
+func (a *AuditLog) Append(record map[string]any) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	entry, err := auditEntry(a.Head, record)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(a.Path), 0o755); err != nil {
+		return err
+	}
+	file, err := os.OpenFile(a.Path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(file, string(data)); err != nil {
+		return err
+	}
+	a.Head = fmt.Sprint(entry["hash"])
+	return nil
+}
+
+func verifyAuditFile(path string) error {
+	entries, err := readAuditEntries(path)
+	if err != nil {
+		return err
+	}
+	prev := auditZeroHash
+	for _, entry := range entries {
+		if err := verifyAuditEntry(entry, prev); err != nil {
+			return err
+		}
+		record, ok := entry["record"].(map[string]any)
+		if !ok {
+			return errors.New("audit record missing")
+		}
+		if record["kind"] == "go_fed_receipt" {
+			if err := verifyReceiptRecord(record); err != nil {
+				return err
+			}
+		}
+		prev = fmt.Sprint(entry["hash"])
+	}
+	return nil
+}
+
+func readAuditEntries(path string) ([]map[string]any, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	out := []map[string]any{}
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			return nil, err
+		}
+		out = append(out, entry)
+	}
+	if err := scanner.Err(); err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	return out, nil
+}
+
+func verifyAuditEntry(entry map[string]any, prev string) error {
+	record, ok := entry["record"].(map[string]any)
+	if !ok {
+		return errors.New("audit record missing")
+	}
+	if entry["prev_hash"] != prev {
+		return errors.New("audit prev_hash mismatch")
+	}
+	expected, err := auditEntry(prev, record)
+	if err != nil {
+		return err
+	}
+	if entry["hash"] != expected["hash"] {
+		return errors.New("audit hash mismatch")
+	}
+	return nil
+}
+
+func auditEntry(prev string, record map[string]any) (map[string]any, error) {
+	body := map[string]any{"prev_hash": prev, "record": record}
+	data, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	hash := sha256.Sum256(data)
+	return map[string]any{"prev_hash": prev, "record": record, "hash": hex.EncodeToString(hash[:])}, nil
+}
+
+func verifyReceiptRecord(record map[string]any) error {
+	zone, ok := record["zone"].(map[string]any)
+	if !ok {
+		return errors.New("receipt zone missing")
+	}
+	worker, ok := record["worker"].(map[string]any)
+	if !ok {
+		return errors.New("receipt worker missing")
+	}
+	binding, ok := record["zone_binding"].(map[string]any)
+	if !ok {
+		return errors.New("receipt zone_binding missing")
+	}
+	receipt, ok := record["receipt"].(map[string]any)
+	if !ok {
+		return errors.New("receipt missing")
+	}
+	if err := verifyZoneDescriptor(zone); err != nil {
+		return err
+	}
+	workerKey, _, err := publicKey(worker)
+	if err != nil {
+		return err
+	}
+	if err := verifyAgentDescriptor(worker); err != nil {
+		return err
+	}
+	if err := verifyZoneBinding(zone, binding, worker); err != nil {
+		return err
+	}
+	if receipt["executing_zone"] != zone["zid"] {
+		return errors.New("receipt executing_zone mismatch")
+	}
+	if receipt["to"] != worker["aid"] {
+		return errors.New("receipt worker mismatch")
+	}
+	if err := verifyMapSignature(workerKey, receipt, "signature"); err != nil {
+		return errors.New("receipt signature verification failed")
+	}
+	return nil
+}
+
+func verifyZoneBinding(zone, binding, worker map[string]any) error {
+	zoneKey, _, err := publicKey(zone)
+	if err != nil {
+		return err
+	}
+	expected := map[string]any{"zone": zone["zid"], "alias": worker["alias"], "aid": worker["aid"]}
+	if binding["zone"] != expected["zone"] || binding["alias"] != expected["alias"] || binding["aid"] != expected["aid"] {
+		return errors.New("zone binding mismatch")
+	}
+	if err := verifyMapSignature(zoneKey, binding, "signature"); err != nil {
+		return errors.New("zone binding signature verification failed")
+	}
+	return nil
 }
 
 func enforcePolicy(worker, task map[string]any) error {
