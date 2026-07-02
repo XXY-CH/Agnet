@@ -116,3 +116,45 @@ test("Federation Gateway resolves a remote agent alias", async () => {
     gateway.kill("SIGINT");
   }
 });
+
+test("Federation Gateway queries exact remote capabilities", async () => {
+  const port = 8994;
+  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  await writeTrustedZones("state/zone-a-query-trust.json", [zoneB]);
+  await writeTrustedZones("state/zone-b-query-trust.json", [zoneA]);
+
+  const gateway = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-query-trust.json"], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  try {
+    await waitForGateway(gateway);
+
+    const hit = await execFileAsync(process.execPath, [
+      "federation-gateway.mjs",
+      "query",
+      String(port),
+      "state/zone-a-query-trust.json",
+      "summarize.text",
+    ]);
+    const hitResult = JSON.parse(hit.stdout);
+    assert.equal(hitResult.zone, zoneB.zid);
+    assert.equal(hitResult.matches.length, 1);
+    assert.equal(hitResult.matches[0].alias, "agent://zone-b/summarizer");
+    assert.deepEqual(hitResult.matches[0].capabilities, ["summarize.text"]);
+
+    const miss = await execFileAsync(process.execPath, [
+      "federation-gateway.mjs",
+      "query",
+      String(port),
+      "state/zone-a-query-trust.json",
+      "translate.text",
+    ]);
+    const missResult = JSON.parse(miss.stdout);
+    assert.equal(missResult.matches.length, 0);
+  } finally {
+    gateway.kill("SIGINT");
+  }
+});

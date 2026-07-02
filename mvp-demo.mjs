@@ -18,7 +18,7 @@ async function run() {
     allow_network: false,
     approval_required: ["write"],
     write_prefixes: ["artifact://local/"],
-  });
+  }, ["asp+local://demo"], ["summarize.text"]);
   const zone = createZone("zone://local");
   await writeRegistry("state/registry.json", zone, [requester.descriptor, worker.descriptor]);
   const registry = await loadRegistry("state/registry.json");

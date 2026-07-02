@@ -62,12 +62,12 @@ export function zoneDescriptorBody(descriptor) {
   return body;
 }
 
-export function createAgent(alias, policy = {}, transports = ["asp+local://demo"]) {
+export function createAgent(alias, policy = {}, transports = ["asp+local://demo"], capabilities = []) {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
-  return agentFromPrivateKey(alias, privateKey, policy, transports);
+  return agentFromPrivateKey(alias, privateKey, policy, transports, capabilities);
 }
 
-export function agentFromPrivateKey(alias, privateKey, policy = {}, transports = ["asp+local://demo"]) {
+export function agentFromPrivateKey(alias, privateKey, policy = {}, transports = ["asp+local://demo"], capabilities = []) {
   const publicKey = createPublicKey(privateKey);
   const aid = computeAid(publicKey);
   const descriptor = {
@@ -75,6 +75,7 @@ export function agentFromPrivateKey(alias, privateKey, policy = {}, transports =
     aid,
     public_key_spki: b64url(publicKeyDer(publicKey)),
     transports,
+    capabilities,
     policy,
   };
   return {
@@ -146,8 +147,8 @@ export async function loadOrCreatePrivateKey(file) {
   return privateKey;
 }
 
-export async function loadOrCreateAgent(alias, keyFile, policy = {}, transports = ["asp+local://demo"]) {
-  return agentFromPrivateKey(alias, await loadOrCreatePrivateKey(keyFile), policy, transports);
+export async function loadOrCreateAgent(alias, keyFile, policy = {}, transports = ["asp+local://demo"], capabilities = []) {
+  return agentFromPrivateKey(alias, await loadOrCreatePrivateKey(keyFile), policy, transports, capabilities);
 }
 
 export async function loadOrCreateZone(name, keyFile) {

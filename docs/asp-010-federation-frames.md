@@ -18,6 +18,8 @@ fed+tcp://127.0.0.1:<port>
 ```text
 FED_RESOLVE      Zone A -> Zone B
 FED_RESOLVE_RESULT Zone B -> Zone A
+FED_QUERY        Zone A -> Zone B
+FED_QUERY_RESULT Zone B -> Zone A
 FED_TASK_OPEN    Zone A -> Zone B
 FED_TASK_EVENT   Zone B -> Zone A
 FED_RECEIPT      Zone B -> Zone A
@@ -49,6 +51,36 @@ Zone B must reject the frame unless `origin_zone` exists in its trusted Zone sto
 ```
 
 Zone A must reject the result unless `zone` exists in its trusted Zone store and `zone_binding` binds `worker.alias` to `worker.aid`.
+
+## FED_QUERY
+
+```json
+{
+  "type": "FED_QUERY",
+  "origin_zone": { "...": "Zone A descriptor" },
+  "capability": "summarize.text"
+}
+```
+
+Zone B must reject the frame unless `origin_zone` exists in its trusted Zone store.
+
+## FED_QUERY_RESULT
+
+```json
+{
+  "type": "FED_QUERY_RESULT",
+  "zone": { "...": "Zone B descriptor" },
+  "capability": "summarize.text",
+  "matches": [
+    {
+      "worker": { "...": "Zone B worker descriptor" },
+      "zone_binding": { "...": "Zone B alias -> aid binding" }
+    }
+  ]
+}
+```
+
+v1.3 only supports exact string matching against `worker.capabilities`. No vectors, rankings, or semantic expansion.
 
 ## FED_TASK_OPEN
 

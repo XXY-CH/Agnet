@@ -48,6 +48,7 @@ async function runWorker(port = 8787) {
     "state/keys/agent-local-summarizer.pkcs8",
     { allow_network: false, approval_required: ["write"], write_prefixes: ["artifact://local/"] },
     [`asp+tcp://127.0.0.1:${port}`],
+    ["summarize.text"],
   );
   const zone = await loadOrCreateZone("zone://local", "state/keys/zone-local.pkcs8");
   await writeRegistry("state/registry.json", zone, [worker.descriptor]);
