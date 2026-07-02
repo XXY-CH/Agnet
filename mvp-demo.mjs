@@ -2,13 +2,14 @@ import {
   appendAudit,
   approvalReasons,
   createAgent,
+  createZone,
   enforcePolicy,
   loadRegistry,
   resolveAgent,
   signObject,
   verifyObject,
   writeArtifact,
-  writeJson,
+  writeRegistry,
 } from "./asp-core.mjs";
 
 async function run() {
@@ -18,7 +19,8 @@ async function run() {
     approval_required: ["write"],
     write_prefixes: ["artifact://local/"],
   });
-  await writeJson("state/registry.json", [requester.descriptor, worker.descriptor]);
+  const zone = createZone("zone://local");
+  await writeRegistry("state/registry.json", zone, [requester.descriptor, worker.descriptor]);
   const registry = await loadRegistry("state/registry.json");
 
   const task = {

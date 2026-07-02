@@ -3,6 +3,7 @@ import {
   appendAudit,
   approvalReasons,
   createAgent,
+  createZone,
   enforcePolicy,
   loadRegistry,
   publicKeyFromDescriptor,
@@ -10,7 +11,7 @@ import {
   signObject,
   verifyObject,
   writeArtifact,
-  writeJson,
+  writeRegistry,
 } from "./asp-core.mjs";
 
 function send(socket, frame) {
@@ -47,7 +48,8 @@ async function runWorker(port = 8787) {
     { allow_network: false, approval_required: ["write"], write_prefixes: ["artifact://local/"] },
     [`asp+tcp://127.0.0.1:${port}`],
   );
-  await writeJson("state/registry.json", [worker.descriptor]);
+  const zone = createZone("zone://local");
+  await writeRegistry("state/registry.json", zone, [worker.descriptor]);
 
   const server = net.createServer((socket) => {
     readFrames(socket, async (frame) => {

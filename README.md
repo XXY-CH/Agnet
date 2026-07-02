@@ -1,6 +1,6 @@
 # Agent Space MVP
 
-Current boundary: [docs/v0-boundary.md](docs/v0-boundary.md), [docs/v0.1-boundary.md](docs/v0.1-boundary.md), [docs/v0.2-boundary.md](docs/v0.2-boundary.md), [docs/v0.3-boundary.md](docs/v0.3-boundary.md)
+Current boundary: [docs/v0-boundary.md](docs/v0-boundary.md), [docs/v0.1-boundary.md](docs/v0.1-boundary.md), [docs/v0.2-boundary.md](docs/v0.2-boundary.md), [docs/v0.3-boundary.md](docs/v0.3-boundary.md), [docs/v0.4-boundary.md](docs/v0.4-boundary.md)
 
 Run the smallest proof:
 
@@ -27,6 +27,7 @@ It proves:
 - `aid:` is derived from an Ed25519 public key.
 - `agent://` is only a local alias.
 - `state/registry.json` resolves `agent://` to `aid:` and public key material.
+- The local Zone signs `agent://` alias to `aid:` bindings.
 - A task is signed by the requester.
 - The worker rejects a network-enabled task by policy.
 - A write task produces approval events before execution.

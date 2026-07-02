@@ -18,10 +18,11 @@ Agent ID 必须满足：
 
 ## 2. 两层身份
 
-Agent Space 同时使用两种标识：
+Agent Space MVP 使用三种标识：
 
 ```text
 aid:       canonical identity，自证明身份
+zid:       Zone identity，自证明治理域身份
 agent://   routable alias，人类可读和 Zone 可路由别名
 ```
 
@@ -33,9 +34,10 @@ agent://acme/security.audit.v1
 ```
 
 `aid:` 是身份。  
-`agent://` 是路由名。
+`zid:` 是 Zone 身份。  
+`agent://` 是路由名，由 Zone 签名绑定到 `aid:`。
 
-不要把二者混成一个东西。
+不要把三者混成一个东西。
 
 ## 3. aid 计算
 
@@ -129,7 +131,18 @@ agent://acme/security.audit.v1
 }
 ```
 
-MVP 中，alias 由本地 Zone Registry 管理。
+MVP 中，alias 由本地 Zone Registry 管理，并由 Zone key 签名绑定到 Agent `aid:`。
+
+## 5.1 zid 计算
+
+Zone ID 也使用 Ed25519 公钥自证明，但使用不同 domain separator：
+
+```text
+digest = SHA-256("asp-zone-id-v1\0" || zone_public_key_spki_der)
+zid = "zid:ed25519:" || base64url_no_padding(digest)
+```
+
+Agent 身份和 Zone 身份使用不同前缀与 domain separator，避免跨类型混用。
 
 ## 6. Descriptor 签名
 

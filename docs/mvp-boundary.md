@@ -31,6 +31,9 @@ MVP 只证明一件事：
 - 本地文件或轻量服务都可以。
 - 保存 Agent Descriptor。
 - 支持通过 `agent://` 查到 `aid:` 和 transport。
+- Registry 包含 Zone Descriptor。
+- Zone 使用 `zid:` 自证明身份。
+- Zone 签名 `agent://` alias 到 `aid:` 的绑定。
 - 不做全球 DHT。
 
 ### 2.3 ASP over WebSocket
