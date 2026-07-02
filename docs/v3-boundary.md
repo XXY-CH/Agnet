@@ -1,6 +1,6 @@
 # Agent Space v3 Boundary
 
-状态：planned
+状态：v3 complete
 目标：让 Go 拥有最小 task execution path。
 
 ## v3 新增
@@ -57,7 +57,7 @@ node --test --test-concurrency=1 *.test.mjs
 go test ./...
 ```
 
-必须新增一个 Node -> Go execution test:
+新增 Node -> Go execution test:
 
 ```text
 FED_TASK_OPEN
@@ -69,4 +69,4 @@ FED_TASK_OPEN
   -> FED_TASK_CLOSE
 ```
 
-The test must fail if Go only returns `FED_TASK_VERIFIED`。
+The test fails if Go only returns `FED_TASK_VERIFIED`。

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -134,13 +135,10 @@ func handle(conn net.Conn, fixture Fixture, trusted map[string]map[string]any) {
 				send(conn, map[string]any{"type": "FED_TASK_ERROR", "error": err.Error()})
 				return
 			}
-			send(conn, map[string]any{
-				"type":    "FED_TASK_VERIFIED",
-				"task_id": task["task_id"],
-				"by":      fixture.Worker["aid"],
-				"zone":    fixture.Authority["zid"],
-			})
-			send(conn, map[string]any{"type": "FED_TASK_CLOSE", "task_id": task["task_id"]})
+			if err := fixture.executeTask(conn, origin, task); err != nil {
+				send(conn, map[string]any{"type": "FED_TASK_ERROR", "error": err.Error()})
+				return
+			}
 		default:
 			send(conn, map[string]any{"type": "FED_TASK_ERROR", "error": "unsupported frame"})
 			return
@@ -283,6 +281,55 @@ func (f Fixture) verifyTaskOpen(frame map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 	return task, nil
+}
+
+func (f Fixture) executeTask(conn net.Conn, origin, task map[string]any) error {
+	taskID := fmt.Sprint(task["task_id"])
+	sendTaskEvent(conn, map[string]any{"type": "task.accepted", "task_id": taskID, "by": f.Worker["aid"], "zone": f.Authority["zid"]})
+	sendTaskEvent(conn, map[string]any{"type": "task.started", "task_id": taskID, "by": f.Worker["aid"], "zone": f.Authority["zid"]})
+
+	artifactURI := "artifact://local/" + taskID + "/go-summary.md"
+	if err := writeArtifact(artifactURI, "# Go Federated Summary\n\nCompleted "+taskID+" from "+fmt.Sprint(origin["zid"])+".\n"); err != nil {
+		return err
+	}
+	sendTaskEvent(conn, map[string]any{"type": "artifact.created", "task_id": taskID, "uri": artifactURI})
+	sendTaskEvent(conn, map[string]any{"type": "task.completed", "task_id": taskID, "by": f.Worker["aid"], "zone": f.Authority["zid"]})
+
+	receipt := map[string]any{
+		"task_id":        taskID,
+		"from":           task["from"],
+		"origin_zone":    origin["zid"],
+		"executing_zone": f.Authority["zid"],
+		"to":             f.Worker["aid"],
+		"artifact_refs":  []string{artifactURI},
+		"event_count":    float64(4),
+		"approvals":      []string{},
+	}
+	send(conn, map[string]any{
+		"type":         "FED_RECEIPT",
+		"zone":         f.Authority,
+		"worker":       f.Worker,
+		"zone_binding": f.zoneBinding(),
+		"receipt":      signBody(f.WorkerPrivateKey, receipt),
+	})
+	send(conn, map[string]any{"type": "FED_TASK_CLOSE", "task_id": taskID})
+	return nil
+}
+
+func sendTaskEvent(conn net.Conn, event map[string]any) {
+	send(conn, map[string]any{"type": "FED_TASK_EVENT", "event": event})
+}
+
+func writeArtifact(uri, text string) error {
+	const prefix = "artifact://local/"
+	if !strings.HasPrefix(uri, prefix) {
+		return errors.New("unsupported artifact uri: " + uri)
+	}
+	path := filepath.Join("artifacts", strings.TrimPrefix(uri, prefix))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(text), 0o644)
 }
 
 func enforcePolicy(worker, task map[string]any) error {

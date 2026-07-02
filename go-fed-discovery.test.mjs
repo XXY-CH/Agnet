@@ -4,7 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { loadOrCreateAgent, loadOrCreateZone, signObject, writeTrustedZones } from "./asp-core.mjs";
+import { loadOrCreateAgent, loadOrCreateZone, resolveAgent, signObject, verifyObject, writeTrustedZones } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -122,15 +122,45 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
       scope: { network: false },
       budget: { time_seconds: 30 },
     };
-    const verifiedFrames = await exchangeFrames(port, {
+    const executionFrames = await exchangeFrames(port, {
       type: "FED_TASK_OPEN",
       origin_zone: zoneA.descriptor,
       requester: requester.descriptor,
       task: { ...task, signature: signObject(requester.privateKey, task) },
     });
-    assert.deepEqual(verifiedFrames.map((frame) => frame.type), ["FED_TASK_VERIFIED", "FED_TASK_CLOSE"]);
-    assert.equal(verifiedFrames[0].task_id, task.task_id);
-    assert.equal(verifiedFrames[0].by, fixture.worker.aid);
+    assert.deepEqual(executionFrames.map((frame) => frame.type), [
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_RECEIPT",
+      "FED_TASK_CLOSE",
+    ]);
+    assert.deepEqual(
+      executionFrames.slice(0, 4).map((frame) => frame.event.type),
+      ["task.accepted", "task.started", "artifact.created", "task.completed"],
+    );
+    const receiptFrame = executionFrames[4];
+    assert.equal(receiptFrame.zone.zid, fixture.authority.zid);
+    const resolvedWorker = resolveAgent(
+      new Map([[receiptFrame.worker.alias, {
+        descriptor: receiptFrame.worker,
+        zone: receiptFrame.zone,
+        zone_binding: receiptFrame.zone_binding,
+      }]]),
+      receiptFrame.worker.alias,
+    );
+    const receiptBody = { ...receiptFrame.receipt };
+    delete receiptBody.signature;
+    assert.equal(verifyObject(resolvedWorker.publicKey, receiptBody, receiptFrame.receipt.signature), true);
+    assert.equal(receiptFrame.receipt.task_id, task.task_id);
+    assert.equal(receiptFrame.receipt.origin_zone, zoneA.zid);
+    assert.equal(receiptFrame.receipt.executing_zone, fixture.authority.zid);
+    assert.equal(receiptFrame.receipt.to, fixture.worker.aid);
+    assert.equal(receiptFrame.receipt.artifact_refs[0], "artifact://local/go_fed_task_verified/go-summary.md");
+    assert.equal(receiptFrame.receipt.event_count, 4);
+    const artifactText = await readFile("artifacts/go_fed_task_verified/go-summary.md", "utf8");
+    assert.match(artifactText, /Completed go_fed_task_verified/);
 
     const deniedTask = {
       ...task,
