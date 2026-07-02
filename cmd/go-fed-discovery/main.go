@@ -13,16 +13,16 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 )
 
 type Fixture struct {
-	AuthoritySeedHex string         `json:"authority_seed_hex"`
-	WorkerSeedHex    string         `json:"worker_seed_hex"`
-	Authority        map[string]any `json:"authority"`
-	WorkerProfile    WorkerProfile  `json:"worker_profile"`
-	Worker           map[string]any `json:"-"`
-	ZoneBinding      map[string]any `json:"zone_binding"`
-	Credential       map[string]any `json:"credential"`
+	Authority           map[string]any     `json:"authority"`
+	WorkerProfile       WorkerProfile      `json:"worker_profile"`
+	Worker              map[string]any     `json:"-"`
+	Credential          map[string]any     `json:"credential"`
+	AuthorityPrivateKey ed25519.PrivateKey `json:"-"`
+	WorkerPrivateKey    ed25519.PrivateKey `json:"-"`
 }
 
 type WorkerProfile struct {
@@ -40,16 +40,26 @@ func main() {
 	port := flag.String("port", "9090", "listen port")
 	fixturePath := flag.String("fixture", "test-vectors/asp-v1.5-capability-credential.json", "signed descriptor fixture")
 	trustPath := flag.String("trusted", "state/go-fed-trusted-zones.json", "trusted origin zones")
+	authorityKeyPath := flag.String("authority-key", "state/keys/go-fed-authority.seed", "authority seed key file")
+	workerKeyPath := flag.String("worker-key", "state/keys/go-fed-worker.seed", "worker seed key file")
 	flag.Parse()
 
-	if err := serve(*port, *fixturePath, *trustPath); err != nil {
+	if err := serve(*port, *fixturePath, *trustPath, *authorityKeyPath, *workerKeyPath); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func serve(port, fixturePath, trustPath string) error {
-	fixture, err := loadFixture(fixturePath)
+func serve(port, fixturePath, trustPath, authorityKeyPath, workerKeyPath string) error {
+	authorityKey, err := loadPrivateKey(authorityKeyPath, "authority")
+	if err != nil {
+		return err
+	}
+	workerKey, err := loadPrivateKey(workerKeyPath, "worker")
+	if err != nil {
+		return err
+	}
+	fixture, err := loadFixture(fixturePath, authorityKey, workerKey)
 	if err != nil {
 		return err
 	}
@@ -125,7 +135,7 @@ func handle(conn net.Conn, fixture Fixture, trusted map[string]map[string]any) {
 	}
 }
 
-func loadFixture(path string) (Fixture, error) {
+func loadFixture(path string, authorityKey, workerKey ed25519.PrivateKey) (Fixture, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Fixture{}, err
@@ -137,6 +147,8 @@ func loadFixture(path string) (Fixture, error) {
 	if err := verifyZoneDescriptor(fixture.Authority); err != nil {
 		return Fixture{}, err
 	}
+	fixture.AuthorityPrivateKey = authorityKey
+	fixture.WorkerPrivateKey = workerKey
 	if err := fixture.verifyAuthoritySeed(); err != nil {
 		return Fixture{}, err
 	}
@@ -151,12 +163,12 @@ func loadFixture(path string) (Fixture, error) {
 	return fixture, nil
 }
 
-func (f Fixture) authorityPrivateKey() (ed25519.PrivateKey, error) {
-	return privateKeyFromSeedHex(f.AuthoritySeedHex, "authority")
-}
-
-func (f Fixture) workerPrivateKey() (ed25519.PrivateKey, error) {
-	return privateKeyFromSeedHex(f.WorkerSeedHex, "worker")
+func loadPrivateKey(path, label string) (ed25519.PrivateKey, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return privateKeyFromSeedHex(strings.TrimSpace(string(data)), label)
 }
 
 func privateKeyFromSeedHex(seedHex, label string) (ed25519.PrivateKey, error) {
@@ -171,11 +183,7 @@ func privateKeyFromSeedHex(seedHex, label string) (ed25519.PrivateKey, error) {
 }
 
 func (f Fixture) verifyAuthoritySeed() error {
-	key, err := f.authorityPrivateKey()
-	if err != nil {
-		return err
-	}
-	publicKey := key.Public().(ed25519.PublicKey)
+	publicKey := f.AuthorityPrivateKey.Public().(ed25519.PublicKey)
 	encoded, _, err := publicKeySPKI(publicKey)
 	if err != nil {
 		return err
@@ -196,11 +204,7 @@ func (f Fixture) workerDescriptor() (map[string]any, error) {
 	if len(f.WorkerProfile.Capabilities) == 0 {
 		return nil, errors.New("worker profile capabilities missing")
 	}
-	key, err := f.workerPrivateKey()
-	if err != nil {
-		return nil, err
-	}
-	publicKey := key.Public().(ed25519.PublicKey)
+	publicKey := f.WorkerPrivateKey.Public().(ed25519.PublicKey)
 	encoded, der, err := publicKeySPKI(publicKey)
 	if err != nil {
 		return nil, err
@@ -217,11 +221,11 @@ func (f Fixture) workerDescriptor() (map[string]any, error) {
 		"capabilities":    f.WorkerProfile.Capabilities,
 		"policy":          policy,
 	}
-	return signBodyWithKey(key, body, "descriptor_signature"), nil
+	return signBodyWithKey(f.WorkerPrivateKey, body, "descriptor_signature"), nil
 }
 
 func (f Fixture) zoneBinding() map[string]any {
-	return signBody(f.mustAuthorityPrivateKey(), map[string]any{
+	return signBody(f.AuthorityPrivateKey, map[string]any{
 		"zone":  f.Authority["zid"],
 		"alias": f.Worker["alias"],
 		"aid":   f.Worker["aid"],
@@ -229,20 +233,12 @@ func (f Fixture) zoneBinding() map[string]any {
 }
 
 func (f Fixture) capabilityCredential(capability string) map[string]any {
-	return signBody(f.mustAuthorityPrivateKey(), map[string]any{
+	return signBody(f.AuthorityPrivateKey, map[string]any{
 		"issuer":     f.Authority["zid"],
 		"subject":    f.Worker["aid"],
 		"capability": capability,
 		"claims":     f.Credential["claims"],
 	})
-}
-
-func (f Fixture) mustAuthorityPrivateKey() ed25519.PrivateKey {
-	key, err := f.authorityPrivateKey()
-	if err != nil {
-		panic(err)
-	}
-	return key
 }
 
 func signBody(key ed25519.PrivateKey, body map[string]any) map[string]any {
