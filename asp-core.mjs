@@ -134,9 +134,15 @@ export function zoneBinding(zone, descriptor) {
   return { ...body, signature: signObject(zone.privateKey, body) };
 }
 
-export async function writeRegistry(file, zone, descriptors) {
+export function zoneRevocation(zone, subject, reason) {
+  const body = { zone: zone.zid, subject, reason };
+  return { ...body, signature: signObject(zone.privateKey, body) };
+}
+
+export async function writeRegistry(file, zone, descriptors, revocations = []) {
   await writeJson(file, {
     zone: zone.descriptor,
+    revocations,
     agents: descriptors.map((descriptor) => ({
       descriptor,
       zone_binding: zoneBinding(zone, descriptor),
@@ -187,7 +193,12 @@ export async function loadRegistry(file) {
   return new Map(
     registry.agents.map((entry) => [
       entry.descriptor.alias,
-      { descriptor: entry.descriptor, zone: registry.zone, zone_binding: entry.zone_binding },
+      {
+        descriptor: entry.descriptor,
+        zone: registry.zone,
+        zone_binding: entry.zone_binding,
+        revocations: registry.revocations ?? [],
+      },
     ]),
   );
 }
@@ -204,6 +215,7 @@ export function resolveAgent(registry, alias) {
     throw new Error(`descriptor signature verification failed for ${alias}`);
   }
   if (entry.zone || entry.zone_binding) verifyZoneBinding(entry, descriptor, alias);
+  if (entry.revocations?.length) verifyNotRevoked(entry, descriptor, alias);
   return { descriptor, publicKey, zone: entry.zone, zoneBinding: entry.zone_binding };
 }
 
@@ -226,6 +238,25 @@ export function verifyZoneBinding(entry, descriptor, alias) {
   }
   if (!verifyObject(zonePublicKey, expectedBinding, entry.zone_binding.signature)) {
     throw new Error(`zone binding signature verification failed for ${alias}`);
+  }
+}
+
+export function verifyZoneRevocation(revocation, zoneDescriptor) {
+  const zonePublicKey = publicKeyFromDescriptor({ public_key_spki: zoneDescriptor.public_key_spki });
+  if (computeZid(zonePublicKey) !== zoneDescriptor.zid) return false;
+  if (!verifyObject(zonePublicKey, zoneDescriptorBody(zoneDescriptor), zoneDescriptor.zone_signature)) return false;
+  const body = { zone: revocation.zone, subject: revocation.subject, reason: revocation.reason };
+  return revocation.zone === zoneDescriptor.zid && verifyObject(zonePublicKey, body, revocation.signature);
+}
+
+export function verifyNotRevoked(entry, descriptor, alias) {
+  for (const revocation of entry.revocations) {
+    if (!verifyZoneRevocation(revocation, entry.zone)) {
+      throw new Error(`zone revocation signature verification failed for ${alias}`);
+    }
+    if (revocation.subject === descriptor.aid || revocation.subject === alias) {
+      throw new Error(`agent revoked: ${revocation.subject}`);
+    }
   }
 }
 

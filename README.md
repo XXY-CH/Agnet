@@ -1,6 +1,6 @@
 # Agent Space MVP
 
-Current boundary: [docs/v0-boundary.md](docs/v0-boundary.md), [docs/v0.1-boundary.md](docs/v0.1-boundary.md), [docs/v0.2-boundary.md](docs/v0.2-boundary.md), [docs/v0.3-boundary.md](docs/v0.3-boundary.md), [docs/v0.4-boundary.md](docs/v0.4-boundary.md), [docs/v0.5-boundary.md](docs/v0.5-boundary.md), [docs/v0.6-boundary.md](docs/v0.6-boundary.md), [docs/v0.7-boundary.md](docs/v0.7-boundary.md)
+Current boundary: [docs/v0-boundary.md](docs/v0-boundary.md), [docs/v0.1-boundary.md](docs/v0.1-boundary.md), [docs/v0.2-boundary.md](docs/v0.2-boundary.md), [docs/v0.3-boundary.md](docs/v0.3-boundary.md), [docs/v0.4-boundary.md](docs/v0.4-boundary.md), [docs/v0.5-boundary.md](docs/v0.5-boundary.md), [docs/v0.6-boundary.md](docs/v0.6-boundary.md), [docs/v0.7-boundary.md](docs/v0.7-boundary.md), [docs/v0.8-boundary.md](docs/v0.8-boundary.md)
 
 Run the smallest proof:
 

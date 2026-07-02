@@ -215,6 +215,8 @@ Descriptor 中保留：
 
 Zone 如果要把同一个 `agent://` alias 从旧 `aid` 迁移到新 `aid`，还需要 Zone alias rebinding proof。Agent rotation proof 证明 Agent key 连续性，Zone rebinding proof 证明 Zone 接受这次 alias 迁移。
 
+Zone 也可以签发 revocation record，撤销某个 `aid` 或 `agent://` alias 在该 Zone 内的可解析性。撤销不是删除身份；它只是让 Zone resolver 拒绝继续把该 subject 作为有效路由目标。
+
 ## 9. 克隆问题
 
 如果两个进程持有同一个私钥，它们在协议上就是同一个 Agent。
