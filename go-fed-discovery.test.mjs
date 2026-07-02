@@ -145,6 +145,7 @@ function exchangeWebSocketFrames(port, frame, closeType) {
 test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", async () => {
   const port = 9091;
   const wsPort = 9092;
+  const humanPort = 9093;
   const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
   const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/go-fed-requester.pkcs8");
   const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
@@ -178,6 +179,8 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
     String(port),
     "--ws-port",
     String(wsPort),
+    "--human-port",
+    String(humanPort),
     "--trusted",
     "state/go-fed-discovery-trusted-origin.json",
     "--fixture",
@@ -319,6 +322,22 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
       "state/go-fed-discovery-audit.log",
     ]);
     assert.match(verifiedAudit.stdout, /"go_audit_verify":"ok"/);
+
+    const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
+    assert.equal(auditResponse.status, 200);
+    const auditBody = await auditResponse.json();
+    assert.equal(auditBody.entries.length, 5);
+
+    const pageResponse = await fetch(`http://127.0.0.1:${humanPort}/`);
+    assert.equal(pageResponse.status, 200);
+    const pageText = await pageResponse.text();
+    assert.match(pageText, /Agent Space Human Gateway/);
+    assert.match(pageText, /agent:\/\/zone-b\/translator/);
+    assert.match(pageText, /go_fed_task_verified/);
+
+    const artifactResponse = await fetch(`http://127.0.0.1:${humanPort}/artifacts/go_fed_task_verified/go-summary.md`);
+    assert.equal(artifactResponse.status, 200);
+    assert.match(await artifactResponse.text(), /Completed go_fed_task_verified/);
   } finally {
     gateway.kill("SIGINT");
   }

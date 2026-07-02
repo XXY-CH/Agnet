@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v3.3 complete
-当前代码基线：`v3.3`
+状态：v3.4 complete
+当前代码基线：`v3.4`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry，以及 Go WebSocket transport binding。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding，以及 thin Human Gateway。
 
 还不是可产品化的 Agent Net。
 
@@ -27,9 +27,9 @@
 | Key persistence | PKCS8 files | seed key files | `state/keys`, `--authority-key`, `--worker-key` | rotation, encryption, permissions |
 | `FED_TASK_OPEN` | execute | execute minimal path | `federation-gateway.mjs`, `go-fed-discovery.test.mjs` | real worker/tools |
 | Policy checks | done | network/write subset | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | richer scope schema |
-| Human approval | simulated | no | Node events | real Human Gateway |
+| Human approval | simulated | no | Node events | approval flow |
 | Transport | local TCP / local process | local TCP + minimal WebSocket | README commands, `go-fed-discovery.test.mjs` | TLS, auth handshake, QUIC |
-| Product surface | CLI/tests only | CLI/tests only | README | workspace UI, admin, deployment |
+| Product surface | CLI/tests only | thin read-only Human Gateway | README, `go-fed-discovery.test.mjs` | approvals, task creation, admin, deployment |
 
 ## Current Boundary
 
@@ -47,6 +47,7 @@ Go
   -> audit JSONL hash chain and verifier
   -> multi-worker profile registry
   -> WebSocket transport binding
+  -> read-only Human Gateway
 ```
 
 ## Next Boundary
@@ -54,8 +55,8 @@ Go
 Next natural boundary:
 
 ```text
-Thin Human Gateway
-  -> observe tasks/artifacts/audit without building an Octo clone
+MCP/tool adapter + sandbox
+  -> replace deterministic worker text with controlled tool execution
 ```
 
 Skipped until later: multi-worker registry, encrypted key store, public transport, real approval UI, sandbox/tool execution, scheduling, semantic routing.

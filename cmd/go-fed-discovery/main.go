@@ -13,8 +13,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"html"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,6 +62,7 @@ type sendFunc func(map[string]any)
 func main() {
 	port := flag.String("port", "9090", "listen port")
 	wsPort := flag.String("ws-port", "", "optional WebSocket listen port")
+	humanPort := flag.String("human-port", "", "optional read-only Human Gateway HTTP port")
 	fixturePath := flag.String("fixture", "test-vectors/asp-v1.5-capability-credential.json", "signed descriptor fixture")
 	trustPath := flag.String("trusted", "state/go-fed-trusted-zones.json", "trusted origin zones")
 	authorityKeyPath := flag.String("authority-key", "state/keys/go-fed-authority.seed", "authority seed key file")
@@ -77,13 +80,13 @@ func main() {
 		return
 	}
 
-	if err := serve(*port, *wsPort, *fixturePath, *trustPath, *authorityKeyPath, *workerKeyPath, *auditPath); err != nil {
+	if err := serve(*port, *wsPort, *humanPort, *fixturePath, *trustPath, *authorityKeyPath, *workerKeyPath, *auditPath); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func serve(port, wsPort, fixturePath, trustPath, authorityKeyPath, workerKeyPath, auditPath string) error {
+func serve(port, wsPort, humanPort, fixturePath, trustPath, authorityKeyPath, workerKeyPath, auditPath string) error {
 	authorityKey, err := loadPrivateKey(authorityKeyPath, "authority")
 	if err != nil {
 		return err
@@ -117,8 +120,23 @@ func serve(port, wsPort, fixturePath, trustPath, authorityKeyPath, workerKeyPath
 		}
 		go acceptWebSocket(wsListener, fixture, trusted)
 	}
-	if wsPort != "" {
-		fmt.Println(`{"go_fed_discovery":"listening","port":` + port + `,"ws_port":` + wsPort + `}`)
+	if humanPort != "" {
+		humanListener, err := net.Listen("tcp", "127.0.0.1:"+humanPort)
+		if err != nil {
+			return err
+		}
+		go serveHumanGateway(humanListener, auditPath)
+	}
+	if wsPort != "" || humanPort != "" {
+		status := map[string]any{"go_fed_discovery": "listening", "port": port}
+		if wsPort != "" {
+			status["ws_port"] = wsPort
+		}
+		if humanPort != "" {
+			status["human_port"] = humanPort
+		}
+		data, _ := json.Marshal(status)
+		fmt.Println(string(data))
 	} else {
 		fmt.Println(`{"go_fed_discovery":"listening","port":` + port + `}`)
 	}
@@ -331,6 +349,123 @@ func writeWebSocketText(conn net.Conn, text string) error {
 	}
 	_, err := conn.Write(payload)
 	return err
+}
+
+func serveHumanGateway(listener net.Listener, auditPath string) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		entries, err := readAuditEntriesOrEmpty(auditPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(w, renderHumanGateway(entries))
+	})
+	mux.HandleFunc("/api/audit", func(w http.ResponseWriter, r *http.Request) {
+		entries, err := readAuditEntriesOrEmpty(auditPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"entries": entries})
+	})
+	mux.Handle("/artifacts/", http.StripPrefix("/artifacts/", http.FileServer(http.Dir("artifacts"))))
+	_ = http.Serve(listener, mux)
+}
+
+func readAuditEntriesOrEmpty(path string) ([]map[string]any, error) {
+	entries, err := readAuditEntries(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return []map[string]any{}, nil
+	}
+	return entries, err
+}
+
+func renderHumanGateway(entries []map[string]any) string {
+	events := 0
+	receipts := []map[string]any{}
+	for _, entry := range entries {
+		record, _ := entry["record"].(map[string]any)
+		switch record["kind"] {
+		case "go_fed_event":
+			events++
+		case "go_fed_receipt":
+			receipts = append(receipts, record)
+		}
+	}
+	var b strings.Builder
+	b.WriteString(`<!doctype html><html><head><meta charset="utf-8"><title>Agent Space Human Gateway</title><style>
+body{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;background:#f7f8fa;color:#171a1f}
+main{max-width:1120px;margin:0 auto;padding:28px 22px 48px}
+header{display:flex;justify-content:space-between;gap:18px;align-items:flex-end;border-bottom:1px solid #d9dee7;padding-bottom:18px;margin-bottom:22px}
+h1{font-size:24px;margin:0} h2{font-size:16px;margin:28px 0 10px}.metric{font-size:13px;color:#4c5563}
+table{width:100%;border-collapse:collapse;background:white;border:1px solid #d9dee7}th,td{text-align:left;padding:10px;border-bottom:1px solid #e8ebf0;font-size:14px;vertical-align:top}th{background:#eef1f5;font-weight:650}
+a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+</style></head><body><main>`)
+	b.WriteString(`<header><div><h1>Agent Space Human Gateway</h1><div class="metric">read-only / local proof</div></div><div class="metric">audit entries: `)
+	b.WriteString(fmt.Sprint(len(entries)))
+	b.WriteString(` · events: `)
+	b.WriteString(fmt.Sprint(events))
+	b.WriteString(` · receipts: `)
+	b.WriteString(fmt.Sprint(len(receipts)))
+	b.WriteString(`</div></header>`)
+	b.WriteString(`<h2>Receipts</h2><table><thead><tr><th>Task</th><th>Worker</th><th>Artifact</th><th>Events</th></tr></thead><tbody>`)
+	if len(receipts) == 0 {
+		b.WriteString(`<tr><td colspan="4">No receipts</td></tr>`)
+	}
+	for _, record := range receipts {
+		worker, _ := record["worker"].(map[string]any)
+		receipt, _ := record["receipt"].(map[string]any)
+		artifact := firstString(receipt["artifact_refs"])
+		b.WriteString(`<tr><td><code>`)
+		b.WriteString(html.EscapeString(fmt.Sprint(receipt["task_id"])))
+		b.WriteString(`</code></td><td>`)
+		b.WriteString(html.EscapeString(fmt.Sprint(worker["alias"])))
+		b.WriteString(`</td><td>`)
+		if artifact != "" {
+			b.WriteString(`<a href="/artifacts/`)
+			b.WriteString(html.EscapeString(strings.TrimPrefix(artifact, "artifact://local/")))
+			b.WriteString(`">`)
+			b.WriteString(html.EscapeString(artifact))
+			b.WriteString(`</a>`)
+		}
+		b.WriteString(`</td><td>`)
+		b.WriteString(html.EscapeString(fmt.Sprint(receipt["event_count"])))
+		b.WriteString(`</td></tr>`)
+	}
+	b.WriteString(`</tbody></table><h2>Audit</h2><table><thead><tr><th>Index</th><th>Kind</th><th>Hash</th></tr></thead><tbody>`)
+	for index, entry := range entries {
+		record, _ := entry["record"].(map[string]any)
+		b.WriteString(`<tr><td>`)
+		b.WriteString(fmt.Sprint(index + 1))
+		b.WriteString(`</td><td>`)
+		b.WriteString(html.EscapeString(fmt.Sprint(record["kind"])))
+		b.WriteString(`</td><td><code>`)
+		b.WriteString(html.EscapeString(fmt.Sprint(entry["hash"])))
+		b.WriteString(`</code></td></tr>`)
+	}
+	b.WriteString(`</tbody></table></main></body></html>`)
+	return b.String()
+}
+
+func firstString(value any) string {
+	switch items := value.(type) {
+	case []any:
+		if len(items) > 0 {
+			return fmt.Sprint(items[0])
+		}
+	case []string:
+		if len(items) > 0 {
+			return items[0]
+		}
+	}
+	return ""
 }
 
 func loadFixture(path string, authorityKey, workerKey ed25519.PrivateKey) (Fixture, error) {

@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v3.3 assessment
+状态：v3.4 assessment
 
 ## 一句话
 
@@ -14,7 +14,7 @@
 
 ### Protocol core
 
-进度：约 57%。
+进度：约 58%。
 
 已有：
 
@@ -33,6 +33,7 @@
 - Go audit path in v3.1。
 - Go multi-worker registry in v3.2。
 - WebSocket binding in v3.3。
+- Thin Human Gateway in v3.4。
 
 主要缺：
 
@@ -83,16 +84,16 @@
 
 ### Product layer
 
-进度：约 5%。
+进度：约 12%。
 
 已有：
 
 - CLI/test flows。
+- read-only Human Gateway。
 - docs and protocol proofs。
 
 主要缺：
 
-- Human Gateway UI。
 - task list / status view。
 - approval flow。
 - artifact browser。
@@ -158,7 +159,6 @@ Trying to clone Octo now would pull this project sideways into chat/product surf
 The right path is:
 
 ```text
-v3.4 thin Human Gateway
 v3.5 MCP/tool adapter + sandbox
 ```
 
