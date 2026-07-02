@@ -1,0 +1,166 @@
+# Agent Net Gap
+
+状态：v2.4 assessment
+
+## 一句话
+
+当前项目是 Agent Net 的 protocol seed，不是 Agent Net 产品。
+
+它已经抓住了真正 Agent Net 的底层骨架：identity、signed task、policy、artifact、receipt、audit、federation。
+
+它还缺产品面、运行面、部署面、多人协作面和真实工具执行面。
+
+## 离真正 Agent Net 还有多远
+
+### Protocol core
+
+进度：约 45%。
+
+已有：
+
+- Ed25519 Agent/Zone identity。
+- `agent://` alias -> `aid:` descriptor。
+- signed task。
+- policy scope。
+- event stream。
+- artifact ref。
+- signed receipt。
+- hash-chained audit。
+- Zone federation。
+- capability credential。
+- Go discovery/trust path through v2.4。
+
+主要缺：
+
+- Go execution path。
+- Go audit path。
+- richer policy schema。
+- cancellation / checkpoint / retry。
+- credential status / revocation feed。
+- multi-worker registry and routing。
+
+### Runtime core
+
+进度：约 25%。
+
+已有：
+
+- Node prototype runtime。
+- Node federation execution path。
+- Go verification/discovery gateway。
+
+主要缺：
+
+- Go worker runtime。
+- tool adapter / MCP integration。
+- sandbox。
+- concurrency model。
+- durable task state。
+- artifact store beyond local files。
+
+### Network layer
+
+进度：约 15%。
+
+已有：
+
+- newline JSON over local TCP。
+- local process proof。
+
+主要缺：
+
+- authenticated session handshake。
+- TLS/WebSocket/QUIC binding。
+- public gateway deployment。
+- NAT/proxy story。
+- service discovery beyond static trusted stores。
+- observability and ops。
+
+### Product layer
+
+进度：约 5%。
+
+已有：
+
+- CLI/test flows。
+- docs and protocol proofs。
+
+主要缺：
+
+- Human Gateway UI。
+- task list / status view。
+- approval flow。
+- artifact browser。
+- audit viewer。
+- admin / tenant model。
+- installation and deployment story。
+
+## 与 Octo 的差距
+
+参考对象：
+
+- [Mininglamp-OSS/OCTO](https://github.com/Mininglamp-OSS/OCTO)
+- [octo-server](https://github.com/Mininglamp-OSS/octo-server)
+
+Octo 当前更像 AI-native team collaboration product。
+
+它的强项是人类和 Agent 的协作界面：
+
+- Space / Category / Channel / Thread。
+- web / desktop / mobile / admin clients。
+- Go server。
+- REST + WebSocket。
+- Lobster agent orchestration。
+- WuKongIM messaging/control plane。
+- MySQL / Redis / MinIO deployment stack。
+
+Agent Space 当前更像 lower-level task fabric。
+
+它的强项是协议可信边界：
+
+- Agent/Zone cryptographic identity。
+- signed descriptor。
+- signed task。
+- Zone binding。
+- capability credential。
+- signed receipt。
+- audit hash chain。
+- cross-Zone federation proof。
+
+## 对比矩阵
+
+| Area | Octo | Agent Space |
+| --- | --- | --- |
+| Primary shape | collaboration product | protocol/runtime proof |
+| Human workspace | strong | missing |
+| Multi-client app | strong | missing |
+| Messaging substrate | strong | local proof only |
+| Agent orchestration | product-level | protocol-level |
+| Cryptographic task identity | unclear from top-level docs | strong |
+| Signed receipt/audit | unclear from top-level docs | strong prototype |
+| Federation trust model | not the main visible layer | core focus |
+| Deployment | Docker Compose stack | test/local only |
+| Best next move | deepen trust/runtime layer | add execution + thin UI later |
+
+## Practical Read
+
+Octo is ahead as an app.
+
+Agent Space is ahead as a signed task / federation protocol seed.
+
+Trying to clone Octo now would pull this project sideways into chat/product surface before the protocol spine is strong enough.
+
+The right path is:
+
+```text
+v3.0 Go execution path
+v3.1 Go audit + receipt verification CLI
+v3.2 Go multi-worker registry
+v3.3 WebSocket transport
+v3.4 thin Human Gateway
+v3.5 MCP/tool adapter + sandbox
+```
+
+After v3.3 or v3.4, comparing directly with Octo becomes useful.
+
+Before that, Octo should be treated as the possible Human Gateway layer above Agent Space, not as the thing to copy line by line.

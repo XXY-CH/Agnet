@@ -21,6 +21,7 @@ FED_RESOLVE_RESULT Zone B -> Zone A
 FED_QUERY        Zone A -> Zone B
 FED_QUERY_RESULT Zone B -> Zone A
 FED_TASK_OPEN    Zone A -> Zone B
+FED_TASK_VERIFIED Zone B -> Zone A
 FED_TASK_EVENT   Zone B -> Zone A
 FED_RECEIPT      Zone B -> Zone A
 FED_TASK_CLOSE   Zone B -> Zone A
@@ -150,6 +151,23 @@ Zone B must reject the frame unless:
 - `task.from` equals `requester.aid`.
 - `task.signature` verifies against requester public key.
 - local worker policy accepts the task scope.
+
+## FED_TASK_VERIFIED
+
+```json
+{
+  "type": "FED_TASK_VERIFIED",
+  "task_id": "fed_task_123",
+  "by": "aid:ed25519:...",
+  "zone": "zid:ed25519:..."
+}
+```
+
+`FED_TASK_VERIFIED` is a v2.4 Go gateway response for verification-only task-open handling.
+
+It means the remote gateway accepted the frame as valid, but it does not mean the task executed.
+
+Zone A must not treat this as a receipt.
 
 ## FED_RECEIPT
 
