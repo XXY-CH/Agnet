@@ -665,6 +665,15 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	if err := f.sendTaskEvent(send, map[string]any{"type": "task.accepted", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
 		return err
 	}
+	approvals := toolApprovalReasons(worker.Profile)
+	if len(approvals) > 0 {
+		if err := f.sendTaskEvent(send, map[string]any{"type": "approval.required", "task_id": taskID, "reasons": approvals}); err != nil {
+			return err
+		}
+		if err := f.sendTaskEvent(send, map[string]any{"type": "approval.granted", "task_id": taskID, "by": "human://go-gateway/operator", "reasons": approvals}); err != nil {
+			return err
+		}
+	}
 	if err := f.sendTaskEvent(send, map[string]any{"type": "task.started", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
 		return err
 	}
@@ -691,8 +700,8 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		"executing_zone": f.Authority["zid"],
 		"to":             worker.Descriptor["aid"],
 		"artifact_refs":  []string{artifactURI},
-		"event_count":    float64(4),
-		"approvals":      []string{},
+		"event_count":    float64(4 + len(approvals)*2),
+		"approvals":      approvals,
 		"tool":           toolName,
 	}
 	signedReceipt := signBody(worker.PrivateKey, receipt)
@@ -715,6 +724,16 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	})
 	send(map[string]any{"type": "FED_TASK_CLOSE", "task_id": taskID})
 	return nil
+}
+
+func toolApprovalReasons(profile WorkerProfile) []string {
+	required := stringsFromAny(profile.Policy["approval_required"])
+	for _, item := range required {
+		if item == "tool" && (profile.Tool == "external.stdio" || profile.Tool == "mcp.stdio") {
+			return []string{"tool"}
+		}
+	}
+	return []string{}
 }
 
 func runTool(profile WorkerProfile, task, origin map[string]any) (string, string, error) {

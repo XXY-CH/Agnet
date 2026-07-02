@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v3.7 complete
-当前代码基线：`v3.7`
+状态：v3.8 complete
+当前代码基线：`v3.8`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter，以及最小 MCP stdio `tools/call`。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`，以及外部/MCP tool approval gate。
 
 还不是可产品化的 Agent Net。
 
@@ -27,7 +27,7 @@
 | Key persistence | PKCS8 files | seed key files | `state/keys`, `--authority-key`, `--worker-key` | rotation, encryption, permissions |
 | `FED_TASK_OPEN` | execute | execute minimal path | `federation-gateway.mjs`, `go-fed-discovery.test.mjs` | real worker/tools |
 | Policy checks | done | network/write subset | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | richer scope schema |
-| Human approval | simulated | no | Node events | approval flow |
+| Human approval | simulated | simulated tool approval gate | Node events, `go-fed-discovery.test.mjs` | real approval UI/signatures |
 | Transport | local TCP / local process | local TCP + minimal WebSocket | README commands, `go-fed-discovery.test.mjs` | TLS, auth handshake, QUIC |
 | Product surface | CLI/tests only | thin read-only Human Gateway | README, `go-fed-discovery.test.mjs` | approvals, task creation, admin, deployment |
 
@@ -51,6 +51,7 @@ Go
   -> built-in pure-text tool adapter
   -> external stdio tool adapter with process envelope
   -> minimal MCP stdio tools/call adapter
+  -> simulated approval gate for external/MCP tools
 ```
 
 ## Next Boundary
@@ -58,8 +59,8 @@ Go
 Next natural boundary:
 
 ```text
-Tool approval + stronger sandbox
-  -> approval-gated tool capabilities and isolation
+Real approval UI + stronger sandbox
+  -> signed approvals and isolation
 ```
 
 Skipped until later: multi-worker registry, encrypted key store, public transport, real approval UI, sandbox/tool execution, scheduling, semantic routing.

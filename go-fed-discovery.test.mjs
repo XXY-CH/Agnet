@@ -164,7 +164,7 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
       tool_command: [process.execPath, `${process.cwd()}/state/go-fed-mcp-server.mjs`],
       transports: ["fed+tcp://127.0.0.1:8991"],
       capabilities: ["translate.text"],
-      policy: { allow_network: false },
+      policy: { allow_network: false, approval_required: ["tool"] },
     },
   ];
   delete goFixture.worker_profile;
@@ -297,14 +297,16 @@ rl.on("line", (line) => {
       "FED_TASK_EVENT",
       "FED_TASK_EVENT",
       "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
       "FED_RECEIPT",
       "FED_TASK_CLOSE",
     ]);
     assert.deepEqual(
-      executionFrames.slice(0, 4).map((frame) => frame.event.type),
-      ["task.accepted", "task.started", "artifact.created", "task.completed"],
+      executionFrames.slice(0, 6).map((frame) => frame.event.type),
+      ["task.accepted", "approval.required", "approval.granted", "task.started", "artifact.created", "task.completed"],
     );
-    const receiptFrame = executionFrames[4];
+    const receiptFrame = executionFrames[6];
     assert.equal(receiptFrame.zone.zid, fixture.authority.zid);
     const resolvedWorker = resolveAgent(
       new Map([[receiptFrame.worker.alias, {
@@ -323,7 +325,8 @@ rl.on("line", (line) => {
     assert.equal(receiptFrame.worker.alias, "agent://zone-b/translator");
     assert.equal(receiptFrame.receipt.to, receiptFrame.worker.aid);
     assert.equal(receiptFrame.receipt.artifact_refs[0], "artifact://local/go_fed_task_verified/go-summary.md");
-    assert.equal(receiptFrame.receipt.event_count, 4);
+    assert.equal(receiptFrame.receipt.event_count, 6);
+    assert.deepEqual(receiptFrame.receipt.approvals, ["tool"]);
     assert.equal(receiptFrame.receipt.tool, "mcp.stdio");
     const artifactText = await readFile("artifacts/go_fed_task_verified/go-summary.md", "utf8");
     assert.match(artifactText, /MCP Tool Translation/);
@@ -353,7 +356,7 @@ rl.on("line", (line) => {
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 5);
+    assert.equal(auditBody.entries.length, 7);
 
     const pageResponse = await fetch(`http://127.0.0.1:${humanPort}/`);
     assert.equal(pageResponse.status, 200);
