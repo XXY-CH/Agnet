@@ -133,7 +133,7 @@ MVP 中，alias 由本地 Zone Registry 管理。
 
 ## 6. Descriptor 签名
 
-Agent Descriptor 至少应由 Agent 私钥签名。
+Agent Descriptor 必须由 Agent 私钥签名。
 
 如果 alias 属于某个 Zone，还可以由 Zone 私钥附加签名。
 
@@ -142,7 +142,7 @@ agent_signature = Agent 对 descriptor 内容签名
 zone_signature  = Zone 对 alias -> aid 绑定签名
 ```
 
-MVP 只要求 `agent_signature`。
+MVP 要求 `descriptor_signature`。签名内容是 descriptor 去掉 `descriptor_signature` 字段后的 canonical JSON。
 
 Zone 签名延后到联邦阶段。
 

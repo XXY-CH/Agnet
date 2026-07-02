@@ -1,6 +1,6 @@
 # Agent Space MVP
 
-Current boundary: [docs/v0-boundary.md](docs/v0-boundary.md)
+Current boundary: [docs/v0-boundary.md](docs/v0-boundary.md), [docs/v0.1-boundary.md](docs/v0.1-boundary.md), [docs/v0.2-boundary.md](docs/v0.2-boundary.md)
 
 Run the smallest proof:
 

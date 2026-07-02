@@ -54,7 +54,11 @@ async function runWorker(port = 8787) {
       try {
         if (frame.type !== "TASK_OPEN") throw new Error(`unsupported frame: ${frame.type}`);
         const requesterPublicKey = publicKeyFromDescriptor(frame.requester);
+        const requesterAid = frame.requester.aid;
+        const requesterRegistry = new Map([[frame.requester.alias, frame.requester]]);
+        resolveAgent(requesterRegistry, frame.requester.alias);
         const task = unsignedTask(frame.task);
+        if (task.from !== requesterAid) throw new Error("task sender does not match requester descriptor");
         if (!verifyObject(requesterPublicKey, task, frame.task.signature)) {
           throw new Error("task signature verification failed");
         }

@@ -42,19 +42,25 @@ export function verifyObject(publicKey, payload, signature) {
   return verify(null, Buffer.from(canonical(payload)), publicKey, Buffer.from(signature, "base64url"));
 }
 
+export function descriptorBody(descriptor) {
+  const { descriptor_signature, ...body } = descriptor;
+  return body;
+}
+
 export function createAgent(alias, policy = {}, transports = ["asp+local://demo"]) {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const aid = computeAid(publicKey);
+  const descriptor = {
+    alias,
+    aid,
+    public_key_spki: b64url(publicKeyDer(publicKey)),
+    transports,
+    policy,
+  };
   return {
     alias,
     aid,
-    descriptor: {
-      alias,
-      aid,
-      public_key_spki: b64url(publicKeyDer(publicKey)),
-      transports,
-      policy,
-    },
+    descriptor: { ...descriptor, descriptor_signature: signObject(privateKey, descriptor) },
     privateKey,
     publicKey,
   };
@@ -81,6 +87,10 @@ export function resolveAgent(registry, alias) {
   const publicKey = publicKeyFromDescriptor(descriptor);
   const computedAid = computeAid(publicKey);
   if (computedAid !== descriptor.aid) throw new Error(`descriptor aid mismatch for ${alias}`);
+  if (!descriptor.descriptor_signature) throw new Error(`descriptor signature missing for ${alias}`);
+  if (!verifyObject(publicKey, descriptorBody(descriptor), descriptor.descriptor_signature)) {
+    throw new Error(`descriptor signature verification failed for ${alias}`);
+  }
   return { descriptor, publicKey };
 }
 
