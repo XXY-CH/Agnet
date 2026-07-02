@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v3.2 complete
-当前代码基线：`v3.2`
+状态：v3.3 complete
+当前代码基线：`v3.3`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification，以及 Go multi-worker registry。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry，以及 Go WebSocket transport binding。
 
 还不是可产品化的 Agent Net。
 
@@ -28,7 +28,7 @@
 | `FED_TASK_OPEN` | execute | execute minimal path | `federation-gateway.mjs`, `go-fed-discovery.test.mjs` | real worker/tools |
 | Policy checks | done | network/write subset | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | richer scope schema |
 | Human approval | simulated | no | Node events | real Human Gateway |
-| Transport | local TCP / local process | local TCP | README commands | TLS, WebSocket, QUIC, auth handshake |
+| Transport | local TCP / local process | local TCP + minimal WebSocket | README commands, `go-fed-discovery.test.mjs` | TLS, auth handshake, QUIC |
 | Product surface | CLI/tests only | CLI/tests only | README | workspace UI, admin, deployment |
 
 ## Current Boundary
@@ -46,6 +46,7 @@ Go
   -> minimal task events, artifact, signed receipt
   -> audit JSONL hash chain and verifier
   -> multi-worker profile registry
+  -> WebSocket transport binding
 ```
 
 ## Next Boundary
@@ -53,8 +54,8 @@ Go
 Next natural boundary:
 
 ```text
-WebSocket transport binding
-  -> keep same federation frames over a less toy transport
+Thin Human Gateway
+  -> observe tasks/artifacts/audit without building an Octo clone
 ```
 
 Skipped until later: multi-worker registry, encrypted key store, public transport, real approval UI, sandbox/tool execution, scheduling, semantic routing.

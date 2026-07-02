@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v3.2 assessment
+状态：v3.3 assessment
 
 ## 一句话
 
@@ -14,7 +14,7 @@
 
 ### Protocol core
 
-进度：约 55%。
+进度：约 57%。
 
 已有：
 
@@ -32,6 +32,7 @@
 - Go minimal execution path in v3。
 - Go audit path in v3.1。
 - Go multi-worker registry in v3.2。
+- WebSocket binding in v3.3。
 
 主要缺：
 
@@ -42,7 +43,7 @@
 
 ### Runtime core
 
-进度：约 35%。
+进度：约 38%。
 
 已有：
 
@@ -62,17 +63,19 @@
 
 ### Network layer
 
-进度：约 15%。
+进度：约 22%。
 
 已有：
 
 - newline JSON over local TCP。
+- WebSocket text-frame binding。
 - local process proof。
 
 主要缺：
 
 - authenticated session handshake。
-- TLS/WebSocket/QUIC binding。
+- TLS/QUIC binding。
+- auth handshake。
 - public gateway deployment。
 - NAT/proxy story。
 - service discovery beyond static trusted stores。
@@ -155,7 +158,6 @@ Trying to clone Octo now would pull this project sideways into chat/product surf
 The right path is:
 
 ```text
-v3.3 WebSocket transport
 v3.4 thin Human Gateway
 v3.5 MCP/tool adapter + sandbox
 ```

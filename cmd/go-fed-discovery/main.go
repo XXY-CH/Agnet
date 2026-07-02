@@ -3,9 +3,11 @@ package main
 import (
 	"bufio"
 	"crypto/ed25519"
+	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -53,8 +55,11 @@ type AuditLog struct {
 	mu   sync.Mutex
 }
 
+type sendFunc func(map[string]any)
+
 func main() {
 	port := flag.String("port", "9090", "listen port")
+	wsPort := flag.String("ws-port", "", "optional WebSocket listen port")
 	fixturePath := flag.String("fixture", "test-vectors/asp-v1.5-capability-credential.json", "signed descriptor fixture")
 	trustPath := flag.String("trusted", "state/go-fed-trusted-zones.json", "trusted origin zones")
 	authorityKeyPath := flag.String("authority-key", "state/keys/go-fed-authority.seed", "authority seed key file")
@@ -72,13 +77,13 @@ func main() {
 		return
 	}
 
-	if err := serve(*port, *fixturePath, *trustPath, *authorityKeyPath, *workerKeyPath, *auditPath); err != nil {
+	if err := serve(*port, *wsPort, *fixturePath, *trustPath, *authorityKeyPath, *workerKeyPath, *auditPath); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func serve(port, fixturePath, trustPath, authorityKeyPath, workerKeyPath, auditPath string) error {
+func serve(port, wsPort, fixturePath, trustPath, authorityKeyPath, workerKeyPath, auditPath string) error {
 	authorityKey, err := loadPrivateKey(authorityKeyPath, "authority")
 	if err != nil {
 		return err
@@ -104,7 +109,19 @@ func serve(port, fixturePath, trustPath, authorityKeyPath, workerKeyPath, auditP
 	if err != nil {
 		return err
 	}
-	fmt.Println(`{"go_fed_discovery":"listening","port":` + port + `}`)
+	var wsListener net.Listener
+	if wsPort != "" {
+		wsListener, err = net.Listen("tcp", "127.0.0.1:"+wsPort)
+		if err != nil {
+			return err
+		}
+		go acceptWebSocket(wsListener, fixture, trusted)
+	}
+	if wsPort != "" {
+		fmt.Println(`{"go_fed_discovery":"listening","port":` + port + `,"ws_port":` + wsPort + `}`)
+	} else {
+		fmt.Println(`{"go_fed_discovery":"listening","port":` + port + `}`)
+	}
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -117,67 +134,203 @@ func serve(port, fixturePath, trustPath, authorityKeyPath, workerKeyPath, auditP
 func handle(conn net.Conn, fixture Fixture, trusted map[string]map[string]any) {
 	defer conn.Close()
 	scanner := bufio.NewScanner(conn)
+	sendLine := func(frame map[string]any) { send(conn, frame) }
 	for scanner.Scan() {
 		var frame map[string]any
 		if err := json.Unmarshal(scanner.Bytes(), &frame); err != nil {
-			send(conn, map[string]any{"type": "FED_TASK_ERROR", "error": err.Error()})
+			sendLine(map[string]any{"type": "FED_TASK_ERROR", "error": err.Error()})
 			return
 		}
-		origin, ok := frame["origin_zone"].(map[string]any)
-		if !ok {
-			send(conn, map[string]any{"type": "FED_TASK_ERROR", "error": "missing origin_zone"})
-			return
-		}
-		if err := verifyTrustedZone(origin, trusted); err != nil {
-			send(conn, map[string]any{"type": "FED_TASK_ERROR", "error": err.Error()})
-			return
-		}
-		switch frame["type"] {
-		case "FED_RESOLVE":
-			worker := fixture.workerByAlias(fmt.Sprint(frame["alias"]))
-			if worker == nil {
-				send(conn, map[string]any{"type": "FED_TASK_ERROR", "error": "remote alias not found"})
-				return
-			}
-			send(conn, map[string]any{
-				"type":         "FED_RESOLVE_RESULT",
-				"zone":         fixture.Authority,
-				"worker":       worker.Descriptor,
-				"zone_binding": fixture.zoneBinding(worker),
-			})
-			send(conn, map[string]any{"type": "FED_RESOLVE_CLOSE", "alias": frame["alias"]})
-		case "FED_QUERY":
-			matches := []any{}
-			capability := fmt.Sprint(frame["capability"])
-			for _, worker := range fixture.workersByCapability(capability) {
-				matches = append(matches, map[string]any{
-					"worker":       worker.Descriptor,
-					"zone_binding": fixture.zoneBinding(&worker),
-					"credentials":  []any{fixture.capabilityCredential(&worker, capability)},
-				})
-			}
-			send(conn, map[string]any{
-				"type":       "FED_QUERY_RESULT",
-				"zone":       fixture.Authority,
-				"capability": frame["capability"],
-				"matches":    matches,
-			})
-			send(conn, map[string]any{"type": "FED_QUERY_CLOSE", "capability": frame["capability"]})
-		case "FED_TASK_OPEN":
-			worker, task, err := fixture.verifyTaskOpen(frame)
-			if err != nil {
-				send(conn, map[string]any{"type": "FED_TASK_ERROR", "error": err.Error()})
-				return
-			}
-			if err := fixture.executeTask(conn, origin, worker, task); err != nil {
-				send(conn, map[string]any{"type": "FED_TASK_ERROR", "error": err.Error()})
-				return
-			}
-		default:
-			send(conn, map[string]any{"type": "FED_TASK_ERROR", "error": "unsupported frame"})
+		if !handleFrame(sendLine, frame, fixture, trusted) {
 			return
 		}
 	}
+}
+
+func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted map[string]map[string]any) bool {
+	origin, ok := frame["origin_zone"].(map[string]any)
+	if !ok {
+		send(map[string]any{"type": "FED_TASK_ERROR", "error": "missing origin_zone"})
+		return false
+	}
+	if err := verifyTrustedZone(origin, trusted); err != nil {
+		send(map[string]any{"type": "FED_TASK_ERROR", "error": err.Error()})
+		return false
+	}
+	switch frame["type"] {
+	case "FED_RESOLVE":
+		worker := fixture.workerByAlias(fmt.Sprint(frame["alias"]))
+		if worker == nil {
+			send(map[string]any{"type": "FED_TASK_ERROR", "error": "remote alias not found"})
+			return false
+		}
+		send(map[string]any{
+			"type":         "FED_RESOLVE_RESULT",
+			"zone":         fixture.Authority,
+			"worker":       worker.Descriptor,
+			"zone_binding": fixture.zoneBinding(worker),
+		})
+		send(map[string]any{"type": "FED_RESOLVE_CLOSE", "alias": frame["alias"]})
+	case "FED_QUERY":
+		matches := []any{}
+		capability := fmt.Sprint(frame["capability"])
+		for _, worker := range fixture.workersByCapability(capability) {
+			matches = append(matches, map[string]any{
+				"worker":       worker.Descriptor,
+				"zone_binding": fixture.zoneBinding(&worker),
+				"credentials":  []any{fixture.capabilityCredential(&worker, capability)},
+			})
+		}
+		send(map[string]any{
+			"type":       "FED_QUERY_RESULT",
+			"zone":       fixture.Authority,
+			"capability": frame["capability"],
+			"matches":    matches,
+		})
+		send(map[string]any{"type": "FED_QUERY_CLOSE", "capability": frame["capability"]})
+	case "FED_TASK_OPEN":
+		worker, task, err := fixture.verifyTaskOpen(frame)
+		if err != nil {
+			send(map[string]any{"type": "FED_TASK_ERROR", "error": err.Error()})
+			return false
+		}
+		if err := fixture.executeTask(send, origin, worker, task); err != nil {
+			send(map[string]any{"type": "FED_TASK_ERROR", "error": err.Error()})
+			return false
+		}
+	default:
+		send(map[string]any{"type": "FED_TASK_ERROR", "error": "unsupported frame"})
+		return false
+	}
+	return true
+}
+
+func acceptWebSocket(listener net.Listener, fixture Fixture, trusted map[string]map[string]any) {
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		go handleWebSocket(conn, fixture, trusted)
+	}
+}
+
+func handleWebSocket(conn net.Conn, fixture Fixture, trusted map[string]map[string]any) {
+	defer conn.Close()
+	reader := bufio.NewReader(conn)
+	if err := websocketHandshake(conn, reader); err != nil {
+		return
+	}
+	sendWS := func(frame map[string]any) {
+		data, _ := json.Marshal(frame)
+		_ = writeWebSocketText(conn, string(data))
+	}
+	for {
+		text, err := readWebSocketText(reader)
+		if err != nil {
+			return
+		}
+		var frame map[string]any
+		if err := json.Unmarshal([]byte(text), &frame); err != nil {
+			sendWS(map[string]any{"type": "FED_TASK_ERROR", "error": err.Error()})
+			return
+		}
+		if !handleFrame(sendWS, frame, fixture, trusted) {
+			return
+		}
+	}
+}
+
+func websocketHandshake(conn net.Conn, reader *bufio.Reader) error {
+	headers := map[string]string{}
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return err
+		}
+		line = strings.TrimRight(line, "\r\n")
+		if line == "" {
+			break
+		}
+		if index := strings.Index(line, ":"); index >= 0 {
+			headers[strings.ToLower(strings.TrimSpace(line[:index]))] = strings.TrimSpace(line[index+1:])
+		}
+	}
+	key := headers["sec-websocket-key"]
+	if key == "" {
+		return errors.New("missing sec-websocket-key")
+	}
+	hash := sha1.Sum([]byte(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+	accept := base64.StdEncoding.EncodeToString(hash[:])
+	_, err := fmt.Fprintf(conn, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\n\r\n", accept)
+	return err
+}
+
+func readWebSocketText(reader *bufio.Reader) (string, error) {
+	first, err := reader.ReadByte()
+	if err != nil {
+		return "", err
+	}
+	second, err := reader.ReadByte()
+	if err != nil {
+		return "", err
+	}
+	opcode := first & 0x0f
+	if opcode == 0x8 {
+		return "", io.EOF
+	}
+	if opcode != 0x1 {
+		return "", errors.New("expected websocket text frame")
+	}
+	masked := second&0x80 != 0
+	length := uint64(second & 0x7f)
+	if length == 126 {
+		var buf [2]byte
+		if _, err := io.ReadFull(reader, buf[:]); err != nil {
+			return "", err
+		}
+		length = uint64(binary.BigEndian.Uint16(buf[:]))
+	} else if length == 127 {
+		var buf [8]byte
+		if _, err := io.ReadFull(reader, buf[:]); err != nil {
+			return "", err
+		}
+		length = binary.BigEndian.Uint64(buf[:])
+	}
+	var mask [4]byte
+	if masked {
+		if _, err := io.ReadFull(reader, mask[:]); err != nil {
+			return "", err
+		}
+	}
+	payload := make([]byte, length)
+	if _, err := io.ReadFull(reader, payload); err != nil {
+		return "", err
+	}
+	if masked {
+		for i := range payload {
+			payload[i] ^= mask[i%4]
+		}
+	}
+	return string(payload), nil
+}
+
+func writeWebSocketText(conn net.Conn, text string) error {
+	payload := []byte(text)
+	header := []byte{0x81}
+	switch {
+	case len(payload) < 126:
+		header = append(header, byte(len(payload)))
+	case len(payload) <= 0xffff:
+		header = append(header, 126, byte(len(payload)>>8), byte(len(payload)))
+	default:
+		header = append(header, 127, 0, 0, 0, 0, byte(len(payload)>>24), byte(len(payload)>>16), byte(len(payload)>>8), byte(len(payload)))
+	}
+	if _, err := conn.Write(header); err != nil {
+		return err
+	}
+	_, err := conn.Write(payload)
+	return err
 }
 
 func loadFixture(path string, authorityKey, workerKey ed25519.PrivateKey) (Fixture, error) {
@@ -365,12 +518,12 @@ func (f Fixture) verifyTaskOpen(frame map[string]any) (*Worker, map[string]any, 
 	return worker, task, nil
 }
 
-func (f Fixture) executeTask(conn net.Conn, origin map[string]any, worker *Worker, task map[string]any) error {
+func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worker, task map[string]any) error {
 	taskID := fmt.Sprint(task["task_id"])
-	if err := f.sendTaskEvent(conn, map[string]any{"type": "task.accepted", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
+	if err := f.sendTaskEvent(send, map[string]any{"type": "task.accepted", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
 		return err
 	}
-	if err := f.sendTaskEvent(conn, map[string]any{"type": "task.started", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
+	if err := f.sendTaskEvent(send, map[string]any{"type": "task.started", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
 		return err
 	}
 
@@ -378,10 +531,10 @@ func (f Fixture) executeTask(conn net.Conn, origin map[string]any, worker *Worke
 	if err := writeArtifact(artifactURI, "# Go Federated Summary\n\nCompleted "+taskID+" from "+fmt.Sprint(origin["zid"])+".\n"); err != nil {
 		return err
 	}
-	if err := f.sendTaskEvent(conn, map[string]any{"type": "artifact.created", "task_id": taskID, "uri": artifactURI}); err != nil {
+	if err := f.sendTaskEvent(send, map[string]any{"type": "artifact.created", "task_id": taskID, "uri": artifactURI}); err != nil {
 		return err
 	}
-	if err := f.sendTaskEvent(conn, map[string]any{"type": "task.completed", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
+	if err := f.sendTaskEvent(send, map[string]any{"type": "task.completed", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
 		return err
 	}
 
@@ -406,22 +559,22 @@ func (f Fixture) executeTask(conn net.Conn, origin map[string]any, worker *Worke
 	if err := f.appendAudit(receiptRecord); err != nil {
 		return err
 	}
-	send(conn, map[string]any{
+	send(map[string]any{
 		"type":         "FED_RECEIPT",
 		"zone":         receiptRecord["zone"],
 		"worker":       receiptRecord["worker"],
 		"zone_binding": receiptRecord["zone_binding"],
 		"receipt":      receiptRecord["receipt"],
 	})
-	send(conn, map[string]any{"type": "FED_TASK_CLOSE", "task_id": taskID})
+	send(map[string]any{"type": "FED_TASK_CLOSE", "task_id": taskID})
 	return nil
 }
 
-func (f Fixture) sendTaskEvent(conn net.Conn, event map[string]any) error {
+func (f Fixture) sendTaskEvent(send sendFunc, event map[string]any) error {
 	if err := f.appendAudit(map[string]any{"kind": "go_fed_event", "event": event}); err != nil {
 		return err
 	}
-	send(conn, map[string]any{"type": "FED_TASK_EVENT", "event": event})
+	send(map[string]any{"type": "FED_TASK_EVENT", "event": event})
 	return nil
 }
 

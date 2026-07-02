@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
+import { createHash, randomBytes } from "node:crypto";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
@@ -54,8 +55,96 @@ function exchangeFrames(port, frame, closeType = "FED_TASK_CLOSE") {
   });
 }
 
+function wsAccept(key) {
+  return createHash("sha1")
+    .update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
+    .digest("base64");
+}
+
+function encodeWebSocketText(text) {
+  const payload = Buffer.from(text);
+  const mask = randomBytes(4);
+  const header = payload.length < 126
+    ? Buffer.from([0x81, 0x80 | payload.length])
+    : Buffer.from([0x81, 0x80 | 126, payload.length >> 8, payload.length & 0xff]);
+  const masked = Buffer.alloc(payload.length);
+  for (let index = 0; index < payload.length; index += 1) {
+    masked[index] = payload[index] ^ mask[index % 4];
+  }
+  return Buffer.concat([header, mask, masked]);
+}
+
+function decodeWebSocketFrames(buffer) {
+  const frames = [];
+  let offset = 0;
+  while (offset + 2 <= buffer.length) {
+    const opcode = buffer[offset] & 0x0f;
+    let length = buffer[offset + 1] & 0x7f;
+    let headerLength = 2;
+    if (length === 126) {
+      if (offset + 4 > buffer.length) break;
+      length = buffer.readUInt16BE(offset + 2);
+      headerLength = 4;
+    }
+    if (length === 127) throw new Error("large websocket frames are not needed in this test");
+    if (offset + headerLength + length > buffer.length) break;
+    if (opcode === 1) frames.push(JSON.parse(buffer.subarray(offset + headerLength, offset + headerLength + length).toString()));
+    offset += headerLength + length;
+  }
+  return { frames, rest: buffer.subarray(offset) };
+}
+
+function exchangeWebSocketFrames(port, frame, closeType) {
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection(port, "127.0.0.1");
+    const key = randomBytes(16).toString("base64");
+    const frames = [];
+    let handshook = false;
+    let buffer = Buffer.alloc(0);
+    socket.on("error", reject);
+    socket.on("connect", () => {
+      socket.write([
+        "GET /fed HTTP/1.1",
+        "Host: 127.0.0.1",
+        "Upgrade: websocket",
+        "Connection: Upgrade",
+        `Sec-WebSocket-Key: ${key}`,
+        "Sec-WebSocket-Version: 13",
+        "",
+        "",
+      ].join("\r\n"));
+    });
+    socket.on("data", (chunk) => {
+      try {
+        buffer = Buffer.concat([buffer, chunk]);
+        if (!handshook) {
+          const marker = buffer.indexOf("\r\n\r\n");
+          if (marker < 0) return;
+          const headers = buffer.subarray(0, marker).toString();
+          assert.match(headers, /101 Switching Protocols/);
+          assert.equal(headers.toLowerCase().includes(`sec-websocket-accept: ${wsAccept(key).toLowerCase()}`), true);
+          handshook = true;
+          buffer = buffer.subarray(marker + 4);
+          socket.write(encodeWebSocketText(JSON.stringify(frame)));
+        }
+        const decoded = decodeWebSocketFrames(buffer);
+        buffer = decoded.rest;
+        frames.push(...decoded.frames);
+        if (frames.some((item) => item.type === closeType || item.type === "FED_TASK_ERROR")) {
+          socket.end();
+          resolve(frames);
+        }
+      } catch (error) {
+        socket.destroy();
+        reject(error);
+      }
+    });
+  });
+}
+
 test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", async () => {
   const port = 9091;
+  const wsPort = 9092;
   const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
   const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/go-fed-requester.pkcs8");
   const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
@@ -87,6 +176,8 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
   const gateway = spawn("./state/go-fed-discovery-test", [
     "--port",
     String(port),
+    "--ws-port",
+    String(wsPort),
     "--trusted",
     "state/go-fed-discovery-trusted-origin.json",
     "--fixture",
@@ -140,6 +231,14 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
     assert.equal(translatedResult.matches.length, 1);
     assert.equal(translatedResult.matches[0].alias, "agent://zone-b/translator");
     assert.equal(translatedResult.matches[0].credentials[0].capability, "translate.text");
+
+    const wsFrames = await exchangeWebSocketFrames(wsPort, {
+      type: "FED_QUERY",
+      origin_zone: zoneA.descriptor,
+      capability: "translate.text",
+    }, "FED_QUERY_CLOSE");
+    assert.deepEqual(wsFrames.map((frame) => frame.type), ["FED_QUERY_RESULT", "FED_QUERY_CLOSE"]);
+    assert.equal(wsFrames[0].matches[0].worker.alias, "agent://zone-b/translator");
 
     const resolvedTranslator = await execFileAsync(process.execPath, [
       "federation-gateway.mjs",
