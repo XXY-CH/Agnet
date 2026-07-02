@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -15,10 +16,11 @@ import (
 )
 
 type Fixture struct {
-	Authority   map[string]any `json:"authority"`
-	Worker      map[string]any `json:"worker"`
-	ZoneBinding map[string]any `json:"zone_binding"`
-	Credential  map[string]any `json:"credential"`
+	AuthoritySeedHex string         `json:"authority_seed_hex"`
+	Authority        map[string]any `json:"authority"`
+	Worker           map[string]any `json:"worker"`
+	ZoneBinding      map[string]any `json:"zone_binding"`
+	Credential       map[string]any `json:"credential"`
 }
 
 type TrustStore struct {
@@ -88,7 +90,7 @@ func handle(conn net.Conn, fixture Fixture, trusted map[string]map[string]any) {
 				"type":         "FED_RESOLVE_RESULT",
 				"zone":         fixture.Authority,
 				"worker":       fixture.Worker,
-				"zone_binding": fixture.ZoneBinding,
+				"zone_binding": fixture.zoneBinding(),
 			})
 			send(conn, map[string]any{"type": "FED_RESOLVE_CLOSE", "alias": frame["alias"]})
 		case "FED_QUERY":
@@ -96,8 +98,8 @@ func handle(conn net.Conn, fixture Fixture, trusted map[string]map[string]any) {
 			if hasCapability(fixture.Worker, fmt.Sprint(frame["capability"])) {
 				matches = append(matches, map[string]any{
 					"worker":       fixture.Worker,
-					"zone_binding": fixture.ZoneBinding,
-					"credentials":  []any{fixture.Credential},
+					"zone_binding": fixture.zoneBinding(),
+					"credentials":  []any{fixture.capabilityCredential(fmt.Sprint(frame["capability"]))},
 				})
 			}
 			send(conn, map[string]any{
@@ -129,7 +131,56 @@ func loadFixture(path string) (Fixture, error) {
 	if err := verifyAgentDescriptor(fixture.Worker); err != nil {
 		return Fixture{}, err
 	}
+	if _, err := fixture.authorityPrivateKey(); err != nil {
+		return Fixture{}, err
+	}
 	return fixture, nil
+}
+
+func (f Fixture) authorityPrivateKey() (ed25519.PrivateKey, error) {
+	seed, err := hex.DecodeString(f.AuthoritySeedHex)
+	if err != nil {
+		return nil, err
+	}
+	if len(seed) != ed25519.SeedSize {
+		return nil, errors.New("authority seed must be 32 bytes")
+	}
+	return ed25519.NewKeyFromSeed(seed), nil
+}
+
+func (f Fixture) zoneBinding() map[string]any {
+	return signBody(f.mustAuthorityPrivateKey(), map[string]any{
+		"zone":  f.Authority["zid"],
+		"alias": f.Worker["alias"],
+		"aid":   f.Worker["aid"],
+	})
+}
+
+func (f Fixture) capabilityCredential(capability string) map[string]any {
+	return signBody(f.mustAuthorityPrivateKey(), map[string]any{
+		"issuer":     f.Authority["zid"],
+		"subject":    f.Worker["aid"],
+		"capability": capability,
+		"claims":     f.Credential["claims"],
+	})
+}
+
+func (f Fixture) mustAuthorityPrivateKey() ed25519.PrivateKey {
+	key, err := f.authorityPrivateKey()
+	if err != nil {
+		panic(err)
+	}
+	return key
+}
+
+func signBody(key ed25519.PrivateKey, body map[string]any) map[string]any {
+	out := map[string]any{}
+	for k, v := range body {
+		out[k] = v
+	}
+	data, _ := json.Marshal(body)
+	out["signature"] = base64.RawURLEncoding.EncodeToString(ed25519.Sign(key, data))
+	return out
 }
 
 func loadTrustedZones(path string) (map[string]map[string]any, error) {

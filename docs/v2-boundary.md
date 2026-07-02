@@ -47,6 +47,8 @@ Node requester
 
 Task execution 仍由 Node Federation Gateway 路径证明。
 
+后续 Go dynamic signing 边界见 `docs/v2.1-boundary.md`。
+
 ## 验收
 
 ```bash
