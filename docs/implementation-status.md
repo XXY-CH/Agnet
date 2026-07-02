@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v3.1 complete
-当前代码基线：`v3.1`
+状态：v3.2 complete
+当前代码基线：`v3.2`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path，以及 Go audit/receipt verification。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification，以及 Go multi-worker registry。
 
 还不是可产品化的 Agent Net。
 
@@ -15,7 +15,7 @@
 | --- | --- | --- | --- | --- |
 | Agent identity | done | verify/generate subset | `asp-core.mjs`, `cmd/go-fed-discovery` | Go shared library/package shape |
 | Zone identity | done | verify/generate subset | `trusted-zones.test.mjs`, Go descriptor verification | Zone lifecycle tooling |
-| Local registry | done | no | `zone-registry.test.mjs` | Go registry / multi-worker registry |
+| Local registry | done | multi-worker profile registry | `zone-registry.test.mjs`, `go-fed-discovery.test.mjs` | worker lifecycle API |
 | Local task execution | done | minimal deterministic worker | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | real tool execution |
 | Events | done | minimal federation events | `agent-runtime.test.mjs`, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | richer event lifecycle |
 | Artifact write | done | deterministic local artifact | `mvp-demo.test.mjs`, `go-fed-discovery.test.mjs` | artifact store |
@@ -45,6 +45,7 @@ Go
   -> FED_TASK_OPEN verification
   -> minimal task events, artifact, signed receipt
   -> audit JSONL hash chain and verifier
+  -> multi-worker profile registry
 ```
 
 ## Next Boundary
@@ -52,8 +53,8 @@ Go
 Next natural boundary:
 
 ```text
-Go multi-worker registry
-  -> query and route across more than one worker profile
+WebSocket transport binding
+  -> keep same federation frames over a less toy transport
 ```
 
 Skipped until later: multi-worker registry, encrypted key store, public transport, real approval UI, sandbox/tool execution, scheduling, semantic routing.

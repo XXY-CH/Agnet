@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v3.1 assessment
+状态：v3.2 assessment
 
 ## 一句话
 
@@ -14,7 +14,7 @@
 
 ### Protocol core
 
-进度：约 52%。
+进度：约 55%。
 
 已有：
 
@@ -31,17 +31,18 @@
 - Go discovery/trust path through v2.4。
 - Go minimal execution path in v3。
 - Go audit path in v3.1。
+- Go multi-worker registry in v3.2。
 
 主要缺：
 
 - richer policy schema。
 - cancellation / checkpoint / retry。
 - credential status / revocation feed。
-- multi-worker registry and routing。
+- richer routing beyond exact matches。
 
 ### Runtime core
 
-进度：约 32%。
+进度：约 35%。
 
 已有：
 
@@ -49,6 +50,7 @@
 - Node federation execution path。
 - Go discovery gateway with minimal deterministic execution。
 - Go audit verifier for execution evidence。
+- Go exact-match multi-worker routing。
 
 主要缺：
 
@@ -153,7 +155,6 @@ Trying to clone Octo now would pull this project sideways into chat/product surf
 The right path is:
 
 ```text
-v3.2 Go multi-worker registry
 v3.3 WebSocket transport
 v3.4 thin Human Gateway
 v3.5 MCP/tool adapter + sandbox

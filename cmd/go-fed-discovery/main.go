@@ -22,18 +22,25 @@ import (
 type Fixture struct {
 	Authority           map[string]any     `json:"authority"`
 	WorkerProfile       WorkerProfile      `json:"worker_profile"`
-	Worker              map[string]any     `json:"-"`
+	WorkerProfiles      []WorkerProfile    `json:"worker_profiles"`
+	Workers             []Worker           `json:"-"`
 	Credential          map[string]any     `json:"credential"`
 	AuthorityPrivateKey ed25519.PrivateKey `json:"-"`
-	WorkerPrivateKey    ed25519.PrivateKey `json:"-"`
 	Audit               *AuditLog          `json:"-"`
 }
 
 type WorkerProfile struct {
+	KeyFile      string         `json:"key_file,omitempty"`
 	Alias        string         `json:"alias"`
 	Transports   []string       `json:"transports"`
 	Capabilities []string       `json:"capabilities"`
 	Policy       map[string]any `json:"policy"`
+}
+
+type Worker struct {
+	Profile    WorkerProfile
+	Descriptor map[string]any
+	PrivateKey ed25519.PrivateKey
 }
 
 type TrustStore struct {
@@ -127,24 +134,26 @@ func handle(conn net.Conn, fixture Fixture, trusted map[string]map[string]any) {
 		}
 		switch frame["type"] {
 		case "FED_RESOLVE":
-			if frame["alias"] != fixture.Worker["alias"] {
+			worker := fixture.workerByAlias(fmt.Sprint(frame["alias"]))
+			if worker == nil {
 				send(conn, map[string]any{"type": "FED_TASK_ERROR", "error": "remote alias not found"})
 				return
 			}
 			send(conn, map[string]any{
 				"type":         "FED_RESOLVE_RESULT",
 				"zone":         fixture.Authority,
-				"worker":       fixture.Worker,
-				"zone_binding": fixture.zoneBinding(),
+				"worker":       worker.Descriptor,
+				"zone_binding": fixture.zoneBinding(worker),
 			})
 			send(conn, map[string]any{"type": "FED_RESOLVE_CLOSE", "alias": frame["alias"]})
 		case "FED_QUERY":
 			matches := []any{}
-			if hasCapability(fixture.Worker, fmt.Sprint(frame["capability"])) {
+			capability := fmt.Sprint(frame["capability"])
+			for _, worker := range fixture.workersByCapability(capability) {
 				matches = append(matches, map[string]any{
-					"worker":       fixture.Worker,
-					"zone_binding": fixture.zoneBinding(),
-					"credentials":  []any{fixture.capabilityCredential(fmt.Sprint(frame["capability"]))},
+					"worker":       worker.Descriptor,
+					"zone_binding": fixture.zoneBinding(&worker),
+					"credentials":  []any{fixture.capabilityCredential(&worker, capability)},
 				})
 			}
 			send(conn, map[string]any{
@@ -155,12 +164,12 @@ func handle(conn net.Conn, fixture Fixture, trusted map[string]map[string]any) {
 			})
 			send(conn, map[string]any{"type": "FED_QUERY_CLOSE", "capability": frame["capability"]})
 		case "FED_TASK_OPEN":
-			task, err := fixture.verifyTaskOpen(frame)
+			worker, task, err := fixture.verifyTaskOpen(frame)
 			if err != nil {
 				send(conn, map[string]any{"type": "FED_TASK_ERROR", "error": err.Error()})
 				return
 			}
-			if err := fixture.executeTask(conn, origin, task); err != nil {
+			if err := fixture.executeTask(conn, origin, worker, task); err != nil {
 				send(conn, map[string]any{"type": "FED_TASK_ERROR", "error": err.Error()})
 				return
 			}
@@ -184,18 +193,14 @@ func loadFixture(path string, authorityKey, workerKey ed25519.PrivateKey) (Fixtu
 		return Fixture{}, err
 	}
 	fixture.AuthorityPrivateKey = authorityKey
-	fixture.WorkerPrivateKey = workerKey
 	if err := fixture.verifyAuthoritySeed(); err != nil {
 		return Fixture{}, err
 	}
-	worker, err := fixture.workerDescriptor()
+	workers, err := fixture.loadWorkers(workerKey)
 	if err != nil {
 		return Fixture{}, err
 	}
-	fixture.Worker = worker
-	if err := verifyAgentDescriptor(fixture.Worker); err != nil {
-		return Fixture{}, err
-	}
+	fixture.Workers = workers
 	return fixture, nil
 }
 
@@ -230,90 +235,142 @@ func (f Fixture) verifyAuthoritySeed() error {
 	return nil
 }
 
-func (f Fixture) workerDescriptor() (map[string]any, error) {
-	if f.WorkerProfile.Alias == "" {
+func (f Fixture) loadWorkers(defaultKey ed25519.PrivateKey) ([]Worker, error) {
+	profiles := f.WorkerProfiles
+	if len(profiles) == 0 {
+		profiles = []WorkerProfile{f.WorkerProfile}
+	}
+	workers := []Worker{}
+	seen := map[string]bool{}
+	for _, profile := range profiles {
+		key := defaultKey
+		var err error
+		if profile.KeyFile != "" {
+			key, err = loadPrivateKey(profile.KeyFile, "worker")
+			if err != nil {
+				return nil, err
+			}
+		}
+		descriptor, err := workerDescriptor(profile, key)
+		if err != nil {
+			return nil, err
+		}
+		if seen[profile.Alias] {
+			return nil, errors.New("duplicate worker alias: " + profile.Alias)
+		}
+		seen[profile.Alias] = true
+		if err := verifyAgentDescriptor(descriptor); err != nil {
+			return nil, err
+		}
+		workers = append(workers, Worker{Profile: profile, Descriptor: descriptor, PrivateKey: key})
+	}
+	return workers, nil
+}
+
+func workerDescriptor(profile WorkerProfile, key ed25519.PrivateKey) (map[string]any, error) {
+	if profile.Alias == "" {
 		return nil, errors.New("worker profile alias missing")
 	}
-	if len(f.WorkerProfile.Transports) == 0 {
+	if len(profile.Transports) == 0 {
 		return nil, errors.New("worker profile transports missing")
 	}
-	if len(f.WorkerProfile.Capabilities) == 0 {
+	if len(profile.Capabilities) == 0 {
 		return nil, errors.New("worker profile capabilities missing")
 	}
-	publicKey := f.WorkerPrivateKey.Public().(ed25519.PublicKey)
+	publicKey := key.Public().(ed25519.PublicKey)
 	encoded, der, err := publicKeySPKI(publicKey)
 	if err != nil {
 		return nil, err
 	}
-	policy := f.WorkerProfile.Policy
+	policy := profile.Policy
 	if policy == nil {
 		policy = map[string]any{}
 	}
 	body := map[string]any{
-		"alias":           f.WorkerProfile.Alias,
+		"alias":           profile.Alias,
 		"aid":             aidFromSPKI(der),
 		"public_key_spki": encoded,
-		"transports":      f.WorkerProfile.Transports,
-		"capabilities":    f.WorkerProfile.Capabilities,
+		"transports":      profile.Transports,
+		"capabilities":    profile.Capabilities,
 		"policy":          policy,
 	}
-	return signBodyWithKey(f.WorkerPrivateKey, body, "descriptor_signature"), nil
+	return signBodyWithKey(key, body, "descriptor_signature"), nil
 }
 
-func (f Fixture) zoneBinding() map[string]any {
+func (f Fixture) workerByAlias(alias string) *Worker {
+	for i := range f.Workers {
+		if f.Workers[i].Descriptor["alias"] == alias {
+			return &f.Workers[i]
+		}
+	}
+	return nil
+}
+
+func (f Fixture) workersByCapability(capability string) []Worker {
+	workers := []Worker{}
+	for _, worker := range f.Workers {
+		if hasCapability(worker.Descriptor, capability) {
+			workers = append(workers, worker)
+		}
+	}
+	return workers
+}
+
+func (f Fixture) zoneBinding(worker *Worker) map[string]any {
 	return signBody(f.AuthorityPrivateKey, map[string]any{
 		"zone":  f.Authority["zid"],
-		"alias": f.Worker["alias"],
-		"aid":   f.Worker["aid"],
+		"alias": worker.Descriptor["alias"],
+		"aid":   worker.Descriptor["aid"],
 	})
 }
 
-func (f Fixture) capabilityCredential(capability string) map[string]any {
+func (f Fixture) capabilityCredential(worker *Worker, capability string) map[string]any {
 	return signBody(f.AuthorityPrivateKey, map[string]any{
 		"issuer":     f.Authority["zid"],
-		"subject":    f.Worker["aid"],
+		"subject":    worker.Descriptor["aid"],
 		"capability": capability,
 		"claims":     f.Credential["claims"],
 	})
 }
 
-func (f Fixture) verifyTaskOpen(frame map[string]any) (map[string]any, error) {
+func (f Fixture) verifyTaskOpen(frame map[string]any) (*Worker, map[string]any, error) {
 	requester, ok := frame["requester"].(map[string]any)
 	if !ok {
-		return nil, errors.New("missing requester")
+		return nil, nil, errors.New("missing requester")
 	}
 	if err := verifyAgentDescriptor(requester); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	task, ok := frame["task"].(map[string]any)
 	if !ok {
-		return nil, errors.New("missing task")
+		return nil, nil, errors.New("missing task")
 	}
 	if task["from"] != requester["aid"] {
-		return nil, errors.New("task sender does not match requester descriptor")
+		return nil, nil, errors.New("task sender does not match requester descriptor")
 	}
-	if task["to"] != f.Worker["alias"] {
-		return nil, errors.New("task target does not match worker alias")
+	worker := f.workerByAlias(fmt.Sprint(task["to"]))
+	if worker == nil {
+		return nil, nil, errors.New("task target does not match worker alias")
 	}
 	requesterKey, _, err := publicKey(requester)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := verifyMapSignature(requesterKey, task, "signature"); err != nil {
-		return nil, errors.New("task signature verification failed")
+		return nil, nil, errors.New("task signature verification failed")
 	}
-	if err := enforcePolicy(f.Worker, task); err != nil {
-		return nil, err
+	if err := enforcePolicy(worker.Descriptor, task); err != nil {
+		return nil, nil, err
 	}
-	return task, nil
+	return worker, task, nil
 }
 
-func (f Fixture) executeTask(conn net.Conn, origin, task map[string]any) error {
+func (f Fixture) executeTask(conn net.Conn, origin map[string]any, worker *Worker, task map[string]any) error {
 	taskID := fmt.Sprint(task["task_id"])
-	if err := f.sendTaskEvent(conn, map[string]any{"type": "task.accepted", "task_id": taskID, "by": f.Worker["aid"], "zone": f.Authority["zid"]}); err != nil {
+	if err := f.sendTaskEvent(conn, map[string]any{"type": "task.accepted", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
 		return err
 	}
-	if err := f.sendTaskEvent(conn, map[string]any{"type": "task.started", "task_id": taskID, "by": f.Worker["aid"], "zone": f.Authority["zid"]}); err != nil {
+	if err := f.sendTaskEvent(conn, map[string]any{"type": "task.started", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
 		return err
 	}
 
@@ -324,7 +381,7 @@ func (f Fixture) executeTask(conn net.Conn, origin, task map[string]any) error {
 	if err := f.sendTaskEvent(conn, map[string]any{"type": "artifact.created", "task_id": taskID, "uri": artifactURI}); err != nil {
 		return err
 	}
-	if err := f.sendTaskEvent(conn, map[string]any{"type": "task.completed", "task_id": taskID, "by": f.Worker["aid"], "zone": f.Authority["zid"]}); err != nil {
+	if err := f.sendTaskEvent(conn, map[string]any{"type": "task.completed", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
 		return err
 	}
 
@@ -333,17 +390,17 @@ func (f Fixture) executeTask(conn net.Conn, origin, task map[string]any) error {
 		"from":           task["from"],
 		"origin_zone":    origin["zid"],
 		"executing_zone": f.Authority["zid"],
-		"to":             f.Worker["aid"],
+		"to":             worker.Descriptor["aid"],
 		"artifact_refs":  []string{artifactURI},
 		"event_count":    float64(4),
 		"approvals":      []string{},
 	}
-	signedReceipt := signBody(f.WorkerPrivateKey, receipt)
+	signedReceipt := signBody(worker.PrivateKey, receipt)
 	receiptRecord := map[string]any{
 		"kind":         "go_fed_receipt",
 		"zone":         f.Authority,
-		"worker":       f.Worker,
-		"zone_binding": f.zoneBinding(),
+		"worker":       worker.Descriptor,
+		"zone_binding": f.zoneBinding(worker),
 		"receipt":      signedReceipt,
 	}
 	if err := f.appendAudit(receiptRecord); err != nil {

@@ -64,9 +64,21 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
   delete goFixture.worker_seed_hex;
   delete goFixture.worker;
   delete goFixture.zone_binding;
+  goFixture.worker_profiles = [
+    { ...fixture.worker_profile },
+    {
+      key_file: "state/go-fed-discovery-translator.seed",
+      alias: "agent://zone-b/translator",
+      transports: ["fed+tcp://127.0.0.1:8991"],
+      capabilities: ["translate.text"],
+      policy: { allow_network: false },
+    },
+  ];
+  delete goFixture.worker_profile;
   await writeFile("state/go-fed-discovery-dynamic-worker.json", `${JSON.stringify(goFixture, null, 2)}\n`);
   await writeFile("state/go-fed-discovery-authority.seed", `${fixture.authority_seed_hex}\n`);
   await writeFile("state/go-fed-discovery-worker.seed", `${fixture.worker_seed_hex}\n`);
+  await writeFile("state/go-fed-discovery-translator.seed", "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f\n");
   await rm("state/go-fed-discovery-audit.log", { force: true });
   await writeTrustedZones("state/go-fed-discovery-trusted-origin.json", [zoneA]);
   await writeFile("state/node-trusts-go-discovery.json", `${JSON.stringify({ zones: [fixture.authority] }, null, 2)}\n`);
@@ -117,10 +129,32 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
     assert.equal(queriedResult.matches[0].credentials[0].issuer, fixture.authority.zid);
     assert.equal(queriedResult.matches[0].credentials[0].subject, fixture.worker.aid);
 
+    const translated = await execFileAsync(process.execPath, [
+      "federation-gateway.mjs",
+      "query",
+      String(port),
+      "state/node-trusts-go-discovery.json",
+      "translate.text",
+    ]);
+    const translatedResult = JSON.parse(translated.stdout);
+    assert.equal(translatedResult.matches.length, 1);
+    assert.equal(translatedResult.matches[0].alias, "agent://zone-b/translator");
+    assert.equal(translatedResult.matches[0].credentials[0].capability, "translate.text");
+
+    const resolvedTranslator = await execFileAsync(process.execPath, [
+      "federation-gateway.mjs",
+      "resolve",
+      String(port),
+      "state/node-trusts-go-discovery.json",
+      "agent://zone-b/translator",
+    ]);
+    const resolvedTranslatorResult = JSON.parse(resolvedTranslator.stdout);
+    assert.equal(resolvedTranslatorResult.alias, "agent://zone-b/translator");
+
     const task = {
       task_id: "go_fed_task_verified",
       from: requester.aid,
-      to: fixture.worker_profile.alias,
+      to: "agent://zone-b/translator",
       intent: "Verify FED_TASK_OPEN in Go.",
       scope: { network: false },
       budget: { time_seconds: 30 },
@@ -159,7 +193,8 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
     assert.equal(receiptFrame.receipt.task_id, task.task_id);
     assert.equal(receiptFrame.receipt.origin_zone, zoneA.zid);
     assert.equal(receiptFrame.receipt.executing_zone, fixture.authority.zid);
-    assert.equal(receiptFrame.receipt.to, fixture.worker.aid);
+    assert.equal(receiptFrame.worker.alias, "agent://zone-b/translator");
+    assert.equal(receiptFrame.receipt.to, receiptFrame.worker.aid);
     assert.equal(receiptFrame.receipt.artifact_refs[0], "artifact://local/go_fed_task_verified/go-summary.md");
     assert.equal(receiptFrame.receipt.event_count, 4);
     const artifactText = await readFile("artifacts/go_fed_task_verified/go-summary.md", "utf8");
