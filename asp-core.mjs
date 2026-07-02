@@ -229,6 +229,27 @@ export function verifyZoneBinding(entry, descriptor, alias) {
   }
 }
 
+export function aliasRebindingBody(zoneDescriptor, previousDescriptor, nextDescriptor) {
+  if (previousDescriptor.alias !== nextDescriptor.alias) {
+    throw new Error("alias rebinding requires matching aliases");
+  }
+  return {
+    zone: zoneDescriptor.zid,
+    alias: previousDescriptor.alias,
+    previous_aid: previousDescriptor.aid,
+    next_aid: nextDescriptor.aid,
+  };
+}
+
+export function aliasRebindingProof(zone, previousDescriptor, nextDescriptor, agent_rotation_proof) {
+  const body = aliasRebindingBody(zone.descriptor, previousDescriptor, nextDescriptor);
+  return {
+    ...body,
+    agent_rotation_proof,
+    zone_signature: signObject(zone.privateKey, body),
+  };
+}
+
 export function rotationBody(previousDescriptor, nextDescriptor) {
   return {
     previous_aid: previousDescriptor.aid,
@@ -261,6 +282,25 @@ export function verifyRotationProof(proof, previousDescriptor, nextDescriptor) {
   return (
     verifyObject(previousPublicKey, body, proof.previous_signature) &&
     verifyObject(nextPublicKey, body, proof.next_signature)
+  );
+}
+
+export function verifyAliasRebindingProof(proof, zoneDescriptor, previousDescriptor, nextDescriptor) {
+  const zonePublicKey = publicKeyFromDescriptor({ public_key_spki: zoneDescriptor.public_key_spki });
+  if (computeZid(zonePublicKey) !== zoneDescriptor.zid) return false;
+  if (!verifyObject(zonePublicKey, zoneDescriptorBody(zoneDescriptor), zoneDescriptor.zone_signature)) return false;
+  const body = aliasRebindingBody(zoneDescriptor, previousDescriptor, nextDescriptor);
+  if (
+    proof.zone !== body.zone ||
+    proof.alias !== body.alias ||
+    proof.previous_aid !== body.previous_aid ||
+    proof.next_aid !== body.next_aid
+  ) {
+    return false;
+  }
+  return (
+    verifyRotationProof(proof.agent_rotation_proof, previousDescriptor, nextDescriptor) &&
+    verifyObject(zonePublicKey, body, proof.zone_signature)
   );
 }
 

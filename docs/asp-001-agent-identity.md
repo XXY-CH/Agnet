@@ -213,6 +213,8 @@ Descriptor 中保留：
 
 注意：rotation proof 不让 `aid` 保持不变。它证明的是旧 `aid` 到新 `aid` 的连续性。
 
+Zone 如果要把同一个 `agent://` alias 从旧 `aid` 迁移到新 `aid`，还需要 Zone alias rebinding proof。Agent rotation proof 证明 Agent key 连续性，Zone rebinding proof 证明 Zone 接受这次 alias 迁移。
+
 ## 9. 克隆问题
 
 如果两个进程持有同一个私钥，它们在协议上就是同一个 Agent。
