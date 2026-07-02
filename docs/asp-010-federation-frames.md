@@ -82,6 +82,16 @@ Zone B must reject the frame unless `origin_zone` exists in its trusted Zone sto
 
 v1.3 only supports exact string matching against `worker.capabilities`. No vectors, rankings, or semantic expansion.
 
+`request-capability` is a convenience flow:
+
+```text
+FED_QUERY summarize.text
+  -> first verified match
+  -> FED_TASK_OPEN to matched alias
+```
+
+It is not a scheduler. It does not rank candidates.
+
 ## FED_TASK_OPEN
 
 ```json

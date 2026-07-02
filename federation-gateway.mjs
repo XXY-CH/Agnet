@@ -94,6 +94,7 @@ async function serve(port, trustedZonesFile) {
 
         const task = unsignedTask(frame.task);
         if (task.from !== frame.requester.aid) throw new Error("task sender does not match requester descriptor");
+        if (task.to !== worker.alias) throw new Error(`task target does not match worker alias: ${task.to}`);
         if (!verifyObject(requesterPublicKey, task, frame.task.signature)) {
           throw new Error("task signature verification failed");
         }
@@ -150,14 +151,14 @@ async function serve(port, trustedZonesFile) {
   });
 }
 
-async function request(port, trustedZonesFile) {
+async function request(port, trustedZonesFile, alias = "agent://zone-b/summarizer") {
   const trustedZones = await loadTrustedZones(trustedZonesFile);
   const zone = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
   const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/fed-zone-a-requester.pkcs8");
   const task = {
     task_id: `fed_task_${Date.now()}`,
     from: requester.aid,
-    to: "agent://zone-b/summarizer",
+    to: alias,
     intent: "Summarize through a trusted remote Zone.",
     scope: { network: false, write: ["artifact://local/"] },
     budget: { time_seconds: 30 },
@@ -227,7 +228,7 @@ async function resolveRemote(port, trustedZonesFile, alias = "agent://zone-b/sum
   console.log(JSON.stringify(result, null, 2));
 }
 
-async function queryRemote(port, trustedZonesFile, capability = "summarize.text") {
+async function queryRemote(port, trustedZonesFile, capability = "summarize.text", print = true) {
   const trustedZones = await loadTrustedZones(trustedZonesFile);
   const zone = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
   const socket = net.createConnection(port, "127.0.0.1");
@@ -256,7 +257,15 @@ async function queryRemote(port, trustedZonesFile, capability = "summarize.text"
   });
   await done;
   socket.end();
-  console.log(JSON.stringify(result, null, 2));
+  if (print) console.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+async function requestCapability(port, trustedZonesFile, capability = "summarize.text") {
+  const result = await queryRemote(port, trustedZonesFile, capability, false);
+  const [match] = result.matches;
+  if (!match) throw new Error(`no remote capability match: ${capability}`);
+  await request(port, trustedZonesFile, match.alias);
 }
 
 async function main() {
@@ -264,14 +273,16 @@ async function main() {
   if (mode === "serve") {
     await serve(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json");
   } else if (mode === "request") {
-    await request(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json");
+    await request(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value);
   } else if (mode === "resolve") {
     await resolveRemote(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value);
   } else if (mode === "query") {
     await queryRemote(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value);
+  } else if (mode === "request-capability") {
+    await requestCapability(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value);
   } else {
     console.error(
-      "usage: node federation-gateway.mjs serve <port> <trusted-zones.json> | request <port> <trusted-zones.json> | resolve <port> <trusted-zones.json> [agent://alias] | query <port> <trusted-zones.json> [capability]",
+      "usage: node federation-gateway.mjs serve <port> <trusted-zones.json> | request <port> <trusted-zones.json> [agent://alias] | resolve <port> <trusted-zones.json> [agent://alias] | query <port> <trusted-zones.json> [capability] | request-capability <port> <trusted-zones.json> [capability]",
     );
     process.exitCode = 2;
   }

@@ -158,3 +158,66 @@ test("Federation Gateway queries exact remote capabilities", async () => {
     gateway.kill("SIGINT");
   }
 });
+
+test("Federation Gateway hands off task from capability query result", async () => {
+  const port = 8995;
+  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  await writeTrustedZones("state/zone-a-capability-handoff-trust.json", [zoneB]);
+  await writeTrustedZones("state/zone-b-capability-handoff-trust.json", [zoneA]);
+
+  const gateway = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-capability-handoff-trust.json"], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  try {
+    await waitForGateway(gateway);
+
+    const { stdout } = await execFileAsync(process.execPath, [
+      "federation-gateway.mjs",
+      "request-capability",
+      String(port),
+      "state/zone-a-capability-handoff-trust.json",
+      "summarize.text",
+    ]);
+    const result = JSON.parse(stdout);
+
+    assert.equal(result.zone, zoneA.zid);
+    assert.equal(result.receipt.executing_zone, zoneB.zid);
+    assert.equal(result.events.at(-1).type, "task.completed");
+  } finally {
+    gateway.kill("SIGINT");
+  }
+});
+
+test("Federation Gateway rejects capability handoff when no match exists", async () => {
+  const port = 8996;
+  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  await writeTrustedZones("state/zone-a-capability-miss-trust.json", [zoneB]);
+  await writeTrustedZones("state/zone-b-capability-miss-trust.json", [zoneA]);
+
+  const gateway = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-capability-miss-trust.json"], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  try {
+    await waitForGateway(gateway);
+
+    await assert.rejects(
+      () =>
+        execFileAsync(process.execPath, [
+          "federation-gateway.mjs",
+          "request-capability",
+          String(port),
+          "state/zone-a-capability-miss-trust.json",
+          "translate.text",
+        ]),
+      (error) => error.stderr.includes("no remote capability match"),
+    );
+  } finally {
+    gateway.kill("SIGINT");
+  }
+});

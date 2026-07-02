@@ -1,6 +1,6 @@
 # Agent Space MVP
 
-Current boundary: [docs/v0-boundary.md](docs/v0-boundary.md), [docs/v0.1-boundary.md](docs/v0.1-boundary.md), [docs/v0.2-boundary.md](docs/v0.2-boundary.md), [docs/v0.3-boundary.md](docs/v0.3-boundary.md), [docs/v0.4-boundary.md](docs/v0.4-boundary.md), [docs/v0.5-boundary.md](docs/v0.5-boundary.md), [docs/v0.6-boundary.md](docs/v0.6-boundary.md), [docs/v0.7-boundary.md](docs/v0.7-boundary.md), [docs/v0.8-boundary.md](docs/v0.8-boundary.md), [docs/v0.9-boundary.md](docs/v0.9-boundary.md), [docs/v1-boundary.md](docs/v1-boundary.md), [docs/v1.1-boundary.md](docs/v1.1-boundary.md), [docs/v1.2-boundary.md](docs/v1.2-boundary.md), [docs/v1.3-boundary.md](docs/v1.3-boundary.md)
+Current boundary: [docs/v0-boundary.md](docs/v0-boundary.md), [docs/v0.1-boundary.md](docs/v0.1-boundary.md), [docs/v0.2-boundary.md](docs/v0.2-boundary.md), [docs/v0.3-boundary.md](docs/v0.3-boundary.md), [docs/v0.4-boundary.md](docs/v0.4-boundary.md), [docs/v0.5-boundary.md](docs/v0.5-boundary.md), [docs/v0.6-boundary.md](docs/v0.6-boundary.md), [docs/v0.7-boundary.md](docs/v0.7-boundary.md), [docs/v0.8-boundary.md](docs/v0.8-boundary.md), [docs/v0.9-boundary.md](docs/v0.9-boundary.md), [docs/v1-boundary.md](docs/v1-boundary.md), [docs/v1.1-boundary.md](docs/v1.1-boundary.md), [docs/v1.2-boundary.md](docs/v1.2-boundary.md), [docs/v1.3-boundary.md](docs/v1.3-boundary.md), [docs/v1.4-boundary.md](docs/v1.4-boundary.md)
 
 Run the smallest proof:
 
@@ -28,6 +28,7 @@ Run a minimal two-Zone federation:
 node federation-gateway.mjs serve 8990 state/zone-b-trust.json
 node federation-gateway.mjs resolve 8990 state/zone-a-trust.json agent://zone-b/summarizer
 node federation-gateway.mjs query 8990 state/zone-a-trust.json summarize.text
+node federation-gateway.mjs request-capability 8990 state/zone-a-trust.json summarize.text
 node federation-gateway.mjs request 8990 state/zone-a-trust.json
 ```
 
