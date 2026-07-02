@@ -176,12 +176,19 @@ async function request(port, trustedZonesFile) {
   console.log(JSON.stringify({ zone: zone.zid, requester: requester.aid, events, receipt }, null, 2));
 }
 
-const [mode, portArg, trustedZonesFile] = process.argv.slice(2);
-if (mode === "serve") {
-  await serve(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json");
-} else if (mode === "request") {
-  await request(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json");
-} else {
-  console.error("usage: node federation-gateway.mjs serve <port> <trusted-zones.json> | request <port> <trusted-zones.json>");
-  process.exitCode = 2;
+async function main() {
+  const [mode, portArg, trustedZonesFile] = process.argv.slice(2);
+  if (mode === "serve") {
+    await serve(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json");
+  } else if (mode === "request") {
+    await request(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json");
+  } else {
+    console.error("usage: node federation-gateway.mjs serve <port> <trusted-zones.json> | request <port> <trusted-zones.json>");
+    process.exitCode = 2;
+  }
 }
+
+main().catch((error) => {
+  console.error(error.message);
+  process.exitCode = 1;
+});

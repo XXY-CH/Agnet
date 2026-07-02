@@ -1,0 +1,107 @@
+# ASP-010 Federation Frames
+
+状态：Draft 0  
+范围：定义 v1 本机 Federation Gateway frame contract。
+
+## Transport
+
+v1 使用 newline JSON over TCP：
+
+```text
+fed+tcp://127.0.0.1:<port>
+```
+
+这是本机 federation proof，不是公网 transport。
+
+## Frames
+
+```text
+FED_TASK_OPEN    Zone A -> Zone B
+FED_TASK_EVENT   Zone B -> Zone A
+FED_RECEIPT      Zone B -> Zone A
+FED_TASK_CLOSE   Zone B -> Zone A
+FED_TASK_ERROR   Zone B -> Zone A
+```
+
+## FED_TASK_OPEN
+
+```json
+{
+  "type": "FED_TASK_OPEN",
+  "origin_zone": {
+    "name": "zone://a",
+    "zid": "zid:ed25519:...",
+    "public_key_spki": "...",
+    "zone_signature": "..."
+  },
+  "requester": {
+    "alias": "agent://zone-a/requester",
+    "aid": "aid:ed25519:...",
+    "public_key_spki": "...",
+    "transports": [],
+    "policy": {},
+    "descriptor_signature": "..."
+  },
+  "task": {
+    "task_id": "fed_task_123",
+    "from": "aid:ed25519:...",
+    "to": "agent://zone-b/summarizer",
+    "intent": "Summarize through a trusted remote Zone.",
+    "scope": {
+      "network": false,
+      "write": ["artifact://local/"]
+    },
+    "budget": {
+      "time_seconds": 30
+    },
+    "signature": "..."
+  }
+}
+```
+
+Zone B must reject the frame unless:
+
+- `origin_zone` verifies as a self-signed Zone descriptor.
+- `origin_zone.zid` exists in Zone B trusted Zone store.
+- `requester` verifies as a self-signed Agent descriptor.
+- `task.from` equals `requester.aid`.
+- `task.signature` verifies against requester public key.
+- local worker policy accepts the task scope.
+
+## FED_RECEIPT
+
+```json
+{
+  "type": "FED_RECEIPT",
+  "zone": { "...": "Zone B descriptor" },
+  "worker": { "...": "Zone B worker descriptor" },
+  "zone_binding": { "...": "Zone B alias -> aid binding" },
+  "receipt": {
+    "task_id": "fed_task_123",
+    "from": "aid:ed25519:...",
+    "origin_zone": "zid:ed25519:...",
+    "executing_zone": "zid:ed25519:...",
+    "to": "aid:ed25519:...",
+    "artifact_refs": ["artifact://local/fed_task_123/federated-summary.md"],
+    "event_count": 7,
+    "approvals": ["write"],
+    "signature": "..."
+  }
+}
+```
+
+Zone A must reject the receipt unless:
+
+- `zone` verifies as a self-signed Zone descriptor.
+- `zone.zid` exists in Zone A trusted Zone store.
+- `worker` verifies as a self-signed Agent descriptor.
+- `zone_binding` binds worker alias to worker `aid`.
+- `receipt.signature` verifies against worker public key.
+
+## Non-goals
+
+- No remote registry discovery.
+- No semantic routing.
+- No multi-hop forwarding.
+- No public transport.
+- No TLS/QUIC/WebSocket binding.

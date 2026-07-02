@@ -85,3 +85,5 @@ trusted zid
 ```
 
 这就是 Federation Gateway 的第一条活链路。
+
+后续 federation frame contract 和 untrusted Zone negative test 见 `docs/v1.1-boundary.md`。

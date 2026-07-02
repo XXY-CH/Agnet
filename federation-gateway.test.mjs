@@ -55,3 +55,32 @@ test("Federation Gateway completes a cross-Zone task", async () => {
     gateway.kill("SIGINT");
   }
 });
+
+test("Federation Gateway rejects an untrusted origin Zone", async () => {
+  const port = 8992;
+  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  await writeTrustedZones("state/zone-a-trust-untrusted-test.json", [zoneB]);
+  await writeTrustedZones("state/zone-b-empty-trust.json", []);
+
+  const gateway = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-empty-trust.json"], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  try {
+    await waitForGateway(gateway);
+
+    await assert.rejects(
+      () =>
+        execFileAsync(process.execPath, [
+          "federation-gateway.mjs",
+          "request",
+          String(port),
+          "state/zone-a-trust-untrusted-test.json",
+        ]),
+      (error) => error.stderr.includes("untrusted zone"),
+    );
+  } finally {
+    gateway.kill("SIGINT");
+  }
+});
