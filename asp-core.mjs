@@ -108,6 +108,31 @@ export function zoneFromPrivateKey(name, privateKey) {
   };
 }
 
+export function verifyZoneDescriptor(zoneDescriptor) {
+  const zonePublicKey = publicKeyFromDescriptor({ public_key_spki: zoneDescriptor.public_key_spki });
+  const zid = computeZid(zonePublicKey);
+  if (zid !== zoneDescriptor.zid) throw new Error(`zone id mismatch: ${zoneDescriptor.name ?? zoneDescriptor.zid}`);
+  if (!zoneDescriptor.zone_signature) throw new Error(`zone signature missing: ${zoneDescriptor.zid}`);
+  if (!verifyObject(zonePublicKey, zoneDescriptorBody(zoneDescriptor), zoneDescriptor.zone_signature)) {
+    throw new Error(`zone signature verification failed: ${zoneDescriptor.zid}`);
+  }
+  return { descriptor: zoneDescriptor, publicKey: zonePublicKey };
+}
+
+export async function writeTrustedZones(file, zones) {
+  await writeJson(file, { zones: zones.map((zone) => zone.descriptor ?? zone) });
+}
+
+export async function loadTrustedZones(file) {
+  const trustStore = JSON.parse(await readFile(file, "utf8"));
+  return new Map(
+    trustStore.zones.map((zoneDescriptor) => {
+      verifyZoneDescriptor(zoneDescriptor);
+      return [zoneDescriptor.zid, zoneDescriptor];
+    }),
+  );
+}
+
 export async function loadOrCreatePrivateKey(file) {
   try {
     return createPrivateKey({ key: await readFile(file), format: "der", type: "pkcs8" });
@@ -222,12 +247,7 @@ export function resolveAgent(registry, alias) {
 export function verifyZoneBinding(entry, descriptor, alias) {
   if (!entry.zone) throw new Error(`zone descriptor missing for ${alias}`);
   if (!entry.zone_binding) throw new Error(`zone binding missing for ${alias}`);
-  const zonePublicKey = publicKeyFromDescriptor({ public_key_spki: entry.zone.public_key_spki });
-  const zid = computeZid(zonePublicKey);
-  if (zid !== entry.zone.zid) throw new Error(`zone id mismatch for ${alias}`);
-  if (!verifyObject(zonePublicKey, zoneDescriptorBody(entry.zone), entry.zone.zone_signature)) {
-    throw new Error(`zone signature verification failed for ${alias}`);
-  }
+  const { publicKey: zonePublicKey } = verifyZoneDescriptor(entry.zone);
   const expectedBinding = { zone: entry.zone.zid, alias: descriptor.alias, aid: descriptor.aid };
   if (
     entry.zone_binding.zone !== expectedBinding.zone ||
@@ -242,9 +262,12 @@ export function verifyZoneBinding(entry, descriptor, alias) {
 }
 
 export function verifyZoneRevocation(revocation, zoneDescriptor) {
-  const zonePublicKey = publicKeyFromDescriptor({ public_key_spki: zoneDescriptor.public_key_spki });
-  if (computeZid(zonePublicKey) !== zoneDescriptor.zid) return false;
-  if (!verifyObject(zonePublicKey, zoneDescriptorBody(zoneDescriptor), zoneDescriptor.zone_signature)) return false;
+  let zonePublicKey;
+  try {
+    ({ publicKey: zonePublicKey } = verifyZoneDescriptor(zoneDescriptor));
+  } catch {
+    return false;
+  }
   const body = { zone: revocation.zone, subject: revocation.subject, reason: revocation.reason };
   return revocation.zone === zoneDescriptor.zid && verifyObject(zonePublicKey, body, revocation.signature);
 }
@@ -317,9 +340,12 @@ export function verifyRotationProof(proof, previousDescriptor, nextDescriptor) {
 }
 
 export function verifyAliasRebindingProof(proof, zoneDescriptor, previousDescriptor, nextDescriptor) {
-  const zonePublicKey = publicKeyFromDescriptor({ public_key_spki: zoneDescriptor.public_key_spki });
-  if (computeZid(zonePublicKey) !== zoneDescriptor.zid) return false;
-  if (!verifyObject(zonePublicKey, zoneDescriptorBody(zoneDescriptor), zoneDescriptor.zone_signature)) return false;
+  let zonePublicKey;
+  try {
+    ({ publicKey: zonePublicKey } = verifyZoneDescriptor(zoneDescriptor));
+  } catch {
+    return false;
+  }
   const body = aliasRebindingBody(zoneDescriptor, previousDescriptor, nextDescriptor);
   if (
     proof.zone !== body.zone ||
