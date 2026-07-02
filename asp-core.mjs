@@ -71,9 +71,36 @@ export async function writeJson(file, value) {
   await writeFile(file, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+export const AUDIT_ZERO_HASH = "0".repeat(64);
+
+export function auditEntry(prevHash, record) {
+  const body = { prev_hash: prevHash, record };
+  const hash = createHash("sha256").update(canonical(body)).digest("hex");
+  return { ...body, hash };
+}
+
+export function verifyAuditEntries(entries) {
+  let prevHash = AUDIT_ZERO_HASH;
+  for (const entry of entries) {
+    const expected = auditEntry(prevHash, entry.record);
+    if (entry.prev_hash !== prevHash || entry.hash !== expected.hash) return false;
+    prevHash = entry.hash;
+  }
+  return true;
+}
+
 export async function appendAudit(record) {
   await mkdir("state", { recursive: true });
-  await appendFile("state/audit.log", `${JSON.stringify(record)}\n`);
+  let prevHash = AUDIT_ZERO_HASH;
+  try {
+    prevHash = (await readFile("state/audit.head", "utf8")).trim() || AUDIT_ZERO_HASH;
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  const entry = auditEntry(prevHash, record);
+  await appendFile("state/audit.log", `${JSON.stringify(entry)}\n`);
+  await writeFile("state/audit.head", `${entry.hash}\n`);
+  return entry;
 }
 
 export async function loadRegistry(file) {

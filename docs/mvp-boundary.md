@@ -96,7 +96,8 @@ agent signature
 
 - MVP 用 JSON Lines 写入 `state/audit.log`。
 - 记录 task event 和 receipt。
-- 暂不做防篡改存储。
+- 每条记录包含 `prev_hash` 和 `hash`。
+- 这是 tamper-evident，不是 tamper-proof。
 
 ## 3. 明确不做
 

@@ -1,6 +1,6 @@
 # Agent Space MVP
 
-Current boundary: [docs/v0-boundary.md](docs/v0-boundary.md), [docs/v0.1-boundary.md](docs/v0.1-boundary.md), [docs/v0.2-boundary.md](docs/v0.2-boundary.md)
+Current boundary: [docs/v0-boundary.md](docs/v0-boundary.md), [docs/v0.1-boundary.md](docs/v0.1-boundary.md), [docs/v0.2-boundary.md](docs/v0.2-boundary.md), [docs/v0.3-boundary.md](docs/v0.3-boundary.md)
 
 Run the smallest proof:
 
@@ -31,6 +31,6 @@ It proves:
 - The worker rejects a network-enabled task by policy.
 - A write task produces approval events before execution.
 - A worker emits events, writes an artifact, and signs a receipt.
-- `state/audit.log` records events and receipts as JSON lines.
+- `state/audit.log` records hash-chained events and receipts as JSON lines.
 
 Skipped: WebSocket, QUIC, DHT, DID, token economy. Add them after this local loop is boring.
