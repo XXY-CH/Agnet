@@ -27,6 +27,10 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
   const port = 9091;
   const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
   const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
+  const goFixture = JSON.parse(JSON.stringify(fixture));
+  delete goFixture.worker;
+  delete goFixture.zone_binding;
+  await writeFile("state/go-fed-discovery-dynamic-worker.json", `${JSON.stringify(goFixture, null, 2)}\n`);
   await writeTrustedZones("state/go-fed-discovery-trusted-origin.json", [zoneA]);
   await writeFile("state/node-trusts-go-discovery.json", `${JSON.stringify({ zones: [fixture.authority] }, null, 2)}\n`);
   await execFileAsync("go", ["build", "-o", "state/go-fed-discovery-test", "./cmd/go-fed-discovery"]);
@@ -36,6 +40,8 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
     String(port),
     "--trusted",
     "state/go-fed-discovery-trusted-origin.json",
+    "--fixture",
+    "state/go-fed-discovery-dynamic-worker.json",
   ], {
     cwd: process.cwd(),
     stdio: ["ignore", "pipe", "pipe"],
@@ -64,7 +70,9 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
     ]);
     const queriedResult = JSON.parse(queried.stdout);
     assert.equal(queriedResult.matches.length, 1);
+    assert.equal(queriedResult.matches[0].aid, fixture.worker.aid);
     assert.equal(queriedResult.matches[0].credentials[0].issuer, fixture.authority.zid);
+    assert.equal(queriedResult.matches[0].credentials[0].subject, fixture.worker.aid);
   } finally {
     gateway.kill("SIGINT");
   }

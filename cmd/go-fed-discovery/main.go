@@ -17,10 +17,19 @@ import (
 
 type Fixture struct {
 	AuthoritySeedHex string         `json:"authority_seed_hex"`
+	WorkerSeedHex    string         `json:"worker_seed_hex"`
 	Authority        map[string]any `json:"authority"`
-	Worker           map[string]any `json:"worker"`
+	WorkerProfile    WorkerProfile  `json:"worker_profile"`
+	Worker           map[string]any `json:"-"`
 	ZoneBinding      map[string]any `json:"zone_binding"`
 	Credential       map[string]any `json:"credential"`
+}
+
+type WorkerProfile struct {
+	Alias        string         `json:"alias"`
+	Transports   []string       `json:"transports"`
+	Capabilities []string       `json:"capabilities"`
+	Policy       map[string]any `json:"policy"`
 }
 
 type TrustStore struct {
@@ -128,24 +137,87 @@ func loadFixture(path string) (Fixture, error) {
 	if err := verifyZoneDescriptor(fixture.Authority); err != nil {
 		return Fixture{}, err
 	}
-	if err := verifyAgentDescriptor(fixture.Worker); err != nil {
+	if err := fixture.verifyAuthoritySeed(); err != nil {
 		return Fixture{}, err
 	}
-	if _, err := fixture.authorityPrivateKey(); err != nil {
+	worker, err := fixture.workerDescriptor()
+	if err != nil {
+		return Fixture{}, err
+	}
+	fixture.Worker = worker
+	if err := verifyAgentDescriptor(fixture.Worker); err != nil {
 		return Fixture{}, err
 	}
 	return fixture, nil
 }
 
 func (f Fixture) authorityPrivateKey() (ed25519.PrivateKey, error) {
-	seed, err := hex.DecodeString(f.AuthoritySeedHex)
+	return privateKeyFromSeedHex(f.AuthoritySeedHex, "authority")
+}
+
+func (f Fixture) workerPrivateKey() (ed25519.PrivateKey, error) {
+	return privateKeyFromSeedHex(f.WorkerSeedHex, "worker")
+}
+
+func privateKeyFromSeedHex(seedHex, label string) (ed25519.PrivateKey, error) {
+	seed, err := hex.DecodeString(seedHex)
 	if err != nil {
 		return nil, err
 	}
 	if len(seed) != ed25519.SeedSize {
-		return nil, errors.New("authority seed must be 32 bytes")
+		return nil, errors.New(label + " seed must be 32 bytes")
 	}
 	return ed25519.NewKeyFromSeed(seed), nil
+}
+
+func (f Fixture) verifyAuthoritySeed() error {
+	key, err := f.authorityPrivateKey()
+	if err != nil {
+		return err
+	}
+	publicKey := key.Public().(ed25519.PublicKey)
+	encoded, _, err := publicKeySPKI(publicKey)
+	if err != nil {
+		return err
+	}
+	if encoded != f.Authority["public_key_spki"] {
+		return errors.New("authority seed does not match authority descriptor")
+	}
+	return nil
+}
+
+func (f Fixture) workerDescriptor() (map[string]any, error) {
+	if f.WorkerProfile.Alias == "" {
+		return nil, errors.New("worker profile alias missing")
+	}
+	if len(f.WorkerProfile.Transports) == 0 {
+		return nil, errors.New("worker profile transports missing")
+	}
+	if len(f.WorkerProfile.Capabilities) == 0 {
+		return nil, errors.New("worker profile capabilities missing")
+	}
+	key, err := f.workerPrivateKey()
+	if err != nil {
+		return nil, err
+	}
+	publicKey := key.Public().(ed25519.PublicKey)
+	encoded, der, err := publicKeySPKI(publicKey)
+	if err != nil {
+		return nil, err
+	}
+	policy := f.WorkerProfile.Policy
+	if policy == nil {
+		policy = map[string]any{}
+	}
+	body := map[string]any{
+		"alias":           f.WorkerProfile.Alias,
+		"aid":             aidFromSPKI(der),
+		"public_key_spki": encoded,
+		"transports":      f.WorkerProfile.Transports,
+		"capabilities":    f.WorkerProfile.Capabilities,
+		"policy":          policy,
+	}
+	return signBodyWithKey(key, body, "descriptor_signature"), nil
 }
 
 func (f Fixture) zoneBinding() map[string]any {
@@ -174,12 +246,16 @@ func (f Fixture) mustAuthorityPrivateKey() ed25519.PrivateKey {
 }
 
 func signBody(key ed25519.PrivateKey, body map[string]any) map[string]any {
+	return signBodyWithKey(key, body, "signature")
+}
+
+func signBodyWithKey(key ed25519.PrivateKey, body map[string]any, signatureKey string) map[string]any {
 	out := map[string]any{}
 	for k, v := range body {
 		out[k] = v
 	}
 	data, _ := json.Marshal(body)
-	out["signature"] = base64.RawURLEncoding.EncodeToString(ed25519.Sign(key, data))
+	out[signatureKey] = base64.RawURLEncoding.EncodeToString(ed25519.Sign(key, data))
 	return out
 }
 
@@ -255,6 +331,14 @@ func publicKey(value map[string]any) (ed25519.PublicKey, []byte, error) {
 	return key, der, nil
 }
 
+func publicKeySPKI(key ed25519.PublicKey) (string, []byte, error) {
+	der, err := x509.MarshalPKIXPublicKey(key)
+	if err != nil {
+		return "", nil, err
+	}
+	return base64.RawURLEncoding.EncodeToString(der), der, nil
+}
+
 func aidFromSPKI(der []byte) string {
 	hash := sha256.New()
 	hash.Write([]byte("asp-agent-id-v1\x00"))
@@ -295,10 +379,18 @@ func verifyMapSignature(key ed25519.PublicKey, value map[string]any, signatureKe
 }
 
 func hasCapability(worker map[string]any, capability string) bool {
-	items, _ := worker["capabilities"].([]any)
-	for _, item := range items {
-		if item == capability {
-			return true
+	switch items := worker["capabilities"].(type) {
+	case []any:
+		for _, item := range items {
+			if item == capability {
+				return true
+			}
+		}
+	case []string:
+		for _, item := range items {
+			if item == capability {
+				return true
+			}
 		}
 	}
 	return false
