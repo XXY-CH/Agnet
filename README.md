@@ -1,6 +1,6 @@
 # Agent Space MVP
 
-Current boundary: [docs/v0-boundary.md](docs/v0-boundary.md), [docs/v0.1-boundary.md](docs/v0.1-boundary.md), [docs/v0.2-boundary.md](docs/v0.2-boundary.md), [docs/v0.3-boundary.md](docs/v0.3-boundary.md), [docs/v0.4-boundary.md](docs/v0.4-boundary.md), [docs/v0.5-boundary.md](docs/v0.5-boundary.md), [docs/v0.6-boundary.md](docs/v0.6-boundary.md), [docs/v0.7-boundary.md](docs/v0.7-boundary.md), [docs/v0.8-boundary.md](docs/v0.8-boundary.md), [docs/v0.9-boundary.md](docs/v0.9-boundary.md)
+Current boundary: [docs/v0-boundary.md](docs/v0-boundary.md), [docs/v0.1-boundary.md](docs/v0.1-boundary.md), [docs/v0.2-boundary.md](docs/v0.2-boundary.md), [docs/v0.3-boundary.md](docs/v0.3-boundary.md), [docs/v0.4-boundary.md](docs/v0.4-boundary.md), [docs/v0.5-boundary.md](docs/v0.5-boundary.md), [docs/v0.6-boundary.md](docs/v0.6-boundary.md), [docs/v0.7-boundary.md](docs/v0.7-boundary.md), [docs/v0.8-boundary.md](docs/v0.8-boundary.md), [docs/v0.9-boundary.md](docs/v0.9-boundary.md), [docs/v1-boundary.md](docs/v1-boundary.md)
 
 Run the smallest proof:
 
@@ -20,6 +20,13 @@ Run two local Agent processes:
 ```bash
 node agent-runtime.mjs worker
 node agent-runtime.mjs request agent://local/summarizer
+```
+
+Run a minimal two-Zone federation:
+
+```bash
+node federation-gateway.mjs serve 8990 state/zone-b-trust.json
+node federation-gateway.mjs request 8990 state/zone-a-trust.json
 ```
 
 It proves:
