@@ -436,10 +436,29 @@ rl.on("line", async (line) => {
     ]);
     assert.match(verifiedAudit.stdout, /"go_audit_verify":"ok"/);
 
+    const reviewedMerges = await execFileAsync("go", [
+      "run",
+      "./cmd/go-fed-discovery",
+      "--review-merges",
+      "--audit",
+      "state/go-fed-discovery-audit.log",
+    ]);
+    const reviewedMergeBody = JSON.parse(reviewedMerges.stdout);
+    assert.equal(reviewedMergeBody.merge_proposals.length, 1);
+    assert.equal(reviewedMergeBody.merge_proposals[0].task_id, task.task_id);
+    assert.equal(reviewedMergeBody.merge_proposals[0].worker, "agent://zone-b/translator");
+    assert.equal(reviewedMergeBody.merge_proposals[0].commit, receiptFrame.receipt.merge.commit);
+    assert.deepEqual(reviewedMergeBody.merge_proposals[0].changed_files, ["agent-output.txt"]);
+
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
     assert.equal(auditBody.entries.length, 8);
+
+    const mergeResponse = await fetch(`http://127.0.0.1:${humanPort}/api/merge-proposals`);
+    assert.equal(mergeResponse.status, 200);
+    const mergeApiBody = await mergeResponse.json();
+    assert.deepEqual(mergeApiBody.merge_proposals, reviewedMergeBody.merge_proposals);
 
     const pageResponse = await fetch(`http://127.0.0.1:${humanPort}/`);
     assert.equal(pageResponse.status, 200);
@@ -451,6 +470,7 @@ rl.on("line", async (line) => {
     assert.match(pageText, /local-temp-dir/);
     assert.match(pageText, /git-worktree/);
     assert.match(pageText, /git-merge-proposal/);
+    assert.match(pageText, /agent-output\.txt/);
 
     const artifactResponse = await fetch(`http://127.0.0.1:${humanPort}/artifacts/go_fed_task_verified/go-summary.md`);
     assert.equal(artifactResponse.status, 200);

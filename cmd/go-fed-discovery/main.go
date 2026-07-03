@@ -77,6 +77,7 @@ func main() {
 	workerKeyPath := flag.String("worker-key", "state/keys/go-fed-worker.seed", "worker seed key file")
 	auditPath := flag.String("audit", "state/go-fed-audit.log", "audit JSONL file")
 	verifyAudit := flag.Bool("verify-audit", false, "verify audit JSONL file and exit")
+	reviewMerges := flag.Bool("review-merges", false, "verify audit JSONL and list signed merge proposals")
 	flag.Parse()
 
 	if *verifyAudit {
@@ -85,6 +86,19 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Println(`{"go_audit_verify":"ok"}`)
+		return
+	}
+	if *reviewMerges {
+		if err := verifyAuditFile(*auditPath); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		proposals, err := mergeProposalsFromAudit(*auditPath)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"merge_proposals": proposals})
 		return
 	}
 
@@ -383,6 +397,15 @@ func serveHumanGateway(listener net.Listener, auditPath string) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"entries": entries})
 	})
+	mux.HandleFunc("/api/merge-proposals", func(w http.ResponseWriter, r *http.Request) {
+		entries, err := readAuditEntriesOrEmpty(auditPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"merge_proposals": mergeProposalsFromEntries(entries)})
+	})
 	mux.Handle("/artifacts/", http.StripPrefix("/artifacts/", http.FileServer(http.Dir("artifacts"))))
 	_ = http.Serve(listener, mux)
 }
@@ -393,6 +416,39 @@ func readAuditEntriesOrEmpty(path string) ([]map[string]any, error) {
 		return []map[string]any{}, nil
 	}
 	return entries, err
+}
+
+func mergeProposalsFromAudit(path string) ([]map[string]any, error) {
+	entries, err := readAuditEntries(path)
+	if err != nil {
+		return nil, err
+	}
+	return mergeProposalsFromEntries(entries), nil
+}
+
+func mergeProposalsFromEntries(entries []map[string]any) []map[string]any {
+	out := []map[string]any{}
+	for _, entry := range entries {
+		record, _ := entry["record"].(map[string]any)
+		if record["kind"] != "go_fed_receipt" {
+			continue
+		}
+		worker, _ := record["worker"].(map[string]any)
+		receipt, _ := record["receipt"].(map[string]any)
+		merge, _ := receipt["merge"].(map[string]any)
+		if merge["mode"] != "git-merge-proposal" {
+			continue
+		}
+		out = append(out, map[string]any{
+			"task_id":       receipt["task_id"],
+			"worker":        worker["alias"],
+			"base_head":     merge["base_head"],
+			"commit":        merge["commit"],
+			"changed_files": merge["changed_files"],
+			"diff_sha256":   merge["diff_sha256"],
+		})
+	}
+	return out
 }
 
 func renderHumanGateway(entries []map[string]any) string {
@@ -423,6 +479,23 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 	b.WriteString(` · receipts: `)
 	b.WriteString(fmt.Sprint(len(receipts)))
 	b.WriteString(`</div></header>`)
+	proposals := mergeProposalsFromEntries(entries)
+	b.WriteString(`<h2>Merge Proposals</h2><table><thead><tr><th>Task</th><th>Worker</th><th>Commit</th><th>Files</th></tr></thead><tbody>`)
+	if len(proposals) == 0 {
+		b.WriteString(`<tr><td colspan="4">No merge proposals</td></tr>`)
+	}
+	for _, proposal := range proposals {
+		b.WriteString(`<tr><td><code>`)
+		b.WriteString(html.EscapeString(fmt.Sprint(proposal["task_id"])))
+		b.WriteString(`</code></td><td>`)
+		b.WriteString(html.EscapeString(fmt.Sprint(proposal["worker"])))
+		b.WriteString(`</td><td><code>`)
+		b.WriteString(html.EscapeString(shortHash(fmt.Sprint(proposal["commit"]))))
+		b.WriteString(`</code></td><td>`)
+		b.WriteString(html.EscapeString(strings.Join(stringsFromAny(proposal["changed_files"]), ", ")))
+		b.WriteString(`</td></tr>`)
+	}
+	b.WriteString(`</tbody></table>`)
 	b.WriteString(`<h2>Receipts</h2><table><thead><tr><th>Task</th><th>Worker</th><th>Artifact</th><th>Events</th><th>Approvals</th><th>Sandbox</th><th>Context</th><th>Merge</th></tr></thead><tbody>`)
 	if len(receipts) == 0 {
 		b.WriteString(`<tr><td colspan="8">No receipts</td></tr>`)
@@ -471,6 +544,13 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 	}
 	b.WriteString(`</tbody></table></main></body></html>`)
 	return b.String()
+}
+
+func shortHash(value string) string {
+	if len(value) > 12 {
+		return value[:12]
+	}
+	return value
 }
 
 func mapSliceLen(value any) int {

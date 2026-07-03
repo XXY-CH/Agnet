@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v4.1 complete
-当前代码基线：`v4.1`
+状态：v4.2 complete
+当前代码基线：`v4.2`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、task-scoped Git worktree context evidence，以及 signed checkpoint / merge proposal evidence。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、task-scoped Git worktree context evidence、signed checkpoint / merge proposal evidence，以及 merge proposal review surface。
 
 还不是可产品化的 Agent Net。
 
@@ -28,7 +28,7 @@
 | `FED_TASK_OPEN` | execute | execute minimal path | `federation-gateway.mjs`, `go-fed-discovery.test.mjs` | real worker/tools |
 | Policy checks | done | network/write subset | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | richer scope schema |
 | Human approval | simulated | signed local tool approval evidence visible in Human Gateway | Node events, `go-fed-discovery.test.mjs` | interactive approval queue / login-state UI |
-| Scoped workspace | prototype | task-scoped detached Git worktree plus signed checkpoint / merge proposal evidence for Go tools | `go-fed-discovery.test.mjs` | automatic merge / conflict resolution / realtime context sync |
+| Scoped workspace | prototype | task-scoped detached Git worktree plus signed checkpoint / merge proposal evidence and read-only review surface | `go-fed-discovery.test.mjs` | automatic merge / conflict resolution / realtime context sync |
 | Transport | local TCP / local process | local TCP + minimal WebSocket | README commands, `go-fed-discovery.test.mjs` | TLS, auth handshake, QUIC |
 | Product surface | CLI/tests only | thin read-only Human Gateway | README, `go-fed-discovery.test.mjs` | approvals, task creation, admin, deployment |
 
@@ -56,6 +56,7 @@ Go
   -> local temporary sandbox directory evidence for external/MCP tools
   -> task-scoped detached Git worktree context evidence for external/MCP tools
   -> signed checkpoint and merge proposal evidence for changed worktrees
+  -> read-only merge proposal review via CLI and Human Gateway
 ```
 
 ## Next Boundary
@@ -63,8 +64,8 @@ Go
 Next natural boundary:
 
 ```text
-Merge review + checkpoint resume
+Merge apply + checkpoint resume
   -> promote proposals and resume interrupted long tasks
 ```
 
-Skipped until later: encrypted key store, public transport, interactive approval queue, container sandbox, automatic merge, conflict resolution, realtime context sync, A2A translation layer, scheduling, semantic routing.
+Skipped until later: encrypted key store, public transport, interactive approval queue, container sandbox, merge apply, conflict resolution, realtime context sync, A2A translation layer, scheduling, semantic routing.
