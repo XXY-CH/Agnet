@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v5.10 assessment
+状态：v5.11 assessment
 
 ## 一句话
 
@@ -14,7 +14,7 @@
 
 ### Protocol core
 
-进度：约 85%。
+进度：约 86%。
 
 已有：
 
@@ -56,6 +56,7 @@
 - MCP resources/prompts metadata evidence in v5.8。
 - MCP tools/list metadata evidence in v5.9。
 - MCP selected tool binding in v5.10。
+- MCP selected tool schema digest in v5.11。
 
 主要缺：
 
@@ -64,7 +65,7 @@
 
 ### Runtime core
 
-进度：约 67%。
+进度：约 68%。
 
 已有：
 
@@ -87,6 +88,7 @@
 - MCP resources/prompts surfaces are recorded as count+digest evidence。
 - MCP tools surface is recorded as count+digest evidence。
 - Selected MCP tool is bound to a `tools/list` descriptor digest。
+- Selected MCP tool input schema is recorded as digest evidence。
 
 主要缺：
 

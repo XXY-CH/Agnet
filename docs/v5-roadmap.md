@@ -1,6 +1,6 @@
 # Agent Space v5 Roadmap
 
-状态：v5.10 complete; v5.11+ planned
+状态：v5.11 complete; v5.12+ planned
 目标：从 v4 的 evidence chain 推进到更强运行面，但仍保持 `agent-space-ultimate-vision.md` 的底层窄腰：identity、signed task、event stream、scoped policy、artifact reference、audit receipt、federation。
 
 ## v5.0: Signed Sandbox Proof
@@ -222,9 +222,26 @@
 - 不做 tool ranking。
 - 不做 authorization UI。
 
+## v5.11: MCP Selected Tool Schema Digest
+
+状态：complete
+目标：记录 selected MCP tool input schema 摘要。
+
+新增：
+
+- `mcp_selected_tool_schema_digest` when selected tool descriptor includes `inputSchema`
+
+不做：
+
+- 不验证 tool arguments。
+- 不保存完整 schema。
+- 不做 JSON Schema validator。
+- 不做 tool registry。
+- 不做 authorization UI。
+
 ## 后续方向
 
-- MCP selected tool schema digest
+- MCP argument digest
 - container sandbox proof
 - long-running MCP sessions
 - scheduling / retry

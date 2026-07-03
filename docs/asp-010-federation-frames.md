@@ -358,7 +358,8 @@ Zone A must not treat this as a receipt.
       "mcp_tools_count": 1,
       "mcp_tools_digest": "...",
       "mcp_selected_tool": "translate",
-      "mcp_selected_tool_digest": "..."
+      "mcp_selected_tool_digest": "...",
+      "mcp_selected_tool_schema_digest": "..."
     },
     "event_count": 7,
     "approvals": ["write"],

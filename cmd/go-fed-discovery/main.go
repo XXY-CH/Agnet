@@ -1388,6 +1388,9 @@ func recordMCPSelectedToolEvidence(sandbox map[string]any, tools []any, toolName
 		if tool["name"] == toolName {
 			sandbox["mcp_selected_tool"] = toolName
 			sandbox["mcp_selected_tool_digest"] = digestHex(tool)
+			if schema, ok := tool["inputSchema"]; ok {
+				sandbox["mcp_selected_tool_schema_digest"] = digestHex(schema)
+			}
 			return nil
 		}
 	}
