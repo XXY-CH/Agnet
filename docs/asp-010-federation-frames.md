@@ -181,6 +181,7 @@ Zone B must reject the frame unless the session is authenticated and `origin_zon
     "checkpoint_refs": ["checkpoint:sha256:..."],
     "checkpoints": [{ "...": "signed checkpoint" }],
     "artifact_manifests": [{ "...": "artifact digest manifest" }],
+    "sandbox_proof": { "...": "signed sandbox proof" },
     "signature": "..."
   }
 }

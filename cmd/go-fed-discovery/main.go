@@ -892,6 +892,7 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	if err := f.sendTaskEvent(send, map[string]any{"type": "task.completed", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
 		return err
 	}
+	sandboxProof := f.sandboxProof(taskID, worker, sandbox, policyDigest)
 
 	receipt := map[string]any{
 		"task_id":        taskID,
@@ -911,6 +912,7 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		"policy_scope":    policyScope,
 		"policy_digest":   policyDigest,
 		"sandbox":         sandbox,
+		"sandbox_proof":   sandboxProof,
 		"tool":            toolName,
 	}
 	signedReceipt := signBody(worker.PrivateKey, receipt)
@@ -958,6 +960,17 @@ func (f Fixture) approvalGrant(taskID string, reasons []string) map[string]any {
 		"method":    "local.signed",
 		"reasons":   reasons,
 	}, "approval_signature")
+}
+
+func (f Fixture) sandboxProof(taskID string, worker *Worker, sandbox map[string]any, policyDigest string) map[string]any {
+	return signBodyWithKey(f.AuthorityPrivateKey, map[string]any{
+		"proof_type":    "local.sandbox.v1",
+		"authority":     f.Authority["zid"],
+		"task_id":       taskID,
+		"worker":        worker.Descriptor["aid"],
+		"policy_digest": policyDigest,
+		"sandbox":       sandbox,
+	}, "sandbox_signature")
 }
 
 func toolApprovalReasons(profile WorkerProfile) []string {
@@ -1426,6 +1439,9 @@ func verifyReceiptRecord(record map[string]any) error {
 	if err := verifyPolicyScope(receipt); err != nil {
 		return err
 	}
+	if err := verifySandboxProof(zoneKey, receipt); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -1517,6 +1533,39 @@ func verifyPolicyScope(receipt map[string]any) error {
 	}
 	if receipt["policy_digest"] != digestHex(scope) {
 		return errors.New("policy digest mismatch")
+	}
+	return nil
+}
+
+func verifySandboxProof(zoneKey ed25519.PublicKey, receipt map[string]any) error {
+	proof, ok := receipt["sandbox_proof"].(map[string]any)
+	if !ok {
+		return errors.New("receipt sandbox proof missing")
+	}
+	sandbox, ok := receipt["sandbox"].(map[string]any)
+	if !ok {
+		return errors.New("receipt sandbox missing")
+	}
+	if proof["proof_type"] != "local.sandbox.v1" {
+		return errors.New("sandbox proof type mismatch")
+	}
+	if proof["authority"] != receipt["executing_zone"] {
+		return errors.New("sandbox proof authority mismatch")
+	}
+	if proof["task_id"] != receipt["task_id"] {
+		return errors.New("sandbox proof task mismatch")
+	}
+	if proof["worker"] != receipt["to"] {
+		return errors.New("sandbox proof worker mismatch")
+	}
+	if proof["policy_digest"] != receipt["policy_digest"] {
+		return errors.New("sandbox proof policy mismatch")
+	}
+	if digestHex(proof["sandbox"]) != digestHex(sandbox) {
+		return errors.New("sandbox proof evidence mismatch")
+	}
+	if err := verifyMapSignature(zoneKey, proof, "sandbox_signature"); err != nil {
+		return errors.New("sandbox proof signature verification failed")
 	}
 	return nil
 }

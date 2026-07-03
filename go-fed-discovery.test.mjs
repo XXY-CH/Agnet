@@ -485,6 +485,16 @@ rl.on("line", (line) => {
     assert.equal(receiptFrame.receipt.sandbox.kind, "mcp");
     assert.deepEqual(receiptFrame.receipt.sandbox.env, ["PATH=/usr/bin:/bin"]);
     assert.equal(receiptFrame.receipt.sandbox.network, "not_granted");
+    const sandboxProof = receiptFrame.receipt.sandbox_proof;
+    assert.equal(sandboxProof.proof_type, "local.sandbox.v1");
+    assert.equal(sandboxProof.task_id, task.task_id);
+    assert.equal(sandboxProof.authority, fixture.authority.zid);
+    assert.equal(sandboxProof.worker, receiptFrame.worker.aid);
+    assert.equal(sandboxProof.policy_digest, receiptFrame.receipt.policy_digest);
+    assert.deepEqual(sandboxProof.sandbox, receiptFrame.receipt.sandbox);
+    const sandboxProofBody = { ...sandboxProof };
+    delete sandboxProofBody.sandbox_signature;
+    assert.equal(verifyObject(authorityPublicKey, sandboxProofBody, sandboxProof.sandbox_signature), true);
     assert.equal(receiptFrame.receipt.tool, "mcp.stdio");
     const artifactText = await readFile("artifacts/go_fed_task_verified/go-summary.md", "utf8");
     assert.match(artifactText, /MCP Tool Translation/);
@@ -504,6 +514,7 @@ rl.on("line", (line) => {
     assert.equal(auditQueryResult.zone, fixture.authority.zid);
     assert.equal(auditQueryResult.task_id, task.task_id);
     assert.equal(auditQueryResult.receipt.task_id, task.task_id);
+    assert.deepEqual(auditQueryResult.receipt.sandbox_proof, sandboxProof);
     assert.deepEqual(auditQueryResult.receipt.checkpoints, [checkpointEvent]);
     assert.deepEqual(auditQueryResult.receipt.artifact_manifests, [artifactEvent.manifest]);
 

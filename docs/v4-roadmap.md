@@ -159,3 +159,5 @@ v5 才考虑更强运行面：
 - public transport hardening
 
 A2A compatibility 仍应是 adapter 层，不进入 v4 底层主线。
+
+v5 route detail lives in `docs/v5-roadmap.md`。

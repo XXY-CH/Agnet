@@ -56,6 +56,7 @@ It proves:
 - A write task produces approval events before execution.
 - Go tool approval grants are signed by the Zone authority and visible in the Human Gateway receipt view.
 - Go external/MCP tools run from a local temporary sandbox directory with restricted environment evidence in the receipt.
+- Go signs sandbox proof evidence and includes it in receipts.
 - Go emits signed protocol-native checkpoint evidence and records checkpoint refs in receipts.
 - Go records artifact manifest digest evidence in artifact events and receipts.
 - Go records canonical policy scope evidence and stable policy deny codes.
