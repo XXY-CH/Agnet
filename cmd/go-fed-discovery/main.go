@@ -423,15 +423,16 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 	b.WriteString(` · receipts: `)
 	b.WriteString(fmt.Sprint(len(receipts)))
 	b.WriteString(`</div></header>`)
-	b.WriteString(`<h2>Receipts</h2><table><thead><tr><th>Task</th><th>Worker</th><th>Artifact</th><th>Events</th><th>Approvals</th><th>Sandbox</th><th>Context</th></tr></thead><tbody>`)
+	b.WriteString(`<h2>Receipts</h2><table><thead><tr><th>Task</th><th>Worker</th><th>Artifact</th><th>Events</th><th>Approvals</th><th>Sandbox</th><th>Context</th><th>Merge</th></tr></thead><tbody>`)
 	if len(receipts) == 0 {
-		b.WriteString(`<tr><td colspan="7">No receipts</td></tr>`)
+		b.WriteString(`<tr><td colspan="8">No receipts</td></tr>`)
 	}
 	for _, record := range receipts {
 		worker, _ := record["worker"].(map[string]any)
 		receipt, _ := record["receipt"].(map[string]any)
 		sandbox, _ := receipt["sandbox"].(map[string]any)
 		taskContext, _ := receipt["context"].(map[string]any)
+		merge, _ := receipt["merge"].(map[string]any)
 		artifact := firstString(receipt["artifact_refs"])
 		b.WriteString(`<tr><td><code>`)
 		b.WriteString(html.EscapeString(fmt.Sprint(receipt["task_id"])))
@@ -453,6 +454,8 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 		b.WriteString(html.EscapeString(fmt.Sprint(sandbox["mode"])))
 		b.WriteString(`</td><td>`)
 		b.WriteString(html.EscapeString(fmt.Sprint(taskContext["mode"])))
+		b.WriteString(`</td><td>`)
+		b.WriteString(html.EscapeString(fmt.Sprint(merge["mode"])))
 		b.WriteString(`</td></tr>`)
 	}
 	b.WriteString(`</tbody></table><h2>Audit</h2><table><thead><tr><th>Index</th><th>Kind</th><th>Hash</th></tr></thead><tbody>`)
@@ -696,9 +699,14 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	}
 
 	artifactURI := "artifact://local/" + taskID + "/go-summary.md"
-	toolName, artifactText, sandbox, taskContext, err := runTool(worker.Profile, task, origin)
+	toolName, artifactText, sandbox, taskContext, mergeProposal, checkpoints, err := runTool(worker, task, origin)
 	if err != nil {
 		return err
+	}
+	for _, checkpoint := range checkpoints {
+		if err := f.sendTaskEvent(send, map[string]any{"type": "checkpoint.created", "task_id": taskID, "checkpoint": checkpoint}); err != nil {
+			return err
+		}
 	}
 	if err := writeArtifact(artifactURI, artifactText); err != nil {
 		return err
@@ -717,10 +725,12 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		"executing_zone":  f.Authority["zid"],
 		"to":              worker.Descriptor["aid"],
 		"artifact_refs":   []string{artifactURI},
-		"event_count":     float64(4 + len(approvals)*2),
+		"event_count":     float64(4 + len(approvals)*2 + len(checkpoints)),
 		"approvals":       approvals,
 		"approval_grants": approvalGrants,
+		"checkpoints":     checkpoints,
 		"context":         taskContext,
+		"merge":           mergeProposal,
 		"sandbox":         sandbox,
 		"tool":            toolName,
 	}
@@ -766,7 +776,8 @@ func toolApprovalReasons(profile WorkerProfile) []string {
 	return []string{}
 }
 
-func runTool(profile WorkerProfile, task, origin map[string]any) (string, string, map[string]any, map[string]any, error) {
+func runTool(worker *Worker, task, origin map[string]any) (string, string, map[string]any, map[string]any, map[string]any, []map[string]any, error) {
+	profile := worker.Profile
 	tool := profile.Tool
 	if tool == "" {
 		tool = "text.echo"
@@ -775,17 +786,17 @@ func runTool(profile WorkerProfile, task, origin map[string]any) (string, string
 	intent := fmt.Sprint(task["intent"])
 	switch tool {
 	case "summarize.mock":
-		return tool, "# Go Tool Summary\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nSummary: " + intent + "\n", inProcessSandbox(), noTaskContext(), nil
+		return tool, "# Go Tool Summary\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nSummary: " + intent + "\n", inProcessSandbox(), noTaskContext(), noMerge(), nil, nil
 	case "translate.mock":
-		return tool, "# Go Tool Translation\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nTranslation: " + strings.ToUpper(intent) + "\n", inProcessSandbox(), noTaskContext(), nil
+		return tool, "# Go Tool Translation\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nTranslation: " + strings.ToUpper(intent) + "\n", inProcessSandbox(), noTaskContext(), noMerge(), nil, nil
 	case "external.stdio":
-		text, sandbox, taskContext, err := runExternalTool(profile, task, origin)
-		return tool, text, sandbox, taskContext, err
+		text, sandbox, taskContext, mergeProposal, checkpoints, err := runExternalTool(worker, task, origin)
+		return tool, text, sandbox, taskContext, mergeProposal, checkpoints, err
 	case "mcp.stdio":
-		text, sandbox, taskContext, err := runMCPTool(profile, task, origin)
-		return tool, text, sandbox, taskContext, err
+		text, sandbox, taskContext, mergeProposal, checkpoints, err := runMCPTool(worker, task, origin)
+		return tool, text, sandbox, taskContext, mergeProposal, checkpoints, err
 	default:
-		return tool, "# Go Tool Output\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nOutput: " + intent + "\n", inProcessSandbox(), noTaskContext(), nil
+		return tool, "# Go Tool Output\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nOutput: " + intent + "\n", inProcessSandbox(), noTaskContext(), noMerge(), nil, nil
 	}
 }
 
@@ -813,6 +824,10 @@ func sandboxEnv() []string {
 }
 
 func noTaskContext() map[string]any {
+	return map[string]any{"mode": "none"}
+}
+
+func noMerge() map[string]any {
 	return map[string]any{"mode": "none"}
 }
 
@@ -857,18 +872,76 @@ func commandOutput(name string, args ...string) (string, error) {
 	return string(output), nil
 }
 
-func runExternalTool(profile WorkerProfile, task, origin map[string]any) (string, map[string]any, map[string]any, error) {
+func finalizeTaskContext(key ed25519.PrivateKey, taskContext map[string]any) (map[string]any, []map[string]any, error) {
+	if taskContext["mode"] != "git-worktree" {
+		return noMerge(), nil, nil
+	}
+	worktree := fmt.Sprint(taskContext["worktree"])
+	status, err := commandOutput("git", "-C", worktree, "status", "--porcelain")
+	if err != nil {
+		return nil, nil, err
+	}
+	if strings.TrimSpace(status) == "" {
+		return noMerge(), nil, nil
+	}
+	diff, err := commandOutput("git", "-C", worktree, "diff", "--binary")
+	if err != nil {
+		return nil, nil, err
+	}
+	diffHash := sha256.Sum256([]byte(diff))
+	changed := changedFiles(status)
+	if _, err := commandOutput("git", "-C", worktree, "add", "-A"); err != nil {
+		return nil, nil, err
+	}
+	taskID := fmt.Sprint(taskContext["task_id"])
+	if _, err := commandOutput("git", "-C", worktree, "-c", "user.name=agnet-worker", "-c", "user.email=worker@agnet.local", "commit", "--quiet", "-m", "Agnet task checkpoint "+taskID); err != nil {
+		return nil, nil, err
+	}
+	commit, err := commandOutput("git", "-C", worktree, "rev-parse", "HEAD")
+	if err != nil {
+		return nil, nil, err
+	}
+	commit = strings.TrimSpace(commit)
+	body := map[string]any{
+		"mode":          "git-merge-proposal",
+		"task_id":       taskID,
+		"base_head":     taskContext["base_head"],
+		"commit":        commit,
+		"diff_sha256":   hex.EncodeToString(diffHash[:]),
+		"changed_files": changed,
+	}
+	checkpoint := signBodyWithKey(key, map[string]any{
+		"kind":      "worktree-commit",
+		"task_id":   taskID,
+		"base_head": taskContext["base_head"],
+		"commit":    commit,
+	}, "checkpoint_signature")
+	return signBodyWithKey(key, body, "merge_signature"), []map[string]any{checkpoint}, nil
+}
+
+func changedFiles(status string) []string {
+	out := []string{}
+	for _, line := range strings.Split(status, "\n") {
+		if len(line) > 3 {
+			out = append(out, strings.TrimSpace(line[3:]))
+		}
+	}
+	return out
+}
+
+func runExternalTool(worker *Worker, task, origin map[string]any) (string, map[string]any, map[string]any, map[string]any, []map[string]any, error) {
+	profile := worker.Profile
 	if len(profile.ToolCommand) == 0 {
-		return "", nil, nil, errors.New("external.stdio tool_command missing")
+		return "", nil, nil, nil, nil, errors.New("external.stdio tool_command missing")
 	}
 	dir, sandbox, cleanup, err := newToolSandbox("external")
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, nil, nil, err
 	}
 	defer cleanup()
 	contextDir, taskContext, contextCleanup, err := newTaskContext(profile, task)
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, nil, nil, err
 	}
 	defer contextCleanup()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -889,49 +962,54 @@ func runExternalTool(profile WorkerProfile, task, origin map[string]any) (string
 	}
 	data, err := json.Marshal(input)
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, nil, nil, err
 	}
 	cmd.Stdin = bytes.NewReader(data)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	output, err := cmd.Output()
 	if ctx.Err() == context.DeadlineExceeded {
-		return "", nil, nil, errors.New("external tool timed out")
+		return "", nil, nil, nil, nil, errors.New("external tool timed out")
 	}
 	if err != nil {
 		message := strings.TrimSpace(stderr.String())
 		if message == "" {
 			message = err.Error()
 		}
-		return "", nil, nil, errors.New("external tool failed: " + message)
+		return "", nil, nil, nil, nil, errors.New("external tool failed: " + message)
 	}
 	var result map[string]any
 	if err := json.Unmarshal(output, &result); err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, nil, nil, err
 	}
 	text, ok := result["text"].(string)
 	if !ok || text == "" {
-		return "", nil, nil, errors.New("external tool text missing")
+		return "", nil, nil, nil, nil, errors.New("external tool text missing")
 	}
-	return text, sandbox, taskContext, nil
+	mergeProposal, checkpoints, err := finalizeTaskContext(worker.PrivateKey, taskContext)
+	if err != nil {
+		return "", nil, nil, nil, nil, err
+	}
+	return text, sandbox, taskContext, mergeProposal, checkpoints, nil
 }
 
-func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, map[string]any, map[string]any, error) {
+func runMCPTool(worker *Worker, task, origin map[string]any) (string, map[string]any, map[string]any, map[string]any, []map[string]any, error) {
+	profile := worker.Profile
 	if len(profile.ToolCommand) == 0 {
-		return "", nil, nil, errors.New("mcp.stdio tool_command missing")
+		return "", nil, nil, nil, nil, errors.New("mcp.stdio tool_command missing")
 	}
 	toolName := profile.ToolName
 	if toolName == "" {
-		return "", nil, nil, errors.New("mcp.stdio tool_name missing")
+		return "", nil, nil, nil, nil, errors.New("mcp.stdio tool_name missing")
 	}
 	dir, sandbox, cleanup, err := newToolSandbox("mcp")
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, nil, nil, err
 	}
 	defer cleanup()
 	contextDir, taskContext, contextCleanup, err := newTaskContext(profile, task)
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, nil, nil, err
 	}
 	defer contextCleanup()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -944,16 +1022,16 @@ func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, map
 	cmd.Env = sandboxEnv()
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, nil, nil, err
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, nil, nil, err
 	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, nil, nil, err
 	}
 	scanner := bufio.NewScanner(stdout)
 	writeRPC := func(message map[string]any) error {
@@ -974,13 +1052,13 @@ func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, map
 			"clientInfo":      map[string]any{"name": "agnet-go", "version": "v3.7"},
 		},
 	}); err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, nil, nil, err
 	}
 	if _, err := readRPCResponse(scanner, 1); err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, nil, nil, err
 	}
 	if err := writeRPC(map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized", "params": map[string]any{}}); err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, nil, nil, err
 	}
 	args := map[string]any{
 		"task_id": task["task_id"],
@@ -995,11 +1073,11 @@ func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, map
 		"method":  "tools/call",
 		"params":  map[string]any{"name": toolName, "arguments": args},
 	}); err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, nil, nil, err
 	}
 	response, err := readRPCResponse(scanner, 2)
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, nil, nil, err
 	}
 	_ = stdin.Close()
 	if err := cmd.Wait(); err != nil && ctx.Err() == nil {
@@ -1007,13 +1085,20 @@ func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, map
 		if message == "" {
 			message = err.Error()
 		}
-		return "", nil, nil, errors.New("mcp tool failed: " + message)
+		return "", nil, nil, nil, nil, errors.New("mcp tool failed: " + message)
 	}
 	if ctx.Err() == context.DeadlineExceeded {
-		return "", nil, nil, errors.New("mcp tool timed out")
+		return "", nil, nil, nil, nil, errors.New("mcp tool timed out")
 	}
 	text, err := mcpText(response)
-	return text, sandbox, taskContext, err
+	if err != nil {
+		return "", nil, nil, nil, nil, err
+	}
+	mergeProposal, checkpoints, err := finalizeTaskContext(worker.PrivateKey, taskContext)
+	if err != nil {
+		return "", nil, nil, nil, nil, err
+	}
+	return text, sandbox, taskContext, mergeProposal, checkpoints, nil
 }
 
 func readRPCResponse(scanner *bufio.Scanner, id float64) (map[string]any, error) {
@@ -1251,7 +1336,51 @@ func verifyReceiptRecord(record map[string]any) error {
 	if err := verifyTaskContext(receipt); err != nil {
 		return err
 	}
+	if err := verifyCheckpoints(workerKey, receipt); err != nil {
+		return err
+	}
+	if err := verifyMergeProposal(workerKey, receipt); err != nil {
+		return err
+	}
 	return nil
+}
+
+func verifyCheckpoints(workerKey ed25519.PublicKey, receipt map[string]any) error {
+	for _, checkpoint := range mapsFromAny(receipt["checkpoints"]) {
+		if checkpoint["task_id"] != receipt["task_id"] {
+			return errors.New("checkpoint task mismatch")
+		}
+		if err := verifyMapSignature(workerKey, checkpoint, "checkpoint_signature"); err != nil {
+			return errors.New("checkpoint signature verification failed")
+		}
+	}
+	return nil
+}
+
+func verifyMergeProposal(workerKey ed25519.PublicKey, receipt map[string]any) error {
+	merge, ok := receipt["merge"].(map[string]any)
+	if !ok {
+		return errors.New("receipt merge missing")
+	}
+	switch merge["mode"] {
+	case "none":
+		return nil
+	case "git-merge-proposal":
+		if merge["task_id"] != receipt["task_id"] {
+			return errors.New("merge task mismatch")
+		}
+		for _, field := range []string{"base_head", "commit", "diff_sha256"} {
+			if fmt.Sprint(merge[field]) == "" {
+				return errors.New("merge " + field + " missing")
+			}
+		}
+		if err := verifyMapSignature(workerKey, merge, "merge_signature"); err != nil {
+			return errors.New("merge signature verification failed")
+		}
+		return nil
+	default:
+		return errors.New("unsupported merge mode")
+	}
 }
 
 func verifyTaskContext(receipt map[string]any) error {
