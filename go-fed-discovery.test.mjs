@@ -340,13 +340,15 @@ rl.on("line", (line) => {
       "FED_TASK_EVENT",
       "FED_TASK_EVENT",
       "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
       "FED_RECEIPT",
       "FED_TASK_CLOSE",
     ]);
     assert.deepEqual(
-      executionFrames.slice(0, 6).map((frame) => frame.event.type),
-      ["task.accepted", "approval.required", "approval.granted", "task.started", "artifact.created", "task.completed"],
+      executionFrames.slice(0, 7).map((frame) => frame.event.type),
+      ["task.accepted", "approval.required", "approval.granted", "task.started", "checkpoint.created", "artifact.created", "task.completed"],
     );
+    const checkpointEvent = executionFrames[4].event.checkpoint;
     const approvalGrant = executionFrames[2].event.grant;
     const authorityPublicKey = publicKeyFromDescriptor(fixture.authority);
     const approvalBody = { ...approvalGrant };
@@ -355,7 +357,7 @@ rl.on("line", (line) => {
     assert.equal(approvalGrant.task_id, task.task_id);
     assert.equal(approvalGrant.authority, fixture.authority.zid);
     assert.deepEqual(approvalGrant.reasons, ["tool"]);
-    const receiptFrame = executionFrames[6];
+    const receiptFrame = executionFrames[7];
     assert.equal(receiptFrame.zone.zid, fixture.authority.zid);
     const resolvedWorker = resolveAgent(
       new Map([[receiptFrame.worker.alias, {
@@ -374,9 +376,22 @@ rl.on("line", (line) => {
     assert.equal(receiptFrame.worker.alias, "agent://zone-b/translator");
     assert.equal(receiptFrame.receipt.to, receiptFrame.worker.aid);
     assert.equal(receiptFrame.receipt.artifact_refs[0], "artifact://local/go_fed_task_verified/go-summary.md");
-    assert.equal(receiptFrame.receipt.event_count, 6);
+    assert.equal(receiptFrame.receipt.event_count, 7);
     assert.deepEqual(receiptFrame.receipt.approvals, ["tool"]);
     assert.deepEqual(receiptFrame.receipt.approval_grants, [approvalGrant]);
+    assert.deepEqual(receiptFrame.receipt.checkpoint_refs, [checkpointEvent.checkpoint_id]);
+    assert.deepEqual(receiptFrame.receipt.checkpoints, [checkpointEvent]);
+    const checkpointBody = { ...checkpointEvent };
+    delete checkpointBody.checkpoint_signature;
+    assert.equal(verifyObject(resolvedWorker.publicKey, checkpointBody, checkpointEvent.checkpoint_signature), true);
+    assert.match(checkpointEvent.checkpoint_id, /^checkpoint:sha256:[0-9a-f]{64}$/);
+    assert.equal(checkpointEvent.task_id, task.task_id);
+    assert.equal(checkpointEvent.parent_checkpoint, null);
+    assert.equal(checkpointEvent.event_index, 5);
+    assert.match(checkpointEvent.state_digest, /^[0-9a-f]{64}$/);
+    assert.deepEqual(checkpointEvent.artifact_refs, []);
+    assert.match(checkpointEvent.policy_digest, /^[0-9a-f]{64}$/);
+    assert.equal(checkpointEvent.created_by, receiptFrame.worker.aid);
     assert.equal(receiptFrame.receipt.sandbox.mode, "local-temp-dir");
     assert.equal(receiptFrame.receipt.sandbox.kind, "mcp");
     assert.deepEqual(receiptFrame.receipt.sandbox.env, ["PATH=/usr/bin:/bin"]);
@@ -413,7 +428,7 @@ rl.on("line", (line) => {
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 7);
+    assert.equal(auditBody.entries.length, 8);
 
     const pageResponse = await fetch(`http://127.0.0.1:${humanPort}/`);
     assert.equal(pageResponse.status, 200);

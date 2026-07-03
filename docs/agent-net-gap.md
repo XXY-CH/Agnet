@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v3.9 assessment
+状态：v4 assessment
 
 ## 一句话
 
@@ -39,11 +39,13 @@
 - Minimal MCP stdio tools/call in v3.7。
 - Simulated external/MCP tool approval gate in v3.8。
 - Signed local approval evidence and sandbox evidence in v3.9。
+- Protocol-native checkpoint evidence in v4。
 
 主要缺：
 
 - richer policy schema。
 - cancellation / checkpoint / retry。
+- artifact manifests。
 - credential status / revocation feed。
 - richer routing beyond exact matches。
 
@@ -102,6 +104,7 @@
 - read-only Human Gateway。
 - simulated approval events。
 - signed approval receipts visible through Human Gateway。
+- checkpoint evidence receipts。
 - docs and protocol proofs。
 
 主要缺：
@@ -171,7 +174,7 @@ Trying to clone Octo now would pull this project sideways into chat/product surf
 The right path is:
 
 ```text
-v4 protocol-native checkpoint evidence
+v4.1 artifact manifest digest
 ```
 
 After v4 has checkpoint evidence, artifact manifests, richer policy scope, and credential status, comparing directly with Octo becomes useful.

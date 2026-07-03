@@ -690,6 +690,10 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	if err := f.sendTaskEvent(send, map[string]any{"type": "task.started", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
 		return err
 	}
+	checkpoint := worker.checkpoint(task, nil, 3+len(approvals)*2)
+	if err := f.sendTaskEvent(send, map[string]any{"type": "checkpoint.created", "task_id": taskID, "checkpoint": checkpoint}); err != nil {
+		return err
+	}
 
 	artifactURI := "artifact://local/" + taskID + "/go-summary.md"
 	toolName, artifactText, sandbox, err := runTool(worker.Profile, task, origin)
@@ -713,9 +717,11 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		"executing_zone":  f.Authority["zid"],
 		"to":              worker.Descriptor["aid"],
 		"artifact_refs":   []string{artifactURI},
-		"event_count":     float64(4 + len(approvals)*2),
+		"event_count":     float64(5 + len(approvals)*2),
 		"approvals":       approvals,
 		"approval_grants": approvalGrants,
+		"checkpoint_refs": []string{fmt.Sprint(checkpoint["checkpoint_id"])},
+		"checkpoints":     []map[string]any{checkpoint},
 		"sandbox":         sandbox,
 		"tool":            toolName,
 	}
@@ -739,6 +745,22 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	})
 	send(map[string]any{"type": "FED_TASK_CLOSE", "task_id": taskID})
 	return nil
+}
+
+func (w *Worker) checkpoint(task map[string]any, parent any, eventIndex int) map[string]any {
+	taskID := fmt.Sprint(task["task_id"])
+	policy, _ := w.Descriptor["policy"].(map[string]any)
+	body := map[string]any{
+		"task_id":           taskID,
+		"parent_checkpoint": parent,
+		"event_index":       float64(eventIndex),
+		"state_digest":      digestHex(map[string]any{"task": task, "worker": w.Descriptor["aid"]}),
+		"artifact_refs":     []string{},
+		"policy_digest":     digestHex(policy),
+		"created_by":        w.Descriptor["aid"],
+	}
+	body["checkpoint_id"] = "checkpoint:sha256:" + digestHex(body)
+	return signBodyWithKey(w.PrivateKey, body, "checkpoint_signature")
 }
 
 func (f Fixture) approvalGrant(taskID string, reasons []string) map[string]any {
@@ -1180,6 +1202,9 @@ func verifyReceiptRecord(record map[string]any) error {
 	if err := verifyApprovalGrants(zoneKey, receipt); err != nil {
 		return err
 	}
+	if err := verifyCheckpoints(workerKey, receipt); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -1196,6 +1221,31 @@ func verifyApprovalGrants(zoneKey ed25519.PublicKey, receipt map[string]any) err
 		if err := verifyMapSignature(zoneKey, grant, "approval_signature"); err != nil {
 			return errors.New("approval signature verification failed")
 		}
+	}
+	return nil
+}
+
+func verifyCheckpoints(workerKey ed25519.PublicKey, receipt map[string]any) error {
+	refs := stringsFromAny(receipt["checkpoint_refs"])
+	checkpoints := mapsFromAny(receipt["checkpoints"])
+	if len(refs) != len(checkpoints) {
+		return errors.New("receipt checkpoint ref count mismatch")
+	}
+	parent := any(nil)
+	for index, checkpoint := range checkpoints {
+		if checkpoint["task_id"] != receipt["task_id"] {
+			return errors.New("checkpoint task mismatch")
+		}
+		if checkpoint["checkpoint_id"] != refs[index] {
+			return errors.New("checkpoint ref mismatch")
+		}
+		if checkpoint["parent_checkpoint"] != parent {
+			return errors.New("checkpoint parent mismatch")
+		}
+		if err := verifyMapSignature(workerKey, checkpoint, "checkpoint_signature"); err != nil {
+			return errors.New("checkpoint signature verification failed")
+		}
+		parent = checkpoint["checkpoint_id"]
 	}
 	return nil
 }
@@ -1264,6 +1314,12 @@ func hasPrefix(value string, prefixes []string) bool {
 
 func signBody(key ed25519.PrivateKey, body map[string]any) map[string]any {
 	return signBodyWithKey(key, body, "signature")
+}
+
+func digestHex(value any) string {
+	data, _ := json.Marshal(value)
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:])
 }
 
 func signBodyWithKey(key ed25519.PrivateKey, body map[string]any, signatureKey string) map[string]any {
