@@ -700,10 +700,11 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	if err != nil {
 		return err
 	}
-	if err := writeArtifact(artifactURI, artifactText); err != nil {
+	artifactManifest, err := writeArtifact(artifactURI, artifactText)
+	if err != nil {
 		return err
 	}
-	if err := f.sendTaskEvent(send, map[string]any{"type": "artifact.created", "task_id": taskID, "uri": artifactURI}); err != nil {
+	if err := f.sendTaskEvent(send, map[string]any{"type": "artifact.created", "task_id": taskID, "uri": artifactURI, "manifest": artifactManifest}); err != nil {
 		return err
 	}
 	if err := f.sendTaskEvent(send, map[string]any{"type": "task.completed", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
@@ -711,12 +712,15 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	}
 
 	receipt := map[string]any{
-		"task_id":         taskID,
-		"from":            task["from"],
-		"origin_zone":     origin["zid"],
-		"executing_zone":  f.Authority["zid"],
-		"to":              worker.Descriptor["aid"],
-		"artifact_refs":   []string{artifactURI},
+		"task_id":        taskID,
+		"from":           task["from"],
+		"origin_zone":    origin["zid"],
+		"executing_zone": f.Authority["zid"],
+		"to":             worker.Descriptor["aid"],
+		"artifact_refs":  []string{artifactURI},
+		"artifact_manifests": []map[string]any{
+			artifactManifest,
+		},
 		"event_count":     float64(5 + len(approvals)*2),
 		"approvals":       approvals,
 		"approval_grants": approvalGrants,
@@ -1019,16 +1023,27 @@ func (f Fixture) appendAudit(record map[string]any) error {
 	return f.Audit.Append(record)
 }
 
-func writeArtifact(uri, text string) error {
+func writeArtifact(uri, text string) (map[string]any, error) {
 	const prefix = "artifact://local/"
 	if !strings.HasPrefix(uri, prefix) {
-		return errors.New("unsupported artifact uri: " + uri)
+		return nil, errors.New("unsupported artifact uri: " + uri)
 	}
 	path := filepath.Join("artifacts", strings.TrimPrefix(uri, prefix))
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
+		return nil, err
 	}
-	return os.WriteFile(path, []byte(text), 0o644)
+	data := []byte(text)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return nil, err
+	}
+	body := map[string]any{
+		"uri":        uri,
+		"sha256":     digestBytesHex(data),
+		"size":       float64(len(data)),
+		"media_type": "text/markdown; charset=utf-8",
+	}
+	body["manifest_hash"] = digestHex(body)
+	return body, nil
 }
 
 const auditZeroHash = "0000000000000000000000000000000000000000000000000000000000000000"
@@ -1205,6 +1220,9 @@ func verifyReceiptRecord(record map[string]any) error {
 	if err := verifyCheckpoints(workerKey, receipt); err != nil {
 		return err
 	}
+	if err := verifyArtifactManifests(receipt); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -1246,6 +1264,37 @@ func verifyCheckpoints(workerKey ed25519.PublicKey, receipt map[string]any) erro
 			return errors.New("checkpoint signature verification failed")
 		}
 		parent = checkpoint["checkpoint_id"]
+	}
+	return nil
+}
+
+func verifyArtifactManifests(receipt map[string]any) error {
+	refs := stringsFromAny(receipt["artifact_refs"])
+	manifests := mapsFromAny(receipt["artifact_manifests"])
+	if len(refs) != len(manifests) {
+		return errors.New("receipt artifact manifest count mismatch")
+	}
+	for index, manifest := range manifests {
+		if manifest["uri"] != refs[index] {
+			return errors.New("artifact manifest uri mismatch")
+		}
+		for _, field := range []string{"sha256", "media_type", "manifest_hash"} {
+			if fmt.Sprint(manifest[field]) == "" {
+				return errors.New("artifact manifest " + field + " missing")
+			}
+		}
+		if _, ok := manifest["size"].(float64); !ok {
+			return errors.New("artifact manifest size missing")
+		}
+		body := map[string]any{}
+		for k, v := range manifest {
+			if k != "manifest_hash" {
+				body[k] = v
+			}
+		}
+		if manifest["manifest_hash"] != digestHex(body) {
+			return errors.New("artifact manifest hash mismatch")
+		}
 	}
 	return nil
 }
@@ -1318,6 +1367,10 @@ func signBody(key ed25519.PrivateKey, body map[string]any) map[string]any {
 
 func digestHex(value any) string {
 	data, _ := json.Marshal(value)
+	return digestBytesHex(data)
+}
+
+func digestBytesHex(data []byte) string {
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
 }

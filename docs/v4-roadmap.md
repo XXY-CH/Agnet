@@ -1,6 +1,6 @@
 # Agent Space v4 Roadmap
 
-状态：v4 complete; v4.1+ planned
+状态：v4.1 complete; v4.2+ planned
 目标：回到 `agent-space-ultimate-vision.md` 的底层窄腰，推进 evidence chain / checkpoint / policy / artifact / transport，而不是做 Git/worktree/merge 这类上层协作操作。
 
 ## 路线判断
@@ -57,7 +57,7 @@ Agent identity
 
 ## v4.1: Artifact Manifest Digest
 
-状态：planned
+状态：complete
 目标：artifact reference 不只是 URI，还带 digest manifest。
 
 新增：

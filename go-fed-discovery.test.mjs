@@ -349,6 +349,7 @@ rl.on("line", (line) => {
       ["task.accepted", "approval.required", "approval.granted", "task.started", "checkpoint.created", "artifact.created", "task.completed"],
     );
     const checkpointEvent = executionFrames[4].event.checkpoint;
+    const artifactEvent = executionFrames[5].event;
     const approvalGrant = executionFrames[2].event.grant;
     const authorityPublicKey = publicKeyFromDescriptor(fixture.authority);
     const approvalBody = { ...approvalGrant };
@@ -376,6 +377,11 @@ rl.on("line", (line) => {
     assert.equal(receiptFrame.worker.alias, "agent://zone-b/translator");
     assert.equal(receiptFrame.receipt.to, receiptFrame.worker.aid);
     assert.equal(receiptFrame.receipt.artifact_refs[0], "artifact://local/go_fed_task_verified/go-summary.md");
+    assert.deepEqual(receiptFrame.receipt.artifact_manifests, [artifactEvent.manifest]);
+    assert.equal(artifactEvent.manifest.uri, receiptFrame.receipt.artifact_refs[0]);
+    assert.match(artifactEvent.manifest.sha256, /^[0-9a-f]{64}$/);
+    assert.equal(artifactEvent.manifest.media_type, "text/markdown; charset=utf-8");
+    assert.match(artifactEvent.manifest.manifest_hash, /^[0-9a-f]{64}$/);
     assert.equal(receiptFrame.receipt.event_count, 7);
     assert.deepEqual(receiptFrame.receipt.approvals, ["tool"]);
     assert.deepEqual(receiptFrame.receipt.approval_grants, [approvalGrant]);
@@ -401,6 +407,8 @@ rl.on("line", (line) => {
     assert.match(artifactText, /MCP Tool Translation/);
     assert.match(artifactText, /VERIFY FED_TASK_OPEN IN GO\./);
     assert.match(artifactText, /agnet-mcp-/);
+    assert.equal(artifactEvent.manifest.size, Buffer.byteLength(artifactText));
+    assert.equal(artifactEvent.manifest.sha256, createHash("sha256").update(artifactText).digest("hex"));
 
     const deniedTask = {
       ...task,

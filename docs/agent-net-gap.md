@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v4 assessment
+状态：v4.1 assessment
 
 ## 一句话
 
@@ -40,6 +40,7 @@
 - Simulated external/MCP tool approval gate in v3.8。
 - Signed local approval evidence and sandbox evidence in v3.9。
 - Protocol-native checkpoint evidence in v4。
+- Artifact manifest digest evidence in v4.1。
 
 主要缺：
 
@@ -174,7 +175,7 @@ Trying to clone Octo now would pull this project sideways into chat/product surf
 The right path is:
 
 ```text
-v4.1 artifact manifest digest
+v4.2 richer policy scope
 ```
 
 After v4 has checkpoint evidence, artifact manifests, richer policy scope, and credential status, comparing directly with Octo becomes useful.

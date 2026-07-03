@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v4 complete
-当前代码基线：`v4`
+状态：v4.1 complete
+当前代码基线：`v4.1`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence，以及 protocol-native checkpoint evidence。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、protocol-native checkpoint evidence，以及 artifact manifest digest evidence。
 
 还不是可产品化的 Agent Net。
 
@@ -18,7 +18,7 @@
 | Local registry | done | multi-worker profile registry | `zone-registry.test.mjs`, `go-fed-discovery.test.mjs` | worker lifecycle API |
 | Local task execution | done | built-in + external stdio + MCP stdio tools/call + local temp-dir sandbox evidence | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | container sandbox / long-running MCP sessions |
 | Events | done | minimal federation events + Go checkpoint event | `agent-runtime.test.mjs`, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | richer event lifecycle |
-| Artifact write | done | deterministic local artifact | `mvp-demo.test.mjs`, `go-fed-discovery.test.mjs` | artifact store |
+| Artifact write | done | deterministic local artifact + Go artifact manifest digest evidence | `mvp-demo.test.mjs`, `go-fed-discovery.test.mjs` | artifact store |
 | Receipt signing | done | done for minimal Go execution | `test-vectors.test.mjs`, `go-fed-discovery.test.mjs` | receipt verification CLI |
 | Audit hash chain | done | done for Go execution | `audit-chain.test.mjs`, `go-fed-discovery.test.mjs` | remote audit query |
 | Federation resolve | done | done | `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | public transport |
@@ -55,6 +55,7 @@ Go
   -> signed local approval grants for external/MCP tools
   -> local temporary sandbox directory evidence for external/MCP tools
   -> signed protocol-native checkpoint evidence
+  -> artifact manifest digest evidence
 ```
 
 ## Next Boundary
@@ -62,8 +63,8 @@ Go
 Next natural boundary:
 
 ```text
-Artifact manifest digest
-  -> artifact digest / size / media type in receipts
+Richer policy scope
+  -> canonical policy digest + stable deny reasons
 ```
 
 Route detail: `docs/v4-roadmap.md`。
