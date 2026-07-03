@@ -422,13 +422,14 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 	b.WriteString(` · receipts: `)
 	b.WriteString(fmt.Sprint(len(receipts)))
 	b.WriteString(`</div></header>`)
-	b.WriteString(`<h2>Receipts</h2><table><thead><tr><th>Task</th><th>Worker</th><th>Artifact</th><th>Events</th></tr></thead><tbody>`)
+	b.WriteString(`<h2>Receipts</h2><table><thead><tr><th>Task</th><th>Worker</th><th>Artifact</th><th>Events</th><th>Approvals</th><th>Sandbox</th></tr></thead><tbody>`)
 	if len(receipts) == 0 {
-		b.WriteString(`<tr><td colspan="4">No receipts</td></tr>`)
+		b.WriteString(`<tr><td colspan="6">No receipts</td></tr>`)
 	}
 	for _, record := range receipts {
 		worker, _ := record["worker"].(map[string]any)
 		receipt, _ := record["receipt"].(map[string]any)
+		sandbox, _ := receipt["sandbox"].(map[string]any)
 		artifact := firstString(receipt["artifact_refs"])
 		b.WriteString(`<tr><td><code>`)
 		b.WriteString(html.EscapeString(fmt.Sprint(receipt["task_id"])))
@@ -444,6 +445,10 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 		}
 		b.WriteString(`</td><td>`)
 		b.WriteString(html.EscapeString(fmt.Sprint(receipt["event_count"])))
+		b.WriteString(`</td><td>`)
+		b.WriteString(html.EscapeString(fmt.Sprintf("%d signed", mapSliceLen(receipt["approval_grants"]))))
+		b.WriteString(`</td><td>`)
+		b.WriteString(html.EscapeString(fmt.Sprint(sandbox["mode"])))
 		b.WriteString(`</td></tr>`)
 	}
 	b.WriteString(`</tbody></table><h2>Audit</h2><table><thead><tr><th>Index</th><th>Kind</th><th>Hash</th></tr></thead><tbody>`)
@@ -459,6 +464,11 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 	}
 	b.WriteString(`</tbody></table></main></body></html>`)
 	return b.String()
+}
+
+func mapSliceLen(value any) int {
+	items, _ := value.([]any)
+	return len(items)
 }
 
 func firstString(value any) string {
@@ -666,11 +676,14 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		return err
 	}
 	approvals := toolApprovalReasons(worker.Profile)
+	approvalGrants := []map[string]any{}
 	if len(approvals) > 0 {
 		if err := f.sendTaskEvent(send, map[string]any{"type": "approval.required", "task_id": taskID, "reasons": approvals}); err != nil {
 			return err
 		}
-		if err := f.sendTaskEvent(send, map[string]any{"type": "approval.granted", "task_id": taskID, "by": "human://go-gateway/operator", "reasons": approvals}); err != nil {
+		grant := f.approvalGrant(taskID, approvals)
+		approvalGrants = append(approvalGrants, grant)
+		if err := f.sendTaskEvent(send, map[string]any{"type": "approval.granted", "task_id": taskID, "by": grant["by"], "reasons": approvals, "grant": grant}); err != nil {
 			return err
 		}
 	}
@@ -679,7 +692,7 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	}
 
 	artifactURI := "artifact://local/" + taskID + "/go-summary.md"
-	toolName, artifactText, err := runTool(worker.Profile, task, origin)
+	toolName, artifactText, sandbox, err := runTool(worker.Profile, task, origin)
 	if err != nil {
 		return err
 	}
@@ -694,15 +707,17 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	}
 
 	receipt := map[string]any{
-		"task_id":        taskID,
-		"from":           task["from"],
-		"origin_zone":    origin["zid"],
-		"executing_zone": f.Authority["zid"],
-		"to":             worker.Descriptor["aid"],
-		"artifact_refs":  []string{artifactURI},
-		"event_count":    float64(4 + len(approvals)*2),
-		"approvals":      approvals,
-		"tool":           toolName,
+		"task_id":         taskID,
+		"from":            task["from"],
+		"origin_zone":     origin["zid"],
+		"executing_zone":  f.Authority["zid"],
+		"to":              worker.Descriptor["aid"],
+		"artifact_refs":   []string{artifactURI},
+		"event_count":     float64(4 + len(approvals)*2),
+		"approvals":       approvals,
+		"approval_grants": approvalGrants,
+		"sandbox":         sandbox,
+		"tool":            toolName,
 	}
 	signedReceipt := signBody(worker.PrivateKey, receipt)
 	receiptRecord := map[string]any{
@@ -726,6 +741,16 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	return nil
 }
 
+func (f Fixture) approvalGrant(taskID string, reasons []string) map[string]any {
+	return signBodyWithKey(f.AuthorityPrivateKey, map[string]any{
+		"task_id":   taskID,
+		"authority": f.Authority["zid"],
+		"by":        "human://go-gateway/operator",
+		"method":    "local.signed",
+		"reasons":   reasons,
+	}, "approval_signature")
+}
+
 func toolApprovalReasons(profile WorkerProfile) []string {
 	required := stringsFromAny(profile.Policy["approval_required"])
 	for _, item := range required {
@@ -736,7 +761,7 @@ func toolApprovalReasons(profile WorkerProfile) []string {
 	return []string{}
 }
 
-func runTool(profile WorkerProfile, task, origin map[string]any) (string, string, error) {
+func runTool(profile WorkerProfile, task, origin map[string]any) (string, string, map[string]any, error) {
 	tool := profile.Tool
 	if tool == "" {
 		tool = "text.echo"
@@ -745,34 +770,57 @@ func runTool(profile WorkerProfile, task, origin map[string]any) (string, string
 	intent := fmt.Sprint(task["intent"])
 	switch tool {
 	case "summarize.mock":
-		return tool, "# Go Tool Summary\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nSummary: " + intent + "\n", nil
+		return tool, "# Go Tool Summary\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nSummary: " + intent + "\n", inProcessSandbox(), nil
 	case "translate.mock":
-		return tool, "# Go Tool Translation\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nTranslation: " + strings.ToUpper(intent) + "\n", nil
+		return tool, "# Go Tool Translation\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nTranslation: " + strings.ToUpper(intent) + "\n", inProcessSandbox(), nil
 	case "external.stdio":
-		text, err := runExternalTool(profile, task, origin)
-		return tool, text, err
+		text, sandbox, err := runExternalTool(profile, task, origin)
+		return tool, text, sandbox, err
 	case "mcp.stdio":
-		text, err := runMCPTool(profile, task, origin)
-		return tool, text, err
+		text, sandbox, err := runMCPTool(profile, task, origin)
+		return tool, text, sandbox, err
 	default:
-		return tool, "# Go Tool Output\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nOutput: " + intent + "\n", nil
+		return tool, "# Go Tool Output\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nOutput: " + intent + "\n", inProcessSandbox(), nil
 	}
 }
 
-func runExternalTool(profile WorkerProfile, task, origin map[string]any) (string, error) {
-	if len(profile.ToolCommand) == 0 {
-		return "", errors.New("external.stdio tool_command missing")
-	}
-	dir, err := os.MkdirTemp("", "agnet-tool-*")
+func inProcessSandbox() map[string]any {
+	return map[string]any{"mode": "in-process"}
+}
+
+func newToolSandbox(kind string) (string, map[string]any, func(), error) {
+	dir, err := os.MkdirTemp("", "agnet-"+kind+"-*")
 	if err != nil {
-		return "", err
+		return "", nil, nil, err
 	}
-	defer os.RemoveAll(dir)
+	return dir, map[string]any{
+		"mode":    "local-temp-dir",
+		"kind":    kind,
+		"cwd":     dir,
+		"env":     []string{"PATH=/usr/bin:/bin"},
+		"network": "not_granted",
+		"cleanup": "remove-all",
+	}, func() { _ = os.RemoveAll(dir) }, nil
+}
+
+func sandboxEnv() []string {
+	return []string{"PATH=/usr/bin:/bin"}
+}
+
+func runExternalTool(profile WorkerProfile, task, origin map[string]any) (string, map[string]any, error) {
+	if len(profile.ToolCommand) == 0 {
+		return "", nil, errors.New("external.stdio tool_command missing")
+	}
+	dir, sandbox, cleanup, err := newToolSandbox("external")
+	if err != nil {
+		return "", nil, err
+	}
+	defer cleanup()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, profile.ToolCommand[0], profile.ToolCommand[1:]...)
 	cmd.Dir = dir
-	cmd.Env = []string{"PATH=/usr/bin:/bin"}
+	cmd.Env = sandboxEnv()
 	input := map[string]any{
 		"task_id": task["task_id"],
 		"intent":  task["intent"],
@@ -782,63 +830,63 @@ func runExternalTool(profile WorkerProfile, task, origin map[string]any) (string
 	}
 	data, err := json.Marshal(input)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	cmd.Stdin = bytes.NewReader(data)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	output, err := cmd.Output()
 	if ctx.Err() == context.DeadlineExceeded {
-		return "", errors.New("external tool timed out")
+		return "", nil, errors.New("external tool timed out")
 	}
 	if err != nil {
 		message := strings.TrimSpace(stderr.String())
 		if message == "" {
 			message = err.Error()
 		}
-		return "", errors.New("external tool failed: " + message)
+		return "", nil, errors.New("external tool failed: " + message)
 	}
 	var result map[string]any
 	if err := json.Unmarshal(output, &result); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	text, ok := result["text"].(string)
 	if !ok || text == "" {
-		return "", errors.New("external tool text missing")
+		return "", nil, errors.New("external tool text missing")
 	}
-	return text, nil
+	return text, sandbox, nil
 }
 
-func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, error) {
+func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, map[string]any, error) {
 	if len(profile.ToolCommand) == 0 {
-		return "", errors.New("mcp.stdio tool_command missing")
+		return "", nil, errors.New("mcp.stdio tool_command missing")
 	}
 	toolName := profile.ToolName
 	if toolName == "" {
-		return "", errors.New("mcp.stdio tool_name missing")
+		return "", nil, errors.New("mcp.stdio tool_name missing")
 	}
-	dir, err := os.MkdirTemp("", "agnet-mcp-*")
+	dir, sandbox, cleanup, err := newToolSandbox("mcp")
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	defer os.RemoveAll(dir)
+	defer cleanup()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, profile.ToolCommand[0], profile.ToolCommand[1:]...)
 	cmd.Dir = dir
-	cmd.Env = []string{"PATH=/usr/bin:/bin"}
+	cmd.Env = sandboxEnv()
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	scanner := bufio.NewScanner(stdout)
 	writeRPC := func(message map[string]any) error {
@@ -859,13 +907,13 @@ func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, err
 			"clientInfo":      map[string]any{"name": "agnet-go", "version": "v3.7"},
 		},
 	}); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if _, err := readRPCResponse(scanner, 1); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if err := writeRPC(map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized", "params": map[string]any{}}); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	args := map[string]any{
 		"task_id": task["task_id"],
@@ -879,11 +927,11 @@ func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, err
 		"method":  "tools/call",
 		"params":  map[string]any{"name": toolName, "arguments": args},
 	}); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	response, err := readRPCResponse(scanner, 2)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	_ = stdin.Close()
 	if err := cmd.Wait(); err != nil && ctx.Err() == nil {
@@ -891,12 +939,13 @@ func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, err
 		if message == "" {
 			message = err.Error()
 		}
-		return "", errors.New("mcp tool failed: " + message)
+		return "", nil, errors.New("mcp tool failed: " + message)
 	}
 	if ctx.Err() == context.DeadlineExceeded {
-		return "", errors.New("mcp tool timed out")
+		return "", nil, errors.New("mcp tool timed out")
 	}
-	return mcpText(response)
+	text, err := mcpText(response)
+	return text, sandbox, err
 }
 
 func readRPCResponse(scanner *bufio.Scanner, id float64) (map[string]any, error) {
@@ -1124,6 +1173,30 @@ func verifyReceiptRecord(record map[string]any) error {
 	if err := verifyMapSignature(workerKey, receipt, "signature"); err != nil {
 		return errors.New("receipt signature verification failed")
 	}
+	zoneKey, _, err := publicKey(zone)
+	if err != nil {
+		return err
+	}
+	if err := verifyApprovalGrants(zoneKey, receipt); err != nil {
+		return err
+	}
+	return nil
+}
+
+func verifyApprovalGrants(zoneKey ed25519.PublicKey, receipt map[string]any) error {
+	approvals := stringsFromAny(receipt["approvals"])
+	grants := mapsFromAny(receipt["approval_grants"])
+	if len(approvals) != len(grants) {
+		return errors.New("receipt approval grant count mismatch")
+	}
+	for _, grant := range grants {
+		if grant["task_id"] != receipt["task_id"] {
+			return errors.New("approval grant task mismatch")
+		}
+		if err := verifyMapSignature(zoneKey, grant, "approval_signature"); err != nil {
+			return errors.New("approval signature verification failed")
+		}
+	}
 	return nil
 }
 
@@ -1163,6 +1236,18 @@ func stringsFromAny(value any) []string {
 		text, ok := item.(string)
 		if ok {
 			out = append(out, text)
+		}
+	}
+	return out
+}
+
+func mapsFromAny(value any) []map[string]any {
+	items, _ := value.([]any)
+	out := []map[string]any{}
+	for _, item := range items {
+		entry, ok := item.(map[string]any)
+		if ok {
+			out = append(out, entry)
 		}
 	}
 	return out

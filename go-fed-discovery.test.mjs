@@ -5,22 +5,51 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { loadOrCreateAgent, loadOrCreateZone, resolveAgent, signObject, verifyObject, writeTrustedZones } from "./asp-core.mjs";
+import { loadOrCreateAgent, loadOrCreateZone, publicKeyFromDescriptor, resolveAgent, signObject, verifyObject, writeTrustedZones } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
-function waitForGoGateway(child) {
+function waitForGoGateway(child, port) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("go gateway did not start")), 5000);
-    child.stdout.on("data", (chunk) => {
-      const line = chunk.toString().split("\n").find((item) => item.trim().startsWith("{"));
-      if (!line) return;
+    let stderr = "";
+    let stdout = "";
+    let done = false;
+    const fail = (error) => {
+      if (done) return;
+      done = true;
       clearTimeout(timer);
-      resolve(JSON.parse(line));
+      clearInterval(poller);
+      reject(error);
+    };
+    const pass = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      clearInterval(poller);
+      resolve();
+    };
+    const timer = setTimeout(() => fail(new Error(`go gateway did not start: stdout=${stdout.trim()} stderr=${stderr.trim()}`)), 60000);
+    const poller = setInterval(() => {
+      const socket = net.createConnection(port, "127.0.0.1");
+      socket.once("connect", () => {
+        socket.end();
+        pass();
+      });
+      socket.once("error", () => {
+        socket.destroy();
+      });
+    }, 50);
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
     });
-    child.once("error", reject);
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.once("error", fail);
     child.once("exit", (code) => {
-      if (code !== null && code !== 0) reject(new Error(`go gateway exited early: ${code}`));
+      if (code !== null && code !== 0) {
+        fail(new Error(`go gateway exited early: ${code}: stdout=${stdout.trim()} stderr=${stderr.trim()}`));
+      }
     });
   });
 }
@@ -53,6 +82,19 @@ function exchangeFrames(port, frame, closeType = "FED_TASK_CLOSE") {
       }
     });
   });
+}
+
+async function freePorts(count) {
+  const servers = await Promise.all(Array.from({ length: count }, () => new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => resolve(server));
+  })));
+  const ports = servers.map((server) => server.address().port);
+  await Promise.all(servers.map((server) => new Promise((resolve) => {
+    server.close(resolve);
+  })));
+  return ports;
 }
 
 function wsAccept(key) {
@@ -143,9 +185,7 @@ function exchangeWebSocketFrames(port, frame, closeType) {
 }
 
 test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", async () => {
-  const port = 9091;
-  const wsPort = 9092;
-  const humanPort = 9093;
+  const [port, wsPort, humanPort] = await freePorts(3);
   const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
   const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/go-fed-requester.pkcs8");
   const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
@@ -188,7 +228,7 @@ rl.on("line", (line) => {
     process.stdout.write(JSON.stringify({
       jsonrpc: "2.0",
       id: message.id,
-      result: { content: [{ type: "text", text: \`# MCP Tool Translation\\n\\nTask: \${args.task_id}\\nTranslation: \${String(args.intent).toUpperCase()}\\n\` }] }
+      result: { content: [{ type: "text", text: \`# MCP Tool Translation\\n\\nTask: \${args.task_id}\\nTranslation: \${String(args.intent).toUpperCase()}\\nCWD: \${process.cwd()}\\n\` }] }
     }) + "\\n");
     process.exit(0);
   }
@@ -197,9 +237,9 @@ rl.on("line", (line) => {
   await rm("state/go-fed-discovery-audit.log", { force: true });
   await writeTrustedZones("state/go-fed-discovery-trusted-origin.json", [zoneA]);
   await writeFile("state/node-trusts-go-discovery.json", `${JSON.stringify({ zones: [fixture.authority] }, null, 2)}\n`);
-  await execFileAsync("go", ["build", "-o", "state/go-fed-discovery-test", "./cmd/go-fed-discovery"]);
-
-  const gateway = spawn("./state/go-fed-discovery-test", [
+  const gateway = spawn("go", [
+    "run",
+    "./cmd/go-fed-discovery",
     "--port",
     String(port),
     "--ws-port",
@@ -218,11 +258,12 @@ rl.on("line", (line) => {
     "state/go-fed-discovery-audit.log",
   ], {
     cwd: process.cwd(),
+    detached: true,
     stdio: ["ignore", "pipe", "pipe"],
   });
 
   try {
-    await waitForGoGateway(gateway);
+    await waitForGoGateway(gateway, port);
 
     const resolved = await execFileAsync(process.execPath, [
       "federation-gateway.mjs",
@@ -306,6 +347,14 @@ rl.on("line", (line) => {
       executionFrames.slice(0, 6).map((frame) => frame.event.type),
       ["task.accepted", "approval.required", "approval.granted", "task.started", "artifact.created", "task.completed"],
     );
+    const approvalGrant = executionFrames[2].event.grant;
+    const authorityPublicKey = publicKeyFromDescriptor(fixture.authority);
+    const approvalBody = { ...approvalGrant };
+    delete approvalBody.approval_signature;
+    assert.equal(verifyObject(authorityPublicKey, approvalBody, approvalGrant.approval_signature), true);
+    assert.equal(approvalGrant.task_id, task.task_id);
+    assert.equal(approvalGrant.authority, fixture.authority.zid);
+    assert.deepEqual(approvalGrant.reasons, ["tool"]);
     const receiptFrame = executionFrames[6];
     assert.equal(receiptFrame.zone.zid, fixture.authority.zid);
     const resolvedWorker = resolveAgent(
@@ -327,10 +376,16 @@ rl.on("line", (line) => {
     assert.equal(receiptFrame.receipt.artifact_refs[0], "artifact://local/go_fed_task_verified/go-summary.md");
     assert.equal(receiptFrame.receipt.event_count, 6);
     assert.deepEqual(receiptFrame.receipt.approvals, ["tool"]);
+    assert.deepEqual(receiptFrame.receipt.approval_grants, [approvalGrant]);
+    assert.equal(receiptFrame.receipt.sandbox.mode, "local-temp-dir");
+    assert.equal(receiptFrame.receipt.sandbox.kind, "mcp");
+    assert.deepEqual(receiptFrame.receipt.sandbox.env, ["PATH=/usr/bin:/bin"]);
+    assert.equal(receiptFrame.receipt.sandbox.network, "not_granted");
     assert.equal(receiptFrame.receipt.tool, "mcp.stdio");
     const artifactText = await readFile("artifacts/go_fed_task_verified/go-summary.md", "utf8");
     assert.match(artifactText, /MCP Tool Translation/);
     assert.match(artifactText, /VERIFY FED_TASK_OPEN IN GO\./);
+    assert.match(artifactText, /agnet-mcp-/);
 
     const deniedTask = {
       ...task,
@@ -346,7 +401,9 @@ rl.on("line", (line) => {
     assert.equal(deniedFrames[0].type, "FED_TASK_ERROR");
     assert.match(deniedFrames[0].error, /policy denied network access/);
 
-    const verifiedAudit = await execFileAsync("./state/go-fed-discovery-test", [
+    const verifiedAudit = await execFileAsync("go", [
+      "run",
+      "./cmd/go-fed-discovery",
       "--verify-audit",
       "--audit",
       "state/go-fed-discovery-audit.log",
@@ -364,11 +421,17 @@ rl.on("line", (line) => {
     assert.match(pageText, /Agent Space Human Gateway/);
     assert.match(pageText, /agent:\/\/zone-b\/translator/);
     assert.match(pageText, /go_fed_task_verified/);
+    assert.match(pageText, /1 signed/);
+    assert.match(pageText, /local-temp-dir/);
 
     const artifactResponse = await fetch(`http://127.0.0.1:${humanPort}/artifacts/go_fed_task_verified/go-summary.md`);
     assert.equal(artifactResponse.status, 200);
     assert.match(await artifactResponse.text(), /MCP Tool Translation/);
   } finally {
-    gateway.kill("SIGINT");
+    try {
+      process.kill(-gateway.pid, "SIGINT");
+    } catch {
+      gateway.kill("SIGINT");
+    }
   }
 });
