@@ -5,7 +5,7 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { loadOrCreateAgent, loadOrCreateZone, publicKeyFromDescriptor, resolveAgent, signObject, verifyObject, writeTrustedZones } from "./asp-core.mjs";
+import { capabilityCredentialId, loadOrCreateAgent, loadOrCreateZone, publicKeyFromDescriptor, resolveAgent, signObject, verifyCredentialStatus, verifyObject, writeTrustedZones } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -288,6 +288,11 @@ rl.on("line", (line) => {
     assert.equal(queriedResult.matches[0].aid, fixture.worker.aid);
     assert.equal(queriedResult.matches[0].credentials[0].issuer, fixture.authority.zid);
     assert.equal(queriedResult.matches[0].credentials[0].subject, fixture.worker.aid);
+    assert.equal(queriedResult.matches[0].credential_statuses[0].status, "active");
+    assert.equal(
+      queriedResult.matches[0].credential_statuses[0].credential_id,
+      capabilityCredentialId(queriedResult.matches[0].credentials[0]),
+    );
 
     const translated = await execFileAsync(process.execPath, [
       "federation-gateway.mjs",
@@ -300,6 +305,7 @@ rl.on("line", (line) => {
     assert.equal(translatedResult.matches.length, 1);
     assert.equal(translatedResult.matches[0].alias, "agent://zone-b/translator");
     assert.equal(translatedResult.matches[0].credentials[0].capability, "translate.text");
+    assert.equal(translatedResult.matches[0].credential_statuses[0].status, "active");
 
     const wsFrames = await exchangeWebSocketFrames(wsPort, {
       type: "FED_QUERY",
@@ -308,6 +314,10 @@ rl.on("line", (line) => {
     }, "FED_QUERY_CLOSE");
     assert.deepEqual(wsFrames.map((frame) => frame.type), ["FED_QUERY_RESULT", "FED_QUERY_CLOSE"]);
     assert.equal(wsFrames[0].matches[0].worker.alias, "agent://zone-b/translator");
+    assert.equal(
+      verifyCredentialStatus(wsFrames[0].matches[0].credential_statuses[0], wsFrames[0].matches[0].credentials[0], fixture.authority),
+      true,
+    );
 
     const resolvedTranslator = await execFileAsync(process.execPath, [
       "federation-gateway.mjs",

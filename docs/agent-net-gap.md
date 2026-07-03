@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v4.2 assessment
+状态：v4.3 assessment
 
 ## 一句话
 
@@ -42,12 +42,13 @@
 - Protocol-native checkpoint evidence in v4。
 - Artifact manifest digest evidence in v4.1。
 - Canonical policy scope evidence in v4.2。
+- Zone-signed credential status evidence in v4.3。
 
 主要缺：
 
 - cancellation / checkpoint / retry。
 - artifact manifests。
-- credential status / revocation feed。
+- credential revocation feed / renewal。
 - richer routing beyond exact matches。
 
 ### Runtime core
@@ -175,7 +176,7 @@ Trying to clone Octo now would pull this project sideways into chat/product surf
 The right path is:
 
 ```text
-v4.3 credential status / revocation feed
+v4.4 authenticated session handshake
 ```
 
 After v4 has checkpoint evidence, artifact manifests, richer policy scope, and credential status, comparing directly with Octo becomes useful.

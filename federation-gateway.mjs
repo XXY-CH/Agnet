@@ -12,6 +12,7 @@ import {
   signObject,
   verifyObject,
   verifyCapabilityCredential,
+  verifyCredentialStatus,
   verifyZoneDescriptor,
   writeArtifact,
   zoneBinding,
@@ -255,9 +256,18 @@ async function queryRemote(port, trustedZonesFile, capability = "summarize.text"
             match.worker.alias,
           );
           const credentials = match.credentials ?? [];
+          const credentialStatuses = match.credential_statuses ?? [];
           for (const credential of credentials) {
             if (!verifyCapabilityCredential(credential, frame.zone, resolved.descriptor)) {
               throw new Error(`capability credential verification failed: ${credential.capability}`);
+            }
+          }
+          for (let index = 0; index < credentialStatuses.length; index += 1) {
+            if (!verifyCredentialStatus(credentialStatuses[index], credentials[index], frame.zone)) {
+              throw new Error(`credential status verification failed: ${credentials[index]?.capability}`);
+            }
+            if (credentialStatuses[index].status !== "active") {
+              throw new Error(`credential is not active: ${credentials[index]?.capability}`);
             }
           }
           return {
@@ -265,6 +275,7 @@ async function queryRemote(port, trustedZonesFile, capability = "summarize.text"
             aid: resolved.descriptor.aid,
             capabilities: resolved.descriptor.capabilities,
             credentials,
+            credential_statuses: credentialStatuses,
           };
         });
         result = { zone: remoteZone.zid, capability: frame.capability, matches };

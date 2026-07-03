@@ -391,6 +391,32 @@ export function verifyCapabilityCredential(credential, authorityDescriptor, subj
   );
 }
 
+export function capabilityCredentialId(credential) {
+  const body = {
+    issuer: credential.issuer,
+    subject: credential.subject,
+    capability: credential.capability,
+    claims: credential.claims,
+  };
+  return `credential:sha256:${createHash("sha256").update(Buffer.from(canonical(body))).digest("hex")}`;
+}
+
+export function verifyCredentialStatus(status, credential, authorityDescriptor) {
+  const { publicKey: authorityPublicKey } = verifyZoneDescriptor(authorityDescriptor);
+  const body = {
+    issuer: status.issuer,
+    credential_id: status.credential_id,
+    subject: status.subject,
+    status: status.status,
+  };
+  return (
+    status.issuer === authorityDescriptor.zid &&
+    status.credential_id === capabilityCredentialId(credential) &&
+    status.subject === credential.subject &&
+    verifyObject(authorityPublicKey, body, status.status_signature)
+  );
+}
+
 export function enforcePolicy(descriptor, task) {
   const policy = descriptor.policy ?? {};
   const scope = task.scope ?? {};

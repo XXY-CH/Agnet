@@ -221,10 +221,12 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 		matches := []any{}
 		capability := fmt.Sprint(frame["capability"])
 		for _, worker := range fixture.workersByCapability(capability) {
+			credential := fixture.capabilityCredential(&worker, capability)
 			matches = append(matches, map[string]any{
-				"worker":       worker.Descriptor,
-				"zone_binding": fixture.zoneBinding(&worker),
-				"credentials":  []any{fixture.capabilityCredential(&worker, capability)},
+				"worker":              worker.Descriptor,
+				"zone_binding":        fixture.zoneBinding(&worker),
+				"credentials":         []any{credential},
+				"credential_statuses": []any{fixture.credentialStatus(credential, "active")},
 			})
 		}
 		send(map[string]any{
@@ -657,6 +659,25 @@ func (f Fixture) capabilityCredential(worker *Worker, capability string) map[str
 		"capability": capability,
 		"claims":     f.Credential["claims"],
 	})
+}
+
+func (f Fixture) credentialStatus(credential map[string]any, status string) map[string]any {
+	return signBodyWithKey(f.AuthorityPrivateKey, map[string]any{
+		"issuer":        f.Authority["zid"],
+		"credential_id": credentialID(credential),
+		"subject":       credential["subject"],
+		"status":        status,
+	}, "status_signature")
+}
+
+func credentialID(credential map[string]any) string {
+	body := map[string]any{
+		"issuer":     credential["issuer"],
+		"subject":    credential["subject"],
+		"capability": credential["capability"],
+		"claims":     credential["claims"],
+	}
+	return "credential:sha256:" + digestHex(body)
 }
 
 func (f Fixture) verifyTaskOpen(frame map[string]any) (*Worker, map[string]any, error) {

@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v4.2 complete
-当前代码基线：`v4.2`
+状态：v4.3 complete
+当前代码基线：`v4.3`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、protocol-native checkpoint evidence、artifact manifest digest evidence，以及 canonical policy scope evidence。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、protocol-native checkpoint evidence、artifact manifest digest evidence、canonical policy scope evidence，以及 credential status evidence。
 
 还不是可产品化的 Agent Net。
 
@@ -23,7 +23,7 @@
 | Audit hash chain | done | done for Go execution | `audit-chain.test.mjs`, `go-fed-discovery.test.mjs` | remote audit query |
 | Federation resolve | done | done | `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | public transport |
 | Capability query | done | done | `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | ranking / scheduling |
-| Capability credential | done | done | `capability-credential.test.mjs`, Go dynamic signing | credential status feed |
+| Capability credential | done | done + Go signed status evidence | `capability-credential.test.mjs`, `go-fed-discovery.test.mjs` | revocation feed / renewal |
 | Key persistence | PKCS8 files | seed key files | `state/keys`, `--authority-key`, `--worker-key` | rotation, encryption, permissions |
 | `FED_TASK_OPEN` | execute | execute minimal path | `federation-gateway.mjs`, `go-fed-discovery.test.mjs` | real worker/tools |
 | Policy checks | done | network/write subset + Go canonical policy scope digest + stable deny codes | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | policy negotiation / dynamic policy service |
@@ -57,6 +57,7 @@ Go
   -> signed protocol-native checkpoint evidence
   -> artifact manifest digest evidence
   -> canonical policy scope digest and stable deny codes
+  -> Zone-signed credential status evidence
 ```
 
 ## Next Boundary
@@ -64,8 +65,8 @@ Go
 Next natural boundary:
 
 ```text
-Credential status / revocation feed
-  -> capability credential status checks and denial evidence
+Authenticated session handshake
+  -> HELLO/AUTH challenge signature and session id
 ```
 
 Route detail: `docs/v4-roadmap.md`。
