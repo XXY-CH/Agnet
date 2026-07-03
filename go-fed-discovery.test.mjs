@@ -279,6 +279,18 @@ rl.on("line", (line) => {
       id: message.id,
       result: { protocolVersion: message.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "test-mcp", version: "0" } }
     }) + "\\n");
+  } else if (message.method === "resources/list") {
+    process.stdout.write(JSON.stringify({
+      jsonrpc: "2.0",
+      id: message.id,
+      result: { resources: [{ uri: "memory://public/docs", name: "public docs" }] }
+    }) + "\\n");
+  } else if (message.method === "prompts/list") {
+    process.stdout.write(JSON.stringify({
+      jsonrpc: "2.0",
+      id: message.id,
+      result: { prompts: [{ name: "translate" }] }
+    }) + "\\n");
   } else if (message.method === "tools/call") {
     const args = message.params.arguments;
     process.stdout.write(JSON.stringify({
@@ -492,6 +504,10 @@ rl.on("line", (line) => {
       protocol_version: "2025-11-25",
       server_info: { name: "test-mcp", version: "0" },
     });
+    assert.equal(receiptFrame.receipt.sandbox.mcp_resources_count, 1);
+    assert.match(receiptFrame.receipt.sandbox.mcp_resources_digest, /^[0-9a-f]{64}$/);
+    assert.equal(receiptFrame.receipt.sandbox.mcp_prompts_count, 1);
+    assert.match(receiptFrame.receipt.sandbox.mcp_prompts_digest, /^[0-9a-f]{64}$/);
     assert.equal(receiptFrame.receipt.sandbox_claim, "local-temp-dir");
     const sandboxProof = receiptFrame.receipt.sandbox_proof;
     assert.equal(sandboxProof.proof_type, "local.sandbox.v1");
@@ -502,6 +518,8 @@ rl.on("line", (line) => {
     assert.deepEqual(sandboxProof.sandbox, receiptFrame.receipt.sandbox);
     assert.equal(sandboxProof.sandbox.tool_command_digest, receiptFrame.receipt.sandbox.tool_command_digest);
     assert.deepEqual(sandboxProof.sandbox.mcp_session, receiptFrame.receipt.sandbox.mcp_session);
+    assert.equal(sandboxProof.sandbox.mcp_resources_digest, receiptFrame.receipt.sandbox.mcp_resources_digest);
+    assert.equal(sandboxProof.sandbox.mcp_prompts_digest, receiptFrame.receipt.sandbox.mcp_prompts_digest);
     assert.equal(sandboxProof.sandbox_claim, receiptFrame.receipt.sandbox_claim);
     const sandboxProofBody = { ...sandboxProof };
     delete sandboxProofBody.sandbox_signature;

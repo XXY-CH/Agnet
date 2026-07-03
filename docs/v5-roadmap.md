@@ -1,6 +1,6 @@
 # Agent Space v5 Roadmap
 
-状态：v5.7 complete; v5.8+ planned
+状态：v5.8 complete; v5.9+ planned
 目标：从 v4 的 evidence chain 推进到更强运行面，但仍保持 `agent-space-ultimate-vision.md` 的底层窄腰：identity、signed task、event stream、scoped policy、artifact reference、audit receipt、federation。
 
 ## v5.0: Signed Sandbox Proof
@@ -162,9 +162,31 @@
 - 不做 MCP server registry。
 - 不做 server signature verification。
 
+## v5.8: MCP Resources/Prompts Evidence
+
+状态：complete
+目标：记录 MCP resources/prompts surface 的摘要。
+
+新增：
+
+- one `resources/list` probe
+- one `prompts/list` probe
+- `mcp_resources_count`
+- `mcp_resources_digest`
+- `mcp_prompts_count`
+- `mcp_prompts_digest`
+
+不做：
+
+- 不保存完整 resources/prompts 列表。
+- 不读取 resource contents。
+- 不执行 prompts/get。
+- 不做 long-running MCP session reuse。
+- 不做 MCP registry。
+
 ## 后续方向
 
-- MCP resources/prompts evidence
+- MCP tool list evidence
 - container sandbox proof
 - long-running MCP sessions
 - scheduling / retry

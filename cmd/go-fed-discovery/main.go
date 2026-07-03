@@ -1321,6 +1321,12 @@ func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, map
 	if err := writeRPC(map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized", "params": map[string]any{}}); err != nil {
 		return "", nil, err
 	}
+	if err := recordMCPListEvidence(writeRPC, scanner, sandbox, 2, "resources/list", "resources", "mcp_resources"); err != nil {
+		return "", nil, err
+	}
+	if err := recordMCPListEvidence(writeRPC, scanner, sandbox, 3, "prompts/list", "prompts", "mcp_prompts"); err != nil {
+		return "", nil, err
+	}
 	args := map[string]any{
 		"task_id": task["task_id"],
 		"intent":  task["intent"],
@@ -1329,13 +1335,13 @@ func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, map
 	}
 	if err := writeRPC(map[string]any{
 		"jsonrpc": "2.0",
-		"id":      2,
+		"id":      4,
 		"method":  "tools/call",
 		"params":  map[string]any{"name": toolName, "arguments": args},
 	}); err != nil {
 		return "", nil, err
 	}
-	response, err := readRPCResponse(scanner, 2)
+	response, err := readRPCResponse(scanner, 4)
 	if err != nil {
 		return "", nil, err
 	}
@@ -1352,6 +1358,21 @@ func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, map
 	}
 	text, err := mcpText(response)
 	return text, sandbox, err
+}
+
+func recordMCPListEvidence(writeRPC func(map[string]any) error, scanner *bufio.Scanner, sandbox map[string]any, id float64, method, field, prefix string) error {
+	if err := writeRPC(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": map[string]any{}}); err != nil {
+		return err
+	}
+	response, err := readRPCResponse(scanner, id)
+	if err != nil {
+		return err
+	}
+	result, _ := response["result"].(map[string]any)
+	items, _ := result[field].([]any)
+	sandbox[prefix+"_count"] = float64(len(items))
+	sandbox[prefix+"_digest"] = digestHex(items)
+	return nil
 }
 
 func readRPCResponse(scanner *bufio.Scanner, id float64) (map[string]any, error) {

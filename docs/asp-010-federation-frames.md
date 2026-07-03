@@ -350,7 +350,11 @@ Zone A must not treat this as a receipt.
       "mcp_session": {
         "protocol_version": "2025-11-25",
         "server_info": { "name": "test-mcp", "version": "0" }
-      }
+      },
+      "mcp_resources_count": 1,
+      "mcp_resources_digest": "...",
+      "mcp_prompts_count": 1,
+      "mcp_prompts_digest": "..."
     },
     "event_count": 7,
     "approvals": ["write"],

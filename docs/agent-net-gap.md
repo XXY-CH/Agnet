@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v5.7 assessment
+状态：v5.8 assessment
 
 ## 一句话
 
@@ -14,7 +14,7 @@
 
 ### Protocol core
 
-进度：约 82%。
+进度：约 83%。
 
 已有：
 
@@ -53,6 +53,7 @@
 - Tool command provenance digest in v5.5。
 - Tool output digest alignment in v5.6。
 - MCP initialize metadata evidence in v5.7。
+- MCP resources/prompts metadata evidence in v5.8。
 
 主要缺：
 
@@ -61,7 +62,7 @@
 
 ### Runtime core
 
-进度：约 64%。
+进度：约 65%。
 
 已有：
 
@@ -81,6 +82,7 @@
 - External/MCP sandbox evidence records tool command digest。
 - Tool output digest aligns signed receipt with artifact manifest。
 - MCP sandbox evidence records protocol/server initialize metadata。
+- MCP resources/prompts surfaces are recorded as count+digest evidence。
 
 主要缺：
 
@@ -95,6 +97,7 @@
 - binary/package provenance。
 - streamed output transcript evidence。
 - long-running MCP session reuse。
+- full MCP resource/prompt catalog storage。
 - artifact store beyond local files。
 
 ### Network layer
