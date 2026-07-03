@@ -560,6 +560,56 @@ rl.on("line", (line) => {
     assert.deepEqual(resumeReceipt.checkpoint_refs, [resumedCheckpoint.checkpoint_id]);
     assert.deepEqual(resumeReceipt.checkpoints, [resumedCheckpoint]);
 
+    const cancel = {
+      task_id: "go_fed_task_cancelled",
+      from: requester.aid,
+      to: "agent://zone-b/translator",
+      reason: "operator requested cancellation",
+    };
+    const cancelFrames = await exchangeFrames(port, {
+      type: "FED_TASK_CANCEL",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      cancel: { ...cancel, signature: signObject(requester.privateKey, cancel) },
+    }, "FED_CANCEL_CLOSE");
+    assert.deepEqual(cancelFrames.map((frame) => frame.type), [
+      "FED_TASK_EVENT",
+      "FED_RECEIPT",
+      "FED_CANCEL_CLOSE",
+    ]);
+    assert.deepEqual(cancelFrames[0].event, {
+      type: "task.cancelled",
+      task_id: cancel.task_id,
+      by: requester.aid,
+      worker: receiptFrame.worker.aid,
+      reason: cancel.reason,
+    });
+    const cancelReceipt = cancelFrames[1].receipt;
+    const cancelReceiptBody = { ...cancelReceipt };
+    delete cancelReceiptBody.signature;
+    assert.equal(verifyObject(resolvedWorker.publicKey, cancelReceiptBody, cancelReceipt.signature), true);
+    assert.equal(cancelReceipt.task_id, cancel.task_id);
+    assert.equal(cancelReceipt.status, "cancelled");
+    assert.deepEqual(cancelReceipt.cancel, { ...cancel, signature: signObject(requester.privateKey, cancel) });
+
+    const cancelAuditFrames = await exchangeFrames(port, {
+      type: "FED_AUDIT_QUERY",
+      origin_zone: zoneA.descriptor,
+      task_id: cancel.task_id,
+    }, "FED_AUDIT_CLOSE");
+    assert.deepEqual(cancelAuditFrames.map((frame) => frame.type), ["FED_AUDIT_RESULT", "FED_AUDIT_CLOSE"]);
+    assert.equal(cancelAuditFrames[0].receipt.status, "cancelled");
+    assert.equal(cancelAuditFrames[0].receipt.cancel.task_id, cancel.task_id);
+
+    const tamperedCancelFrames = await exchangeFrames(port, {
+      type: "FED_TASK_CANCEL",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      cancel: { ...cancel, reason: "tampered", signature: signObject(requester.privateKey, cancel) },
+    }, "FED_CANCEL_CLOSE");
+    assert.equal(tamperedCancelFrames[0].type, "FED_TASK_ERROR");
+    assert.match(tamperedCancelFrames[0].error, /cancel signature verification failed/);
+
     const deniedTask = {
       ...task,
       task_id: "go_fed_task_denied",
@@ -587,7 +637,7 @@ rl.on("line", (line) => {
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 16);
+    assert.equal(auditBody.entries.length, 18);
 
     const pageResponse = await fetch(`http://127.0.0.1:${humanPort}/`);
     assert.equal(pageResponse.status, 200);

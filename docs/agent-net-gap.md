@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v5.1 assessment
+状态：v5.2 assessment
 
 ## 一句话
 
@@ -14,7 +14,7 @@
 
 ### Protocol core
 
-进度：约 74%。
+进度：约 76%。
 
 已有：
 
@@ -47,16 +47,17 @@
 - Remote audit proof query in v4.5。
 - Signed sandbox proof evidence in v5.0。
 - Minimal checkpoint resume parent link in v5.1。
+- Signed cancellation receipt evidence in v5.2。
 
 主要缺：
 
-- cancellation / retry。
+- retry。
 - credential revocation feed / renewal。
 - richer routing beyond exact matches。
 
 ### Runtime core
 
-进度：约 56%。
+进度：约 58%。
 
 已有：
 
@@ -70,6 +71,7 @@
 - Go minimal MCP stdio tools/call execution。
 - Simulated tool approval gate。
 - Minimal `FED_TASK_RESUME` execution that links a new receipt to a parent checkpoint。
+- Signed `FED_TASK_CANCEL` evidence with worker cancellation receipts。
 
 主要缺：
 
@@ -78,6 +80,7 @@
 - container-grade sandbox。
 - concurrency model。
 - durable task state。
+- live task cancellation。
 - real checkpoint state restore。
 - artifact store beyond local files。
 

@@ -1,6 +1,6 @@
 # Agent Space v5 Roadmap
 
-状态：v5.1 complete; v5.2+ planned
+状态：v5.2 complete; v5.3+ planned
 目标：从 v4 的 evidence chain 推进到更强运行面，但仍保持 `agent-space-ultimate-vision.md` 的底层窄腰：identity、signed task、event stream、scoped policy、artifact reference、audit receipt、federation。
 
 ## v5.0: Signed Sandbox Proof
@@ -45,9 +45,29 @@
 - 不做 durable scheduler。
 - 不做 long-running MCP session resume。
 
+## v5.2: Signed Cancellation Evidence
+
+状态：complete
+目标：让取消意图进入 signed task fabric 和 audit proof。
+
+新增：
+
+- `FED_TASK_CANCEL`
+- signed `cancel` object
+- `task.cancelled` event
+- worker-signed cancellation receipt
+- remote audit query returns cancellation receipt
+
+不做：
+
+- 不中断正在运行的 external/MCP process。
+- 不做 task scheduler。
+- 不做 task state table。
+- 不做 authorization UI。
+
 ## 后续方向
 
-- cancellation / retry evidence
+- retry evidence
 - container sandbox proof
 - long-running MCP sessions
 - scheduling / retry

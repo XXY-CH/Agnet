@@ -28,10 +28,12 @@ FED_AUDIT_RESULT Zone B -> Zone A
 FED_AUDIT_CLOSE  Zone B -> Zone A
 FED_TASK_OPEN    Zone A -> Zone B
 FED_TASK_RESUME  Zone A -> Zone B
+FED_TASK_CANCEL  Zone A -> Zone B
 FED_TASK_VERIFIED Zone B -> Zone A
 FED_TASK_EVENT   Zone B -> Zone A
 FED_RECEIPT      Zone B -> Zone A
 FED_TASK_CLOSE   Zone B -> Zone A
+FED_CANCEL_CLOSE Zone B -> Zone A
 FED_TASK_ERROR   Zone B -> Zone A
 ```
 
@@ -258,6 +260,27 @@ Zone B must reject the frame unless:
 v5.1 treats resume as a new signed task that binds to a parent checkpoint id. The resumed receipt must include `resumed_from`, and its signed checkpoint must set `parent_checkpoint` to the requested checkpoint id.
 
 This is not a durable scheduler or state restore. It only proves the protocol link from old checkpoint evidence to a new auditable execution.
+
+## FED_TASK_CANCEL
+
+```json
+{
+  "type": "FED_TASK_CANCEL",
+  "origin_zone": { "...": "Zone A descriptor" },
+  "requester": { "...": "requester descriptor" },
+  "cancel": {
+    "task_id": "fed_task_123",
+    "from": "aid:ed25519:...",
+    "to": "agent://zone-b/summarizer",
+    "reason": "operator requested cancellation",
+    "signature": "..."
+  }
+}
+```
+
+v5.2 treats cancellation as signed protocol evidence. Zone B verifies the requester and cancel signature, emits `task.cancelled`, and returns a worker-signed cancellation receipt that remote audit query can fetch by `task_id`.
+
+This is not live process interruption. The current gateway does not keep a scheduler or task state table.
 
 ## FED_TASK_VERIFIED
 

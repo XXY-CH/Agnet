@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v5.1 complete
-当前代码基线：`v5.1-protocol`
+状态：v5.2 complete
+当前代码基线：`v5.2-protocol`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go `FED_TASK_RESUME` checkpoint link、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、signed sandbox proof、protocol-native checkpoint evidence、artifact manifest digest evidence、canonical policy scope evidence、credential status evidence、authenticated session handshake，以及 remote audit query。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go `FED_TASK_RESUME` checkpoint link、Go signed `FED_TASK_CANCEL` evidence、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、signed sandbox proof、protocol-native checkpoint evidence、artifact manifest digest evidence、canonical policy scope evidence、credential status evidence、authenticated session handshake，以及 remote audit query。
 
 还不是可产品化的 Agent Net。
 
@@ -26,6 +26,7 @@
 | Capability credential | done | done + Go signed status evidence | `capability-credential.test.mjs`, `go-fed-discovery.test.mjs` | revocation feed / renewal |
 | Key persistence | PKCS8 files | seed key files | `state/keys`, `--authority-key`, `--worker-key` | rotation, encryption, permissions |
 | `FED_TASK_OPEN` | execute | execute minimal path | `federation-gateway.mjs`, `go-fed-discovery.test.mjs` | real worker/tools |
+| `FED_TASK_CANCEL` | not yet | signed cancellation receipt evidence | `go-fed-discovery.test.mjs` | live process interruption / scheduler state |
 | Policy checks | done | network/write subset + Go canonical policy scope digest + stable deny codes | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | policy negotiation / dynamic policy service |
 | Human approval | simulated | signed local tool approval evidence visible in Human Gateway | Node events, `go-fed-discovery.test.mjs` | interactive approval queue / login-state UI |
 | Checkpoint evidence | not yet | signed protocol-native checkpoint evidence + minimal resume parent link | `go-fed-discovery.test.mjs` | durable task state / real state restore |
@@ -44,6 +45,7 @@ Go
   -> dynamic worker descriptor, binding, credential signing
   -> key files
   -> FED_TASK_OPEN verification
+  -> FED_TASK_CANCEL signed cancellation evidence
   -> minimal task events, artifact, signed receipt
   -> audit JSONL hash chain and verifier
   -> multi-worker profile registry
@@ -68,8 +70,8 @@ Go
 Next natural boundary:
 
 ```text
-v5.2 task cancellation / retry evidence
-  -> failure recovery without a durable scheduler
+v5.3 retry evidence
+  -> retry links without a durable scheduler
 ```
 
 Route detail: `docs/v5-roadmap.md`。

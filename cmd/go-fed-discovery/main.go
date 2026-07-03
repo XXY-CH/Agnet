@@ -307,6 +307,16 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(err))
 			return false
 		}
+	case "FED_TASK_CANCEL":
+		worker, requester, cancel, err := fixture.verifyTaskCancel(frame)
+		if err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
+		if err := fixture.cancelTask(send, origin, worker, requester, cancel); err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
 	default:
 		send(taskErrorFrame(errors.New("unsupported frame")))
 		return false
@@ -865,6 +875,38 @@ func (f Fixture) verifyTaskOpen(frame map[string]any) (*Worker, map[string]any, 
 	return worker, task, nil
 }
 
+func (f Fixture) verifyTaskCancel(frame map[string]any) (*Worker, map[string]any, map[string]any, error) {
+	requester, ok := frame["requester"].(map[string]any)
+	if !ok {
+		return nil, nil, nil, errors.New("missing requester")
+	}
+	if err := verifyAgentDescriptor(requester); err != nil {
+		return nil, nil, nil, err
+	}
+	cancel, ok := frame["cancel"].(map[string]any)
+	if !ok {
+		return nil, nil, nil, errors.New("missing cancel")
+	}
+	if cancel["from"] != requester["aid"] {
+		return nil, nil, nil, errors.New("cancel sender does not match requester descriptor")
+	}
+	worker := f.workerByAlias(fmt.Sprint(cancel["to"]))
+	if worker == nil {
+		return nil, nil, nil, errors.New("cancel target does not match worker alias")
+	}
+	if fmt.Sprint(cancel["task_id"]) == "" {
+		return nil, nil, nil, errors.New("cancel task_id missing")
+	}
+	requesterKey, _, err := publicKey(requester)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if err := verifyMapSignature(requesterKey, cancel, "signature"); err != nil {
+		return nil, nil, nil, errors.New("cancel signature verification failed")
+	}
+	return worker, requester, cancel, nil
+}
+
 func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worker, task map[string]any, parentCheckpoint any) error {
 	taskID := fmt.Sprint(task["task_id"])
 	if err := f.sendTaskEvent(send, map[string]any{"type": "task.accepted", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
@@ -952,6 +994,71 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		"receipt":      receiptRecord["receipt"],
 	})
 	send(map[string]any{"type": "FED_TASK_CLOSE", "task_id": taskID})
+	return nil
+}
+
+func (f Fixture) cancelTask(send sendFunc, origin map[string]any, worker *Worker, requester, cancel map[string]any) error {
+	taskID := fmt.Sprint(cancel["task_id"])
+	reason := fmt.Sprint(cancel["reason"])
+	if err := f.sendTaskEvent(send, map[string]any{
+		"type":    "task.cancelled",
+		"task_id": taskID,
+		"by":      requester["aid"],
+		"worker":  worker.Descriptor["aid"],
+		"reason":  reason,
+	}); err != nil {
+		return err
+	}
+	policyScope := map[string]any{
+		"network":           false,
+		"write":             []string{},
+		"tools":             []string{},
+		"data_domains":      []string{},
+		"approval_required": []string{},
+		"expires_at":        "",
+	}
+	policyDigest := digestHex(policyScope)
+	sandbox := map[string]any{"mode": "not-started"}
+	receipt := map[string]any{
+		"task_id":            taskID,
+		"from":               requester["aid"],
+		"origin_zone":        origin["zid"],
+		"executing_zone":     f.Authority["zid"],
+		"to":                 worker.Descriptor["aid"],
+		"status":             "cancelled",
+		"cancel":             cancel,
+		"artifact_refs":      []string{},
+		"artifact_manifests": []map[string]any{},
+		"event_count":        float64(1),
+		"approvals":          []string{},
+		"approval_grants":    []map[string]any{},
+		"checkpoint_refs":    []string{},
+		"checkpoints":        []map[string]any{},
+		"policy_scope":       policyScope,
+		"policy_digest":      policyDigest,
+		"sandbox":            sandbox,
+		"sandbox_proof":      f.sandboxProof(taskID, worker, sandbox, policyDigest),
+		"tool":               "none",
+	}
+	signedReceipt := signBody(worker.PrivateKey, receipt)
+	receiptRecord := map[string]any{
+		"kind":         "go_fed_receipt",
+		"zone":         f.Authority,
+		"worker":       worker.Descriptor,
+		"zone_binding": f.zoneBinding(worker),
+		"receipt":      signedReceipt,
+	}
+	if err := f.appendAudit(receiptRecord); err != nil {
+		return err
+	}
+	send(map[string]any{
+		"type":         "FED_RECEIPT",
+		"zone":         receiptRecord["zone"],
+		"worker":       receiptRecord["worker"],
+		"zone_binding": receiptRecord["zone_binding"],
+		"receipt":      receiptRecord["receipt"],
+	})
+	send(map[string]any{"type": "FED_CANCEL_CLOSE", "task_id": taskID})
 	return nil
 }
 
