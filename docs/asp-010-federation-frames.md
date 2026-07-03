@@ -354,7 +354,9 @@ Zone A must not treat this as a receipt.
       "mcp_resources_count": 1,
       "mcp_resources_digest": "...",
       "mcp_prompts_count": 1,
-      "mcp_prompts_digest": "..."
+      "mcp_prompts_digest": "...",
+      "mcp_tools_count": 1,
+      "mcp_tools_digest": "..."
     },
     "event_count": 7,
     "approvals": ["write"],

@@ -291,6 +291,12 @@ rl.on("line", (line) => {
       id: message.id,
       result: { prompts: [{ name: "translate" }] }
     }) + "\\n");
+  } else if (message.method === "tools/list") {
+    process.stdout.write(JSON.stringify({
+      jsonrpc: "2.0",
+      id: message.id,
+      result: { tools: [{ name: "translate" }] }
+    }) + "\\n");
   } else if (message.method === "tools/call") {
     const args = message.params.arguments;
     process.stdout.write(JSON.stringify({
@@ -508,6 +514,8 @@ rl.on("line", (line) => {
     assert.match(receiptFrame.receipt.sandbox.mcp_resources_digest, /^[0-9a-f]{64}$/);
     assert.equal(receiptFrame.receipt.sandbox.mcp_prompts_count, 1);
     assert.match(receiptFrame.receipt.sandbox.mcp_prompts_digest, /^[0-9a-f]{64}$/);
+    assert.equal(receiptFrame.receipt.sandbox.mcp_tools_count, 1);
+    assert.match(receiptFrame.receipt.sandbox.mcp_tools_digest, /^[0-9a-f]{64}$/);
     assert.equal(receiptFrame.receipt.sandbox_claim, "local-temp-dir");
     const sandboxProof = receiptFrame.receipt.sandbox_proof;
     assert.equal(sandboxProof.proof_type, "local.sandbox.v1");
@@ -520,6 +528,7 @@ rl.on("line", (line) => {
     assert.deepEqual(sandboxProof.sandbox.mcp_session, receiptFrame.receipt.sandbox.mcp_session);
     assert.equal(sandboxProof.sandbox.mcp_resources_digest, receiptFrame.receipt.sandbox.mcp_resources_digest);
     assert.equal(sandboxProof.sandbox.mcp_prompts_digest, receiptFrame.receipt.sandbox.mcp_prompts_digest);
+    assert.equal(sandboxProof.sandbox.mcp_tools_digest, receiptFrame.receipt.sandbox.mcp_tools_digest);
     assert.equal(sandboxProof.sandbox_claim, receiptFrame.receipt.sandbox_claim);
     const sandboxProofBody = { ...sandboxProof };
     delete sandboxProofBody.sandbox_signature;

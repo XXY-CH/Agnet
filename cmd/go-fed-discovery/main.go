@@ -1327,6 +1327,9 @@ func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, map
 	if err := recordMCPListEvidence(writeRPC, scanner, sandbox, 3, "prompts/list", "prompts", "mcp_prompts"); err != nil {
 		return "", nil, err
 	}
+	if err := recordMCPListEvidence(writeRPC, scanner, sandbox, 4, "tools/list", "tools", "mcp_tools"); err != nil {
+		return "", nil, err
+	}
 	args := map[string]any{
 		"task_id": task["task_id"],
 		"intent":  task["intent"],
@@ -1335,13 +1338,13 @@ func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, map
 	}
 	if err := writeRPC(map[string]any{
 		"jsonrpc": "2.0",
-		"id":      4,
+		"id":      5,
 		"method":  "tools/call",
 		"params":  map[string]any{"name": toolName, "arguments": args},
 	}); err != nil {
 		return "", nil, err
 	}
-	response, err := readRPCResponse(scanner, 4)
+	response, err := readRPCResponse(scanner, 5)
 	if err != nil {
 		return "", nil, err
 	}
