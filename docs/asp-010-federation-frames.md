@@ -346,7 +346,11 @@ Zone A must not treat this as a receipt.
       "sandbox_claim": "local-temp-dir"
     },
     "sandbox": {
-      "tool_command_digest": "..."
+      "tool_command_digest": "...",
+      "mcp_session": {
+        "protocol_version": "2025-11-25",
+        "server_info": { "name": "test-mcp", "version": "0" }
+      }
     },
     "event_count": 7,
     "approvals": ["write"],

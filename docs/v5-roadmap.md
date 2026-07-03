@@ -1,6 +1,6 @@
 # Agent Space v5 Roadmap
 
-状态：v5.6 complete; v5.7+ planned
+状态：v5.7 complete; v5.8+ planned
 目标：从 v4 的 evidence chain 推进到更强运行面，但仍保持 `agent-space-ultimate-vision.md` 的底层窄腰：identity、signed task、event stream、scoped policy、artifact reference、audit receipt、federation。
 
 ## v5.0: Signed Sandbox Proof
@@ -143,9 +143,28 @@
 - 不做 content-addressed artifact store。
 - 不做 separate tool transcript storage。
 
+## v5.7: MCP Session Metadata
+
+状态：complete
+目标：把 MCP initialize 返回的 protocol/server metadata 绑定进 sandbox evidence。
+
+新增：
+
+- `sandbox.mcp_session.protocol_version`
+- `sandbox.mcp_session.server_info`
+- signed sandbox proof covers metadata because it signs sandbox evidence
+
+不做：
+
+- 不做 long-running MCP session reuse。
+- 不做 session resume。
+- 不做 resources/prompts/list。
+- 不做 MCP server registry。
+- 不做 server signature verification。
+
 ## 后续方向
 
-- MCP session metadata
+- MCP resources/prompts evidence
 - container sandbox proof
 - long-running MCP sessions
 - scheduling / retry

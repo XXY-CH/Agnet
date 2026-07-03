@@ -488,6 +488,10 @@ rl.on("line", (line) => {
     assert.deepEqual(receiptFrame.receipt.sandbox.env, ["PATH=/usr/bin:/bin"]);
     assert.equal(receiptFrame.receipt.sandbox.network, "not_granted");
     assert.match(receiptFrame.receipt.sandbox.tool_command_digest, /^[0-9a-f]{64}$/);
+    assert.deepEqual(receiptFrame.receipt.sandbox.mcp_session, {
+      protocol_version: "2025-11-25",
+      server_info: { name: "test-mcp", version: "0" },
+    });
     assert.equal(receiptFrame.receipt.sandbox_claim, "local-temp-dir");
     const sandboxProof = receiptFrame.receipt.sandbox_proof;
     assert.equal(sandboxProof.proof_type, "local.sandbox.v1");
@@ -497,6 +501,7 @@ rl.on("line", (line) => {
     assert.equal(sandboxProof.policy_digest, receiptFrame.receipt.policy_digest);
     assert.deepEqual(sandboxProof.sandbox, receiptFrame.receipt.sandbox);
     assert.equal(sandboxProof.sandbox.tool_command_digest, receiptFrame.receipt.sandbox.tool_command_digest);
+    assert.deepEqual(sandboxProof.sandbox.mcp_session, receiptFrame.receipt.sandbox.mcp_session);
     assert.equal(sandboxProof.sandbox_claim, receiptFrame.receipt.sandbox_claim);
     const sandboxProofBody = { ...sandboxProof };
     delete sandboxProofBody.sandbox_signature;

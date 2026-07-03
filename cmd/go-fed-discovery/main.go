@@ -1308,8 +1308,15 @@ func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, map
 	}); err != nil {
 		return "", nil, err
 	}
-	if _, err := readRPCResponse(scanner, 1); err != nil {
+	initializeResponse, err := readRPCResponse(scanner, 1)
+	if err != nil {
 		return "", nil, err
+	}
+	if result, ok := initializeResponse["result"].(map[string]any); ok {
+		sandbox["mcp_session"] = map[string]any{
+			"protocol_version": result["protocolVersion"],
+			"server_info":      result["serverInfo"],
+		}
 	}
 	if err := writeRPC(map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized", "params": map[string]any{}}); err != nil {
 		return "", nil, err

@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v5.6 assessment
+状态：v5.7 assessment
 
 ## 一句话
 
@@ -14,7 +14,7 @@
 
 ### Protocol core
 
-进度：约 81%。
+进度：约 82%。
 
 已有：
 
@@ -52,6 +52,7 @@
 - Sandbox claim binding in v5.4。
 - Tool command provenance digest in v5.5。
 - Tool output digest alignment in v5.6。
+- MCP initialize metadata evidence in v5.7。
 
 主要缺：
 
@@ -60,7 +61,7 @@
 
 ### Runtime core
 
-进度：约 63%。
+进度：约 64%。
 
 已有：
 
@@ -79,6 +80,7 @@
 - Sandbox claim binding prevents overclaiming local-temp-dir as stronger isolation。
 - External/MCP sandbox evidence records tool command digest。
 - Tool output digest aligns signed receipt with artifact manifest。
+- MCP sandbox evidence records protocol/server initialize metadata。
 
 主要缺：
 
@@ -92,6 +94,7 @@
 - automatic retry / backoff。
 - binary/package provenance。
 - streamed output transcript evidence。
+- long-running MCP session reuse。
 - artifact store beyond local files。
 
 ### Network layer
