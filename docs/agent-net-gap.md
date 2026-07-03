@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v4.2 assessment
+状态：v3.9 assessment
 
 ## 一句话
 
@@ -39,9 +39,6 @@
 - Minimal MCP stdio tools/call in v3.7。
 - Simulated external/MCP tool approval gate in v3.8。
 - Signed local approval evidence and sandbox evidence in v3.9。
-- Task-scoped Git worktree context evidence in v4。
-- Signed checkpoint and merge proposal evidence in v4.1。
-- Read-only merge proposal review surface in v4.2。
 
 主要缺：
 
@@ -74,7 +71,6 @@
 - concurrency model。
 - durable task state。
 - artifact store beyond local files。
-- automatic merge / conflict resolution。
 
 ### Network layer
 
@@ -106,9 +102,6 @@
 - read-only Human Gateway。
 - simulated approval events。
 - signed approval receipts visible through Human Gateway。
-- task worktree context receipts。
-- signed checkpoint / merge proposal receipts。
-- merge proposal review CLI / Human Gateway API。
 - docs and protocol proofs。
 
 主要缺：
@@ -178,9 +171,9 @@ Trying to clone Octo now would pull this project sideways into chat/product surf
 The right path is:
 
 ```text
-v4.x merge apply + checkpoint resume
+v4 protocol-native checkpoint evidence
 ```
 
-After v3.3 or v3.4, comparing directly with Octo becomes useful.
+After v4 has checkpoint evidence, artifact manifests, richer policy scope, and credential status, comparing directly with Octo becomes useful.
 
 Before that, Octo should be treated as the possible Human Gateway layer above Agent Space, not as the thing to copy line by line.

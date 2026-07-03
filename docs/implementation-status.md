@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v4.2 complete
-当前代码基线：`v4.2`
+状态：v3.9 complete
+当前代码基线：`v3.9`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、task-scoped Git worktree context evidence、signed checkpoint / merge proposal evidence，以及 merge proposal review surface。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、外部/MCP tool approval gate、signed approval evidence，以及本地临时目录 sandbox evidence。
 
 还不是可产品化的 Agent Net。
 
@@ -16,7 +16,7 @@
 | Agent identity | done | verify/generate subset | `asp-core.mjs`, `cmd/go-fed-discovery` | Go shared library/package shape |
 | Zone identity | done | verify/generate subset | `trusted-zones.test.mjs`, Go descriptor verification | Zone lifecycle tooling |
 | Local registry | done | multi-worker profile registry | `zone-registry.test.mjs`, `go-fed-discovery.test.mjs` | worker lifecycle API |
-| Local task execution | done | built-in + external stdio + MCP stdio tools/call + local temp-dir sandbox evidence + Git worktree context evidence | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | container sandbox / long-running MCP sessions |
+| Local task execution | done | built-in + external stdio + MCP stdio tools/call + local temp-dir sandbox evidence | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | container sandbox / long-running MCP sessions |
 | Events | done | minimal federation events | `agent-runtime.test.mjs`, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | richer event lifecycle |
 | Artifact write | done | deterministic local artifact | `mvp-demo.test.mjs`, `go-fed-discovery.test.mjs` | artifact store |
 | Receipt signing | done | done for minimal Go execution | `test-vectors.test.mjs`, `go-fed-discovery.test.mjs` | receipt verification CLI |
@@ -28,7 +28,6 @@
 | `FED_TASK_OPEN` | execute | execute minimal path | `federation-gateway.mjs`, `go-fed-discovery.test.mjs` | real worker/tools |
 | Policy checks | done | network/write subset | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | richer scope schema |
 | Human approval | simulated | signed local tool approval evidence visible in Human Gateway | Node events, `go-fed-discovery.test.mjs` | interactive approval queue / login-state UI |
-| Scoped workspace | prototype | task-scoped detached Git worktree plus signed checkpoint / merge proposal evidence and read-only review surface | `go-fed-discovery.test.mjs` | automatic merge / conflict resolution / realtime context sync |
 | Transport | local TCP / local process | local TCP + minimal WebSocket | README commands, `go-fed-discovery.test.mjs` | TLS, auth handshake, QUIC |
 | Product surface | CLI/tests only | thin read-only Human Gateway | README, `go-fed-discovery.test.mjs` | approvals, task creation, admin, deployment |
 
@@ -54,9 +53,6 @@ Go
   -> minimal MCP stdio tools/call adapter
   -> signed local approval grants for external/MCP tools
   -> local temporary sandbox directory evidence for external/MCP tools
-  -> task-scoped detached Git worktree context evidence for external/MCP tools
-  -> signed checkpoint and merge proposal evidence for changed worktrees
-  -> read-only merge proposal review via CLI and Human Gateway
 ```
 
 ## Next Boundary
@@ -64,8 +60,10 @@ Go
 Next natural boundary:
 
 ```text
-Merge apply + checkpoint resume
-  -> promote proposals and resume interrupted long tasks
+Protocol-native checkpoint evidence
+  -> checkpoint.created event + signed checkpoint object + receipt refs
 ```
 
-Skipped until later: encrypted key store, public transport, interactive approval queue, container sandbox, merge apply, conflict resolution, realtime context sync, A2A translation layer, scheduling, semantic routing.
+Route detail: `docs/v4-roadmap.md`。
+
+Skipped until later: encrypted key store, public transport, interactive approval queue, container sandbox, Git/worktree/merge operations, scheduling, semantic routing.

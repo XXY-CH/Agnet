@@ -202,7 +202,6 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
       tool: "mcp.stdio",
       tool_name: "translate",
       tool_command: [process.execPath, `${process.cwd()}/state/go-fed-mcp-server.mjs`],
-      context_repo: ".",
       transports: ["fed+tcp://127.0.0.1:8991"],
       capabilities: ["translate.text"],
       policy: { allow_network: false, approval_required: ["tool"] },
@@ -214,10 +213,9 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
   await writeFile("state/go-fed-discovery-worker.seed", `${fixture.worker_seed_hex}\n`);
   await writeFile("state/go-fed-discovery-translator.seed", "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f\n");
   await writeFile("state/go-fed-mcp-server.mjs", `
-import { writeFile } from "node:fs/promises";
 import readline from "node:readline";
 const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", async (line) => {
+rl.on("line", (line) => {
   const message = JSON.parse(line);
   if (message.method === "initialize") {
     process.stdout.write(JSON.stringify({
@@ -227,11 +225,10 @@ rl.on("line", async (line) => {
     }) + "\\n");
   } else if (message.method === "tools/call") {
     const args = message.params.arguments;
-    await writeFile("agent-output.txt", \`task=\${args.task_id}\\nintent=\${args.intent}\\n\`);
     process.stdout.write(JSON.stringify({
       jsonrpc: "2.0",
       id: message.id,
-      result: { content: [{ type: "text", text: \`# MCP Tool Translation\\n\\nTask: \${args.task_id}\\nTranslation: \${String(args.intent).toUpperCase()}\\nCWD: \${process.cwd()}\\nContext: \${args.context.mode}\\n\` }] }
+      result: { content: [{ type: "text", text: \`# MCP Tool Translation\\n\\nTask: \${args.task_id}\\nTranslation: \${String(args.intent).toUpperCase()}\\nCWD: \${process.cwd()}\\n\` }] }
     }) + "\\n");
     process.exit(0);
   }
@@ -343,15 +340,13 @@ rl.on("line", async (line) => {
       "FED_TASK_EVENT",
       "FED_TASK_EVENT",
       "FED_TASK_EVENT",
-      "FED_TASK_EVENT",
       "FED_RECEIPT",
       "FED_TASK_CLOSE",
     ]);
     assert.deepEqual(
-      executionFrames.slice(0, 7).map((frame) => frame.event.type),
-      ["task.accepted", "approval.required", "approval.granted", "task.started", "checkpoint.created", "artifact.created", "task.completed"],
+      executionFrames.slice(0, 6).map((frame) => frame.event.type),
+      ["task.accepted", "approval.required", "approval.granted", "task.started", "artifact.created", "task.completed"],
     );
-    const checkpointEvent = executionFrames[4].event.checkpoint;
     const approvalGrant = executionFrames[2].event.grant;
     const authorityPublicKey = publicKeyFromDescriptor(fixture.authority);
     const approvalBody = { ...approvalGrant };
@@ -360,7 +355,7 @@ rl.on("line", async (line) => {
     assert.equal(approvalGrant.task_id, task.task_id);
     assert.equal(approvalGrant.authority, fixture.authority.zid);
     assert.deepEqual(approvalGrant.reasons, ["tool"]);
-    const receiptFrame = executionFrames[7];
+    const receiptFrame = executionFrames[6];
     assert.equal(receiptFrame.zone.zid, fixture.authority.zid);
     const resolvedWorker = resolveAgent(
       new Map([[receiptFrame.worker.alias, {
@@ -379,39 +374,18 @@ rl.on("line", async (line) => {
     assert.equal(receiptFrame.worker.alias, "agent://zone-b/translator");
     assert.equal(receiptFrame.receipt.to, receiptFrame.worker.aid);
     assert.equal(receiptFrame.receipt.artifact_refs[0], "artifact://local/go_fed_task_verified/go-summary.md");
-    assert.equal(receiptFrame.receipt.event_count, 7);
+    assert.equal(receiptFrame.receipt.event_count, 6);
     assert.deepEqual(receiptFrame.receipt.approvals, ["tool"]);
     assert.deepEqual(receiptFrame.receipt.approval_grants, [approvalGrant]);
-    assert.deepEqual(receiptFrame.receipt.checkpoints, [checkpointEvent]);
-    const checkpointBody = { ...checkpointEvent };
-    delete checkpointBody.checkpoint_signature;
-    assert.equal(verifyObject(resolvedWorker.publicKey, checkpointBody, checkpointEvent.checkpoint_signature), true);
-    assert.equal(checkpointEvent.kind, "worktree-commit");
-    assert.equal(checkpointEvent.task_id, task.task_id);
     assert.equal(receiptFrame.receipt.sandbox.mode, "local-temp-dir");
     assert.equal(receiptFrame.receipt.sandbox.kind, "mcp");
     assert.deepEqual(receiptFrame.receipt.sandbox.env, ["PATH=/usr/bin:/bin"]);
     assert.equal(receiptFrame.receipt.sandbox.network, "not_granted");
-    assert.equal(receiptFrame.receipt.context.mode, "git-worktree");
-    assert.equal(receiptFrame.receipt.context.task_id, task.task_id);
-    assert.equal(receiptFrame.receipt.context.repo, ".");
-    assert.match(receiptFrame.receipt.context.base_head, /^[0-9a-f]{40}$/);
-    assert.match(receiptFrame.receipt.context.worktree, /agnet-worktree-/);
-    assert.equal(receiptFrame.receipt.merge.mode, "git-merge-proposal");
-    assert.equal(receiptFrame.receipt.merge.task_id, task.task_id);
-    assert.equal(receiptFrame.receipt.merge.base_head, receiptFrame.receipt.context.base_head);
-    assert.equal(receiptFrame.receipt.merge.commit, checkpointEvent.commit);
-    assert.match(receiptFrame.receipt.merge.diff_sha256, /^[0-9a-f]{64}$/);
-    assert.deepEqual(receiptFrame.receipt.merge.changed_files, ["agent-output.txt"]);
-    const mergeBody = { ...receiptFrame.receipt.merge };
-    delete mergeBody.merge_signature;
-    assert.equal(verifyObject(resolvedWorker.publicKey, mergeBody, receiptFrame.receipt.merge.merge_signature), true);
     assert.equal(receiptFrame.receipt.tool, "mcp.stdio");
     const artifactText = await readFile("artifacts/go_fed_task_verified/go-summary.md", "utf8");
     assert.match(artifactText, /MCP Tool Translation/);
     assert.match(artifactText, /VERIFY FED_TASK_OPEN IN GO\./);
-    assert.match(artifactText, /agnet-worktree-/);
-    assert.match(artifactText, /Context: git-worktree/);
+    assert.match(artifactText, /agnet-mcp-/);
 
     const deniedTask = {
       ...task,
@@ -436,29 +410,10 @@ rl.on("line", async (line) => {
     ]);
     assert.match(verifiedAudit.stdout, /"go_audit_verify":"ok"/);
 
-    const reviewedMerges = await execFileAsync("go", [
-      "run",
-      "./cmd/go-fed-discovery",
-      "--review-merges",
-      "--audit",
-      "state/go-fed-discovery-audit.log",
-    ]);
-    const reviewedMergeBody = JSON.parse(reviewedMerges.stdout);
-    assert.equal(reviewedMergeBody.merge_proposals.length, 1);
-    assert.equal(reviewedMergeBody.merge_proposals[0].task_id, task.task_id);
-    assert.equal(reviewedMergeBody.merge_proposals[0].worker, "agent://zone-b/translator");
-    assert.equal(reviewedMergeBody.merge_proposals[0].commit, receiptFrame.receipt.merge.commit);
-    assert.deepEqual(reviewedMergeBody.merge_proposals[0].changed_files, ["agent-output.txt"]);
-
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 8);
-
-    const mergeResponse = await fetch(`http://127.0.0.1:${humanPort}/api/merge-proposals`);
-    assert.equal(mergeResponse.status, 200);
-    const mergeApiBody = await mergeResponse.json();
-    assert.deepEqual(mergeApiBody.merge_proposals, reviewedMergeBody.merge_proposals);
+    assert.equal(auditBody.entries.length, 7);
 
     const pageResponse = await fetch(`http://127.0.0.1:${humanPort}/`);
     assert.equal(pageResponse.status, 200);
@@ -468,9 +423,6 @@ rl.on("line", async (line) => {
     assert.match(pageText, /go_fed_task_verified/);
     assert.match(pageText, /1 signed/);
     assert.match(pageText, /local-temp-dir/);
-    assert.match(pageText, /git-worktree/);
-    assert.match(pageText, /git-merge-proposal/);
-    assert.match(pageText, /agent-output\.txt/);
 
     const artifactResponse = await fetch(`http://127.0.0.1:${humanPort}/artifacts/go_fed_task_verified/go-summary.md`);
     assert.equal(artifactResponse.status, 200);

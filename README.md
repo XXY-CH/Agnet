@@ -1,14 +1,15 @@
 # Agent Space MVP
 
-Current status: `v4.2`.
+Current status: `v3.9`.
 
 Start here:
 
 - Current implementation matrix: [docs/implementation-status.md](docs/implementation-status.md)
 - Gap to Agent Net and Octo: [docs/agent-net-gap.md](docs/agent-net-gap.md)
-- Latest boundary: [docs/v4.2-boundary.md](docs/v4.2-boundary.md)
+- Latest boundary: [docs/v3.9-boundary.md](docs/v3.9-boundary.md)
+- v4 roadmap: [docs/v4-roadmap.md](docs/v4-roadmap.md)
 
-Current boundary: [docs/v0-boundary.md](docs/v0-boundary.md), [docs/v0.1-boundary.md](docs/v0.1-boundary.md), [docs/v0.2-boundary.md](docs/v0.2-boundary.md), [docs/v0.3-boundary.md](docs/v0.3-boundary.md), [docs/v0.4-boundary.md](docs/v0.4-boundary.md), [docs/v0.5-boundary.md](docs/v0.5-boundary.md), [docs/v0.6-boundary.md](docs/v0.6-boundary.md), [docs/v0.7-boundary.md](docs/v0.7-boundary.md), [docs/v0.8-boundary.md](docs/v0.8-boundary.md), [docs/v0.9-boundary.md](docs/v0.9-boundary.md), [docs/v1-boundary.md](docs/v1-boundary.md), [docs/v1.1-boundary.md](docs/v1.1-boundary.md), [docs/v1.2-boundary.md](docs/v1.2-boundary.md), [docs/v1.3-boundary.md](docs/v1.3-boundary.md), [docs/v1.4-boundary.md](docs/v1.4-boundary.md), [docs/v1.5-boundary.md](docs/v1.5-boundary.md), [docs/v1.6-boundary.md](docs/v1.6-boundary.md), [docs/v2-boundary.md](docs/v2-boundary.md), [docs/v2.1-boundary.md](docs/v2.1-boundary.md), [docs/v2.2-boundary.md](docs/v2.2-boundary.md), [docs/v2.3-boundary.md](docs/v2.3-boundary.md), [docs/v2.4-boundary.md](docs/v2.4-boundary.md), [docs/v3-boundary.md](docs/v3-boundary.md), [docs/v3.1-boundary.md](docs/v3.1-boundary.md), [docs/v3.2-boundary.md](docs/v3.2-boundary.md), [docs/v3.3-boundary.md](docs/v3.3-boundary.md), [docs/v3.4-boundary.md](docs/v3.4-boundary.md), [docs/v3.5-boundary.md](docs/v3.5-boundary.md), [docs/v3.6-boundary.md](docs/v3.6-boundary.md), [docs/v3.7-boundary.md](docs/v3.7-boundary.md), [docs/v3.8-boundary.md](docs/v3.8-boundary.md), [docs/v3.9-boundary.md](docs/v3.9-boundary.md), [docs/v4-boundary.md](docs/v4-boundary.md), [docs/v4.1-boundary.md](docs/v4.1-boundary.md), [docs/v4.2-boundary.md](docs/v4.2-boundary.md)
+Current boundary: [docs/v0-boundary.md](docs/v0-boundary.md), [docs/v0.1-boundary.md](docs/v0.1-boundary.md), [docs/v0.2-boundary.md](docs/v0.2-boundary.md), [docs/v0.3-boundary.md](docs/v0.3-boundary.md), [docs/v0.4-boundary.md](docs/v0.4-boundary.md), [docs/v0.5-boundary.md](docs/v0.5-boundary.md), [docs/v0.6-boundary.md](docs/v0.6-boundary.md), [docs/v0.7-boundary.md](docs/v0.7-boundary.md), [docs/v0.8-boundary.md](docs/v0.8-boundary.md), [docs/v0.9-boundary.md](docs/v0.9-boundary.md), [docs/v1-boundary.md](docs/v1-boundary.md), [docs/v1.1-boundary.md](docs/v1.1-boundary.md), [docs/v1.2-boundary.md](docs/v1.2-boundary.md), [docs/v1.3-boundary.md](docs/v1.3-boundary.md), [docs/v1.4-boundary.md](docs/v1.4-boundary.md), [docs/v1.5-boundary.md](docs/v1.5-boundary.md), [docs/v1.6-boundary.md](docs/v1.6-boundary.md), [docs/v2-boundary.md](docs/v2-boundary.md), [docs/v2.1-boundary.md](docs/v2.1-boundary.md), [docs/v2.2-boundary.md](docs/v2.2-boundary.md), [docs/v2.3-boundary.md](docs/v2.3-boundary.md), [docs/v2.4-boundary.md](docs/v2.4-boundary.md), [docs/v3-boundary.md](docs/v3-boundary.md), [docs/v3.1-boundary.md](docs/v3.1-boundary.md), [docs/v3.2-boundary.md](docs/v3.2-boundary.md), [docs/v3.3-boundary.md](docs/v3.3-boundary.md), [docs/v3.4-boundary.md](docs/v3.4-boundary.md), [docs/v3.5-boundary.md](docs/v3.5-boundary.md), [docs/v3.6-boundary.md](docs/v3.6-boundary.md), [docs/v3.7-boundary.md](docs/v3.7-boundary.md), [docs/v3.8-boundary.md](docs/v3.8-boundary.md), [docs/v3.9-boundary.md](docs/v3.9-boundary.md)
 
 Run the smallest proof:
 
@@ -54,9 +55,6 @@ It proves:
 - A write task produces approval events before execution.
 - Go tool approval grants are signed by the Zone authority and visible in the Human Gateway receipt view.
 - Go external/MCP tools run from a local temporary sandbox directory with restricted environment evidence in the receipt.
-- Go external/MCP tools can run in task-scoped Git worktree context and record context evidence in the receipt.
-- Go worktree changes become signed checkpoint and merge proposal evidence without mutating main.
-- Go can review signed merge proposals through CLI and Human Gateway read-only surfaces.
 - A worker emits events, writes an artifact, and signs a receipt.
 - `state/audit.log` records hash-chained events and receipts as JSON lines.
 
