@@ -1,6 +1,6 @@
 # Agent Space v5 Roadmap
 
-状态：v5.9 complete; v5.10+ planned
+状态：v5.10 complete; v5.11+ planned
 目标：从 v4 的 evidence chain 推进到更强运行面，但仍保持 `agent-space-ultimate-vision.md` 的底层窄腰：identity、signed task、event stream、scoped policy、artifact reference、audit receipt、federation。
 
 ## v5.0: Signed Sandbox Proof
@@ -203,9 +203,28 @@
 - 不做 tool selection/ranking。
 - 不做 long-running MCP session reuse。
 
+## v5.10: MCP Selected Tool Binding
+
+状态：complete
+目标：证明 selected MCP tool 来自 `tools/list` surface。
+
+新增：
+
+- selected tool must appear in `tools/list`
+- `mcp_selected_tool`
+- `mcp_selected_tool_digest`
+
+不做：
+
+- 不保存完整 tools catalog。
+- 不验证 input schema。
+- 不做 tool registry。
+- 不做 tool ranking。
+- 不做 authorization UI。
+
 ## 后续方向
 
-- MCP selected tool binding
+- MCP selected tool schema digest
 - container sandbox proof
 - long-running MCP sessions
 - scheduling / retry

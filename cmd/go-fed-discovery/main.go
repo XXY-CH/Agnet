@@ -1321,13 +1321,17 @@ func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, map
 	if err := writeRPC(map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized", "params": map[string]any{}}); err != nil {
 		return "", nil, err
 	}
-	if err := recordMCPListEvidence(writeRPC, scanner, sandbox, 2, "resources/list", "resources", "mcp_resources"); err != nil {
+	if _, err := recordMCPListEvidence(writeRPC, scanner, sandbox, 2, "resources/list", "resources", "mcp_resources"); err != nil {
 		return "", nil, err
 	}
-	if err := recordMCPListEvidence(writeRPC, scanner, sandbox, 3, "prompts/list", "prompts", "mcp_prompts"); err != nil {
+	if _, err := recordMCPListEvidence(writeRPC, scanner, sandbox, 3, "prompts/list", "prompts", "mcp_prompts"); err != nil {
 		return "", nil, err
 	}
-	if err := recordMCPListEvidence(writeRPC, scanner, sandbox, 4, "tools/list", "tools", "mcp_tools"); err != nil {
+	tools, err := recordMCPListEvidence(writeRPC, scanner, sandbox, 4, "tools/list", "tools", "mcp_tools")
+	if err != nil {
+		return "", nil, err
+	}
+	if err := recordMCPSelectedToolEvidence(sandbox, tools, toolName); err != nil {
 		return "", nil, err
 	}
 	args := map[string]any{
@@ -1363,19 +1367,31 @@ func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, map
 	return text, sandbox, err
 }
 
-func recordMCPListEvidence(writeRPC func(map[string]any) error, scanner *bufio.Scanner, sandbox map[string]any, id float64, method, field, prefix string) error {
+func recordMCPListEvidence(writeRPC func(map[string]any) error, scanner *bufio.Scanner, sandbox map[string]any, id float64, method, field, prefix string) ([]any, error) {
 	if err := writeRPC(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": map[string]any{}}); err != nil {
-		return err
+		return nil, err
 	}
 	response, err := readRPCResponse(scanner, id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	result, _ := response["result"].(map[string]any)
 	items, _ := result[field].([]any)
 	sandbox[prefix+"_count"] = float64(len(items))
 	sandbox[prefix+"_digest"] = digestHex(items)
-	return nil
+	return items, nil
+}
+
+func recordMCPSelectedToolEvidence(sandbox map[string]any, tools []any, toolName string) error {
+	for _, item := range tools {
+		tool, _ := item.(map[string]any)
+		if tool["name"] == toolName {
+			sandbox["mcp_selected_tool"] = toolName
+			sandbox["mcp_selected_tool_digest"] = digestHex(tool)
+			return nil
+		}
+	}
+	return errors.New("mcp selected tool missing from tools/list")
 }
 
 func readRPCResponse(scanner *bufio.Scanner, id float64) (map[string]any, error) {
