@@ -39,6 +39,7 @@ type Fixture struct {
 	AuthorityPrivateKey ed25519.PrivateKey `json:"-"`
 	Audit               *AuditLog          `json:"-"`
 	TaskStateDir        string             `json:"-"`
+	QueueDir            string             `json:"-"`
 	Runtime             *TaskRuntime       `json:"-"`
 }
 
@@ -152,6 +153,7 @@ func serve(port, wsPort, humanPort, fixturePath, trustPath, authorityKeyPath, wo
 	}
 	fixture.Audit = audit
 	fixture.TaskStateDir = strings.TrimSuffix(auditPath, filepath.Ext(auditPath)) + "-tasks"
+	fixture.QueueDir = queueDirForAudit(auditPath)
 	fixture.Runtime = &TaskRuntime{running: map[string]context.CancelFunc{}, cancelled: map[string]bool{}}
 	trusted, err := loadTrustedZones(trustPath)
 	if err != nil {
@@ -305,6 +307,18 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(err))
 			return false
 		}
+	case "FED_TASK_ENQUEUE":
+		worker, task, err := fixture.verifyTaskOpen(frame)
+		if err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
+		if err := fixture.writeQueueItem(origin, worker, task, "queued", nil); err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
+		send(map[string]any{"type": "FED_QUEUE_ACCEPTED", "task_id": task["task_id"], "worker": worker.Descriptor["aid"]})
+		send(map[string]any{"type": "FED_QUEUE_CLOSE", "task_id": task["task_id"]})
 	case "FED_TASK_RESUME":
 		worker, task, err := fixture.verifyTaskOpen(frame)
 		if err != nil {
@@ -658,6 +672,10 @@ func readAuditEntriesOrEmpty(path string) ([]map[string]any, error) {
 
 func taskStateDirForAudit(auditPath string) string {
 	return strings.TrimSuffix(auditPath, filepath.Ext(auditPath)) + "-tasks"
+}
+
+func queueDirForAudit(auditPath string) string {
+	return strings.TrimSuffix(auditPath, filepath.Ext(auditPath)) + "-queue"
 }
 
 func readTaskStates(dir string) ([]map[string]any, error) {
@@ -1675,6 +1693,32 @@ func (f Fixture) writeTaskState(taskID, status string, worker *Worker, extra map
 	}
 	// ponytail: one JSON file per task; replace with an indexed store when scheduling needs queries.
 	return os.WriteFile(filepath.Join(f.TaskStateDir, url.PathEscape(taskID)+".json"), append(data, '\n'), 0o644)
+}
+
+func (f Fixture) writeQueueItem(origin map[string]any, worker *Worker, task map[string]any, status string, extra map[string]any) error {
+	if f.QueueDir == "" {
+		return nil
+	}
+	taskID := fmt.Sprint(task["task_id"])
+	body := map[string]any{
+		"task_id":     taskID,
+		"status":      status,
+		"worker":      worker.Descriptor["aid"],
+		"origin_zone": origin["zid"],
+		"task_digest": digestHex(task),
+	}
+	for key, value := range extra {
+		body[key] = value
+	}
+	if err := os.MkdirAll(f.QueueDir, 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(body, "", "  ")
+	if err != nil {
+		return err
+	}
+	// ponytail: one queue file per task; replace with leases when multiple workers can drain it.
+	return os.WriteFile(filepath.Join(f.QueueDir, url.PathEscape(taskID)+".json"), append(data, '\n'), 0o644)
 }
 
 func writeArtifact(uri, text string) (map[string]any, error) {

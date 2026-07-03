@@ -339,6 +339,7 @@ setTimeout(() => {
 `);
   await rm("state/go-fed-discovery-audit.log", { force: true });
   await rm("state/go-fed-discovery-audit-tasks", { recursive: true, force: true });
+  await rm("state/go-fed-discovery-audit-queue", { recursive: true, force: true });
   await writeTrustedZones("state/go-fed-discovery-trusted-origin.json", [zoneA]);
   await writeFile("state/node-trusts-go-discovery.json", `${JSON.stringify({ zones: [fixture.authority] }, null, 2)}\n`);
   const gateway = spawn("go", [
@@ -458,6 +459,25 @@ setTimeout(() => {
       scope: { network: false, data_domains: ["public.docs"], expires_at: "2026-07-03T12:00:00Z" },
       budget: { time_seconds: 30 },
     };
+    const queuedTask = {
+      ...task,
+      task_id: "go_fed_task_queued",
+      intent: "Queue before scheduler execution.",
+    };
+    const queuedFrames = await exchangeFrames(port, {
+      type: "FED_TASK_ENQUEUE",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      task: { ...queuedTask, signature: signObject(requester.privateKey, queuedTask) },
+    }, "FED_QUEUE_CLOSE");
+    assert.deepEqual(queuedFrames.map((frame) => frame.type), ["FED_QUEUE_ACCEPTED", "FED_QUEUE_CLOSE"]);
+    const queuedState = JSON.parse(await readFile("state/go-fed-discovery-audit-queue/go_fed_task_queued.json", "utf8"));
+    assert.equal(queuedState.task_id, queuedTask.task_id);
+    assert.equal(queuedState.status, "queued");
+    assert.equal(queuedState.worker, resolvedTranslatorResult.aid);
+    assert.equal(queuedState.origin_zone, zoneA.zid);
+    assert.match(queuedState.task_digest, /^[0-9a-f]{64}$/);
+
     const executionFrames = await exchangeFrames(port, {
       type: "FED_TASK_OPEN",
       origin_zone: zoneA.descriptor,
