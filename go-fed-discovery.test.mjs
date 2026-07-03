@@ -454,6 +454,7 @@ rl.on("line", (line) => {
     assert.deepEqual(receiptFrame.receipt.artifact_manifests, [artifactEvent.manifest]);
     assert.equal(artifactEvent.manifest.uri, receiptFrame.receipt.artifact_refs[0]);
     assert.match(artifactEvent.manifest.sha256, /^[0-9a-f]{64}$/);
+    assert.equal(receiptFrame.receipt.tool_output_digest, artifactEvent.manifest.sha256);
     assert.equal(artifactEvent.manifest.media_type, "text/markdown; charset=utf-8");
     assert.match(artifactEvent.manifest.manifest_hash, /^[0-9a-f]{64}$/);
     assert.equal(receiptFrame.receipt.event_count, 7);

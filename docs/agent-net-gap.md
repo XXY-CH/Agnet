@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v5.5 assessment
+状态：v5.6 assessment
 
 ## 一句话
 
@@ -14,7 +14,7 @@
 
 ### Protocol core
 
-进度：约 80%。
+进度：约 81%。
 
 已有：
 
@@ -51,6 +51,7 @@
 - Retry lineage evidence in v5.3。
 - Sandbox claim binding in v5.4。
 - Tool command provenance digest in v5.5。
+- Tool output digest alignment in v5.6。
 
 主要缺：
 
@@ -59,7 +60,7 @@
 
 ### Runtime core
 
-进度：约 62%。
+进度：约 63%。
 
 已有：
 
@@ -77,6 +78,7 @@
 - `FED_TASK_RETRY` lineage evidence with normal task execution。
 - Sandbox claim binding prevents overclaiming local-temp-dir as stronger isolation。
 - External/MCP sandbox evidence records tool command digest。
+- Tool output digest aligns signed receipt with artifact manifest。
 
 主要缺：
 
@@ -89,6 +91,7 @@
 - real checkpoint state restore。
 - automatic retry / backoff。
 - binary/package provenance。
+- streamed output transcript evidence。
 - artifact store beyond local files。
 
 ### Network layer

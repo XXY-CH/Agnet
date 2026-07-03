@@ -1,6 +1,6 @@
 # Agent Space v5 Roadmap
 
-状态：v5.5 complete; v5.6+ planned
+状态：v5.6 complete; v5.7+ planned
 目标：从 v4 的 evidence chain 推进到更强运行面，但仍保持 `agent-space-ultimate-vision.md` 的底层窄腰：identity、signed task、event stream、scoped policy、artifact reference、audit receipt、federation。
 
 ## v5.0: Signed Sandbox Proof
@@ -125,9 +125,27 @@
 - 不暴露完整 local command line。
 - 不做 supply-chain policy。
 
+## v5.6: Tool Output Digest
+
+状态：complete
+目标：把 tool output digest 显式绑定到 artifact manifest。
+
+新增：
+
+- receipt `tool_output_digest`
+- verifier checks digest equals artifact manifest `sha256`
+- remote audit proof returns digest through signed receipt
+
+不做：
+
+- 不做 multi-artifact output graph。
+- 不做 streamed output chunks。
+- 不做 content-addressed artifact store。
+- 不做 separate tool transcript storage。
+
 ## 后续方向
 
-- tool output digest
+- MCP session metadata
 - container sandbox proof
 - long-running MCP sessions
 - scheduling / retry

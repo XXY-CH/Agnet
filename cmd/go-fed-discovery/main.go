@@ -981,16 +981,17 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		"artifact_manifests": []map[string]any{
 			artifactManifest,
 		},
-		"event_count":     float64(5 + len(approvals)*2),
-		"approvals":       approvals,
-		"approval_grants": approvalGrants,
-		"checkpoint_refs": []string{fmt.Sprint(checkpoint["checkpoint_id"])},
-		"checkpoints":     []map[string]any{checkpoint},
-		"policy_scope":    policyScope,
-		"policy_digest":   policyDigest,
-		"sandbox":         sandbox,
-		"sandbox_proof":   sandboxProof,
-		"tool":            toolName,
+		"tool_output_digest": artifactManifest["sha256"],
+		"event_count":        float64(5 + len(approvals)*2),
+		"approvals":          approvals,
+		"approval_grants":    approvalGrants,
+		"checkpoint_refs":    []string{fmt.Sprint(checkpoint["checkpoint_id"])},
+		"checkpoints":        []map[string]any{checkpoint},
+		"policy_scope":       policyScope,
+		"policy_digest":      policyDigest,
+		"sandbox":            sandbox,
+		"sandbox_proof":      sandboxProof,
+		"tool":               toolName,
 	}
 	if sandboxClaim != "" {
 		receipt["sandbox_claim"] = sandboxClaim
@@ -1676,6 +1677,9 @@ func verifyArtifactManifests(receipt map[string]any) error {
 		if manifest["manifest_hash"] != digestHex(body) {
 			return errors.New("artifact manifest hash mismatch")
 		}
+	}
+	if digest, ok := receipt["tool_output_digest"]; ok && len(manifests) > 0 && digest != manifests[0]["sha256"] {
+		return errors.New("tool output digest mismatch")
 	}
 	return nil
 }
