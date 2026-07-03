@@ -44,6 +44,7 @@ type WorkerProfile struct {
 	Tool         string         `json:"tool,omitempty"`
 	ToolName     string         `json:"tool_name,omitempty"`
 	ToolCommand  []string       `json:"tool_command,omitempty"`
+	SandboxClaim string         `json:"sandbox_claim,omitempty"`
 	Transports   []string       `json:"transports"`
 	Capabilities []string       `json:"capabilities"`
 	Policy       map[string]any `json:"policy"`
@@ -954,6 +955,10 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	if err != nil {
 		return err
 	}
+	sandboxClaim := worker.Profile.SandboxClaim
+	if sandboxClaim != "" && sandbox["mode"] != sandboxClaim {
+		return errors.New("sandbox claim mismatch")
+	}
 	artifactManifest, err := writeArtifact(artifactURI, artifactText)
 	if err != nil {
 		return err
@@ -964,7 +969,7 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	if err := f.sendTaskEvent(send, map[string]any{"type": "task.completed", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
 		return err
 	}
-	sandboxProof := f.sandboxProof(taskID, worker, sandbox, policyDigest)
+	sandboxProof := f.sandboxProof(taskID, worker, sandbox, policyDigest, sandboxClaim)
 
 	receipt := map[string]any{
 		"task_id":        taskID,
@@ -986,6 +991,9 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		"sandbox":         sandbox,
 		"sandbox_proof":   sandboxProof,
 		"tool":            toolName,
+	}
+	if sandboxClaim != "" {
+		receipt["sandbox_claim"] = sandboxClaim
 	}
 	if parentCheckpoint != nil {
 		receipt["resumed_from"] = parentCheckpoint
@@ -1055,7 +1063,7 @@ func (f Fixture) cancelTask(send sendFunc, origin map[string]any, worker *Worker
 		"policy_scope":       policyScope,
 		"policy_digest":      policyDigest,
 		"sandbox":            sandbox,
-		"sandbox_proof":      f.sandboxProof(taskID, worker, sandbox, policyDigest),
+		"sandbox_proof":      f.sandboxProof(taskID, worker, sandbox, policyDigest, ""),
 		"tool":               "none",
 	}
 	signedReceipt := signBody(worker.PrivateKey, receipt)
@@ -1105,15 +1113,19 @@ func (f Fixture) approvalGrant(taskID string, reasons []string) map[string]any {
 	}, "approval_signature")
 }
 
-func (f Fixture) sandboxProof(taskID string, worker *Worker, sandbox map[string]any, policyDigest string) map[string]any {
-	return signBodyWithKey(f.AuthorityPrivateKey, map[string]any{
+func (f Fixture) sandboxProof(taskID string, worker *Worker, sandbox map[string]any, policyDigest, sandboxClaim string) map[string]any {
+	body := map[string]any{
 		"proof_type":    "local.sandbox.v1",
 		"authority":     f.Authority["zid"],
 		"task_id":       taskID,
 		"worker":        worker.Descriptor["aid"],
 		"policy_digest": policyDigest,
 		"sandbox":       sandbox,
-	}, "sandbox_signature")
+	}
+	if sandboxClaim != "" {
+		body["sandbox_claim"] = sandboxClaim
+	}
+	return signBodyWithKey(f.AuthorityPrivateKey, body, "sandbox_signature")
 }
 
 func toolApprovalReasons(profile WorkerProfile) []string {
@@ -1709,6 +1721,9 @@ func verifySandboxProof(zoneKey ed25519.PublicKey, receipt map[string]any) error
 	}
 	if digestHex(proof["sandbox"]) != digestHex(sandbox) {
 		return errors.New("sandbox proof evidence mismatch")
+	}
+	if claim, ok := receipt["sandbox_claim"]; ok && proof["sandbox_claim"] != claim {
+		return errors.New("sandbox proof claim mismatch")
 	}
 	if err := verifyMapSignature(zoneKey, proof, "sandbox_signature"); err != nil {
 		return errors.New("sandbox proof signature verification failed")

@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v5.3 complete
-当前代码基线：`v5.3-protocol`
+状态：v5.4 complete
+当前代码基线：`v5.4-protocol`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go `FED_TASK_RESUME` checkpoint link、Go signed `FED_TASK_CANCEL` evidence、Go `FED_TASK_RETRY` lineage evidence、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、signed sandbox proof、protocol-native checkpoint evidence、artifact manifest digest evidence、canonical policy scope evidence、credential status evidence、authenticated session handshake，以及 remote audit query。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go `FED_TASK_RESUME` checkpoint link、Go signed `FED_TASK_CANCEL` evidence、Go `FED_TASK_RETRY` lineage evidence、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、signed sandbox proof、sandbox claim binding、protocol-native checkpoint evidence、artifact manifest digest evidence、canonical policy scope evidence、credential status evidence、authenticated session handshake，以及 remote audit query。
 
 还不是可产品化的 Agent Net。
 
@@ -16,7 +16,7 @@
 | Agent identity | done | verify/generate subset | `asp-core.mjs`, `cmd/go-fed-discovery` | Go shared library/package shape |
 | Zone identity | done | verify/generate subset | `trusted-zones.test.mjs`, Go descriptor verification | Zone lifecycle tooling |
 | Local registry | done | multi-worker profile registry | `zone-registry.test.mjs`, `go-fed-discovery.test.mjs` | worker lifecycle API |
-| Local task execution | done | built-in + external stdio + MCP stdio tools/call + signed local sandbox proof | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | container sandbox / long-running MCP sessions |
+| Local task execution | done | built-in + external stdio + MCP stdio tools/call + signed local sandbox proof + sandbox claim binding | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | container sandbox / long-running MCP sessions |
 | Events | done | minimal federation events + Go checkpoint event | `agent-runtime.test.mjs`, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | richer event lifecycle |
 | Artifact write | done | deterministic local artifact + Go artifact manifest digest evidence | `mvp-demo.test.mjs`, `go-fed-discovery.test.mjs` | artifact store |
 | Receipt signing | done | done for minimal Go execution | `test-vectors.test.mjs`, `go-fed-discovery.test.mjs` | receipt verification CLI |
@@ -58,6 +58,7 @@ Go
   -> minimal MCP stdio tools/call adapter
   -> signed local approval grants for external/MCP tools
   -> signed local sandbox proof for external/MCP tools
+  -> sandbox claim binding in receipt/proof
   -> signed protocol-native checkpoint evidence
   -> minimal FED_TASK_RESUME parent-checkpoint link
   -> artifact manifest digest evidence
@@ -72,8 +73,8 @@ Go
 Next natural boundary:
 
 ```text
-v5.4 container sandbox claim boundary
-  -> stronger sandbox evidence without hardware attestation
+v5.5 tool command provenance
+  -> bind external/MCP tool command identity into evidence
 ```
 
 Route detail: `docs/v5-roadmap.md`。

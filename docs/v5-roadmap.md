@@ -1,6 +1,6 @@
 # Agent Space v5 Roadmap
 
-状态：v5.3 complete; v5.4+ planned
+状态：v5.4 complete; v5.5+ planned
 目标：从 v4 的 evidence chain 推进到更强运行面，但仍保持 `agent-space-ultimate-vision.md` 的底层窄腰：identity、signed task、event stream、scoped policy、artifact reference、audit receipt、federation。
 
 ## v5.0: Signed Sandbox Proof
@@ -86,8 +86,29 @@
 - 不做 scheduler。
 - 不验证旧 task 是否存在。
 
+## v5.4: Sandbox Claim Boundary
+
+状态：complete
+目标：让 declared sandbox claim 和 actual sandbox evidence 一起进入 receipt/proof。
+
+新增：
+
+- worker profile `sandbox_claim`
+- receipt `sandbox_claim`
+- `sandbox_proof.sandbox_claim`
+- execution rejects claim/mode mismatch
+- audit verifier checks receipt/proof claim alignment
+
+不做：
+
+- 不做 Docker/gVisor/Firecracker。
+- 不做 OS-level network enforcement。
+- 不做 hardware attestation。
+- 不把 `local-temp-dir` 描述成 container。
+
 ## 后续方向
 
+- tool command provenance
 - container sandbox proof
 - long-running MCP sessions
 - scheduling / retry

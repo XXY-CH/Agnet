@@ -339,6 +339,11 @@ Zone A must not treat this as a receipt.
     "executing_zone": "zid:ed25519:...",
     "to": "aid:ed25519:...",
     "artifact_refs": ["artifact://local/fed_task_123/federated-summary.md"],
+    "sandbox_claim": "local-temp-dir",
+    "sandbox_proof": {
+      "proof_type": "local.sandbox.v1",
+      "sandbox_claim": "local-temp-dir"
+    },
     "event_count": 7,
     "approvals": ["write"],
     "signature": "..."

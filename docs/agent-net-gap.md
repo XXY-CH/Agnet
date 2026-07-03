@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v5.3 assessment
+状态：v5.4 assessment
 
 ## 一句话
 
@@ -14,7 +14,7 @@
 
 ### Protocol core
 
-进度：约 78%。
+进度：约 79%。
 
 已有：
 
@@ -49,6 +49,7 @@
 - Minimal checkpoint resume parent link in v5.1。
 - Signed cancellation receipt evidence in v5.2。
 - Retry lineage evidence in v5.3。
+- Sandbox claim binding in v5.4。
 
 主要缺：
 
@@ -57,7 +58,7 @@
 
 ### Runtime core
 
-进度：约 60%。
+进度：约 61%。
 
 已有：
 
@@ -73,6 +74,7 @@
 - Minimal `FED_TASK_RESUME` execution that links a new receipt to a parent checkpoint。
 - Signed `FED_TASK_CANCEL` evidence with worker cancellation receipts。
 - `FED_TASK_RETRY` lineage evidence with normal task execution。
+- Sandbox claim binding prevents overclaiming local-temp-dir as stronger isolation。
 
 主要缺：
 

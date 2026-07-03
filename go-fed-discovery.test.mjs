@@ -257,6 +257,7 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
       tool: "mcp.stdio",
       tool_name: "translate",
       tool_command: [process.execPath, `${process.cwd()}/state/go-fed-mcp-server.mjs`],
+      sandbox_claim: "local-temp-dir",
       transports: ["fed+tcp://127.0.0.1:8991"],
       capabilities: ["translate.text"],
       policy: { allow_network: false, approval_required: ["tool"] },
@@ -485,6 +486,7 @@ rl.on("line", (line) => {
     assert.equal(receiptFrame.receipt.sandbox.kind, "mcp");
     assert.deepEqual(receiptFrame.receipt.sandbox.env, ["PATH=/usr/bin:/bin"]);
     assert.equal(receiptFrame.receipt.sandbox.network, "not_granted");
+    assert.equal(receiptFrame.receipt.sandbox_claim, "local-temp-dir");
     const sandboxProof = receiptFrame.receipt.sandbox_proof;
     assert.equal(sandboxProof.proof_type, "local.sandbox.v1");
     assert.equal(sandboxProof.task_id, task.task_id);
@@ -492,6 +494,7 @@ rl.on("line", (line) => {
     assert.equal(sandboxProof.worker, receiptFrame.worker.aid);
     assert.equal(sandboxProof.policy_digest, receiptFrame.receipt.policy_digest);
     assert.deepEqual(sandboxProof.sandbox, receiptFrame.receipt.sandbox);
+    assert.equal(sandboxProof.sandbox_claim, receiptFrame.receipt.sandbox_claim);
     const sandboxProofBody = { ...sandboxProof };
     delete sandboxProofBody.sandbox_signature;
     assert.equal(verifyObject(authorityPublicKey, sandboxProofBody, sandboxProof.sandbox_signature), true);
