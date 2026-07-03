@@ -1,6 +1,6 @@
 # Agent Space v5 Roadmap
 
-状态：v5.4 complete; v5.5+ planned
+状态：v5.5 complete; v5.6+ planned
 目标：从 v4 的 evidence chain 推进到更强运行面，但仍保持 `agent-space-ultimate-vision.md` 的底层窄腰：identity、signed task、event stream、scoped policy、artifact reference、audit receipt、federation。
 
 ## v5.0: Signed Sandbox Proof
@@ -106,9 +106,28 @@
 - 不做 hardware attestation。
 - 不把 `local-temp-dir` 描述成 container。
 
+## v5.5: Tool Command Provenance
+
+状态：complete
+目标：把 external/MCP tool command identity 绑定进 sandbox evidence。
+
+新增：
+
+- `tool_command_digest` in external/MCP sandbox evidence
+- receipt carries digest through sandbox evidence
+- signed sandbox proof covers digest because it signs sandbox evidence
+
+不做：
+
+- 不做 tool registry。
+- 不做 binary hash。
+- 不做 package signature verification。
+- 不暴露完整 local command line。
+- 不做 supply-chain policy。
+
 ## 后续方向
 
-- tool command provenance
+- tool output digest
 - container sandbox proof
 - long-running MCP sessions
 - scheduling / retry

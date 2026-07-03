@@ -1182,19 +1182,23 @@ func inProcessSandbox() map[string]any {
 	return map[string]any{"mode": "in-process"}
 }
 
-func newToolSandbox(kind string) (string, map[string]any, func(), error) {
+func newToolSandbox(kind string, toolCommand []string) (string, map[string]any, func(), error) {
 	dir, err := os.MkdirTemp("", "agnet-"+kind+"-*")
 	if err != nil {
 		return "", nil, nil, err
 	}
-	return dir, map[string]any{
+	sandbox := map[string]any{
 		"mode":    "local-temp-dir",
 		"kind":    kind,
 		"cwd":     dir,
 		"env":     []string{"PATH=/usr/bin:/bin"},
 		"network": "not_granted",
 		"cleanup": "remove-all",
-	}, func() { _ = os.RemoveAll(dir) }, nil
+	}
+	if len(toolCommand) > 0 {
+		sandbox["tool_command_digest"] = digestHex(toolCommand)
+	}
+	return dir, sandbox, func() { _ = os.RemoveAll(dir) }, nil
 }
 
 func sandboxEnv() []string {
@@ -1205,7 +1209,7 @@ func runExternalTool(profile WorkerProfile, task, origin map[string]any) (string
 	if len(profile.ToolCommand) == 0 {
 		return "", nil, errors.New("external.stdio tool_command missing")
 	}
-	dir, sandbox, cleanup, err := newToolSandbox("external")
+	dir, sandbox, cleanup, err := newToolSandbox("external", profile.ToolCommand)
 	if err != nil {
 		return "", nil, err
 	}
@@ -1259,7 +1263,7 @@ func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, map
 	if toolName == "" {
 		return "", nil, errors.New("mcp.stdio tool_name missing")
 	}
-	dir, sandbox, cleanup, err := newToolSandbox("mcp")
+	dir, sandbox, cleanup, err := newToolSandbox("mcp", profile.ToolCommand)
 	if err != nil {
 		return "", nil, err
 	}

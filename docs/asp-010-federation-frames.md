@@ -344,6 +344,9 @@ Zone A must not treat this as a receipt.
       "proof_type": "local.sandbox.v1",
       "sandbox_claim": "local-temp-dir"
     },
+    "sandbox": {
+      "tool_command_digest": "..."
+    },
     "event_count": 7,
     "approvals": ["write"],
     "signature": "..."

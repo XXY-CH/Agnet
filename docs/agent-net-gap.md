@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v5.4 assessment
+状态：v5.5 assessment
 
 ## 一句话
 
@@ -14,7 +14,7 @@
 
 ### Protocol core
 
-进度：约 79%。
+进度：约 80%。
 
 已有：
 
@@ -50,6 +50,7 @@
 - Signed cancellation receipt evidence in v5.2。
 - Retry lineage evidence in v5.3。
 - Sandbox claim binding in v5.4。
+- Tool command provenance digest in v5.5。
 
 主要缺：
 
@@ -58,7 +59,7 @@
 
 ### Runtime core
 
-进度：约 61%。
+进度：约 62%。
 
 已有：
 
@@ -75,6 +76,7 @@
 - Signed `FED_TASK_CANCEL` evidence with worker cancellation receipts。
 - `FED_TASK_RETRY` lineage evidence with normal task execution。
 - Sandbox claim binding prevents overclaiming local-temp-dir as stronger isolation。
+- External/MCP sandbox evidence records tool command digest。
 
 主要缺：
 
@@ -86,6 +88,7 @@
 - live task cancellation。
 - real checkpoint state restore。
 - automatic retry / backoff。
+- binary/package provenance。
 - artifact store beyond local files。
 
 ### Network layer
