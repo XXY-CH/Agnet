@@ -66,6 +66,27 @@ type AuditLog struct {
 
 type sendFunc func(map[string]any)
 
+type codedError interface {
+	error
+	Code() string
+}
+
+type policyError struct {
+	code    string
+	message string
+}
+
+func (e policyError) Error() string { return e.message }
+func (e policyError) Code() string  { return e.code }
+
+func taskErrorFrame(err error) map[string]any {
+	frame := map[string]any{"type": "FED_TASK_ERROR", "error": err.Error()}
+	if coded, ok := err.(codedError); ok {
+		frame["code"] = coded.Code()
+	}
+	return frame
+}
+
 func main() {
 	port := flag.String("port", "9090", "listen port")
 	wsPort := flag.String("ws-port", "", "optional WebSocket listen port")
@@ -163,7 +184,7 @@ func handle(conn net.Conn, fixture Fixture, trusted map[string]map[string]any) {
 	for scanner.Scan() {
 		var frame map[string]any
 		if err := json.Unmarshal(scanner.Bytes(), &frame); err != nil {
-			sendLine(map[string]any{"type": "FED_TASK_ERROR", "error": err.Error()})
+			sendLine(taskErrorFrame(err))
 			return
 		}
 		if !handleFrame(sendLine, frame, fixture, trusted) {
@@ -175,18 +196,18 @@ func handle(conn net.Conn, fixture Fixture, trusted map[string]map[string]any) {
 func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted map[string]map[string]any) bool {
 	origin, ok := frame["origin_zone"].(map[string]any)
 	if !ok {
-		send(map[string]any{"type": "FED_TASK_ERROR", "error": "missing origin_zone"})
+		send(taskErrorFrame(errors.New("missing origin_zone")))
 		return false
 	}
 	if err := verifyTrustedZone(origin, trusted); err != nil {
-		send(map[string]any{"type": "FED_TASK_ERROR", "error": err.Error()})
+		send(taskErrorFrame(err))
 		return false
 	}
 	switch frame["type"] {
 	case "FED_RESOLVE":
 		worker := fixture.workerByAlias(fmt.Sprint(frame["alias"]))
 		if worker == nil {
-			send(map[string]any{"type": "FED_TASK_ERROR", "error": "remote alias not found"})
+			send(taskErrorFrame(errors.New("remote alias not found")))
 			return false
 		}
 		send(map[string]any{
@@ -216,15 +237,15 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 	case "FED_TASK_OPEN":
 		worker, task, err := fixture.verifyTaskOpen(frame)
 		if err != nil {
-			send(map[string]any{"type": "FED_TASK_ERROR", "error": err.Error()})
+			send(taskErrorFrame(err))
 			return false
 		}
 		if err := fixture.executeTask(send, origin, worker, task); err != nil {
-			send(map[string]any{"type": "FED_TASK_ERROR", "error": err.Error()})
+			send(taskErrorFrame(err))
 			return false
 		}
 	default:
-		send(map[string]any{"type": "FED_TASK_ERROR", "error": "unsupported frame"})
+		send(taskErrorFrame(errors.New("unsupported frame")))
 		return false
 	}
 	return true
@@ -257,7 +278,7 @@ func handleWebSocket(conn net.Conn, fixture Fixture, trusted map[string]map[stri
 		}
 		var frame map[string]any
 		if err := json.Unmarshal([]byte(text), &frame); err != nil {
-			sendWS(map[string]any{"type": "FED_TASK_ERROR", "error": err.Error()})
+			sendWS(taskErrorFrame(err))
 			return
 		}
 		if !handleFrame(sendWS, frame, fixture, trusted) {
@@ -690,7 +711,9 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	if err := f.sendTaskEvent(send, map[string]any{"type": "task.started", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
 		return err
 	}
-	checkpoint := worker.checkpoint(task, nil, 3+len(approvals)*2)
+	policyScope := taskPolicyScope(worker.Profile, worker.Descriptor, task)
+	policyDigest := digestHex(policyScope)
+	checkpoint := worker.checkpoint(task, nil, 3+len(approvals)*2, policyDigest)
 	if err := f.sendTaskEvent(send, map[string]any{"type": "checkpoint.created", "task_id": taskID, "checkpoint": checkpoint}); err != nil {
 		return err
 	}
@@ -726,6 +749,8 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		"approval_grants": approvalGrants,
 		"checkpoint_refs": []string{fmt.Sprint(checkpoint["checkpoint_id"])},
 		"checkpoints":     []map[string]any{checkpoint},
+		"policy_scope":    policyScope,
+		"policy_digest":   policyDigest,
 		"sandbox":         sandbox,
 		"tool":            toolName,
 	}
@@ -751,16 +776,15 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	return nil
 }
 
-func (w *Worker) checkpoint(task map[string]any, parent any, eventIndex int) map[string]any {
+func (w *Worker) checkpoint(task map[string]any, parent any, eventIndex int, policyDigest string) map[string]any {
 	taskID := fmt.Sprint(task["task_id"])
-	policy, _ := w.Descriptor["policy"].(map[string]any)
 	body := map[string]any{
 		"task_id":           taskID,
 		"parent_checkpoint": parent,
 		"event_index":       float64(eventIndex),
 		"state_digest":      digestHex(map[string]any{"task": task, "worker": w.Descriptor["aid"]}),
 		"artifact_refs":     []string{},
-		"policy_digest":     digestHex(policy),
+		"policy_digest":     policyDigest,
 		"created_by":        w.Descriptor["aid"],
 	}
 	body["checkpoint_id"] = "checkpoint:sha256:" + digestHex(body)
@@ -785,6 +809,23 @@ func toolApprovalReasons(profile WorkerProfile) []string {
 		}
 	}
 	return []string{}
+}
+
+func taskPolicyScope(profile WorkerProfile, worker, task map[string]any) map[string]any {
+	scope, _ := task["scope"].(map[string]any)
+	policy, _ := worker["policy"].(map[string]any)
+	tool := profile.Tool
+	if tool == "" {
+		tool = "text.echo"
+	}
+	return map[string]any{
+		"network":           scope["network"] == true,
+		"write":             stringsFromAny(scope["write"]),
+		"tools":             []string{tool},
+		"data_domains":      stringsFromAny(scope["data_domains"]),
+		"approval_required": stringsFromAny(policy["approval_required"]),
+		"expires_at":        optionalString(scope["expires_at"]),
+	}
 }
 
 func runTool(profile WorkerProfile, task, origin map[string]any) (string, string, map[string]any, error) {
@@ -1223,6 +1264,9 @@ func verifyReceiptRecord(record map[string]any) error {
 	if err := verifyArtifactManifests(receipt); err != nil {
 		return err
 	}
+	if err := verifyPolicyScope(receipt); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -1299,6 +1343,25 @@ func verifyArtifactManifests(receipt map[string]any) error {
 	return nil
 }
 
+func verifyPolicyScope(receipt map[string]any) error {
+	scope, ok := receipt["policy_scope"].(map[string]any)
+	if !ok {
+		return errors.New("receipt policy scope missing")
+	}
+	for _, field := range []string{"network", "write", "tools", "data_domains", "approval_required", "expires_at"} {
+		if _, ok := scope[field]; !ok {
+			return errors.New("policy scope " + field + " missing")
+		}
+	}
+	if fmt.Sprint(receipt["policy_digest"]) == "" {
+		return errors.New("receipt policy digest missing")
+	}
+	if receipt["policy_digest"] != digestHex(scope) {
+		return errors.New("policy digest mismatch")
+	}
+	return nil
+}
+
 func verifyZoneBinding(zone, binding, worker map[string]any) error {
 	zoneKey, _, err := publicKey(zone)
 	if err != nil {
@@ -1318,11 +1381,11 @@ func enforcePolicy(worker, task map[string]any) error {
 	policy, _ := worker["policy"].(map[string]any)
 	scope, _ := task["scope"].(map[string]any)
 	if scope["network"] == true && policy["allow_network"] != true {
-		return errors.New("policy denied network access")
+		return policyError{code: "policy.network_denied", message: "policy denied network access"}
 	}
 	for _, target := range stringsFromAny(scope["write"]) {
 		if !hasPrefix(target, stringsFromAny(policy["write_prefixes"])) {
-			return errors.New("policy denied write scope: " + target)
+			return policyError{code: "policy.write_denied", message: "policy denied write scope: " + target}
 		}
 	}
 	return nil
@@ -1338,6 +1401,11 @@ func stringsFromAny(value any) []string {
 		}
 	}
 	return out
+}
+
+func optionalString(value any) string {
+	text, _ := value.(string)
+	return text
 }
 
 func mapsFromAny(value any) []map[string]any {

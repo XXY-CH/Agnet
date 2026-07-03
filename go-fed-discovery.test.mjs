@@ -324,7 +324,7 @@ rl.on("line", (line) => {
       from: requester.aid,
       to: "agent://zone-b/translator",
       intent: "Verify FED_TASK_OPEN in Go.",
-      scope: { network: false },
+      scope: { network: false, data_domains: ["public.docs"], expires_at: "2026-07-03T12:00:00Z" },
       budget: { time_seconds: 30 },
     };
     const executionFrames = await exchangeFrames(port, {
@@ -398,6 +398,16 @@ rl.on("line", (line) => {
     assert.deepEqual(checkpointEvent.artifact_refs, []);
     assert.match(checkpointEvent.policy_digest, /^[0-9a-f]{64}$/);
     assert.equal(checkpointEvent.created_by, receiptFrame.worker.aid);
+    assert.deepEqual(receiptFrame.receipt.policy_scope, {
+      network: false,
+      write: [],
+      tools: ["mcp.stdio"],
+      data_domains: ["public.docs"],
+      approval_required: ["tool"],
+      expires_at: "2026-07-03T12:00:00Z",
+    });
+    assert.match(receiptFrame.receipt.policy_digest, /^[0-9a-f]{64}$/);
+    assert.equal(receiptFrame.receipt.policy_digest, checkpointEvent.policy_digest);
     assert.equal(receiptFrame.receipt.sandbox.mode, "local-temp-dir");
     assert.equal(receiptFrame.receipt.sandbox.kind, "mcp");
     assert.deepEqual(receiptFrame.receipt.sandbox.env, ["PATH=/usr/bin:/bin"]);
@@ -422,6 +432,7 @@ rl.on("line", (line) => {
       task: { ...deniedTask, signature: signObject(requester.privateKey, deniedTask) },
     });
     assert.equal(deniedFrames[0].type, "FED_TASK_ERROR");
+    assert.equal(deniedFrames[0].code, "policy.network_denied");
     assert.match(deniedFrames[0].error, /policy denied network access/);
 
     const verifiedAudit = await execFileAsync("go", [

@@ -1,15 +1,15 @@
 # Agent Space MVP
 
-Current status: `v4.1`.
+Current status: `v4.2`.
 
 Start here:
 
 - Current implementation matrix: [docs/implementation-status.md](docs/implementation-status.md)
 - Gap to Agent Net and Octo: [docs/agent-net-gap.md](docs/agent-net-gap.md)
-- Latest boundary: [docs/v4.1-boundary.md](docs/v4.1-boundary.md)
+- Latest boundary: [docs/v4.2-boundary.md](docs/v4.2-boundary.md)
 - v4 roadmap: [docs/v4-roadmap.md](docs/v4-roadmap.md)
 
-Current boundary: [docs/v0-boundary.md](docs/v0-boundary.md), [docs/v0.1-boundary.md](docs/v0.1-boundary.md), [docs/v0.2-boundary.md](docs/v0.2-boundary.md), [docs/v0.3-boundary.md](docs/v0.3-boundary.md), [docs/v0.4-boundary.md](docs/v0.4-boundary.md), [docs/v0.5-boundary.md](docs/v0.5-boundary.md), [docs/v0.6-boundary.md](docs/v0.6-boundary.md), [docs/v0.7-boundary.md](docs/v0.7-boundary.md), [docs/v0.8-boundary.md](docs/v0.8-boundary.md), [docs/v0.9-boundary.md](docs/v0.9-boundary.md), [docs/v1-boundary.md](docs/v1-boundary.md), [docs/v1.1-boundary.md](docs/v1.1-boundary.md), [docs/v1.2-boundary.md](docs/v1.2-boundary.md), [docs/v1.3-boundary.md](docs/v1.3-boundary.md), [docs/v1.4-boundary.md](docs/v1.4-boundary.md), [docs/v1.5-boundary.md](docs/v1.5-boundary.md), [docs/v1.6-boundary.md](docs/v1.6-boundary.md), [docs/v2-boundary.md](docs/v2-boundary.md), [docs/v2.1-boundary.md](docs/v2.1-boundary.md), [docs/v2.2-boundary.md](docs/v2.2-boundary.md), [docs/v2.3-boundary.md](docs/v2.3-boundary.md), [docs/v2.4-boundary.md](docs/v2.4-boundary.md), [docs/v3-boundary.md](docs/v3-boundary.md), [docs/v3.1-boundary.md](docs/v3.1-boundary.md), [docs/v3.2-boundary.md](docs/v3.2-boundary.md), [docs/v3.3-boundary.md](docs/v3.3-boundary.md), [docs/v3.4-boundary.md](docs/v3.4-boundary.md), [docs/v3.5-boundary.md](docs/v3.5-boundary.md), [docs/v3.6-boundary.md](docs/v3.6-boundary.md), [docs/v3.7-boundary.md](docs/v3.7-boundary.md), [docs/v3.8-boundary.md](docs/v3.8-boundary.md), [docs/v3.9-boundary.md](docs/v3.9-boundary.md), [docs/v4-boundary.md](docs/v4-boundary.md), [docs/v4.1-boundary.md](docs/v4.1-boundary.md)
+Current boundary: [docs/v0-boundary.md](docs/v0-boundary.md), [docs/v0.1-boundary.md](docs/v0.1-boundary.md), [docs/v0.2-boundary.md](docs/v0.2-boundary.md), [docs/v0.3-boundary.md](docs/v0.3-boundary.md), [docs/v0.4-boundary.md](docs/v0.4-boundary.md), [docs/v0.5-boundary.md](docs/v0.5-boundary.md), [docs/v0.6-boundary.md](docs/v0.6-boundary.md), [docs/v0.7-boundary.md](docs/v0.7-boundary.md), [docs/v0.8-boundary.md](docs/v0.8-boundary.md), [docs/v0.9-boundary.md](docs/v0.9-boundary.md), [docs/v1-boundary.md](docs/v1-boundary.md), [docs/v1.1-boundary.md](docs/v1.1-boundary.md), [docs/v1.2-boundary.md](docs/v1.2-boundary.md), [docs/v1.3-boundary.md](docs/v1.3-boundary.md), [docs/v1.4-boundary.md](docs/v1.4-boundary.md), [docs/v1.5-boundary.md](docs/v1.5-boundary.md), [docs/v1.6-boundary.md](docs/v1.6-boundary.md), [docs/v2-boundary.md](docs/v2-boundary.md), [docs/v2.1-boundary.md](docs/v2.1-boundary.md), [docs/v2.2-boundary.md](docs/v2.2-boundary.md), [docs/v2.3-boundary.md](docs/v2.3-boundary.md), [docs/v2.4-boundary.md](docs/v2.4-boundary.md), [docs/v3-boundary.md](docs/v3-boundary.md), [docs/v3.1-boundary.md](docs/v3.1-boundary.md), [docs/v3.2-boundary.md](docs/v3.2-boundary.md), [docs/v3.3-boundary.md](docs/v3.3-boundary.md), [docs/v3.4-boundary.md](docs/v3.4-boundary.md), [docs/v3.5-boundary.md](docs/v3.5-boundary.md), [docs/v3.6-boundary.md](docs/v3.6-boundary.md), [docs/v3.7-boundary.md](docs/v3.7-boundary.md), [docs/v3.8-boundary.md](docs/v3.8-boundary.md), [docs/v3.9-boundary.md](docs/v3.9-boundary.md), [docs/v4-boundary.md](docs/v4-boundary.md), [docs/v4.1-boundary.md](docs/v4.1-boundary.md), [docs/v4.2-boundary.md](docs/v4.2-boundary.md)
 
 Run the smallest proof:
 
@@ -57,6 +57,7 @@ It proves:
 - Go external/MCP tools run from a local temporary sandbox directory with restricted environment evidence in the receipt.
 - Go emits signed protocol-native checkpoint evidence and records checkpoint refs in receipts.
 - Go records artifact manifest digest evidence in artifact events and receipts.
+- Go records canonical policy scope evidence and stable policy deny codes.
 - A worker emits events, writes an artifact, and signs a receipt.
 - `state/audit.log` records hash-chained events and receipts as JSON lines.
 

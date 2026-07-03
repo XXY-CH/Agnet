@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v4.1 complete
-当前代码基线：`v4.1`
+状态：v4.2 complete
+当前代码基线：`v4.2`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、protocol-native checkpoint evidence，以及 artifact manifest digest evidence。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、protocol-native checkpoint evidence、artifact manifest digest evidence，以及 canonical policy scope evidence。
 
 还不是可产品化的 Agent Net。
 
@@ -26,7 +26,7 @@
 | Capability credential | done | done | `capability-credential.test.mjs`, Go dynamic signing | credential status feed |
 | Key persistence | PKCS8 files | seed key files | `state/keys`, `--authority-key`, `--worker-key` | rotation, encryption, permissions |
 | `FED_TASK_OPEN` | execute | execute minimal path | `federation-gateway.mjs`, `go-fed-discovery.test.mjs` | real worker/tools |
-| Policy checks | done | network/write subset | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | richer scope schema |
+| Policy checks | done | network/write subset + Go canonical policy scope digest + stable deny codes | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | policy negotiation / dynamic policy service |
 | Human approval | simulated | signed local tool approval evidence visible in Human Gateway | Node events, `go-fed-discovery.test.mjs` | interactive approval queue / login-state UI |
 | Checkpoint evidence | not yet | signed protocol-native checkpoint evidence | `go-fed-discovery.test.mjs` | checkpoint resume / durable state |
 | Transport | local TCP / local process | local TCP + minimal WebSocket | README commands, `go-fed-discovery.test.mjs` | TLS, auth handshake, QUIC |
@@ -56,6 +56,7 @@ Go
   -> local temporary sandbox directory evidence for external/MCP tools
   -> signed protocol-native checkpoint evidence
   -> artifact manifest digest evidence
+  -> canonical policy scope digest and stable deny codes
 ```
 
 ## Next Boundary
@@ -63,8 +64,8 @@ Go
 Next natural boundary:
 
 ```text
-Richer policy scope
-  -> canonical policy digest + stable deny reasons
+Credential status / revocation feed
+  -> capability credential status checks and denial evidence
 ```
 
 Route detail: `docs/v4-roadmap.md`。
