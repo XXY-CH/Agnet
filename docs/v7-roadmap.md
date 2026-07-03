@@ -1,6 +1,6 @@
 # Agent Space v7 Roadmap
 
-状态：v7.0 complete; v7.1+ planned
+状态：v7.1 complete; v7.2+ planned
 目标：从 durable task state 进入 durable scheduler queue，让任务生命周期有本地所有权、可恢复入口和后续调度面。
 
 ## v7.0: Durable Queue Enqueue
@@ -23,9 +23,29 @@
 - 不做 priority。
 - 不做 Human Gateway action。
 
+## v7.1: Explicit Queue Drain
+
+状态：complete
+目标：通过显式 frame drain 一个 queued task，并复用现有执行链。
+
+新增：
+
+- `FED_QUEUE_DRAIN` frame。
+- Queue item stores origin zone descriptor, requester descriptor, and signed task。
+- Drain re-verifies the stored task through existing `verifyTaskOpen`。
+- Drain updates queue state from queued to running to completed。
+- Completed queue item records receipt digest。
+
+不做：
+
+- 不做 automatic drain loop。
+- 不做 leases。
+- 不做 retry/backoff。
+- 不做 priority。
+- 不做 Human Gateway action。
+
 ## 后续方向
 
-- queue drain worker
 - lease/claim and crash recovery
 - retry/backoff state
 - Human Gateway task creation and queue actions

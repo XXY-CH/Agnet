@@ -478,6 +478,28 @@ setTimeout(() => {
     assert.equal(queuedState.origin_zone, zoneA.zid);
     assert.match(queuedState.task_digest, /^[0-9a-f]{64}$/);
 
+    const drainedFrames = await exchangeFrames(port, {
+      type: "FED_QUEUE_DRAIN",
+      origin_zone: zoneA.descriptor,
+      task_id: queuedTask.task_id,
+    });
+    assert.deepEqual(drainedFrames.map((frame) => frame.type), [
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_RECEIPT",
+      "FED_TASK_CLOSE",
+    ]);
+    const drainedReceipt = drainedFrames[7].receipt;
+    assert.equal(drainedReceipt.task_id, queuedTask.task_id);
+    const drainedQueueState = JSON.parse(await readFile("state/go-fed-discovery-audit-queue/go_fed_task_queued.json", "utf8"));
+    assert.equal(drainedQueueState.status, "completed");
+    assert.equal(drainedQueueState.receipt_digest, createHash("sha256").update(JSON.stringify(drainedReceipt)).digest("hex"));
+
     const executionFrames = await exchangeFrames(port, {
       type: "FED_TASK_OPEN",
       origin_zone: zoneA.descriptor,
@@ -870,7 +892,7 @@ setTimeout(() => {
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 38);
+    assert.equal(auditBody.entries.length, 46);
 
     const tasksResponse = await fetch(`http://127.0.0.1:${humanPort}/api/tasks`);
     assert.equal(tasksResponse.status, 200);

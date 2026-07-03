@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v7.0 complete
-当前代码基线：`v7.0-durable-queue-enqueue`
+状态：v7.1 complete
+当前代码基线：`v7.1-explicit-queue-drain`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go `FED_TASK_ENQUEUE` durable local queue entry、Go `FED_TASK_RESUME` audit-backed checkpoint link、Go signed `FED_TASK_CANCEL` evidence、Go live external task cancellation、Go `FED_TASK_RETRY` lineage evidence、Go 最小 task execution path、Go durable running/completed/cancelled/failed task state files、Go Human Gateway task state view、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、MCP initialize metadata evidence、MCP resources/prompts/tools metadata evidence、MCP selected tool binding、MCP selected schema digest evidence、MCP argument digest evidence、MCP required argument gate、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、sandbox isolation level evidence、signed sandbox proof、sandbox claim binding、tool command provenance digest、tool output digest alignment、protocol-native checkpoint evidence、artifact manifest digest evidence、canonical policy scope evidence、credential status evidence、authenticated session handshake，以及 remote audit query。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go `FED_TASK_ENQUEUE` durable local queue entry、Go `FED_QUEUE_DRAIN` explicit queued execution、Go `FED_TASK_RESUME` audit-backed checkpoint link、Go signed `FED_TASK_CANCEL` evidence、Go live external task cancellation、Go `FED_TASK_RETRY` lineage evidence、Go 最小 task execution path、Go durable running/completed/cancelled/failed task state files、Go Human Gateway task state view、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、MCP initialize metadata evidence、MCP resources/prompts/tools metadata evidence、MCP selected tool binding、MCP selected schema digest evidence、MCP argument digest evidence、MCP required argument gate、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、sandbox isolation level evidence、signed sandbox proof、sandbox claim binding、tool command provenance digest、tool output digest alignment、protocol-native checkpoint evidence、artifact manifest digest evidence、canonical policy scope evidence、credential status evidence、authenticated session handshake，以及 remote audit query。
 
 还不是可产品化的 Agent Net。
 
@@ -26,7 +26,7 @@
 | Capability credential | done | done + Go signed status evidence | `capability-credential.test.mjs`, `go-fed-discovery.test.mjs` | revocation feed / renewal |
 | Key persistence | PKCS8 files | seed key files | `state/keys`, `--authority-key`, `--worker-key` | rotation, encryption, permissions |
 | `FED_TASK_OPEN` | execute | execute minimal path + durable running/completed/failed task state files | `federation-gateway.mjs`, `go-fed-discovery.test.mjs` | scheduler / real restore |
-| `FED_TASK_ENQUEUE` | not yet | durable local queue file | `go-fed-discovery.test.mjs` | queue drain / leases / retry |
+| `FED_TASK_ENQUEUE` | not yet | durable local queue file + explicit drain path | `go-fed-discovery.test.mjs` | leases / retry / automatic drain |
 | `FED_TASK_CANCEL` | not yet | signed cancellation receipt evidence + durable cancelled state file + live external process interruption | `go-fed-discovery.test.mjs` | persisted running registry / multi-node cancel |
 | `FED_TASK_RETRY` | not yet | signed retry lineage evidence | `go-fed-discovery.test.mjs` | automatic retry / backoff / scheduler state |
 | Policy checks | done | network/write subset + Go canonical policy scope digest + stable deny codes | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | policy negotiation / dynamic policy service |
@@ -81,6 +81,7 @@ Go
   -> remote audit query by task id
   -> Human Gateway /api/tasks and read-only task table
   -> FED_TASK_ENQUEUE durable local queue file
+  -> FED_QUEUE_DRAIN explicit queued execution
 ```
 
 ## Next Boundary
@@ -88,8 +89,8 @@ Go
 Next natural boundary:
 
 ```text
-v7.1 Queue Drain Boundary
-  -> execute queued local tasks through an explicit drain path
+v7.2 Queue Lease Boundary
+  -> claim queued work before execution for crash-safe scheduler ownership
 ```
 
 Route detail: `docs/v5-roadmap.md`。

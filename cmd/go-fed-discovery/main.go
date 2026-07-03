@@ -303,7 +303,7 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(err))
 			return false
 		}
-		if err := fixture.executeTask(send, origin, worker, task, nil, nil); err != nil {
+		if err := fixture.executeTask(send, origin, worker, task, nil, nil, nil); err != nil {
 			send(taskErrorFrame(err))
 			return false
 		}
@@ -313,12 +313,23 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(err))
 			return false
 		}
-		if err := fixture.writeQueueItem(origin, worker, task, "queued", nil); err != nil {
+		requester, _ := frame["requester"].(map[string]any)
+		if err := fixture.writeQueueItem(origin, worker, task, "queued", map[string]any{"origin_zone_descriptor": origin, "requester": requester, "task": task}); err != nil {
 			send(taskErrorFrame(err))
 			return false
 		}
 		send(map[string]any{"type": "FED_QUEUE_ACCEPTED", "task_id": task["task_id"], "worker": worker.Descriptor["aid"]})
 		send(map[string]any{"type": "FED_QUEUE_CLOSE", "task_id": task["task_id"]})
+	case "FED_QUEUE_DRAIN":
+		taskID := fmt.Sprint(frame["task_id"])
+		if taskID == "" || taskID == "<nil>" {
+			send(taskErrorFrame(errors.New("queue drain task_id missing")))
+			return false
+		}
+		if err := fixture.drainQueueItem(send, taskID); err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
 	case "FED_TASK_RESUME":
 		worker, task, err := fixture.verifyTaskOpen(frame)
 		if err != nil {
@@ -334,7 +345,7 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(err))
 			return false
 		}
-		if err := fixture.executeTask(send, origin, worker, task, checkpointID, nil); err != nil {
+		if err := fixture.executeTask(send, origin, worker, task, checkpointID, nil, nil); err != nil {
 			send(taskErrorFrame(err))
 			return false
 		}
@@ -349,7 +360,7 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(errors.New("retry_of missing")))
 			return false
 		}
-		if err := fixture.executeTask(send, origin, worker, task, nil, retryOf); err != nil {
+		if err := fixture.executeTask(send, origin, worker, task, nil, retryOf, nil); err != nil {
 			send(taskErrorFrame(err))
 			return false
 		}
@@ -1101,7 +1112,7 @@ func (f Fixture) verifyTaskCancel(frame map[string]any) (*Worker, map[string]any
 	return worker, requester, cancel, nil
 }
 
-func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worker, task map[string]any, parentCheckpoint, retryOf any) error {
+func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worker, task map[string]any, parentCheckpoint, retryOf any, onReceipt func(map[string]any) error) error {
 	taskID := fmt.Sprint(task["task_id"])
 	ctx, cancelRun := context.WithCancel(context.Background())
 	f.Runtime.Register(taskID, cancelRun)
@@ -1204,6 +1215,11 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	}
 	if err := f.writeTaskState(taskID, "completed", worker, map[string]any{"receipt_digest": digestHex(signedReceipt)}); err != nil {
 		return err
+	}
+	if onReceipt != nil {
+		if err := onReceipt(signedReceipt); err != nil {
+			return err
+		}
 	}
 	send(map[string]any{
 		"type":         "FED_RECEIPT",
@@ -1719,6 +1735,52 @@ func (f Fixture) writeQueueItem(origin map[string]any, worker *Worker, task map[
 	}
 	// ponytail: one queue file per task; replace with leases when multiple workers can drain it.
 	return os.WriteFile(filepath.Join(f.QueueDir, url.PathEscape(taskID)+".json"), append(data, '\n'), 0o644)
+}
+
+func (f Fixture) readQueueItem(taskID string) (map[string]any, error) {
+	if f.QueueDir == "" {
+		return nil, errors.New("queue unavailable")
+	}
+	data, err := os.ReadFile(filepath.Join(f.QueueDir, url.PathEscape(taskID)+".json"))
+	if err != nil {
+		return nil, err
+	}
+	var item map[string]any
+	if err := json.Unmarshal(data, &item); err != nil {
+		return nil, err
+	}
+	return item, nil
+}
+
+func (f Fixture) drainQueueItem(send sendFunc, taskID string) error {
+	item, err := f.readQueueItem(taskID)
+	if err != nil {
+		return err
+	}
+	if optionalString(item["status"]) != "queued" {
+		return errors.New("queue item is not queued: " + taskID)
+	}
+	origin, _ := item["origin_zone_descriptor"].(map[string]any)
+	requester, _ := item["requester"].(map[string]any)
+	task, _ := item["task"].(map[string]any)
+	worker, task, err := f.verifyTaskOpen(map[string]any{"requester": requester, "task": task})
+	if err != nil {
+		return err
+	}
+	extra := map[string]any{"origin_zone_descriptor": origin, "requester": requester, "task": task}
+	if err := f.writeQueueItem(origin, worker, task, "running", extra); err != nil {
+		return err
+	}
+	err = f.executeTask(send, origin, worker, task, nil, nil, func(receipt map[string]any) error {
+		extra["receipt_digest"] = digestHex(receipt)
+		return f.writeQueueItem(origin, worker, task, "completed", extra)
+	})
+	if err != nil {
+		extra["error"] = err.Error()
+		_ = f.writeQueueItem(origin, worker, task, "failed", extra)
+		return err
+	}
+	return nil
 }
 
 func writeArtifact(uri, text string) (map[string]any, error) {
