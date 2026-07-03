@@ -528,6 +528,38 @@ rl.on("line", (line) => {
     assert.deepEqual(auditFrames[0].receipt.checkpoints, [checkpointEvent]);
     assert.deepEqual(auditFrames[0].receipt.artifact_manifests, [artifactEvent.manifest]);
 
+    const resumeTask = {
+      ...task,
+      task_id: "go_fed_task_resumed",
+      intent: "Resume FED_TASK_OPEN from checkpoint.",
+    };
+    const resumeFrames = await exchangeFrames(port, {
+      type: "FED_TASK_RESUME",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      checkpoint_id: checkpointEvent.checkpoint_id,
+      task: { ...resumeTask, signature: signObject(requester.privateKey, resumeTask) },
+    });
+    assert.deepEqual(resumeFrames.map((frame) => frame.type), [
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_RECEIPT",
+      "FED_TASK_CLOSE",
+    ]);
+    const resumedCheckpoint = resumeFrames[4].event.checkpoint;
+    const resumeReceipt = resumeFrames[7].receipt;
+    assert.equal(resumedCheckpoint.task_id, resumeTask.task_id);
+    assert.equal(resumedCheckpoint.parent_checkpoint, checkpointEvent.checkpoint_id);
+    assert.equal(resumeReceipt.task_id, resumeTask.task_id);
+    assert.equal(resumeReceipt.resumed_from, checkpointEvent.checkpoint_id);
+    assert.deepEqual(resumeReceipt.checkpoint_refs, [resumedCheckpoint.checkpoint_id]);
+    assert.deepEqual(resumeReceipt.checkpoints, [resumedCheckpoint]);
+
     const deniedTask = {
       ...task,
       task_id: "go_fed_task_denied",
@@ -555,7 +587,7 @@ rl.on("line", (line) => {
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 8);
+    assert.equal(auditBody.entries.length, 16);
 
     const pageResponse = await fetch(`http://127.0.0.1:${humanPort}/`);
     assert.equal(pageResponse.status, 200);

@@ -27,6 +27,7 @@ FED_AUDIT_QUERY  Zone A -> Zone B
 FED_AUDIT_RESULT Zone B -> Zone A
 FED_AUDIT_CLOSE  Zone B -> Zone A
 FED_TASK_OPEN    Zone A -> Zone B
+FED_TASK_RESUME  Zone A -> Zone B
 FED_TASK_VERIFIED Zone B -> Zone A
 FED_TASK_EVENT   Zone B -> Zone A
 FED_RECEIPT      Zone B -> Zone A
@@ -234,6 +235,30 @@ Zone B must reject the frame unless:
 - `task.signature` verifies against requester public key.
 - local worker policy accepts the task scope.
 
+## FED_TASK_RESUME
+
+```json
+{
+  "type": "FED_TASK_RESUME",
+  "origin_zone": { "...": "Zone A descriptor" },
+  "requester": { "...": "requester descriptor" },
+  "checkpoint_id": "checkpoint:sha256:...",
+  "task": {
+    "task_id": "fed_task_124",
+    "from": "aid:ed25519:...",
+    "to": "agent://zone-b/summarizer",
+    "intent": "Resume from a signed checkpoint.",
+    "scope": { "network": false },
+    "budget": { "time_seconds": 30 },
+    "signature": "..."
+  }
+}
+```
+
+v5.1 treats resume as a new signed task that binds to a parent checkpoint id. The resumed receipt must include `resumed_from`, and its signed checkpoint must set `parent_checkpoint` to the requested checkpoint id.
+
+This is not a durable scheduler or state restore. It only proves the protocol link from old checkpoint evidence to a new auditable execution.
+
 ## FED_TASK_VERIFIED
 
 ```json
@@ -287,4 +312,4 @@ Zone A must reject the receipt unless:
 - No semantic routing.
 - No multi-hop forwarding.
 - No public transport.
-- No TLS/QUIC/WebSocket binding.
+- No TLS/QUIC public transport.

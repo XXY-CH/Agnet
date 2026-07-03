@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v5.0 complete
-当前代码基线：`v5.0-protocol`
+状态：v5.1 complete
+当前代码基线：`v5.1-protocol`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、signed sandbox proof、protocol-native checkpoint evidence、artifact manifest digest evidence、canonical policy scope evidence、credential status evidence、authenticated session handshake，以及 remote audit query。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go `FED_TASK_RESUME` checkpoint link、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、signed sandbox proof、protocol-native checkpoint evidence、artifact manifest digest evidence、canonical policy scope evidence、credential status evidence、authenticated session handshake，以及 remote audit query。
 
 还不是可产品化的 Agent Net。
 
@@ -28,7 +28,7 @@
 | `FED_TASK_OPEN` | execute | execute minimal path | `federation-gateway.mjs`, `go-fed-discovery.test.mjs` | real worker/tools |
 | Policy checks | done | network/write subset + Go canonical policy scope digest + stable deny codes | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | policy negotiation / dynamic policy service |
 | Human approval | simulated | signed local tool approval evidence visible in Human Gateway | Node events, `go-fed-discovery.test.mjs` | interactive approval queue / login-state UI |
-| Checkpoint evidence | not yet | signed protocol-native checkpoint evidence | `go-fed-discovery.test.mjs` | checkpoint resume / durable state |
+| Checkpoint evidence | not yet | signed protocol-native checkpoint evidence + minimal resume parent link | `go-fed-discovery.test.mjs` | durable task state / real state restore |
 | Transport | local TCP / local process + authenticated session handshake | local TCP + minimal WebSocket + authenticated session handshake | README commands, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | TLS, QUIC |
 | Product surface | CLI/tests only | thin read-only Human Gateway | README, `go-fed-discovery.test.mjs` | approvals, task creation, admin, deployment |
 
@@ -55,6 +55,7 @@ Go
   -> signed local approval grants for external/MCP tools
   -> signed local sandbox proof for external/MCP tools
   -> signed protocol-native checkpoint evidence
+  -> minimal FED_TASK_RESUME parent-checkpoint link
   -> artifact manifest digest evidence
   -> canonical policy scope digest and stable deny codes
   -> Zone-signed credential status evidence
@@ -67,8 +68,8 @@ Go
 Next natural boundary:
 
 ```text
-v5.1 checkpoint resume
-  -> resume from signed checkpoint evidence
+v5.2 task cancellation / retry evidence
+  -> failure recovery without a durable scheduler
 ```
 
 Route detail: `docs/v5-roadmap.md`。

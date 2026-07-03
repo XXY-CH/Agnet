@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v4.3 assessment
+状态：v5.1 assessment
 
 ## 一句话
 
@@ -14,7 +14,7 @@
 
 ### Protocol core
 
-进度：约 66%。
+进度：约 74%。
 
 已有：
 
@@ -43,17 +43,20 @@
 - Artifact manifest digest evidence in v4.1。
 - Canonical policy scope evidence in v4.2。
 - Zone-signed credential status evidence in v4.3。
+- Authenticated session handshake in v4.4。
+- Remote audit proof query in v4.5。
+- Signed sandbox proof evidence in v5.0。
+- Minimal checkpoint resume parent link in v5.1。
 
 主要缺：
 
-- cancellation / checkpoint / retry。
-- artifact manifests。
+- cancellation / retry。
 - credential revocation feed / renewal。
 - richer routing beyond exact matches。
 
 ### Runtime core
 
-进度：约 52%。
+进度：约 56%。
 
 已有：
 
@@ -66,6 +69,7 @@
 - Go external stdio tool execution envelope。
 - Go minimal MCP stdio tools/call execution。
 - Simulated tool approval gate。
+- Minimal `FED_TASK_RESUME` execution that links a new receipt to a parent checkpoint。
 
 主要缺：
 
@@ -74,23 +78,23 @@
 - container-grade sandbox。
 - concurrency model。
 - durable task state。
+- real checkpoint state restore。
 - artifact store beyond local files。
 
 ### Network layer
 
-进度：约 22%。
+进度：约 30%。
 
 已有：
 
 - newline JSON over local TCP。
 - WebSocket text-frame binding。
+- authenticated session handshake。
 - local process proof。
 
 主要缺：
 
-- authenticated session handshake。
 - TLS/QUIC binding。
-- auth handshake。
 - public gateway deployment。
 - NAT/proxy story。
 - service discovery beyond static trusted stores。
@@ -179,6 +183,6 @@ The right path is:
 v4.4 authenticated session handshake
 ```
 
-After v4 has checkpoint evidence, artifact manifests, richer policy scope, and credential status, comparing directly with Octo becomes useful.
+After v5.1, comparing with Octo is useful mainly for the Human Gateway/product layer, not for replacing Agent Space's protocol spine.
 
-Before that, Octo should be treated as the possible Human Gateway layer above Agent Space, not as the thing to copy line by line.
+Octo should be treated as a possible Human Gateway layer above Agent Space, not as the thing to copy line by line.

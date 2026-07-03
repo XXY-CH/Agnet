@@ -1,6 +1,6 @@
 # Agent Space v5 Roadmap
 
-状态：v5.0 complete; v5.1+ planned
+状态：v5.1 complete; v5.2+ planned
 目标：从 v4 的 evidence chain 推进到更强运行面，但仍保持 `agent-space-ultimate-vision.md` 的底层窄腰：identity、signed task、event stream、scoped policy、artifact reference、audit receipt、federation。
 
 ## v5.0: Signed Sandbox Proof
@@ -29,14 +29,15 @@
 
 ## v5.1: Checkpoint Resume
 
-状态：planned
+状态：complete
 目标：从 v4 checkpoint evidence 走到最小 resume flow。
 
-候选新增：
+新增：
 
 - `FED_TASK_RESUME`
 - resume request binds to `checkpoint_id`
 - resumed receipt references parent checkpoint。
+- resumed checkpoint records `parent_checkpoint`。
 
 不做：
 
@@ -46,6 +47,7 @@
 
 ## 后续方向
 
+- cancellation / retry evidence
 - container sandbox proof
 - long-running MCP sessions
 - scheduling / retry

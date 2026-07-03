@@ -288,7 +288,22 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(err))
 			return false
 		}
-		if err := fixture.executeTask(send, origin, worker, task); err != nil {
+		if err := fixture.executeTask(send, origin, worker, task, nil); err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
+	case "FED_TASK_RESUME":
+		worker, task, err := fixture.verifyTaskOpen(frame)
+		if err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
+		checkpointID := fmt.Sprint(frame["checkpoint_id"])
+		if checkpointID == "" || checkpointID == "<nil>" {
+			send(taskErrorFrame(errors.New("resume checkpoint_id missing")))
+			return false
+		}
+		if err := fixture.executeTask(send, origin, worker, task, checkpointID); err != nil {
 			send(taskErrorFrame(err))
 			return false
 		}
@@ -850,7 +865,7 @@ func (f Fixture) verifyTaskOpen(frame map[string]any) (*Worker, map[string]any, 
 	return worker, task, nil
 }
 
-func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worker, task map[string]any) error {
+func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worker, task map[string]any, parentCheckpoint any) error {
 	taskID := fmt.Sprint(task["task_id"])
 	if err := f.sendTaskEvent(send, map[string]any{"type": "task.accepted", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
 		return err
@@ -872,7 +887,7 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	}
 	policyScope := taskPolicyScope(worker.Profile, worker.Descriptor, task)
 	policyDigest := digestHex(policyScope)
-	checkpoint := worker.checkpoint(task, nil, 3+len(approvals)*2, policyDigest)
+	checkpoint := worker.checkpoint(task, parentCheckpoint, 3+len(approvals)*2, policyDigest)
 	if err := f.sendTaskEvent(send, map[string]any{"type": "checkpoint.created", "task_id": taskID, "checkpoint": checkpoint}); err != nil {
 		return err
 	}
@@ -914,6 +929,9 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		"sandbox":         sandbox,
 		"sandbox_proof":   sandboxProof,
 		"tool":            toolName,
+	}
+	if parentCheckpoint != nil {
+		receipt["resumed_from"] = parentCheckpoint
 	}
 	signedReceipt := signBody(worker.PrivateKey, receipt)
 	receiptRecord := map[string]any{
@@ -1469,6 +1487,9 @@ func verifyCheckpoints(workerKey ed25519.PublicKey, receipt map[string]any) erro
 		return errors.New("receipt checkpoint ref count mismatch")
 	}
 	parent := any(nil)
+	if resumedFrom, ok := receipt["resumed_from"]; ok {
+		parent = resumedFrom
+	}
 	for index, checkpoint := range checkpoints {
 		if checkpoint["task_id"] != receipt["task_id"] {
 			return errors.New("checkpoint task mismatch")
