@@ -16,6 +16,9 @@ fed+tcp://127.0.0.1:<port>
 ## Frames
 
 ```text
+HELLO           Zone A -> Zone B, then Zone B -> Zone A
+AUTH            Zone A -> Zone B
+AUTH_OK         Zone B -> Zone A
 FED_RESOLVE      Zone A -> Zone B
 FED_RESOLVE_RESULT Zone B -> Zone A
 FED_QUERY        Zone A -> Zone B
@@ -27,6 +30,48 @@ FED_RECEIPT      Zone B -> Zone A
 FED_TASK_CLOSE   Zone B -> Zone A
 FED_TASK_ERROR   Zone B -> Zone A
 ```
+
+## HELLO / AUTH
+
+v4.4 requires a session handshake before federation frames.
+
+Client hello:
+
+```json
+{
+  "type": "HELLO",
+  "origin_zone": { "...": "Zone A descriptor" }
+}
+```
+
+Server hello:
+
+```json
+{
+  "type": "HELLO",
+  "zone": { "...": "Zone B descriptor" },
+  "session_id": "session:...",
+  "challenge": "..."
+}
+```
+
+Client auth:
+
+```json
+{
+  "type": "AUTH",
+  "origin_zone": { "...": "Zone A descriptor" },
+  "auth": {
+    "session_id": "session:...",
+    "challenge": "...",
+    "peer_zid": "zid:ed25519:...",
+    "remote_zid": "zid:ed25519:...",
+    "auth_signature": "..."
+  }
+}
+```
+
+The `auth_signature` signs `session_id`, `challenge`, `peer_zid`, and `remote_zid` with the origin Zone key. The server rejects non-handshake frames until `AUTH` verifies, then binds later `origin_zone.zid` to the authenticated peer.
 
 ## FED_RESOLVE
 

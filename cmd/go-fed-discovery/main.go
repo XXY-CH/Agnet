@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509"
@@ -65,6 +66,13 @@ type AuditLog struct {
 }
 
 type sendFunc func(map[string]any)
+
+type Session struct {
+	ID            string
+	Challenge     string
+	PeerZID       string
+	Authenticated bool
+}
 
 type codedError interface {
 	error
@@ -180,6 +188,7 @@ func serve(port, wsPort, humanPort, fixturePath, trustPath, authorityKeyPath, wo
 func handle(conn net.Conn, fixture Fixture, trusted map[string]map[string]any) {
 	defer conn.Close()
 	scanner := bufio.NewScanner(conn)
+	session := &Session{}
 	sendLine := func(frame map[string]any) { send(conn, frame) }
 	for scanner.Scan() {
 		var frame map[string]any
@@ -187,13 +196,31 @@ func handle(conn net.Conn, fixture Fixture, trusted map[string]map[string]any) {
 			sendLine(taskErrorFrame(err))
 			return
 		}
-		if !handleFrame(sendLine, frame, fixture, trusted) {
+		if !handleFrame(sendLine, frame, fixture, trusted, session) {
 			return
 		}
 	}
 }
 
-func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted map[string]map[string]any) bool {
+func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted map[string]map[string]any, session *Session) bool {
+	switch frame["type"] {
+	case "HELLO":
+		if err := handleHello(send, frame, fixture, trusted, session); err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
+		return true
+	case "AUTH":
+		if err := handleAuth(send, frame, fixture, trusted, session); err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
+		return true
+	}
+	if !session.Authenticated {
+		send(taskErrorFrame(errors.New("session not authenticated")))
+		return false
+	}
 	origin, ok := frame["origin_zone"].(map[string]any)
 	if !ok {
 		send(taskErrorFrame(errors.New("missing origin_zone")))
@@ -201,6 +228,10 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 	}
 	if err := verifyTrustedZone(origin, trusted); err != nil {
 		send(taskErrorFrame(err))
+		return false
+	}
+	if fmt.Sprint(origin["zid"]) != session.PeerZID {
+		send(taskErrorFrame(errors.New("session origin mismatch")))
 		return false
 	}
 	switch frame["type"] {
@@ -253,6 +284,75 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 	return true
 }
 
+func handleHello(send sendFunc, frame map[string]any, fixture Fixture, trusted map[string]map[string]any, session *Session) error {
+	origin, ok := frame["origin_zone"].(map[string]any)
+	if !ok {
+		return errors.New("missing origin_zone")
+	}
+	if err := verifyTrustedZone(origin, trusted); err != nil {
+		return err
+	}
+	id, err := randomB64URL(16)
+	if err != nil {
+		return err
+	}
+	challenge, err := randomB64URL(32)
+	if err != nil {
+		return err
+	}
+	session.ID = "session:" + id
+	session.Challenge = challenge
+	session.PeerZID = fmt.Sprint(origin["zid"])
+	session.Authenticated = false
+	send(map[string]any{"type": "HELLO", "zone": fixture.Authority, "session_id": session.ID, "challenge": session.Challenge})
+	return nil
+}
+
+func handleAuth(send sendFunc, frame map[string]any, fixture Fixture, trusted map[string]map[string]any, session *Session) error {
+	origin, ok := frame["origin_zone"].(map[string]any)
+	if !ok {
+		return errors.New("missing origin_zone")
+	}
+	if err := verifyTrustedZone(origin, trusted); err != nil {
+		return err
+	}
+	if fmt.Sprint(origin["zid"]) != session.PeerZID {
+		return errors.New("session origin mismatch")
+	}
+	auth, ok := frame["auth"].(map[string]any)
+	if !ok {
+		return errors.New("missing auth")
+	}
+	body := sessionAuthBody(session.ID, session.Challenge, session.PeerZID, fmt.Sprint(fixture.Authority["zid"]))
+	for key, value := range body {
+		if auth[key] != value {
+			return errors.New("session auth body mismatch")
+		}
+	}
+	originKey, _, err := publicKey(origin)
+	if err != nil {
+		return err
+	}
+	if err := verifyMapSignature(originKey, auth, "auth_signature"); err != nil {
+		return errors.New("session auth signature verification failed")
+	}
+	session.Authenticated = true
+	send(map[string]any{"type": "AUTH_OK", "session_id": session.ID})
+	return nil
+}
+
+func sessionAuthBody(sessionID, challenge, peerZID, remoteZID string) map[string]any {
+	return map[string]any{"session_id": sessionID, "challenge": challenge, "peer_zid": peerZID, "remote_zid": remoteZID}
+}
+
+func randomB64URL(size int) (string, error) {
+	buf := make([]byte, size)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
 func acceptWebSocket(listener net.Listener, fixture Fixture, trusted map[string]map[string]any) {
 	for {
 		conn, err := listener.Accept()
@@ -269,6 +369,7 @@ func handleWebSocket(conn net.Conn, fixture Fixture, trusted map[string]map[stri
 	if err := websocketHandshake(conn, reader); err != nil {
 		return
 	}
+	session := &Session{}
 	sendWS := func(frame map[string]any) {
 		data, _ := json.Marshal(frame)
 		_ = writeWebSocketText(conn, string(data))
@@ -283,7 +384,7 @@ func handleWebSocket(conn net.Conn, fixture Fixture, trusted map[string]map[stri
 			sendWS(taskErrorFrame(err))
 			return
 		}
-		if !handleFrame(sendWS, frame, fixture, trusted) {
+		if !handleFrame(sendWS, frame, fixture, trusted, session) {
 			return
 		}
 	}

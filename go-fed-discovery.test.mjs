@@ -61,7 +61,7 @@ function exchangeFrames(port, frame, closeType = "FED_TASK_CLOSE") {
     let buffer = "";
     socket.on("error", reject);
     socket.on("connect", () => {
-      socket.write(`${JSON.stringify(frame)}\n`);
+      socket.write(`${JSON.stringify({ type: "HELLO", origin_zone: frame.origin_zone })}\n`);
     });
     socket.on("data", (chunk) => {
       buffer += chunk.toString();
@@ -70,6 +70,19 @@ function exchangeFrames(port, frame, closeType = "FED_TASK_CLOSE") {
       for (const line of lines) {
         if (!line.trim()) continue;
         const item = JSON.parse(line);
+        if (item.type === "HELLO") {
+          const body = authBody(item.session_id, item.challenge, frame.origin_zone.zid, item.zone.zid);
+          socket.write(`${JSON.stringify({
+            type: "AUTH",
+            origin_zone: frame.origin_zone,
+            auth: { ...body, auth_signature: signObject(zoneA.privateKey, body) },
+          })}\n`);
+          continue;
+        }
+        if (item.type === "AUTH_OK") {
+          socket.write(`${JSON.stringify(frame)}\n`);
+          continue;
+        }
         frames.push(item);
         if (item.type === "FED_TASK_ERROR") {
           socket.end();
@@ -79,6 +92,33 @@ function exchangeFrames(port, frame, closeType = "FED_TASK_CLOSE") {
           socket.end();
           resolve(frames);
         }
+      }
+    });
+  });
+}
+
+let zoneA;
+
+function authBody(sessionId, challenge, peerZid, remoteZid) {
+  return { session_id: sessionId, challenge, peer_zid: peerZid, remote_zid: remoteZid };
+}
+
+function exchangeUnauthenticatedFrame(port, frame) {
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection(port, "127.0.0.1");
+    let buffer = "";
+    socket.on("error", reject);
+    socket.on("connect", () => {
+      socket.write(`${JSON.stringify(frame)}\n`);
+    });
+    socket.on("data", (chunk) => {
+      buffer += chunk.toString();
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        socket.end();
+        resolve(JSON.parse(line));
       }
     });
   });
@@ -167,11 +207,26 @@ function exchangeWebSocketFrames(port, frame, closeType) {
           assert.equal(headers.toLowerCase().includes(`sec-websocket-accept: ${wsAccept(key).toLowerCase()}`), true);
           handshook = true;
           buffer = buffer.subarray(marker + 4);
-          socket.write(encodeWebSocketText(JSON.stringify(frame)));
+          socket.write(encodeWebSocketText(JSON.stringify({ type: "HELLO", origin_zone: frame.origin_zone })));
         }
         const decoded = decodeWebSocketFrames(buffer);
         buffer = decoded.rest;
-        frames.push(...decoded.frames);
+        for (const item of decoded.frames) {
+          if (item.type === "HELLO") {
+            const body = authBody(item.session_id, item.challenge, frame.origin_zone.zid, item.zone.zid);
+            socket.write(encodeWebSocketText(JSON.stringify({
+              type: "AUTH",
+              origin_zone: frame.origin_zone,
+              auth: { ...body, auth_signature: signObject(zoneA.privateKey, body) },
+            })));
+            continue;
+          }
+          if (item.type === "AUTH_OK") {
+            socket.write(encodeWebSocketText(JSON.stringify(frame)));
+            continue;
+          }
+          frames.push(item);
+        }
         if (frames.some((item) => item.type === closeType || item.type === "FED_TASK_ERROR")) {
           socket.end();
           resolve(frames);
@@ -186,7 +241,7 @@ function exchangeWebSocketFrames(port, frame, closeType) {
 
 test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", async () => {
   const [port, wsPort, humanPort] = await freePorts(3);
-  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
   const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/go-fed-requester.pkcs8");
   const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
   const goFixture = JSON.parse(JSON.stringify(fixture));
@@ -306,6 +361,14 @@ rl.on("line", (line) => {
     assert.equal(translatedResult.matches[0].alias, "agent://zone-b/translator");
     assert.equal(translatedResult.matches[0].credentials[0].capability, "translate.text");
     assert.equal(translatedResult.matches[0].credential_statuses[0].status, "active");
+
+    const unauthenticated = await exchangeUnauthenticatedFrame(port, {
+      type: "FED_QUERY",
+      origin_zone: zoneA.descriptor,
+      capability: "translate.text",
+    });
+    assert.equal(unauthenticated.type, "FED_TASK_ERROR");
+    assert.match(unauthenticated.error, /session not authenticated/);
 
     const wsFrames = await exchangeWebSocketFrames(wsPort, {
       type: "FED_QUERY",

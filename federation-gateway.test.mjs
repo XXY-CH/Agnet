@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
+import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import { loadOrCreateZone, writeTrustedZones } from "./asp-core.mjs";
@@ -18,6 +19,27 @@ function waitForGateway(child) {
     child.once("error", reject);
     child.once("exit", (code) => {
       if (code !== null && code !== 0) reject(new Error(`gateway exited early: ${code}`));
+    });
+  });
+}
+
+function exchangeRawFrame(port, frame) {
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection(port, "127.0.0.1");
+    let buffer = "";
+    socket.on("error", reject);
+    socket.on("connect", () => {
+      socket.write(`${JSON.stringify(frame)}\n`);
+    });
+    socket.on("data", (chunk) => {
+      buffer += chunk.toString();
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        socket.end();
+        resolve(JSON.parse(line));
+      }
     });
   });
 }
@@ -131,6 +153,14 @@ test("Federation Gateway queries exact remote capabilities", async () => {
 
   try {
     await waitForGateway(gateway);
+
+    const unauthenticated = await exchangeRawFrame(port, {
+      type: "FED_QUERY",
+      origin_zone: zoneA.descriptor,
+      capability: "summarize.text",
+    });
+    assert.equal(unauthenticated.type, "FED_TASK_ERROR");
+    assert.match(unauthenticated.error, /session not authenticated/);
 
     const hit = await execFileAsync(process.execPath, [
       "federation-gateway.mjs",

@@ -1,7 +1,9 @@
 import net from "node:net";
+import { randomBytes } from "node:crypto";
 import {
   appendAudit,
   approvalReasons,
+  b64url,
   capabilityCredential,
   enforcePolicy,
   loadOrCreateAgent,
@@ -50,6 +52,67 @@ function verifyTrustedZone(trustedZones, descriptor) {
   return verified;
 }
 
+function sessionAuthBody(sessionId, challenge, peerZid, remoteZid) {
+  return { session_id: sessionId, challenge, peer_zid: peerZid, remote_zid: remoteZid };
+}
+
+function serverSessionHandler(socket, trustedZones, zone) {
+  const session = {};
+  return (frame) => {
+    if (frame.type === "HELLO") {
+      const peer = verifyTrustedZone(trustedZones, frame.origin_zone);
+      session.id = `session:${b64url(randomBytes(16))}`;
+      session.challenge = b64url(randomBytes(32));
+      session.peerZid = peer.zid;
+      send(socket, { type: "HELLO", zone: zone.descriptor, session_id: session.id, challenge: session.challenge });
+      return true;
+    }
+    if (frame.type === "AUTH") {
+      const peer = verifyTrustedZone(trustedZones, frame.origin_zone);
+      if (peer.zid !== session.peerZid) throw new Error("session origin mismatch");
+      const auth = frame.auth ?? {};
+      const body = sessionAuthBody(session.id, session.challenge, peer.zid, zone.zid);
+      if (
+        auth.session_id !== body.session_id ||
+        auth.challenge !== body.challenge ||
+        auth.peer_zid !== body.peer_zid ||
+        auth.remote_zid !== body.remote_zid
+      ) {
+        throw new Error("session auth body mismatch");
+      }
+      if (!verifyObject(publicKeyFromDescriptor(peer), body, auth.auth_signature)) {
+        throw new Error("session auth signature verification failed");
+      }
+      session.authenticated = true;
+      send(socket, { type: "AUTH_OK", session_id: session.id });
+      return true;
+    }
+    if (!session.authenticated) throw new Error("session not authenticated");
+    if (frame.origin_zone?.zid !== session.peerZid) throw new Error("session origin mismatch");
+    return false;
+  };
+}
+
+function clientSessionHandler(socket, trustedZones, zone, onAuthenticated) {
+  const session = {};
+  return (frame) => {
+    if (frame.type === "HELLO") {
+      const remote = verifyTrustedZone(trustedZones, frame.zone);
+      session.id = frame.session_id;
+      session.challenge = frame.challenge;
+      const body = sessionAuthBody(session.id, session.challenge, zone.zid, remote.zid);
+      send(socket, { type: "AUTH", origin_zone: zone.descriptor, auth: { ...body, auth_signature: signObject(zone.privateKey, body) } });
+      return true;
+    }
+    if (frame.type === "AUTH_OK") {
+      if (frame.session_id !== session.id) throw new Error("session id mismatch");
+      onAuthenticated();
+      return true;
+    }
+    return false;
+  };
+}
+
 async function sendEvent(socket, event) {
   await appendAudit({ kind: "fed_event", ...event });
   send(socket, { type: "FED_TASK_EVENT", event });
@@ -67,8 +130,10 @@ async function serve(port, trustedZonesFile) {
   );
 
   const server = net.createServer((socket) => {
+    const session = serverSessionHandler(socket, trustedZones, zone);
     readFrames(socket, async (frame) => {
       try {
+        if (session(frame)) return;
         if (frame.type === "FED_RESOLVE") {
           verifyTrustedZone(trustedZones, frame.origin_zone);
           if (frame.alias !== worker.alias) throw new Error(`remote alias not found: ${frame.alias}`);
@@ -182,7 +247,11 @@ async function request(port, trustedZonesFile, alias = "agent://zone-b/summarize
   let receipt;
   const done = new Promise((resolve, reject) => {
     socket.on("error", reject);
+    const session = clientSessionHandler(socket, trustedZones, zone, () => {
+      send(socket, { type: "FED_TASK_OPEN", origin_zone: zone.descriptor, requester: requester.descriptor, task: signedTask });
+    });
     readFrames(socket, (frame) => {
+      if (session(frame)) return;
       if (frame.type === "FED_TASK_EVENT") events.push(frame.event);
       if (frame.type === "FED_RECEIPT") {
         verifyTrustedZone(trustedZones, frame.zone);
@@ -203,7 +272,7 @@ async function request(port, trustedZonesFile, alias = "agent://zone-b/summarize
   });
 
   socket.on("connect", () => {
-    send(socket, { type: "FED_TASK_OPEN", origin_zone: zone.descriptor, requester: requester.descriptor, task: signedTask });
+    send(socket, { type: "HELLO", origin_zone: zone.descriptor });
   });
   await done;
   socket.end();
@@ -218,7 +287,11 @@ async function resolveRemote(port, trustedZonesFile, alias = "agent://zone-b/sum
   let result;
   const done = new Promise((resolve, reject) => {
     socket.on("error", reject);
+    const session = clientSessionHandler(socket, trustedZones, zone, () => {
+      send(socket, { type: "FED_RESOLVE", origin_zone: zone.descriptor, alias });
+    });
     readFrames(socket, (frame) => {
+      if (session(frame)) return;
       if (frame.type === "FED_RESOLVE_RESULT") {
         verifyTrustedZone(trustedZones, frame.zone);
         const resolved = resolveAgent(
@@ -233,7 +306,7 @@ async function resolveRemote(port, trustedZonesFile, alias = "agent://zone-b/sum
   });
 
   socket.on("connect", () => {
-    send(socket, { type: "FED_RESOLVE", origin_zone: zone.descriptor, alias });
+    send(socket, { type: "HELLO", origin_zone: zone.descriptor });
   });
   await done;
   socket.end();
@@ -247,7 +320,11 @@ async function queryRemote(port, trustedZonesFile, capability = "summarize.text"
   let result;
   const done = new Promise((resolve, reject) => {
     socket.on("error", reject);
+    const session = clientSessionHandler(socket, trustedZones, zone, () => {
+      send(socket, { type: "FED_QUERY", origin_zone: zone.descriptor, capability });
+    });
     readFrames(socket, (frame) => {
+      if (session(frame)) return;
       if (frame.type === "FED_QUERY_RESULT") {
         const remoteZone = verifyTrustedZone(trustedZones, frame.zone);
         const matches = frame.matches.map((match) => {
@@ -286,7 +363,7 @@ async function queryRemote(port, trustedZonesFile, capability = "summarize.text"
   });
 
   socket.on("connect", () => {
-    send(socket, { type: "FED_QUERY", origin_zone: zone.descriptor, capability });
+    send(socket, { type: "HELLO", origin_zone: zone.descriptor });
   });
   await done;
   socket.end();

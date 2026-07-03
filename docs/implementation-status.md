@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v4.3 complete
-当前代码基线：`v4.3`
+状态：v4.4 complete
+当前代码基线：`v4.4-protocol`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、protocol-native checkpoint evidence、artifact manifest digest evidence、canonical policy scope evidence，以及 credential status evidence。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、protocol-native checkpoint evidence、artifact manifest digest evidence、canonical policy scope evidence、credential status evidence，以及 authenticated session handshake。
 
 还不是可产品化的 Agent Net。
 
@@ -29,7 +29,7 @@
 | Policy checks | done | network/write subset + Go canonical policy scope digest + stable deny codes | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | policy negotiation / dynamic policy service |
 | Human approval | simulated | signed local tool approval evidence visible in Human Gateway | Node events, `go-fed-discovery.test.mjs` | interactive approval queue / login-state UI |
 | Checkpoint evidence | not yet | signed protocol-native checkpoint evidence | `go-fed-discovery.test.mjs` | checkpoint resume / durable state |
-| Transport | local TCP / local process | local TCP + minimal WebSocket | README commands, `go-fed-discovery.test.mjs` | TLS, auth handshake, QUIC |
+| Transport | local TCP / local process + authenticated session handshake | local TCP + minimal WebSocket + authenticated session handshake | README commands, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | TLS, QUIC |
 | Product surface | CLI/tests only | thin read-only Human Gateway | README, `go-fed-discovery.test.mjs` | approvals, task creation, admin, deployment |
 
 ## Current Boundary
@@ -58,6 +58,7 @@ Go
   -> artifact manifest digest evidence
   -> canonical policy scope digest and stable deny codes
   -> Zone-signed credential status evidence
+  -> authenticated session handshake
 ```
 
 ## Next Boundary
@@ -65,8 +66,8 @@ Go
 Next natural boundary:
 
 ```text
-Authenticated session handshake
-  -> HELLO/AUTH challenge signature and session id
+Remote audit query
+  -> FED_AUDIT_QUERY / FED_AUDIT_RESULT minimal proof
 ```
 
 Route detail: `docs/v4-roadmap.md`。
