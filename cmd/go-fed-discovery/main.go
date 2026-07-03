@@ -267,6 +267,21 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			"matches":    matches,
 		})
 		send(map[string]any{"type": "FED_QUERY_CLOSE", "capability": frame["capability"]})
+	case "FED_AUDIT_QUERY":
+		record, err := fixture.auditProof(fmt.Sprint(frame["task_id"]))
+		if err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
+		send(map[string]any{
+			"type":         "FED_AUDIT_RESULT",
+			"zone":         record["zone"],
+			"worker":       record["worker"],
+			"zone_binding": record["zone_binding"],
+			"receipt":      record["receipt"],
+			"task_id":      frame["task_id"],
+		})
+		send(map[string]any{"type": "FED_AUDIT_CLOSE", "task_id": frame["task_id"]})
 	case "FED_TASK_OPEN":
 		worker, task, err := fixture.verifyTaskOpen(frame)
 		if err != nil {
@@ -282,6 +297,28 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 		return false
 	}
 	return true
+}
+
+func (f Fixture) auditProof(taskID string) (map[string]any, error) {
+	if f.Audit == nil {
+		return nil, errors.New("audit log unavailable")
+	}
+	entries, err := readAuditEntries(f.Audit.Path)
+	if err != nil {
+		return nil, err
+	}
+	// ponytail: linear scan is enough for local v4.5 proof; add an index when remote audit query has real volume.
+	for _, entry := range entries {
+		record, _ := entry["record"].(map[string]any)
+		if record["kind"] != "go_fed_receipt" {
+			continue
+		}
+		receipt, _ := record["receipt"].(map[string]any)
+		if receipt["task_id"] == taskID {
+			return record, nil
+		}
+	}
+	return nil, errors.New("audit proof not found: " + taskID)
 }
 
 func handleHello(send sendFunc, frame map[string]any, fixture Fixture, trusted map[string]map[string]any, session *Session) error {

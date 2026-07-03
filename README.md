@@ -37,6 +37,7 @@ Run a minimal two-Zone federation:
 node federation-gateway.mjs serve 8990 state/zone-b-trust.json
 node federation-gateway.mjs resolve 8990 state/zone-a-trust.json agent://zone-b/summarizer
 node federation-gateway.mjs query 8990 state/zone-a-trust.json summarize.text
+node federation-gateway.mjs audit 8990 state/zone-a-trust.json go_fed_task_verified
 node federation-gateway.mjs request-capability 8990 state/zone-a-trust.json summarize.text
 node federation-gateway.mjs request 8990 state/zone-a-trust.json
 ```
@@ -59,6 +60,7 @@ It proves:
 - Go records artifact manifest digest evidence in artifact events and receipts.
 - Go records canonical policy scope evidence and stable policy deny codes.
 - Go query results include Zone-signed credential status evidence.
+- Federation can query remote signed audit receipt proof by task id.
 - A worker emits events, writes an artifact, and signs a receipt.
 - `state/audit.log` records hash-chained events and receipts as JSON lines.
 

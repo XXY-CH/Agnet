@@ -1,6 +1,6 @@
 # Agent Space v4 Roadmap
 
-状态：v4.4 complete; v4.5+ planned
+状态：v4.5 complete; v5+ planned
 目标：回到 `agent-space-ultimate-vision.md` 的底层窄腰，推进 evidence chain / checkpoint / policy / artifact / transport，而不是做 Git/worktree/merge 这类上层协作操作。
 
 ## 路线判断
@@ -133,7 +133,7 @@ Agent identity
 
 ## v4.5: Remote Audit Query
 
-状态：planned
+状态：complete
 目标：联邦双方能按 task/query 拉取最小 audit proof。
 
 新增：

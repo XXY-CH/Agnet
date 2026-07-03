@@ -23,6 +23,9 @@ FED_RESOLVE      Zone A -> Zone B
 FED_RESOLVE_RESULT Zone B -> Zone A
 FED_QUERY        Zone A -> Zone B
 FED_QUERY_RESULT Zone B -> Zone A
+FED_AUDIT_QUERY  Zone A -> Zone B
+FED_AUDIT_RESULT Zone B -> Zone A
+FED_AUDIT_CLOSE  Zone B -> Zone A
 FED_TASK_OPEN    Zone A -> Zone B
 FED_TASK_VERIFIED Zone B -> Zone A
 FED_TASK_EVENT   Zone B -> Zone A
@@ -151,6 +154,39 @@ FED_QUERY summarize.text
 ```
 
 It is not a scheduler. It does not rank candidates.
+
+## FED_AUDIT_QUERY
+
+```json
+{
+  "type": "FED_AUDIT_QUERY",
+  "origin_zone": { "...": "Zone A descriptor" },
+  "task_id": "go_fed_task_verified"
+}
+```
+
+Zone B must reject the frame unless the session is authenticated and `origin_zone` matches the session peer.
+
+## FED_AUDIT_RESULT
+
+```json
+{
+  "type": "FED_AUDIT_RESULT",
+  "zone": { "...": "Zone B descriptor" },
+  "worker": { "...": "Zone B worker descriptor" },
+  "zone_binding": { "...": "Zone B alias -> aid binding" },
+  "task_id": "go_fed_task_verified",
+  "receipt": {
+    "task_id": "go_fed_task_verified",
+    "checkpoint_refs": ["checkpoint:sha256:..."],
+    "checkpoints": [{ "...": "signed checkpoint" }],
+    "artifact_manifests": [{ "...": "artifact digest manifest" }],
+    "signature": "..."
+  }
+}
+```
+
+Zone A must reject the result unless `zone` is trusted, `zone_binding` binds the worker, `receipt.task_id` matches the query, and `receipt.signature` verifies against the worker key. v4.5 returns the minimal receipt proof only; it does not sync the full audit log.
 
 ## FED_TASK_OPEN
 

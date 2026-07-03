@@ -493,6 +493,30 @@ rl.on("line", (line) => {
     assert.equal(artifactEvent.manifest.size, Buffer.byteLength(artifactText));
     assert.equal(artifactEvent.manifest.sha256, createHash("sha256").update(artifactText).digest("hex"));
 
+    const auditQuery = await execFileAsync(process.execPath, [
+      "federation-gateway.mjs",
+      "audit",
+      String(port),
+      "state/node-trusts-go-discovery.json",
+      task.task_id,
+    ]);
+    const auditQueryResult = JSON.parse(auditQuery.stdout);
+    assert.equal(auditQueryResult.zone, fixture.authority.zid);
+    assert.equal(auditQueryResult.task_id, task.task_id);
+    assert.equal(auditQueryResult.receipt.task_id, task.task_id);
+    assert.deepEqual(auditQueryResult.receipt.checkpoints, [checkpointEvent]);
+    assert.deepEqual(auditQueryResult.receipt.artifact_manifests, [artifactEvent.manifest]);
+
+    const auditFrames = await exchangeFrames(port, {
+      type: "FED_AUDIT_QUERY",
+      origin_zone: zoneA.descriptor,
+      task_id: task.task_id,
+    }, "FED_AUDIT_CLOSE");
+    assert.deepEqual(auditFrames.map((frame) => frame.type), ["FED_AUDIT_RESULT", "FED_AUDIT_CLOSE"]);
+    assert.equal(auditFrames[0].task_id, task.task_id);
+    assert.deepEqual(auditFrames[0].receipt.checkpoints, [checkpointEvent]);
+    assert.deepEqual(auditFrames[0].receipt.artifact_manifests, [artifactEvent.manifest]);
+
     const deniedTask = {
       ...task,
       task_id: "go_fed_task_denied",

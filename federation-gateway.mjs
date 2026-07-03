@@ -371,6 +371,51 @@ async function queryRemote(port, trustedZonesFile, capability = "summarize.text"
   return result;
 }
 
+async function auditRemote(port, trustedZonesFile, taskId) {
+  if (!taskId) throw new Error("audit task_id missing");
+  const trustedZones = await loadTrustedZones(trustedZonesFile);
+  const zone = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const socket = net.createConnection(port, "127.0.0.1");
+  let result;
+  const done = new Promise((resolve, reject) => {
+    socket.on("error", reject);
+    const session = clientSessionHandler(socket, trustedZones, zone, () => {
+      send(socket, { type: "FED_AUDIT_QUERY", origin_zone: zone.descriptor, task_id: taskId });
+    });
+    readFrames(socket, (frame) => {
+      if (session(frame)) return;
+      if (frame.type === "FED_AUDIT_RESULT") {
+        const remoteZone = verifyTrustedZone(trustedZones, frame.zone);
+        const resolved = resolveAgent(
+          new Map([[frame.worker.alias, { descriptor: frame.worker, zone: frame.zone, zone_binding: frame.zone_binding }]]),
+          frame.worker.alias,
+        );
+        const body = { ...frame.receipt };
+        delete body.signature;
+        if (frame.receipt.task_id !== taskId) throw new Error("audit receipt task mismatch");
+        if (!verifyObject(resolved.publicKey, body, frame.receipt.signature)) {
+          throw new Error("audit receipt signature verification failed");
+        }
+        result = {
+          zone: remoteZone.zid,
+          task_id: taskId,
+          worker: resolved.descriptor,
+          receipt: frame.receipt,
+        };
+      }
+      if (frame.type === "FED_TASK_ERROR") reject(new Error(frame.error));
+      if (frame.type === "FED_AUDIT_CLOSE") resolve();
+    });
+  });
+
+  socket.on("connect", () => {
+    send(socket, { type: "HELLO", origin_zone: zone.descriptor });
+  });
+  await done;
+  socket.end();
+  console.log(JSON.stringify(result, null, 2));
+}
+
 async function requestCapability(port, trustedZonesFile, capability = "summarize.text") {
   const result = await queryRemote(port, trustedZonesFile, capability, false);
   const [match] = result.matches;
@@ -388,11 +433,13 @@ async function main() {
     await resolveRemote(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value);
   } else if (mode === "query") {
     await queryRemote(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value);
+  } else if (mode === "audit") {
+    await auditRemote(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value);
   } else if (mode === "request-capability") {
     await requestCapability(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value);
   } else {
     console.error(
-      "usage: node federation-gateway.mjs serve <port> <trusted-zones.json> | request <port> <trusted-zones.json> [agent://alias] | resolve <port> <trusted-zones.json> [agent://alias] | query <port> <trusted-zones.json> [capability] | request-capability <port> <trusted-zones.json> [capability]",
+      "usage: node federation-gateway.mjs serve <port> <trusted-zones.json> | request <port> <trusted-zones.json> [agent://alias] | resolve <port> <trusted-zones.json> [agent://alias] | query <port> <trusted-zones.json> [capability] | audit <port> <trusted-zones.json> <task_id> | request-capability <port> <trusted-zones.json> [capability]",
     );
     process.exitCode = 2;
   }

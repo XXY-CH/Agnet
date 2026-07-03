@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v4.4 complete
-当前代码基线：`v4.4-protocol`
+状态：v4.5 complete
+当前代码基线：`v4.5-protocol`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、protocol-native checkpoint evidence、artifact manifest digest evidence、canonical policy scope evidence、credential status evidence，以及 authenticated session handshake。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go 最小 task execution path、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、protocol-native checkpoint evidence、artifact manifest digest evidence、canonical policy scope evidence、credential status evidence、authenticated session handshake，以及 remote audit query。
 
 还不是可产品化的 Agent Net。
 
@@ -20,7 +20,7 @@
 | Events | done | minimal federation events + Go checkpoint event | `agent-runtime.test.mjs`, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | richer event lifecycle |
 | Artifact write | done | deterministic local artifact + Go artifact manifest digest evidence | `mvp-demo.test.mjs`, `go-fed-discovery.test.mjs` | artifact store |
 | Receipt signing | done | done for minimal Go execution | `test-vectors.test.mjs`, `go-fed-discovery.test.mjs` | receipt verification CLI |
-| Audit hash chain | done | done for Go execution | `audit-chain.test.mjs`, `go-fed-discovery.test.mjs` | remote audit query |
+| Audit hash chain | done | done for Go execution + remote receipt proof query | `audit-chain.test.mjs`, `go-fed-discovery.test.mjs` | full log sync / remote search |
 | Federation resolve | done | done | `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | public transport |
 | Capability query | done | done | `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | ranking / scheduling |
 | Capability credential | done | done + Go signed status evidence | `capability-credential.test.mjs`, `go-fed-discovery.test.mjs` | revocation feed / renewal |
@@ -59,6 +59,7 @@ Go
   -> canonical policy scope digest and stable deny codes
   -> Zone-signed credential status evidence
   -> authenticated session handshake
+  -> remote audit query by task id
 ```
 
 ## Next Boundary
@@ -66,8 +67,8 @@ Go
 Next natural boundary:
 
 ```text
-Remote audit query
-  -> FED_AUDIT_QUERY / FED_AUDIT_RESULT minimal proof
+v5 protocol hardening
+  -> public transport, sandbox proof, checkpoint resume
 ```
 
 Route detail: `docs/v4-roadmap.md`。
