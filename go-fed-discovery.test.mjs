@@ -262,14 +262,38 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
       capabilities: ["translate.text"],
       policy: { allow_network: false, approval_required: ["tool"] },
     },
+    {
+      key_file: "state/go-fed-discovery-strict-translator.seed",
+      alias: "agent://zone-b/strict-translator",
+      tool: "mcp.stdio",
+      tool_name: "translate",
+      tool_command: [process.execPath, `${process.cwd()}/state/go-fed-mcp-server.mjs`, "--require-locale"],
+      sandbox_claim: "local-temp-dir",
+      transports: ["fed+tcp://127.0.0.1:8992"],
+      capabilities: ["translate.strict"],
+      policy: { allow_network: false, approval_required: ["tool"] },
+    },
+    {
+      key_file: "state/go-fed-discovery-slow.seed",
+      alias: "agent://zone-b/slow",
+      tool: "external.stdio",
+      tool_command: [process.execPath, `${process.cwd()}/state/go-fed-slow-tool.mjs`],
+      sandbox_claim: "local-temp-dir",
+      transports: ["fed+tcp://127.0.0.1:8993"],
+      capabilities: ["slow.text"],
+      policy: { allow_network: false, approval_required: ["tool"] },
+    },
   ];
   delete goFixture.worker_profile;
   await writeFile("state/go-fed-discovery-dynamic-worker.json", `${JSON.stringify(goFixture, null, 2)}\n`);
   await writeFile("state/go-fed-discovery-authority.seed", `${fixture.authority_seed_hex}\n`);
   await writeFile("state/go-fed-discovery-worker.seed", `${fixture.worker_seed_hex}\n`);
   await writeFile("state/go-fed-discovery-translator.seed", "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f\n");
+  await writeFile("state/go-fed-discovery-strict-translator.seed", "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf\n");
+  await writeFile("state/go-fed-discovery-slow.seed", "c0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf\n");
   await writeFile("state/go-fed-mcp-server.mjs", `
 import readline from "node:readline";
+const requireLocale = process.argv.includes("--require-locale");
 const rl = readline.createInterface({ input: process.stdin });
 rl.on("line", (line) => {
   const message = JSON.parse(line);
@@ -295,7 +319,7 @@ rl.on("line", (line) => {
     process.stdout.write(JSON.stringify({
       jsonrpc: "2.0",
       id: message.id,
-      result: { tools: [{ name: "translate", inputSchema: { type: "object", properties: { intent: { type: "string" } } } }] }
+      result: { tools: [{ name: "translate", inputSchema: { type: "object", properties: { intent: { type: "string" }, locale: { type: "string" } }, required: requireLocale ? ["intent", "locale"] : ["intent"] } }] }
     }) + "\\n");
   } else if (message.method === "tools/call") {
     const args = message.params.arguments;
@@ -308,7 +332,13 @@ rl.on("line", (line) => {
   }
 });
 `);
+  await writeFile("state/go-fed-slow-tool.mjs", `
+setTimeout(() => {
+  process.stdout.write(JSON.stringify({ text: "# Slow Tool\\n\\nFinished" }));
+}, 5000);
+`);
   await rm("state/go-fed-discovery-audit.log", { force: true });
+  await rm("state/go-fed-discovery-audit-tasks", { recursive: true, force: true });
   await writeTrustedZones("state/go-fed-discovery-trusted-origin.json", [zoneA]);
   await writeFile("state/node-trusts-go-discovery.json", `${JSON.stringify({ zones: [fixture.authority] }, null, 2)}\n`);
   const gateway = spawn("go", [
@@ -410,6 +440,15 @@ rl.on("line", (line) => {
     ]);
     const resolvedTranslatorResult = JSON.parse(resolvedTranslator.stdout);
     assert.equal(resolvedTranslatorResult.alias, "agent://zone-b/translator");
+    const resolvedSlow = await execFileAsync(process.execPath, [
+      "federation-gateway.mjs",
+      "resolve",
+      String(port),
+      "state/node-trusts-go-discovery.json",
+      "agent://zone-b/slow",
+    ]);
+    const resolvedSlowResult = JSON.parse(resolvedSlow.stdout);
+    assert.equal(resolvedSlowResult.alias, "agent://zone-b/slow");
 
     const task = {
       task_id: "go_fed_task_verified",
@@ -502,6 +541,8 @@ rl.on("line", (line) => {
     assert.match(receiptFrame.receipt.policy_digest, /^[0-9a-f]{64}$/);
     assert.equal(receiptFrame.receipt.policy_digest, checkpointEvent.policy_digest);
     assert.equal(receiptFrame.receipt.sandbox.mode, "local-temp-dir");
+    assert.equal(receiptFrame.receipt.sandbox.isolation_level, "local-process");
+    assert.notEqual(receiptFrame.receipt.sandbox.isolation_level, "container");
     assert.equal(receiptFrame.receipt.sandbox.kind, "mcp");
     assert.deepEqual(receiptFrame.receipt.sandbox.env, ["PATH=/usr/bin:/bin"]);
     assert.equal(receiptFrame.receipt.sandbox.network, "not_granted");
@@ -519,6 +560,8 @@ rl.on("line", (line) => {
     assert.equal(receiptFrame.receipt.sandbox.mcp_selected_tool, "translate");
     assert.match(receiptFrame.receipt.sandbox.mcp_selected_tool_digest, /^[0-9a-f]{64}$/);
     assert.match(receiptFrame.receipt.sandbox.mcp_selected_tool_schema_digest, /^[0-9a-f]{64}$/);
+    assert.match(receiptFrame.receipt.sandbox.mcp_tool_arguments_digest, /^[0-9a-f]{64}$/);
+    assert.equal(receiptFrame.receipt.sandbox.mcp_tool_arguments, undefined);
     assert.equal(receiptFrame.receipt.sandbox_claim, "local-temp-dir");
     const sandboxProof = receiptFrame.receipt.sandbox_proof;
     assert.equal(sandboxProof.proof_type, "local.sandbox.v1");
@@ -527,6 +570,7 @@ rl.on("line", (line) => {
     assert.equal(sandboxProof.worker, receiptFrame.worker.aid);
     assert.equal(sandboxProof.policy_digest, receiptFrame.receipt.policy_digest);
     assert.deepEqual(sandboxProof.sandbox, receiptFrame.receipt.sandbox);
+    assert.equal(sandboxProof.sandbox.isolation_level, receiptFrame.receipt.sandbox.isolation_level);
     assert.equal(sandboxProof.sandbox.tool_command_digest, receiptFrame.receipt.sandbox.tool_command_digest);
     assert.deepEqual(sandboxProof.sandbox.mcp_session, receiptFrame.receipt.sandbox.mcp_session);
     assert.equal(sandboxProof.sandbox.mcp_resources_digest, receiptFrame.receipt.sandbox.mcp_resources_digest);
@@ -534,6 +578,7 @@ rl.on("line", (line) => {
     assert.equal(sandboxProof.sandbox.mcp_tools_digest, receiptFrame.receipt.sandbox.mcp_tools_digest);
     assert.equal(sandboxProof.sandbox.mcp_selected_tool_digest, receiptFrame.receipt.sandbox.mcp_selected_tool_digest);
     assert.equal(sandboxProof.sandbox.mcp_selected_tool_schema_digest, receiptFrame.receipt.sandbox.mcp_selected_tool_schema_digest);
+    assert.equal(sandboxProof.sandbox.mcp_tool_arguments_digest, receiptFrame.receipt.sandbox.mcp_tool_arguments_digest);
     assert.equal(sandboxProof.sandbox_claim, receiptFrame.receipt.sandbox_claim);
     const sandboxProofBody = { ...sandboxProof };
     delete sandboxProofBody.sandbox_signature;
@@ -638,6 +683,24 @@ rl.on("line", (line) => {
     assert.deepEqual(retryAuditFrames.map((frame) => frame.type), ["FED_AUDIT_RESULT", "FED_AUDIT_CLOSE"]);
     assert.equal(retryAuditFrames[0].receipt.retry_of, task.task_id);
 
+    const strictTask = {
+      ...task,
+      task_id: "go_fed_task_missing_mcp_required_arg",
+      to: "agent://zone-b/strict-translator",
+    };
+    const strictFrames = await exchangeFrames(port, {
+      type: "FED_TASK_OPEN",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      task: { ...strictTask, signature: signObject(requester.privateKey, strictTask) },
+    });
+    assert.equal(strictFrames.at(-1).type, "FED_TASK_ERROR");
+    assert.match(strictFrames.at(-1).error, /mcp tool arguments missing required field: locale/);
+    const failedTaskState = JSON.parse(await readFile("state/go-fed-discovery-audit-tasks/go_fed_task_missing_mcp_required_arg.json", "utf8"));
+    assert.equal(failedTaskState.task_id, strictTask.task_id);
+    assert.equal(failedTaskState.status, "failed");
+    assert.match(failedTaskState.error, /mcp tool arguments missing required field: locale/);
+
     const missingRetryOfFrames = await exchangeFrames(port, {
       type: "FED_TASK_RETRY",
       origin_zone: zoneA.descriptor,
@@ -678,6 +741,54 @@ rl.on("line", (line) => {
     assert.equal(cancelReceipt.task_id, cancel.task_id);
     assert.equal(cancelReceipt.status, "cancelled");
     assert.deepEqual(cancelReceipt.cancel, { ...cancel, signature: signObject(requester.privateKey, cancel) });
+
+    const completedTaskState = JSON.parse(await readFile("state/go-fed-discovery-audit-tasks/go_fed_task_verified.json", "utf8"));
+    assert.equal(completedTaskState.task_id, task.task_id);
+    assert.equal(completedTaskState.status, "completed");
+    assert.equal(completedTaskState.worker, receiptFrame.worker.aid);
+    assert.equal(completedTaskState.receipt_digest, createHash("sha256").update(JSON.stringify(receiptFrame.receipt)).digest("hex"));
+
+    const cancelledTaskState = JSON.parse(await readFile("state/go-fed-discovery-audit-tasks/go_fed_task_cancelled.json", "utf8"));
+    assert.equal(cancelledTaskState.task_id, cancel.task_id);
+    assert.equal(cancelledTaskState.status, "cancelled");
+    assert.equal(cancelledTaskState.worker, receiptFrame.worker.aid);
+    assert.equal(cancelledTaskState.receipt_digest, createHash("sha256").update(JSON.stringify(cancelReceipt)).digest("hex"));
+
+    const slowTask = {
+      ...task,
+      task_id: "go_fed_task_live_cancelled",
+      to: "agent://zone-b/slow",
+      intent: "Run slowly until cancelled.",
+    };
+    const slowStartedAt = Date.now();
+    const slowExecution = exchangeFrames(port, {
+      type: "FED_TASK_OPEN",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      task: { ...slowTask, signature: signObject(requester.privateKey, slowTask) },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const runningTaskState = JSON.parse(await readFile("state/go-fed-discovery-audit-tasks/go_fed_task_live_cancelled.json", "utf8"));
+    assert.equal(runningTaskState.task_id, slowTask.task_id);
+    assert.equal(runningTaskState.status, "running");
+    assert.equal(runningTaskState.worker, resolvedSlowResult.aid);
+    const liveCancel = {
+      task_id: slowTask.task_id,
+      from: requester.aid,
+      to: "agent://zone-b/slow",
+      reason: "stop running slow task",
+    };
+    const liveCancelFrames = await exchangeFrames(port, {
+      type: "FED_TASK_CANCEL",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      cancel: { ...liveCancel, signature: signObject(requester.privateKey, liveCancel) },
+    }, "FED_CANCEL_CLOSE");
+    assert.equal(liveCancelFrames[1].receipt.status, "cancelled");
+    const slowFrames = await slowExecution;
+    assert.equal(slowFrames.at(-1).type, "FED_TASK_ERROR");
+    assert.match(slowFrames.at(-1).error, /external tool cancelled/);
+    assert.ok(Date.now() - slowStartedAt < 1500);
 
     const cancelAuditFrames = await exchangeFrames(port, {
       type: "FED_AUDIT_QUERY",
@@ -724,7 +835,7 @@ rl.on("line", (line) => {
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 26);
+    assert.equal(auditBody.entries.length, 38);
 
     const pageResponse = await fetch(`http://127.0.0.1:${humanPort}/`);
     assert.equal(pageResponse.status, 200);

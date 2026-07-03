@@ -305,7 +305,7 @@ This is not automatic retry. There is no backoff, retry queue, scheduler, or loo
 
 v5.2 treats cancellation as signed protocol evidence. Zone B verifies the requester and cancel signature, emits `task.cancelled`, and returns a worker-signed cancellation receipt that remote audit query can fetch by `task_id`.
 
-This is not live process interruption. The current gateway does not keep a scheduler or task state table.
+For local external tool execution, cancellation now interrupts the running process through an in-memory runtime registry. This is still not a scheduler, persisted running-process table, or distributed cancellation protocol.
 
 ## FED_TASK_VERIFIED
 
@@ -346,6 +346,7 @@ Zone A must not treat this as a receipt.
       "sandbox_claim": "local-temp-dir"
     },
     "sandbox": {
+      "isolation_level": "local-process",
       "tool_command_digest": "...",
       "mcp_session": {
         "protocol_version": "2025-11-25",
@@ -359,7 +360,8 @@ Zone A must not treat this as a receipt.
       "mcp_tools_digest": "...",
       "mcp_selected_tool": "translate",
       "mcp_selected_tool_digest": "...",
-      "mcp_selected_tool_schema_digest": "..."
+      "mcp_selected_tool_schema_digest": "...",
+      "mcp_tool_arguments_digest": "..."
     },
     "event_count": 7,
     "approvals": ["write"],

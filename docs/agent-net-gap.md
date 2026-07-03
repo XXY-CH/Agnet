@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v5.11 assessment
+状态：v6.3 assessment
 
 ## 一句话
 
@@ -14,7 +14,7 @@
 
 ### Protocol core
 
-进度：约 86%。
+进度：约 89%。
 
 已有：
 
@@ -57,6 +57,9 @@
 - MCP tools/list metadata evidence in v5.9。
 - MCP selected tool binding in v5.10。
 - MCP selected tool schema digest in v5.11。
+- MCP tools/call argument digest in v5.12。
+- MCP required argument gate in v5.13。
+- Sandbox isolation level evidence in v5.14。
 
 主要缺：
 
@@ -65,7 +68,7 @@
 
 ### Runtime core
 
-进度：约 68%。
+进度：约 77%。
 
 已有：
 
@@ -89,6 +92,13 @@
 - MCP tools surface is recorded as count+digest evidence。
 - Selected MCP tool is bound to a `tools/list` descriptor digest。
 - Selected MCP tool input schema is recorded as digest evidence。
+- MCP tool arguments are recorded as digest evidence。
+- MCP tool arguments are rejected when selected schema required fields are missing。
+- External/MCP sandbox evidence records explicit `local-process` isolation level。
+- Completed/cancelled Go tasks persist minimal state files linked to receipt digests。
+- Failed Go task execution persists error state before a receipt exists。
+- Signed task cancellation interrupts a running external tool through the in-memory runtime registry。
+- Running Go tasks persist state before external/MCP execution completes。
 
 主要缺：
 
@@ -96,15 +106,14 @@
 - interactive approval UI。
 - container-grade sandbox。
 - concurrency model。
-- durable task state。
-- live task cancellation。
+- task state UI / query surface。
 - real checkpoint state restore。
 - automatic retry / backoff。
 - binary/package provenance。
 - streamed output transcript evidence。
 - long-running MCP session reuse。
 - full MCP resource/prompt catalog storage。
-- MCP tool schema verification。
+- full MCP schema verification。
 - artifact store beyond local files。
 
 ### Network layer

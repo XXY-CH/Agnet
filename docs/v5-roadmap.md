@@ -1,6 +1,6 @@
 # Agent Space v5 Roadmap
 
-状态：v5.11 complete; v5.12+ planned
+状态：v5.14 complete; v6+ planned
 目标：从 v4 的 evidence chain 推进到更强运行面，但仍保持 `agent-space-ultimate-vision.md` 的底层窄腰：identity、signed task、event stream、scoped policy、artifact reference、audit receipt、federation。
 
 ## v5.0: Signed Sandbox Proof
@@ -239,9 +239,59 @@
 - 不做 tool registry。
 - 不做 authorization UI。
 
+## v5.12: MCP Argument Digest
+
+状态：complete
+目标：记录 MCP `tools/call` arguments 摘要。
+
+新增：
+
+- `mcp_tool_arguments_digest`
+
+不做：
+
+- 不保存 arguments 明文。
+- 不做 JSON Schema validation。
+- 不做 policy engine。
+- 不做 PII redaction。
+- 不做 authorization UI。
+
+## v5.13: MCP Argument Schema Gate
+
+状态：complete
+目标：在 `tools/call` 前拒绝缺少 selected tool schema `required` 字段的 arguments。
+
+新增：
+
+- Minimal required-field presence gate for selected MCP tool arguments。
+
+不做：
+
+- 不做完整 JSON Schema validation。
+- 不做类型校验。
+- 不做格式校验。
+- 不保存 arguments 明文。
+- 不做 policy engine。
+
+## v5.14: Sandbox Isolation Level Evidence
+
+状态：complete
+目标：把当前 external/MCP sandbox 的真实隔离级别写入 signed sandbox evidence。
+
+新增：
+
+- `sandbox.isolation_level: "local-process"`。
+
+不做：
+
+- 不做 container/gVisor/Firecracker sandbox。
+- 不把 `local-temp-dir` 描述成 container。
+- 不做 sandbox broker service。
+- 不做 network isolation enforcement。
+
 ## 后续方向
 
-- MCP argument digest
+- v6 durable task runtime
 - container sandbox proof
 - long-running MCP sessions
 - scheduling / retry

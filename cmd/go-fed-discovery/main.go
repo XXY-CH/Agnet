@@ -20,6 +20,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,6 +37,8 @@ type Fixture struct {
 	Credential          map[string]any     `json:"credential"`
 	AuthorityPrivateKey ed25519.PrivateKey `json:"-"`
 	Audit               *AuditLog          `json:"-"`
+	TaskStateDir        string             `json:"-"`
+	Runtime             *TaskRuntime       `json:"-"`
 }
 
 type WorkerProfile struct {
@@ -64,6 +67,12 @@ type AuditLog struct {
 	Path string
 	Head string
 	mu   sync.Mutex
+}
+
+type TaskRuntime struct {
+	mu        sync.Mutex
+	running   map[string]context.CancelFunc
+	cancelled map[string]bool
 }
 
 type sendFunc func(map[string]any)
@@ -141,6 +150,8 @@ func serve(port, wsPort, humanPort, fixturePath, trustPath, authorityKeyPath, wo
 		return err
 	}
 	fixture.Audit = audit
+	fixture.TaskStateDir = strings.TrimSuffix(auditPath, filepath.Ext(auditPath)) + "-tasks"
+	fixture.Runtime = &TaskRuntime{running: map[string]context.CancelFunc{}, cancelled: map[string]bool{}}
 	trusted, err := loadTrustedZones(trustPath)
 	if err != nil {
 		return err
@@ -730,6 +741,48 @@ func privateKeyFromSeedHex(seedHex, label string) (ed25519.PrivateKey, error) {
 	return ed25519.NewKeyFromSeed(seed), nil
 }
 
+func (r *TaskRuntime) Register(taskID string, cancel context.CancelFunc) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.running[taskID] = cancel
+	if r.cancelled[taskID] {
+		cancel()
+	}
+}
+
+func (r *TaskRuntime) Cancel(taskID string) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.cancelled[taskID] = true
+	if cancel := r.running[taskID]; cancel != nil {
+		cancel()
+	}
+}
+
+func (r *TaskRuntime) Unregister(taskID string) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.running, taskID)
+}
+
+func (r *TaskRuntime) WasCancelled(taskID string) bool {
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.cancelled[taskID]
+}
+
 func (f Fixture) verifyAuthoritySeed() error {
 	publicKey := f.AuthorityPrivateKey.Public().(ed25519.PublicKey)
 	encoded, _, err := publicKeySPKI(publicKey)
@@ -925,6 +978,10 @@ func (f Fixture) verifyTaskCancel(frame map[string]any) (*Worker, map[string]any
 
 func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worker, task map[string]any, parentCheckpoint, retryOf any) error {
 	taskID := fmt.Sprint(task["task_id"])
+	ctx, cancelRun := context.WithCancel(context.Background())
+	f.Runtime.Register(taskID, cancelRun)
+	defer cancelRun()
+	defer f.Runtime.Unregister(taskID)
 	if err := f.sendTaskEvent(send, map[string]any{"type": "task.accepted", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
 		return err
 	}
@@ -943,6 +1000,9 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	if err := f.sendTaskEvent(send, map[string]any{"type": "task.started", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
 		return err
 	}
+	if err := f.writeTaskState(taskID, "running", worker, map[string]any{}); err != nil {
+		return err
+	}
 	policyScope := taskPolicyScope(worker.Profile, worker.Descriptor, task)
 	policyDigest := digestHex(policyScope)
 	checkpoint := worker.checkpoint(task, parentCheckpoint, 3+len(approvals)*2, policyDigest)
@@ -951,8 +1011,12 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	}
 
 	artifactURI := "artifact://local/" + taskID + "/go-summary.md"
-	toolName, artifactText, sandbox, err := runTool(worker.Profile, task, origin)
+	toolName, artifactText, sandbox, err := runTool(ctx, worker.Profile, task, origin)
 	if err != nil {
+		if f.Runtime.WasCancelled(taskID) {
+			return err
+		}
+		_ = f.writeTaskState(taskID, "failed", worker, map[string]any{"error": err.Error()})
 		return err
 	}
 	sandboxClaim := worker.Profile.SandboxClaim
@@ -1013,6 +1077,9 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	if err := f.appendAudit(receiptRecord); err != nil {
 		return err
 	}
+	if err := f.writeTaskState(taskID, "completed", worker, map[string]any{"receipt_digest": digestHex(signedReceipt)}); err != nil {
+		return err
+	}
 	send(map[string]any{
 		"type":         "FED_RECEIPT",
 		"zone":         receiptRecord["zone"],
@@ -1027,6 +1094,7 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 func (f Fixture) cancelTask(send sendFunc, origin map[string]any, worker *Worker, requester, cancel map[string]any) error {
 	taskID := fmt.Sprint(cancel["task_id"])
 	reason := fmt.Sprint(cancel["reason"])
+	f.Runtime.Cancel(taskID)
 	if err := f.sendTaskEvent(send, map[string]any{
 		"type":    "task.cancelled",
 		"task_id": taskID,
@@ -1076,6 +1144,9 @@ func (f Fixture) cancelTask(send sendFunc, origin map[string]any, worker *Worker
 		"receipt":      signedReceipt,
 	}
 	if err := f.appendAudit(receiptRecord); err != nil {
+		return err
+	}
+	if err := f.writeTaskState(taskID, "cancelled", worker, map[string]any{"receipt_digest": digestHex(signedReceipt)}); err != nil {
 		return err
 	}
 	send(map[string]any{
@@ -1156,7 +1227,7 @@ func taskPolicyScope(profile WorkerProfile, worker, task map[string]any) map[str
 	}
 }
 
-func runTool(profile WorkerProfile, task, origin map[string]any) (string, string, map[string]any, error) {
+func runTool(ctx context.Context, profile WorkerProfile, task, origin map[string]any) (string, string, map[string]any, error) {
 	tool := profile.Tool
 	if tool == "" {
 		tool = "text.echo"
@@ -1169,10 +1240,10 @@ func runTool(profile WorkerProfile, task, origin map[string]any) (string, string
 	case "translate.mock":
 		return tool, "# Go Tool Translation\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nTranslation: " + strings.ToUpper(intent) + "\n", inProcessSandbox(), nil
 	case "external.stdio":
-		text, sandbox, err := runExternalTool(profile, task, origin)
+		text, sandbox, err := runExternalTool(ctx, profile, task, origin)
 		return tool, text, sandbox, err
 	case "mcp.stdio":
-		text, sandbox, err := runMCPTool(profile, task, origin)
+		text, sandbox, err := runMCPTool(ctx, profile, task, origin)
 		return tool, text, sandbox, err
 	default:
 		return tool, "# Go Tool Output\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nOutput: " + intent + "\n", inProcessSandbox(), nil
@@ -1189,12 +1260,13 @@ func newToolSandbox(kind string, toolCommand []string) (string, map[string]any, 
 		return "", nil, nil, err
 	}
 	sandbox := map[string]any{
-		"mode":    "local-temp-dir",
-		"kind":    kind,
-		"cwd":     dir,
-		"env":     []string{"PATH=/usr/bin:/bin"},
-		"network": "not_granted",
-		"cleanup": "remove-all",
+		"mode":            "local-temp-dir",
+		"isolation_level": "local-process",
+		"kind":            kind,
+		"cwd":             dir,
+		"env":             []string{"PATH=/usr/bin:/bin"},
+		"network":         "not_granted",
+		"cleanup":         "remove-all",
 	}
 	if len(toolCommand) > 0 {
 		sandbox["tool_command_digest"] = digestHex(toolCommand)
@@ -1206,7 +1278,7 @@ func sandboxEnv() []string {
 	return []string{"PATH=/usr/bin:/bin"}
 }
 
-func runExternalTool(profile WorkerProfile, task, origin map[string]any) (string, map[string]any, error) {
+func runExternalTool(parent context.Context, profile WorkerProfile, task, origin map[string]any) (string, map[string]any, error) {
 	if len(profile.ToolCommand) == 0 {
 		return "", nil, errors.New("external.stdio tool_command missing")
 	}
@@ -1215,7 +1287,7 @@ func runExternalTool(profile WorkerProfile, task, origin map[string]any) (string
 		return "", nil, err
 	}
 	defer cleanup()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, profile.ToolCommand[0], profile.ToolCommand[1:]...)
 	cmd.Dir = dir
@@ -1235,6 +1307,9 @@ func runExternalTool(profile WorkerProfile, task, origin map[string]any) (string
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	output, err := cmd.Output()
+	if ctx.Err() == context.Canceled {
+		return "", nil, errors.New("external tool cancelled")
+	}
 	if ctx.Err() == context.DeadlineExceeded {
 		return "", nil, errors.New("external tool timed out")
 	}
@@ -1256,7 +1331,7 @@ func runExternalTool(profile WorkerProfile, task, origin map[string]any) (string
 	return text, sandbox, nil
 }
 
-func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, map[string]any, error) {
+func runMCPTool(parent context.Context, profile WorkerProfile, task, origin map[string]any) (string, map[string]any, error) {
 	if len(profile.ToolCommand) == 0 {
 		return "", nil, errors.New("mcp.stdio tool_command missing")
 	}
@@ -1269,7 +1344,7 @@ func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, map
 		return "", nil, err
 	}
 	defer cleanup()
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 3*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, profile.ToolCommand[0], profile.ToolCommand[1:]...)
 	cmd.Dir = dir
@@ -1331,7 +1406,8 @@ func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, map
 	if err != nil {
 		return "", nil, err
 	}
-	if err := recordMCPSelectedToolEvidence(sandbox, tools, toolName); err != nil {
+	schema, err := recordMCPSelectedToolEvidence(sandbox, tools, toolName)
+	if err != nil {
 		return "", nil, err
 	}
 	args := map[string]any{
@@ -1339,6 +1415,10 @@ func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, map
 		"intent":  task["intent"],
 		"to":      task["to"],
 		"origin":  origin["zid"],
+	}
+	sandbox["mcp_tool_arguments_digest"] = digestHex(args)
+	if err := validateMCPRequiredArguments(schema, args); err != nil {
+		return "", nil, err
 	}
 	if err := writeRPC(map[string]any{
 		"jsonrpc": "2.0",
@@ -1353,6 +1433,9 @@ func runMCPTool(profile WorkerProfile, task, origin map[string]any) (string, map
 		return "", nil, err
 	}
 	_ = stdin.Close()
+	if ctx.Err() == context.Canceled {
+		return "", nil, errors.New("mcp tool cancelled")
+	}
 	if err := cmd.Wait(); err != nil && ctx.Err() == nil {
 		message := strings.TrimSpace(stderr.String())
 		if message == "" {
@@ -1382,19 +1465,37 @@ func recordMCPListEvidence(writeRPC func(map[string]any) error, scanner *bufio.S
 	return items, nil
 }
 
-func recordMCPSelectedToolEvidence(sandbox map[string]any, tools []any, toolName string) error {
+func recordMCPSelectedToolEvidence(sandbox map[string]any, tools []any, toolName string) (any, error) {
 	for _, item := range tools {
 		tool, _ := item.(map[string]any)
 		if tool["name"] == toolName {
 			sandbox["mcp_selected_tool"] = toolName
 			sandbox["mcp_selected_tool_digest"] = digestHex(tool)
+			var selectedSchema any
 			if schema, ok := tool["inputSchema"]; ok {
+				selectedSchema = schema
 				sandbox["mcp_selected_tool_schema_digest"] = digestHex(schema)
 			}
-			return nil
+			return selectedSchema, nil
 		}
 	}
-	return errors.New("mcp selected tool missing from tools/list")
+	return nil, errors.New("mcp selected tool missing from tools/list")
+}
+
+func validateMCPRequiredArguments(schema any, args map[string]any) error {
+	body, _ := schema.(map[string]any)
+	required, _ := body["required"].([]any)
+	for _, item := range required {
+		name, ok := item.(string)
+		if !ok {
+			continue
+		}
+		// ponytail: required-only gate; full JSON Schema validation belongs in a later policy slice.
+		if _, ok := args[name]; !ok {
+			return errors.New("mcp tool arguments missing required field: " + name)
+		}
+	}
+	return nil
 }
 
 func readRPCResponse(scanner *bufio.Scanner, id float64) (map[string]any, error) {
@@ -1444,6 +1545,29 @@ func (f Fixture) appendAudit(record map[string]any) error {
 		return nil
 	}
 	return f.Audit.Append(record)
+}
+
+func (f Fixture) writeTaskState(taskID, status string, worker *Worker, extra map[string]any) error {
+	if f.TaskStateDir == "" {
+		return nil
+	}
+	body := map[string]any{
+		"task_id": taskID,
+		"status":  status,
+		"worker":  worker.Descriptor["aid"],
+	}
+	for key, value := range extra {
+		body[key] = value
+	}
+	if err := os.MkdirAll(f.TaskStateDir, 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(body, "", "  ")
+	if err != nil {
+		return err
+	}
+	// ponytail: one JSON file per task; replace with an indexed store when scheduling needs queries.
+	return os.WriteFile(filepath.Join(f.TaskStateDir, url.PathEscape(taskID)+".json"), append(data, '\n'), 0o644)
 }
 
 func writeArtifact(uri, text string) (map[string]any, error) {
