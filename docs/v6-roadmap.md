@@ -1,6 +1,6 @@
 # Agent Space v6 Roadmap
 
-状态：v6.3 complete; v6.4+ planned
+状态：v6.5 complete; v7 planned
 目标：从 v5 的工具执行证据链推进到 durable task runtime，让任务不只是一次性 receipt，而是有可恢复、可操作、可查询的运行状态。
 
 ## v6.0: Durable Task State File
@@ -74,11 +74,47 @@
 - 不做 scheduler queue。
 - 不做 persisted running process handles。
 
+## v6.4: Human Gateway Task View
+
+状态：complete
+目标：只读暴露 durable task state，让人类入口可以查看任务状态而不推断 audit log。
+
+新增：
+
+- `GET /api/tasks` returns task state files。
+- Human Gateway page renders a read-only Tasks table。
+- Task list includes completed/cancelled/failed/running-derived terminal states from the same durable state path。
+
+不做：
+
+- 不做 action buttons。
+- 不做 Human Gateway cancellation flow。
+- 不做 scheduler queue。
+- 不做 database/index。
+- 不做 polling/live updates。
+
+## v6.5: Audit-Backed Resume Checkpoint
+
+状态：complete
+目标：`FED_TASK_RESUME` 引用 checkpoint 前，必须证明该 checkpoint 已存在于 audit。
+
+新增：
+
+- Resume checkpoint id is looked up in the audit log。
+- Unknown checkpoint ids are rejected before task execution。
+- Resumed receipts still link `resumed_from` to the verified parent checkpoint id。
+
+不做：
+
+- 不做 process snapshot restore。
+- 不做 long-running MCP session resume。
+- 不做 scheduler queue。
+- 不做 checkpoint storage service。
+
 ## 后续方向
 
-- Human Gateway task state view
-- checkpoint-backed restore
 - scheduler queue
+- stateful checkpoint restore after scheduler
 - Human Gateway task list/actions
 
 Container sandbox remains a separate runtime-hardening track, not the first v6 durable-runtime slice。

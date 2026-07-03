@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v6.3 complete
-当前代码基线：`v6.3-runtime`
+状态：v6.5 complete
+当前代码基线：`v6.5-audit-backed-resume-checkpoint`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go `FED_TASK_RESUME` checkpoint link、Go signed `FED_TASK_CANCEL` evidence、Go live external task cancellation、Go `FED_TASK_RETRY` lineage evidence、Go 最小 task execution path、Go durable running/completed/cancelled/failed task state files、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、MCP initialize metadata evidence、MCP resources/prompts/tools metadata evidence、MCP selected tool binding、MCP selected schema digest evidence、MCP argument digest evidence、MCP required argument gate、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、sandbox isolation level evidence、signed sandbox proof、sandbox claim binding、tool command provenance digest、tool output digest alignment、protocol-native checkpoint evidence、artifact manifest digest evidence、canonical policy scope evidence、credential status evidence、authenticated session handshake，以及 remote audit query。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go `FED_TASK_RESUME` audit-backed checkpoint link、Go signed `FED_TASK_CANCEL` evidence、Go live external task cancellation、Go `FED_TASK_RETRY` lineage evidence、Go 最小 task execution path、Go durable running/completed/cancelled/failed task state files、Go Human Gateway task state view、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、MCP initialize metadata evidence、MCP resources/prompts/tools metadata evidence、MCP selected tool binding、MCP selected schema digest evidence、MCP argument digest evidence、MCP required argument gate、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、sandbox isolation level evidence、signed sandbox proof、sandbox claim binding、tool command provenance digest、tool output digest alignment、protocol-native checkpoint evidence、artifact manifest digest evidence、canonical policy scope evidence、credential status evidence、authenticated session handshake，以及 remote audit query。
 
 还不是可产品化的 Agent Net。
 
@@ -30,9 +30,9 @@
 | `FED_TASK_RETRY` | not yet | signed retry lineage evidence | `go-fed-discovery.test.mjs` | automatic retry / backoff / scheduler state |
 | Policy checks | done | network/write subset + Go canonical policy scope digest + stable deny codes | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | policy negotiation / dynamic policy service |
 | Human approval | simulated | signed local tool approval evidence visible in Human Gateway | Node events, `go-fed-discovery.test.mjs` | interactive approval queue / login-state UI |
-| Checkpoint evidence | not yet | signed protocol-native checkpoint evidence + minimal resume parent link + receipt-linked task state file | `go-fed-discovery.test.mjs` | real state restore |
+| Checkpoint evidence | not yet | signed protocol-native checkpoint evidence + audit-backed resume parent link + receipt-linked task state file | `go-fed-discovery.test.mjs` | real state restore |
 | Transport | local TCP / local process + authenticated session handshake | local TCP + minimal WebSocket + authenticated session handshake | README commands, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | TLS, QUIC |
-| Product surface | CLI/tests only | thin read-only Human Gateway | README, `go-fed-discovery.test.mjs` | approvals, task creation, admin, deployment |
+| Product surface | CLI/tests only | thin read-only Human Gateway with task state table | README, `go-fed-discovery.test.mjs` | approvals, task creation, admin, deployment |
 
 ## Current Boundary
 
@@ -72,12 +72,13 @@ Go
   -> MCP tools/call argument digest evidence
   -> MCP required-field argument gate
   -> signed protocol-native checkpoint evidence
-  -> minimal FED_TASK_RESUME parent-checkpoint link
+  -> FED_TASK_RESUME parent-checkpoint link verified against audit
   -> artifact manifest digest evidence
   -> canonical policy scope digest and stable deny codes
   -> Zone-signed credential status evidence
   -> authenticated session handshake
   -> remote audit query by task id
+  -> Human Gateway /api/tasks and read-only task table
 ```
 
 ## Next Boundary
@@ -85,8 +86,8 @@ Go
 Next natural boundary:
 
 ```text
-v6.4 Human Gateway Task View
-  -> expose task state files through the read-only Human Gateway
+v7.0 Scheduler Queue Boundary
+  -> introduce a durable local queue for task lifecycle ownership
 ```
 
 Route detail: `docs/v5-roadmap.md`。

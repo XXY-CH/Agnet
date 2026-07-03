@@ -648,6 +648,21 @@ setTimeout(() => {
     assert.deepEqual(resumeReceipt.checkpoint_refs, [resumedCheckpoint.checkpoint_id]);
     assert.deepEqual(resumeReceipt.checkpoints, [resumedCheckpoint]);
 
+    const unknownCheckpointTask = {
+      ...task,
+      task_id: "go_fed_task_resume_unknown_checkpoint",
+      intent: "Resume from an unknown checkpoint.",
+    };
+    const unknownCheckpointFrames = await exchangeFrames(port, {
+      type: "FED_TASK_RESUME",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      checkpoint_id: `checkpoint:sha256:${"0".repeat(64)}`,
+      task: { ...unknownCheckpointTask, signature: signObject(requester.privateKey, unknownCheckpointTask) },
+    });
+    assert.equal(unknownCheckpointFrames[0].type, "FED_TASK_ERROR");
+    assert.match(unknownCheckpointFrames[0].error, /resume checkpoint not found/);
+
     const retryTask = {
       ...task,
       task_id: "go_fed_task_retried",
@@ -837,10 +852,22 @@ setTimeout(() => {
     const auditBody = await auditResponse.json();
     assert.equal(auditBody.entries.length, 38);
 
+    const tasksResponse = await fetch(`http://127.0.0.1:${humanPort}/api/tasks`);
+    assert.equal(tasksResponse.status, 200);
+    const tasksBody = await tasksResponse.json();
+    const taskStates = new Map(tasksBody.tasks.map((item) => [item.task_id, item]));
+    assert.equal(taskStates.get("go_fed_task_verified").status, "completed");
+    assert.equal(taskStates.get("go_fed_task_cancelled").status, "cancelled");
+    assert.equal(taskStates.get("go_fed_task_missing_mcp_required_arg").status, "failed");
+    assert.equal(taskStates.get("go_fed_task_live_cancelled").status, "cancelled");
+
     const pageResponse = await fetch(`http://127.0.0.1:${humanPort}/`);
     assert.equal(pageResponse.status, 200);
     const pageText = await pageResponse.text();
     assert.match(pageText, /Agent Space Human Gateway/);
+    assert.match(pageText, /Tasks/);
+    assert.match(pageText, /go_fed_task_live_cancelled/);
+    assert.match(pageText, /cancelled/);
     assert.match(pageText, /agent:\/\/zone-b\/translator/);
     assert.match(pageText, /go_fed_task_verified/);
     assert.match(pageText, /1 signed/);

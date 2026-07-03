@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -315,6 +316,10 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(errors.New("resume checkpoint_id missing")))
 			return false
 		}
+		if err := fixture.requireCheckpoint(checkpointID); err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
 		if err := fixture.executeTask(send, origin, worker, task, checkpointID, nil); err != nil {
 			send(taskErrorFrame(err))
 			return false
@@ -371,6 +376,35 @@ func (f Fixture) auditProof(taskID string) (map[string]any, error) {
 		}
 	}
 	return nil, errors.New("audit proof not found: " + taskID)
+}
+
+func (f Fixture) requireCheckpoint(checkpointID string) error {
+	if f.Audit == nil {
+		return errors.New("audit log unavailable")
+	}
+	entries, err := readAuditEntries(f.Audit.Path)
+	if errors.Is(err, os.ErrNotExist) {
+		return errors.New("resume checkpoint not found: " + checkpointID)
+	}
+	if err != nil {
+		return err
+	}
+	// ponytail: linear scan keeps resume evidence honest; add an index when checkpoint lookup has real volume.
+	for _, entry := range entries {
+		record, _ := entry["record"].(map[string]any)
+		event, _ := record["event"].(map[string]any)
+		checkpoint, _ := event["checkpoint"].(map[string]any)
+		if checkpoint["checkpoint_id"] == checkpointID {
+			return nil
+		}
+		receipt, _ := record["receipt"].(map[string]any)
+		for _, checkpoint := range mapsFromAny(receipt["checkpoints"]) {
+			if checkpoint["checkpoint_id"] == checkpointID {
+				return nil
+			}
+		}
+	}
+	return errors.New("resume checkpoint not found: " + checkpointID)
 }
 
 func handleHello(send sendFunc, frame map[string]any, fixture Fixture, trusted map[string]map[string]any, session *Session) error {
@@ -572,6 +606,7 @@ func writeWebSocketText(conn net.Conn, text string) error {
 }
 
 func serveHumanGateway(listener net.Listener, auditPath string) {
+	taskStateDir := taskStateDirForAudit(auditPath)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -583,8 +618,13 @@ func serveHumanGateway(listener net.Listener, auditPath string) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		tasks, err := readTaskStates(taskStateDir)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprint(w, renderHumanGateway(entries))
+		_, _ = fmt.Fprint(w, renderHumanGateway(entries, tasks))
 	})
 	mux.HandleFunc("/api/audit", func(w http.ResponseWriter, r *http.Request) {
 		entries, err := readAuditEntriesOrEmpty(auditPath)
@@ -594,6 +634,15 @@ func serveHumanGateway(listener net.Listener, auditPath string) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"entries": entries})
+	})
+	mux.HandleFunc("/api/tasks", func(w http.ResponseWriter, r *http.Request) {
+		tasks, err := readTaskStates(taskStateDir)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"tasks": tasks})
 	})
 	mux.Handle("/artifacts/", http.StripPrefix("/artifacts/", http.FileServer(http.Dir("artifacts"))))
 	_ = http.Serve(listener, mux)
@@ -607,7 +656,40 @@ func readAuditEntriesOrEmpty(path string) ([]map[string]any, error) {
 	return entries, err
 }
 
-func renderHumanGateway(entries []map[string]any) string {
+func taskStateDirForAudit(auditPath string) string {
+	return strings.TrimSuffix(auditPath, filepath.Ext(auditPath)) + "-tasks"
+}
+
+func readTaskStates(dir string) ([]map[string]any, error) {
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return []map[string]any{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	tasks := []map[string]any{}
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			return nil, err
+		}
+		var task map[string]any
+		if err := json.Unmarshal(data, &task); err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, task)
+	}
+	sort.Slice(tasks, func(i, j int) bool {
+		return optionalString(tasks[i]["task_id"]) < optionalString(tasks[j]["task_id"])
+	})
+	return tasks, nil
+}
+
+func renderHumanGateway(entries, tasks []map[string]any) string {
 	events := 0
 	receipts := []map[string]any{}
 	for _, entry := range entries {
@@ -635,6 +717,24 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 	b.WriteString(` · receipts: `)
 	b.WriteString(fmt.Sprint(len(receipts)))
 	b.WriteString(`</div></header>`)
+	b.WriteString(`<h2>Tasks</h2><table><thead><tr><th>Task</th><th>Status</th><th>Worker</th><th>Receipt</th><th>Error</th></tr></thead><tbody>`)
+	if len(tasks) == 0 {
+		b.WriteString(`<tr><td colspan="5">No tasks</td></tr>`)
+	}
+	for _, task := range tasks {
+		b.WriteString(`<tr><td><code>`)
+		b.WriteString(html.EscapeString(optionalString(task["task_id"])))
+		b.WriteString(`</code></td><td>`)
+		b.WriteString(html.EscapeString(optionalString(task["status"])))
+		b.WriteString(`</td><td>`)
+		b.WriteString(html.EscapeString(optionalString(task["worker"])))
+		b.WriteString(`</td><td><code>`)
+		b.WriteString(html.EscapeString(shortDigest(optionalString(task["receipt_digest"]))))
+		b.WriteString(`</code></td><td>`)
+		b.WriteString(html.EscapeString(optionalString(task["error"])))
+		b.WriteString(`</td></tr>`)
+	}
+	b.WriteString(`</tbody></table>`)
 	b.WriteString(`<h2>Receipts</h2><table><thead><tr><th>Task</th><th>Worker</th><th>Artifact</th><th>Events</th><th>Approvals</th><th>Sandbox</th></tr></thead><tbody>`)
 	if len(receipts) == 0 {
 		b.WriteString(`<tr><td colspan="6">No receipts</td></tr>`)
@@ -677,6 +777,13 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 	}
 	b.WriteString(`</tbody></table></main></body></html>`)
 	return b.String()
+}
+
+func shortDigest(value string) string {
+	if len(value) > 12 {
+		return value[:12]
+	}
+	return value
 }
 
 func mapSliceLen(value any) int {
