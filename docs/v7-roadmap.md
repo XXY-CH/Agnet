@@ -1,6 +1,6 @@
 # Agent Space v7 Roadmap
 
-状态：v7.1 complete; v7.2+ planned
+状态：v7.2 complete; v7.3+ planned
 目标：从 durable task state 进入 durable scheduler queue，让任务生命周期有本地所有权、可恢复入口和后续调度面。
 
 ## v7.0: Durable Queue Enqueue
@@ -44,9 +44,29 @@
 - 不做 priority。
 - 不做 Human Gateway action。
 
+## v7.2: Queue Claim Lease
+
+状态：complete
+目标：drain 前必须先 claim queued task，并用 `lease_id` 证明调度所有权。
+
+新增：
+
+- `FED_QUEUE_CLAIM` frame。
+- Queue item records `claimed` state, `lease_owner`, and `lease_id`。
+- `FED_QUEUE_DRAIN` requires the matching `lease_id`。
+- Completed queue item preserves lease fields。
+
+不做：
+
+- 不做 lease expiry。
+- 不做 reclaim。
+- 不做 automatic drain loop。
+- 不做 retry/backoff。
+- 不做 priority。
+
 ## 后续方向
 
-- lease/claim and crash recovery
+- lease expiry and reclaim
 - retry/backoff state
 - Human Gateway task creation and queue actions
 - checkpoint restore after queued execution exists

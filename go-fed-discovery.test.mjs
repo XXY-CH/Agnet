@@ -478,10 +478,24 @@ setTimeout(() => {
     assert.equal(queuedState.origin_zone, zoneA.zid);
     assert.match(queuedState.task_digest, /^[0-9a-f]{64}$/);
 
+    const claimFrames = await exchangeFrames(port, {
+      type: "FED_QUEUE_CLAIM",
+      origin_zone: zoneA.descriptor,
+      task_id: queuedTask.task_id,
+      owner: "scheduler://local",
+    }, "FED_QUEUE_CLAIM_CLOSE");
+    assert.deepEqual(claimFrames.map((frame) => frame.type), ["FED_QUEUE_CLAIMED", "FED_QUEUE_CLAIM_CLOSE"]);
+    assert.match(claimFrames[0].lease_id, /^lease:sha256:[0-9a-f]{64}$/);
+    const claimedQueueState = JSON.parse(await readFile("state/go-fed-discovery-audit-queue/go_fed_task_queued.json", "utf8"));
+    assert.equal(claimedQueueState.status, "claimed");
+    assert.equal(claimedQueueState.lease_owner, "scheduler://local");
+    assert.equal(claimedQueueState.lease_id, claimFrames[0].lease_id);
+
     const drainedFrames = await exchangeFrames(port, {
       type: "FED_QUEUE_DRAIN",
       origin_zone: zoneA.descriptor,
       task_id: queuedTask.task_id,
+      lease_id: claimFrames[0].lease_id,
     });
     assert.deepEqual(drainedFrames.map((frame) => frame.type), [
       "FED_TASK_EVENT",
@@ -498,6 +512,7 @@ setTimeout(() => {
     assert.equal(drainedReceipt.task_id, queuedTask.task_id);
     const drainedQueueState = JSON.parse(await readFile("state/go-fed-discovery-audit-queue/go_fed_task_queued.json", "utf8"));
     assert.equal(drainedQueueState.status, "completed");
+    assert.equal(drainedQueueState.lease_id, claimFrames[0].lease_id);
     assert.equal(drainedQueueState.receipt_digest, createHash("sha256").update(JSON.stringify(drainedReceipt)).digest("hex"));
 
     const executionFrames = await exchangeFrames(port, {

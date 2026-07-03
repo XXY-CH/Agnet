@@ -320,13 +320,27 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 		}
 		send(map[string]any{"type": "FED_QUEUE_ACCEPTED", "task_id": task["task_id"], "worker": worker.Descriptor["aid"]})
 		send(map[string]any{"type": "FED_QUEUE_CLOSE", "task_id": task["task_id"]})
+	case "FED_QUEUE_CLAIM":
+		taskID := fmt.Sprint(frame["task_id"])
+		owner := fmt.Sprint(frame["owner"])
+		if taskID == "" || taskID == "<nil>" || owner == "" || owner == "<nil>" {
+			send(taskErrorFrame(errors.New("queue claim task_id and owner required")))
+			return false
+		}
+		leaseID, err := fixture.claimQueueItem(taskID, owner)
+		if err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
+		send(map[string]any{"type": "FED_QUEUE_CLAIMED", "task_id": taskID, "lease_id": leaseID, "owner": owner})
+		send(map[string]any{"type": "FED_QUEUE_CLAIM_CLOSE", "task_id": taskID})
 	case "FED_QUEUE_DRAIN":
 		taskID := fmt.Sprint(frame["task_id"])
 		if taskID == "" || taskID == "<nil>" {
 			send(taskErrorFrame(errors.New("queue drain task_id missing")))
 			return false
 		}
-		if err := fixture.drainQueueItem(send, taskID); err != nil {
+		if err := fixture.drainQueueItem(send, taskID, fmt.Sprint(frame["lease_id"])); err != nil {
 			send(taskErrorFrame(err))
 			return false
 		}
@@ -1752,13 +1766,39 @@ func (f Fixture) readQueueItem(taskID string) (map[string]any, error) {
 	return item, nil
 }
 
-func (f Fixture) drainQueueItem(send sendFunc, taskID string) error {
+func (f Fixture) claimQueueItem(taskID, owner string) (string, error) {
+	item, err := f.readQueueItem(taskID)
+	if err != nil {
+		return "", err
+	}
+	if optionalString(item["status"]) != "queued" {
+		return "", errors.New("queue item is not queued: " + taskID)
+	}
+	origin, _ := item["origin_zone_descriptor"].(map[string]any)
+	requester, _ := item["requester"].(map[string]any)
+	task, _ := item["task"].(map[string]any)
+	worker, task, err := f.verifyTaskOpen(map[string]any{"requester": requester, "task": task})
+	if err != nil {
+		return "", err
+	}
+	leaseID := "lease:sha256:" + digestHex(map[string]any{"task_id": taskID, "owner": owner, "task_digest": item["task_digest"]})
+	extra := map[string]any{"origin_zone_descriptor": origin, "requester": requester, "task": task, "lease_owner": owner, "lease_id": leaseID}
+	if err := f.writeQueueItem(origin, worker, task, "claimed", extra); err != nil {
+		return "", err
+	}
+	return leaseID, nil
+}
+
+func (f Fixture) drainQueueItem(send sendFunc, taskID, leaseID string) error {
 	item, err := f.readQueueItem(taskID)
 	if err != nil {
 		return err
 	}
-	if optionalString(item["status"]) != "queued" {
-		return errors.New("queue item is not queued: " + taskID)
+	if optionalString(item["status"]) != "claimed" {
+		return errors.New("queue item is not claimed: " + taskID)
+	}
+	if leaseID == "" || leaseID == "<nil>" || optionalString(item["lease_id"]) != leaseID {
+		return errors.New("queue lease mismatch: " + taskID)
 	}
 	origin, _ := item["origin_zone_descriptor"].(map[string]any)
 	requester, _ := item["requester"].(map[string]any)
@@ -1767,7 +1807,7 @@ func (f Fixture) drainQueueItem(send sendFunc, taskID string) error {
 	if err != nil {
 		return err
 	}
-	extra := map[string]any{"origin_zone_descriptor": origin, "requester": requester, "task": task}
+	extra := map[string]any{"origin_zone_descriptor": origin, "requester": requester, "task": task, "lease_owner": item["lease_owner"], "lease_id": item["lease_id"]}
 	if err := f.writeQueueItem(origin, worker, task, "running", extra); err != nil {
 		return err
 	}
