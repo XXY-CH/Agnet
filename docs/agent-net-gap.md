@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v3.9 assessment
+状态：v4 assessment
 
 ## 一句话
 
@@ -39,6 +39,7 @@
 - Minimal MCP stdio tools/call in v3.7。
 - Simulated external/MCP tool approval gate in v3.8。
 - Signed local approval evidence and sandbox evidence in v3.9。
+- Task-scoped Git worktree context evidence in v4。
 
 主要缺：
 
@@ -71,6 +72,7 @@
 - concurrency model。
 - durable task state。
 - artifact store beyond local files。
+- signed merge / conflict resolution。
 
 ### Network layer
 
@@ -102,6 +104,7 @@
 - read-only Human Gateway。
 - simulated approval events。
 - signed approval receipts visible through Human Gateway。
+- task worktree context receipts。
 - docs and protocol proofs。
 
 主要缺：
@@ -171,7 +174,7 @@ Trying to clone Octo now would pull this project sideways into chat/product surf
 The right path is:
 
 ```text
-v4 interactive approval queue + container sandbox
+v4.x signed merge + checkpoint receipts
 ```
 
 After v3.3 or v3.4, comparing directly with Octo becomes useful.

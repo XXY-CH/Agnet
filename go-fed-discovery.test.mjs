@@ -202,6 +202,7 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
       tool: "mcp.stdio",
       tool_name: "translate",
       tool_command: [process.execPath, `${process.cwd()}/state/go-fed-mcp-server.mjs`],
+      context_repo: ".",
       transports: ["fed+tcp://127.0.0.1:8991"],
       capabilities: ["translate.text"],
       policy: { allow_network: false, approval_required: ["tool"] },
@@ -228,7 +229,7 @@ rl.on("line", (line) => {
     process.stdout.write(JSON.stringify({
       jsonrpc: "2.0",
       id: message.id,
-      result: { content: [{ type: "text", text: \`# MCP Tool Translation\\n\\nTask: \${args.task_id}\\nTranslation: \${String(args.intent).toUpperCase()}\\nCWD: \${process.cwd()}\\n\` }] }
+      result: { content: [{ type: "text", text: \`# MCP Tool Translation\\n\\nTask: \${args.task_id}\\nTranslation: \${String(args.intent).toUpperCase()}\\nCWD: \${process.cwd()}\\nContext: \${args.context.mode}\\n\` }] }
     }) + "\\n");
     process.exit(0);
   }
@@ -381,11 +382,17 @@ rl.on("line", (line) => {
     assert.equal(receiptFrame.receipt.sandbox.kind, "mcp");
     assert.deepEqual(receiptFrame.receipt.sandbox.env, ["PATH=/usr/bin:/bin"]);
     assert.equal(receiptFrame.receipt.sandbox.network, "not_granted");
+    assert.equal(receiptFrame.receipt.context.mode, "git-worktree");
+    assert.equal(receiptFrame.receipt.context.task_id, task.task_id);
+    assert.equal(receiptFrame.receipt.context.repo, ".");
+    assert.match(receiptFrame.receipt.context.base_head, /^[0-9a-f]{40}$/);
+    assert.match(receiptFrame.receipt.context.worktree, /agnet-worktree-/);
     assert.equal(receiptFrame.receipt.tool, "mcp.stdio");
     const artifactText = await readFile("artifacts/go_fed_task_verified/go-summary.md", "utf8");
     assert.match(artifactText, /MCP Tool Translation/);
     assert.match(artifactText, /VERIFY FED_TASK_OPEN IN GO\./);
-    assert.match(artifactText, /agnet-mcp-/);
+    assert.match(artifactText, /agnet-worktree-/);
+    assert.match(artifactText, /Context: git-worktree/);
 
     const deniedTask = {
       ...task,
@@ -423,6 +430,7 @@ rl.on("line", (line) => {
     assert.match(pageText, /go_fed_task_verified/);
     assert.match(pageText, /1 signed/);
     assert.match(pageText, /local-temp-dir/);
+    assert.match(pageText, /git-worktree/);
 
     const artifactResponse = await fetch(`http://127.0.0.1:${humanPort}/artifacts/go_fed_task_verified/go-summary.md`);
     assert.equal(artifactResponse.status, 200);
