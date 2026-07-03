@@ -288,7 +288,7 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(err))
 			return false
 		}
-		if err := fixture.executeTask(send, origin, worker, task, nil); err != nil {
+		if err := fixture.executeTask(send, origin, worker, task, nil, nil); err != nil {
 			send(taskErrorFrame(err))
 			return false
 		}
@@ -303,7 +303,22 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(errors.New("resume checkpoint_id missing")))
 			return false
 		}
-		if err := fixture.executeTask(send, origin, worker, task, checkpointID); err != nil {
+		if err := fixture.executeTask(send, origin, worker, task, checkpointID, nil); err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
+	case "FED_TASK_RETRY":
+		worker, task, err := fixture.verifyTaskOpen(frame)
+		if err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
+		retryOf := fmt.Sprint(frame["retry_of"])
+		if retryOf == "" || retryOf == "<nil>" {
+			send(taskErrorFrame(errors.New("retry_of missing")))
+			return false
+		}
+		if err := fixture.executeTask(send, origin, worker, task, nil, retryOf); err != nil {
 			send(taskErrorFrame(err))
 			return false
 		}
@@ -907,7 +922,7 @@ func (f Fixture) verifyTaskCancel(frame map[string]any) (*Worker, map[string]any
 	return worker, requester, cancel, nil
 }
 
-func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worker, task map[string]any, parentCheckpoint any) error {
+func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worker, task map[string]any, parentCheckpoint, retryOf any) error {
 	taskID := fmt.Sprint(task["task_id"])
 	if err := f.sendTaskEvent(send, map[string]any{"type": "task.accepted", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
 		return err
@@ -974,6 +989,9 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	}
 	if parentCheckpoint != nil {
 		receipt["resumed_from"] = parentCheckpoint
+	}
+	if retryOf != nil {
+		receipt["retry_of"] = retryOf
 	}
 	signedReceipt := signBody(worker.PrivateKey, receipt)
 	receiptRecord := map[string]any{

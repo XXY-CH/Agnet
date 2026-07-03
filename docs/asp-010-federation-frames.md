@@ -28,6 +28,7 @@ FED_AUDIT_RESULT Zone B -> Zone A
 FED_AUDIT_CLOSE  Zone B -> Zone A
 FED_TASK_OPEN    Zone A -> Zone B
 FED_TASK_RESUME  Zone A -> Zone B
+FED_TASK_RETRY   Zone A -> Zone B
 FED_TASK_CANCEL  Zone A -> Zone B
 FED_TASK_VERIFIED Zone B -> Zone A
 FED_TASK_EVENT   Zone B -> Zone A
@@ -260,6 +261,30 @@ Zone B must reject the frame unless:
 v5.1 treats resume as a new signed task that binds to a parent checkpoint id. The resumed receipt must include `resumed_from`, and its signed checkpoint must set `parent_checkpoint` to the requested checkpoint id.
 
 This is not a durable scheduler or state restore. It only proves the protocol link from old checkpoint evidence to a new auditable execution.
+
+## FED_TASK_RETRY
+
+```json
+{
+  "type": "FED_TASK_RETRY",
+  "origin_zone": { "...": "Zone A descriptor" },
+  "requester": { "...": "requester descriptor" },
+  "retry_of": "fed_task_123",
+  "task": {
+    "task_id": "fed_task_124",
+    "from": "aid:ed25519:...",
+    "to": "agent://zone-b/summarizer",
+    "intent": "Retry with updated constraints.",
+    "scope": { "network": false },
+    "budget": { "time_seconds": 30 },
+    "signature": "..."
+  }
+}
+```
+
+v5.3 treats retry as a new signed task with lineage. Zone B verifies the task as usual, executes it normally, and records `retry_of` in the worker-signed receipt.
+
+This is not automatic retry. There is no backoff, retry queue, scheduler, or lookup that proves the old task exists.
 
 ## FED_TASK_CANCEL
 

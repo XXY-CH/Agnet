@@ -1,6 +1,6 @@
 # Agent Space v5 Roadmap
 
-状态：v5.2 complete; v5.3+ planned
+状态：v5.3 complete; v5.4+ planned
 目标：从 v4 的 evidence chain 推进到更强运行面，但仍保持 `agent-space-ultimate-vision.md` 的底层窄腰：identity、signed task、event stream、scoped policy、artifact reference、audit receipt、federation。
 
 ## v5.0: Signed Sandbox Proof
@@ -65,9 +65,29 @@
 - 不做 task state table。
 - 不做 authorization UI。
 
+## v5.3: Retry Evidence
+
+状态：complete
+目标：让 retry lineage 进入 receipt 和 audit proof。
+
+新增：
+
+- `FED_TASK_RETRY`
+- `retry_of`
+- retry task uses normal signed task verification
+- retried receipt records `retry_of`
+- remote audit query returns retried receipt
+
+不做：
+
+- 不做 automatic retry。
+- 不做 backoff。
+- 不做 retry queue。
+- 不做 scheduler。
+- 不验证旧 task 是否存在。
+
 ## 后续方向
 
-- retry evidence
 - container sandbox proof
 - long-running MCP sessions
 - scheduling / retry

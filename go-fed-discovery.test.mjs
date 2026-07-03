@@ -560,6 +560,50 @@ rl.on("line", (line) => {
     assert.deepEqual(resumeReceipt.checkpoint_refs, [resumedCheckpoint.checkpoint_id]);
     assert.deepEqual(resumeReceipt.checkpoints, [resumedCheckpoint]);
 
+    const retryTask = {
+      ...task,
+      task_id: "go_fed_task_retried",
+      intent: "Retry FED_TASK_OPEN with lineage evidence.",
+    };
+    const retryFrames = await exchangeFrames(port, {
+      type: "FED_TASK_RETRY",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      retry_of: task.task_id,
+      task: { ...retryTask, signature: signObject(requester.privateKey, retryTask) },
+    });
+    assert.deepEqual(retryFrames.map((frame) => frame.type), [
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_RECEIPT",
+      "FED_TASK_CLOSE",
+    ]);
+    const retryReceipt = retryFrames[7].receipt;
+    assert.equal(retryReceipt.task_id, retryTask.task_id);
+    assert.equal(retryReceipt.retry_of, task.task_id);
+
+    const retryAuditFrames = await exchangeFrames(port, {
+      type: "FED_AUDIT_QUERY",
+      origin_zone: zoneA.descriptor,
+      task_id: retryTask.task_id,
+    }, "FED_AUDIT_CLOSE");
+    assert.deepEqual(retryAuditFrames.map((frame) => frame.type), ["FED_AUDIT_RESULT", "FED_AUDIT_CLOSE"]);
+    assert.equal(retryAuditFrames[0].receipt.retry_of, task.task_id);
+
+    const missingRetryOfFrames = await exchangeFrames(port, {
+      type: "FED_TASK_RETRY",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      task: { ...retryTask, task_id: "go_fed_retry_missing_parent", signature: signObject(requester.privateKey, { ...retryTask, task_id: "go_fed_retry_missing_parent" }) },
+    });
+    assert.equal(missingRetryOfFrames[0].type, "FED_TASK_ERROR");
+    assert.match(missingRetryOfFrames[0].error, /retry_of missing/);
+
     const cancel = {
       task_id: "go_fed_task_cancelled",
       from: requester.aid,
@@ -637,7 +681,7 @@ rl.on("line", (line) => {
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 18);
+    assert.equal(auditBody.entries.length, 26);
 
     const pageResponse = await fetch(`http://127.0.0.1:${humanPort}/`);
     assert.equal(pageResponse.status, 200);
