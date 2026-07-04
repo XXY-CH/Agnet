@@ -102,6 +102,7 @@
 - Failed Go queue items can be explicitly retried with durable retry/backoff state。
 - Human Gateway exposes durable queue state and explicit local claim/drain actions。
 - Human Gateway can enqueue already signed tasks through the local queue action API。
+- Checkpoint resume can be queued durably before explicit drain。
 
 主要缺：
 

@@ -315,6 +315,14 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 		}
 		send(map[string]any{"type": "FED_QUEUE_ACCEPTED", "task_id": taskID, "worker": workerID})
 		send(map[string]any{"type": "FED_QUEUE_CLOSE", "task_id": taskID})
+	case "FED_QUEUE_RESUME":
+		taskID, workerID, err := fixture.enqueueResumeQueueItem(origin, frame)
+		if err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
+		send(map[string]any{"type": "FED_QUEUE_RESUME_ACCEPTED", "task_id": taskID, "worker": workerID, "checkpoint_id": frame["checkpoint_id"]})
+		send(map[string]any{"type": "FED_QUEUE_RESUME_CLOSE", "task_id": taskID})
 	case "FED_QUEUE_RETRY":
 		taskID, err := fixture.retryQueueItem(origin, frame, frameSeconds(frame, "retry_after_seconds", 60))
 		if err != nil {
@@ -1839,12 +1847,31 @@ func (f Fixture) readQueueItem(taskID string) (map[string]any, error) {
 }
 
 func (f Fixture) enqueueQueueItem(origin map[string]any, frame map[string]any) (string, any, error) {
+	return f.enqueueQueueItemWithExtra(origin, frame, map[string]any{})
+}
+
+func (f Fixture) enqueueResumeQueueItem(origin map[string]any, frame map[string]any) (string, any, error) {
+	checkpointID := fmt.Sprint(frame["checkpoint_id"])
+	if checkpointID == "" || checkpointID == "<nil>" {
+		return "", nil, errors.New("resume checkpoint_id missing")
+	}
+	if err := f.requireCheckpoint(checkpointID); err != nil {
+		return "", nil, err
+	}
+	return f.enqueueQueueItemWithExtra(origin, frame, map[string]any{"resume_checkpoint": checkpointID})
+}
+
+func (f Fixture) enqueueQueueItemWithExtra(origin map[string]any, frame map[string]any, extra map[string]any) (string, any, error) {
 	worker, task, err := f.verifyTaskOpen(frame)
 	if err != nil {
 		return "", nil, err
 	}
 	requester, _ := frame["requester"].(map[string]any)
-	if err := f.writeQueueItem(origin, worker, task, "queued", map[string]any{"origin_zone_descriptor": origin, "requester": requester, "task": task}); err != nil {
+	body := map[string]any{"origin_zone_descriptor": origin, "requester": requester, "task": task}
+	for key, value := range extra {
+		body[key] = value
+	}
+	if err := f.writeQueueItem(origin, worker, task, "queued", body); err != nil {
 		return "", nil, err
 	}
 	return fmt.Sprint(task["task_id"]), worker.Descriptor["aid"], nil
@@ -1963,7 +1990,7 @@ func (f Fixture) writeClaimedQueueItem(taskID, owner string, leaseSeconds int, i
 	leaseExpiresAt := time.Now().Add(time.Duration(leaseSeconds) * time.Second).UTC().Format(time.RFC3339Nano)
 	leaseID := "lease:sha256:" + digestHex(map[string]any{"task_id": taskID, "owner": owner, "task_digest": item["task_digest"], "lease_expires_at": leaseExpiresAt})
 	extra := map[string]any{"origin_zone_descriptor": origin, "requester": requester, "task": task, "lease_owner": owner, "lease_id": leaseID, "lease_expires_at": leaseExpiresAt}
-	copyQueueRetryFields(extra, item)
+	copyQueueCarryFields(extra, item)
 	if err := f.writeQueueItem(origin, worker, task, "claimed", extra); err != nil {
 		return "", err
 	}
@@ -1992,11 +2019,15 @@ func (f Fixture) drainQueueItem(send sendFunc, taskID, leaseID string) error {
 		return err
 	}
 	extra := map[string]any{"origin_zone_descriptor": origin, "requester": requester, "task": task, "lease_owner": item["lease_owner"], "lease_id": item["lease_id"], "lease_expires_at": item["lease_expires_at"]}
-	copyQueueRetryFields(extra, item)
+	copyQueueCarryFields(extra, item)
 	if err := f.writeQueueItem(origin, worker, task, "running", extra); err != nil {
 		return err
 	}
-	err = f.executeTask(send, origin, worker, task, nil, nil, func(receipt map[string]any) error {
+	var parentCheckpoint any
+	if checkpointID := optionalString(item["resume_checkpoint"]); checkpointID != "" {
+		parentCheckpoint = checkpointID
+	}
+	err = f.executeTask(send, origin, worker, task, parentCheckpoint, nil, func(receipt map[string]any) error {
 		extra["receipt_digest"] = digestHex(receipt)
 		return f.writeQueueItem(origin, worker, task, "completed", extra)
 	})
@@ -2422,8 +2453,8 @@ func queueLeaseExpired(item map[string]any) bool {
 	return !time.Now().UTC().Before(expiresAt)
 }
 
-func copyQueueRetryFields(dst, src map[string]any) {
-	for _, key := range []string{"retry_of", "retry_attempt", "retry_after_at"} {
+func copyQueueCarryFields(dst, src map[string]any) {
+	for _, key := range []string{"retry_of", "retry_attempt", "retry_after_at", "resume_checkpoint"} {
 		if value, ok := src[key]; ok {
 			dst[key] = value
 		}

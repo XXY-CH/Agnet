@@ -851,6 +851,53 @@ setTimeout(() => {
     assert.deepEqual(resumeReceipt.checkpoint_refs, [resumedCheckpoint.checkpoint_id]);
     assert.deepEqual(resumeReceipt.checkpoints, [resumedCheckpoint]);
 
+    const queuedResumeTask = {
+      ...task,
+      task_id: "go_fed_task_queued_resume",
+      intent: "Queue resume from checkpoint.",
+    };
+    const queuedResumeFrames = await exchangeFrames(port, {
+      type: "FED_QUEUE_RESUME",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      checkpoint_id: checkpointEvent.checkpoint_id,
+      task: { ...queuedResumeTask, signature: signObject(requester.privateKey, queuedResumeTask) },
+    }, "FED_QUEUE_RESUME_CLOSE");
+    assert.deepEqual(queuedResumeFrames.map((frame) => frame.type), ["FED_QUEUE_RESUME_ACCEPTED", "FED_QUEUE_RESUME_CLOSE"]);
+    const queuedResumeState = JSON.parse(await readFile("state/go-fed-discovery-audit-queue/go_fed_task_queued_resume.json", "utf8"));
+    assert.equal(queuedResumeState.status, "queued");
+    assert.equal(queuedResumeState.resume_checkpoint, checkpointEvent.checkpoint_id);
+
+    const queuedResumeClaimFrames = await exchangeFrames(port, {
+      type: "FED_QUEUE_CLAIM",
+      origin_zone: zoneA.descriptor,
+      task_id: queuedResumeTask.task_id,
+      owner: "scheduler://resume",
+    }, "FED_QUEUE_CLAIM_CLOSE");
+    assert.deepEqual(queuedResumeClaimFrames.map((frame) => frame.type), ["FED_QUEUE_CLAIMED", "FED_QUEUE_CLAIM_CLOSE"]);
+    const queuedResumeDrainFrames = await exchangeFrames(port, {
+      type: "FED_QUEUE_DRAIN",
+      origin_zone: zoneA.descriptor,
+      task_id: queuedResumeTask.task_id,
+      lease_id: queuedResumeClaimFrames[0].lease_id,
+    });
+    assert.deepEqual(queuedResumeDrainFrames.map((frame) => frame.type), [
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_RECEIPT",
+      "FED_TASK_CLOSE",
+    ]);
+    const queuedResumeReceipt = queuedResumeDrainFrames[7].receipt;
+    const queuedResumeCheckpoint = queuedResumeDrainFrames[4].event.checkpoint;
+    assert.equal(queuedResumeReceipt.task_id, queuedResumeTask.task_id);
+    assert.equal(queuedResumeReceipt.resumed_from, checkpointEvent.checkpoint_id);
+    assert.equal(queuedResumeCheckpoint.parent_checkpoint, checkpointEvent.checkpoint_id);
+
     const unknownCheckpointTask = {
       ...task,
       task_id: "go_fed_task_resume_unknown_checkpoint",
@@ -1053,7 +1100,7 @@ setTimeout(() => {
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 59);
+    assert.equal(auditBody.entries.length, 67);
 
     const tasksResponse = await fetch(`http://127.0.0.1:${humanPort}/api/tasks`);
     assert.equal(tasksResponse.status, 200);

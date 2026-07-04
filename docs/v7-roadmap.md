@@ -1,6 +1,6 @@
 # Agent Space v7 Roadmap
 
-状态：v7.6 complete; v7.7+ planned
+状态：v7.7 complete; v7.8+ planned
 目标：从 durable task state 进入 durable scheduler queue，让任务生命周期有本地所有权、可恢复入口和后续调度面。
 
 ## v7.0: Durable Queue Enqueue
@@ -143,9 +143,30 @@
 - 不做 automatic scheduler loop。
 - 不做 auth/login。
 
+## v7.7: Queued Checkpoint Resume
+
+状态：complete
+目标：checkpoint resume can enter the durable queue before execution.
+
+新增：
+
+- `FED_QUEUE_RESUME` frame。
+- Queue resume requires an existing `checkpoint_id`。
+- Queue item records `resume_checkpoint`。
+- `FED_QUEUE_DRAIN` passes the stored parent checkpoint into the existing execution path。
+- Drained receipt records `resumed_from`。
+
+不做：
+
+- 不恢复 model KV/cache。
+- 不做 state restore service。
+- 不做 automatic scheduler loop。
+- 不做 long-running MCP session resume。
+- 不做 artifact merge。
+
 ## 后续方向
 
-- checkpoint restore after queued execution exists
+- checkpoint state restore after queued execution exists
 - Human Gateway task drafting/signing surface
 
 Container sandbox and public transport remain separate hardening tracks。

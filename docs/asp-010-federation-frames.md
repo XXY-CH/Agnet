@@ -262,6 +262,30 @@ v5.1 treats resume as a new signed task that binds to a parent checkpoint id. Th
 
 This is not a durable scheduler or state restore. It only proves the protocol link from old checkpoint evidence to a new auditable execution.
 
+## FED_QUEUE_RESUME
+
+```json
+{
+  "type": "FED_QUEUE_RESUME",
+  "origin_zone": { "...": "Zone A descriptor" },
+  "requester": { "...": "requester descriptor" },
+  "checkpoint_id": "checkpoint:sha256:...",
+  "task": {
+    "task_id": "fed_task_queued_resume",
+    "from": "aid:ed25519:...",
+    "to": "agent://zone-b/summarizer",
+    "intent": "Queue resume from a signed checkpoint.",
+    "scope": { "network": false },
+    "budget": { "time_seconds": 30 },
+    "signature": "..."
+  }
+}
+```
+
+v7.7 treats queued resume as durable scheduling state. The checkpoint must already exist in the audit log; the queue item records `resume_checkpoint`; later `FED_QUEUE_DRAIN` executes the task and records `resumed_from` in the receipt.
+
+This is not state restore. It does not recover model KV/cache, MCP sessions, or artifacts.
+
 ## FED_TASK_RETRY
 
 ```json
