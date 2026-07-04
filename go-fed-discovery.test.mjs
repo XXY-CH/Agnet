@@ -1767,6 +1767,10 @@ setTimeout(() => {
     assert.equal(artifactVerifyBody.task_id, task.task_id);
     assert.equal(artifactVerifyBody.uri, artifactEvent.manifest.uri);
     assert.deepEqual(artifactVerifyBody.manifest, artifactEvent.manifest);
+    const artifactReadResponse = await fetch(`http://127.0.0.1:${humanPort}/api/artifacts/read?task_id=${encodeURIComponent(task.task_id)}&uri=${encodeURIComponent(artifactEvent.manifest.uri)}`);
+    assert.equal(artifactReadResponse.status, 200);
+    assert.equal(artifactReadResponse.headers.get("content-type"), artifactEvent.manifest.media_type);
+    assert.equal(await artifactReadResponse.text(), artifactText);
     const queueActionRecords = auditBody.entries
       .map((entry) => entry.record)
       .filter((record) => record.kind === "go_queue_action");
@@ -1811,6 +1815,7 @@ setTimeout(() => {
     assert.match(pageText, /tool-transcript\.json/);
     assert.match(pageText, /\/api\/artifacts\/manifest\?uri=/);
     assert.match(pageText, /\/api\/artifacts\/verify\?task_id=go_fed_task_verified&amp;uri=/);
+    assert.match(pageText, /\/api\/artifacts\/read\?task_id=go_fed_task_verified&amp;uri=/);
     assert.match(pageText, /\/api\/audit\?task_id=go_fed_task_verified/);
     assert.match(pageText, /Browser Requester Key/);
     assert.match(pageText, /Requester Registry/);

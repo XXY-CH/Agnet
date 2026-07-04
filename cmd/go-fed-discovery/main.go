@@ -1126,6 +1126,45 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "task_id": taskID, "uri": uri, "manifest": manifest})
 	})
+	mux.HandleFunc("/api/artifacts/read", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		taskID := r.URL.Query().Get("task_id")
+		uri := r.URL.Query().Get("uri")
+		if taskID == "" || uri == "" {
+			http.Error(w, "task_id and artifact uri are required", http.StatusBadRequest)
+			return
+		}
+		record, err := fixture.auditProof(taskID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		receipt, _ := record["receipt"].(map[string]any)
+		manifest, err := receiptArtifactManifest(receipt, uri)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if err := verifyArtifactManifests(receipt, fixture.ArtifactStoreDir); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		path, err := localArtifactPath(uri)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", fmt.Sprint(manifest["media_type"]))
+		_, _ = w.Write(data)
+	})
 	mux.Handle("/artifacts/", http.StripPrefix("/artifacts/", http.FileServer(http.Dir("artifacts"))))
 	_ = http.Serve(listener, mux)
 }
@@ -1331,6 +1370,11 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 			b.WriteString(`&amp;uri=`)
 			b.WriteString(html.EscapeString(url.QueryEscape(artifact)))
 			b.WriteString(`">verify</a>`)
+			b.WriteString(` <a href="/api/artifacts/read?task_id=`)
+			b.WriteString(html.EscapeString(url.QueryEscape(taskID)))
+			b.WriteString(`&amp;uri=`)
+			b.WriteString(html.EscapeString(url.QueryEscape(artifact)))
+			b.WriteString(`">read</a>`)
 		}
 		b.WriteString(`</td><td>`)
 		b.WriteString(html.EscapeString(fmt.Sprint(receipt["event_count"])))

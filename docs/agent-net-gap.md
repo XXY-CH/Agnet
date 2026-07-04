@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.37 assessment
+状态：v8.38 assessment
 
 ## 一句话
 
@@ -141,7 +141,7 @@
 - Human Gateway receipt table links all receipt artifacts, including persisted tool transcripts。
 - Human Gateway receipt table links artifacts to their read-only manifest API。
 - Human Gateway exposes task-scoped audit receipt proofs through `/api/audit?task_id=...` and receipt proof links。
-- Human Gateway verifies receipt-scoped artifacts through `/api/artifacts/verify?task_id=...&uri=...` and receipt verify links。
+- Human Gateway verifies and reads receipt-scoped artifacts through `/api/artifacts/verify?task_id=...&uri=...`, `/api/artifacts/read?task_id=...&uri=...`, and receipt links。
 
 主要缺：
 
@@ -204,7 +204,7 @@
 - transcript artifact links visible through Human Gateway receipts。
 - artifact manifest links visible through Human Gateway receipts。
 - task-scoped audit receipt proof links visible through Human Gateway receipts。
-- receipt-scoped artifact verify links visible through Human Gateway receipts。
+- receipt-scoped artifact verify/read links visible through Human Gateway receipts。
 - local deployment security posture API。
 - browser-held requester key, rotation proof, rebinding proof API, local requester registry, requester registry table, alias rebinding UI, rebinding history table, and signed draft UI。
 - read-only artifact manifest API。
