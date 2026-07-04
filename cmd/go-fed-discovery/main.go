@@ -1206,6 +1206,61 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 		}
 		_, _ = w.Write(data)
 	})
+	mux.HandleFunc("/api/transcripts/stream", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		taskID := r.URL.Query().Get("task_id")
+		if taskID == "" {
+			http.Error(w, "task_id is required", http.StatusBadRequest)
+			return
+		}
+		record, err := fixture.auditProof(taskID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		receipt, _ := record["receipt"].(map[string]any)
+		sandbox, _ := receipt["sandbox"].(map[string]any)
+		uri := optionalString(sandbox["tool_transcript_ref"])
+		if uri == "" {
+			http.Error(w, "task transcript not found", http.StatusNotFound)
+			return
+		}
+		manifest, err := receiptArtifactManifest(receipt, uri)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if err := verifyArtifactManifests(receipt, fixture.ArtifactStoreDir); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		path, err := localArtifactPath(uri)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if !json.Valid(data) {
+			http.Error(w, "task transcript is not json", http.StatusConflict)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
+		w.Header().Set("X-Agent-Space-Audit-Hash", fmt.Sprint(record["audit_hash"]))
+		w.Header().Set("X-Agent-Space-Receipt-Digest", digestHex(receipt))
+		w.Header().Set("X-Agent-Space-Transcript-SHA256", fmt.Sprint(manifest["sha256"]))
+		w.Header().Set("X-Agent-Space-Transcript-Manifest-Hash", fmt.Sprint(manifest["manifest_hash"]))
+		_ = json.NewEncoder(w).Encode(map[string]any{"type": "transcript.chunk", "task_id": taskID, "uri": uri, "transcript": json.RawMessage(data)})
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+	})
 	mux.Handle("/artifacts/", http.StripPrefix("/artifacts/", http.FileServer(http.Dir("artifacts"))))
 	_ = http.Serve(listener, mux)
 }

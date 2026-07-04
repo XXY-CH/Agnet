@@ -1790,6 +1790,19 @@ setTimeout(() => {
     assert.equal(artifactHeadResponse.headers.get("x-agent-space-artifact-sha256"), artifactEvent.manifest.sha256);
     assert.equal(artifactHeadResponse.headers.get("x-agent-space-artifact-manifest-hash"), artifactEvent.manifest.manifest_hash);
     assert.equal(await artifactHeadResponse.text(), "");
+    const transcriptStreamResponse = await fetch(`http://127.0.0.1:${humanPort}/api/transcripts/stream?task_id=${encodeURIComponent(task.task_id)}`);
+    assert.equal(transcriptStreamResponse.status, 200);
+    assert.equal(transcriptStreamResponse.headers.get("content-type"), "application/x-ndjson; charset=utf-8");
+    assert.equal(transcriptStreamResponse.headers.get("x-agent-space-audit-hash"), receiptAuditEntry.hash);
+    assert.equal(transcriptStreamResponse.headers.get("x-agent-space-receipt-digest"), receiptDigest);
+    assert.equal(transcriptStreamResponse.headers.get("x-agent-space-transcript-sha256"), transcriptManifest.sha256);
+    assert.equal(transcriptStreamResponse.headers.get("x-agent-space-transcript-manifest-hash"), transcriptManifest.manifest_hash);
+    const transcriptStreamLines = (await transcriptStreamResponse.text()).trim().split("\n").map((line) => JSON.parse(line));
+    assert.equal(transcriptStreamLines.length, 1);
+    assert.equal(transcriptStreamLines[0].type, "transcript.chunk");
+    assert.equal(transcriptStreamLines[0].task_id, task.task_id);
+    assert.equal(transcriptStreamLines[0].uri, transcriptRef);
+    assert.match(transcriptStreamLines[0].transcript.result.content[0].text, /MCP Tool Translation/);
     const queueActionRecords = auditBody.entries
       .map((entry) => entry.record)
       .filter((record) => record.kind === "go_queue_action");

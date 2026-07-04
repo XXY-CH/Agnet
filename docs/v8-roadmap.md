@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.46 complete; v8.47+ planned
+状态：v8.47 complete; v8.48+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -1159,6 +1159,40 @@ Example:
 
 ## 后续方向
 
-- v8.47: container namespace sandboxing, streamed transcript UI, object-store-backed artifacts, or another small Ultimate-aligned runtime/governance slice.
+## v8.47: Task-Scoped Transcript Stream
+
+状态：complete
+目标：Completed task tool transcripts can be read as a task-scoped NDJSON stream with receipt/audit/transcript proof headers.
+
+新增：
+
+- `GET /api/transcripts/stream?task_id=<id>` resolves the task-scoped audit proof and signed receipt.
+- The endpoint selects the signed `tool_transcript_ref` from receipt sandbox evidence.
+- The endpoint verifies receipt artifact manifests before streaming bytes.
+- The response returns `application/x-ndjson; charset=utf-8`.
+- The response returns `X-Agent-Space-Audit-Hash`.
+- The response returns `X-Agent-Space-Receipt-Digest`.
+- The response returns `X-Agent-Space-Transcript-SHA256`.
+- The response returns `X-Agent-Space-Transcript-Manifest-Hash`.
+- The integration test checks the NDJSON chunk and proof headers.
+
+不做：
+
+- 不做 live tail of running subprocess stdout。
+- 不做 browser transcript viewer。
+- 不做 SSE/WebSocket transcript protocol。
+- 不做 transcript search/index。
+- 不做 object-store backend。
+- 不做 artifact GC。
+- 不做 auth model for transcript reads。
+- 不做 HTTP cache protocol。
+- 不做 range requests。
+- 不做 container namespace sandbox。
+- 不做 public deployment。
+- 不做 A2A/ARD compatibility。
+
+## 后续方向
+
+- v8.48: live transcript streaming/UI, container namespace sandboxing, object-store-backed artifacts, or another small Ultimate-aligned runtime/governance slice.
 
 Container sandbox and public transport remain separate hardening tracks。
