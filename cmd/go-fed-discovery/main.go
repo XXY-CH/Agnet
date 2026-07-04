@@ -1127,7 +1127,7 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "task_id": taskID, "uri": uri, "manifest": manifest})
 	})
 	mux.HandleFunc("/api/artifacts/read", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
@@ -1152,6 +1152,13 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		}
+		w.Header().Set("Content-Type", fmt.Sprint(manifest["media_type"]))
+		w.Header().Set("Content-Length", fmt.Sprint(manifest["size"]))
+		w.Header().Set("X-Agent-Space-Artifact-SHA256", fmt.Sprint(manifest["sha256"]))
+		w.Header().Set("X-Agent-Space-Artifact-Manifest-Hash", fmt.Sprint(manifest["manifest_hash"]))
+		if r.Method == http.MethodHead {
+			return
+		}
 		path, err := localArtifactPath(uri)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1162,9 +1169,6 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		w.Header().Set("Content-Type", fmt.Sprint(manifest["media_type"]))
-		w.Header().Set("X-Agent-Space-Artifact-SHA256", fmt.Sprint(manifest["sha256"]))
-		w.Header().Set("X-Agent-Space-Artifact-Manifest-Hash", fmt.Sprint(manifest["manifest_hash"]))
 		_, _ = w.Write(data)
 	})
 	mux.Handle("/artifacts/", http.StripPrefix("/artifacts/", http.FileServer(http.Dir("artifacts"))))

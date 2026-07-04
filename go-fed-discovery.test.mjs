@@ -1773,6 +1773,13 @@ setTimeout(() => {
     assert.equal(artifactReadResponse.headers.get("x-agent-space-artifact-sha256"), artifactEvent.manifest.sha256);
     assert.equal(artifactReadResponse.headers.get("x-agent-space-artifact-manifest-hash"), artifactEvent.manifest.manifest_hash);
     assert.equal(await artifactReadResponse.text(), artifactText);
+    const artifactHeadResponse = await fetch(`http://127.0.0.1:${humanPort}/api/artifacts/read?task_id=${encodeURIComponent(task.task_id)}&uri=${encodeURIComponent(artifactEvent.manifest.uri)}`, { method: "HEAD" });
+    assert.equal(artifactHeadResponse.status, 200);
+    assert.equal(artifactHeadResponse.headers.get("content-type"), artifactEvent.manifest.media_type);
+    assert.equal(artifactHeadResponse.headers.get("content-length"), String(artifactEvent.manifest.size));
+    assert.equal(artifactHeadResponse.headers.get("x-agent-space-artifact-sha256"), artifactEvent.manifest.sha256);
+    assert.equal(artifactHeadResponse.headers.get("x-agent-space-artifact-manifest-hash"), artifactEvent.manifest.manifest_hash);
+    assert.equal(await artifactHeadResponse.text(), "");
     const queueActionRecords = auditBody.entries
       .map((entry) => entry.record)
       .filter((record) => record.kind === "go_queue_action");
