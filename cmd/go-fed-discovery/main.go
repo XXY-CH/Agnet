@@ -778,6 +778,18 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"queue": queue})
 	})
+	mux.HandleFunc("/api/security", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"listen_host":          "127.0.0.1",
+			"write_token_required": humanToken != "",
+			"public_transport":     false,
+		})
+	})
 	mux.HandleFunc("/api/approvals", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.4 assessment
+状态：v8.5 assessment
 
 ## 一句话
 
@@ -114,6 +114,7 @@
 - Human Gateway can draft, locally sign, and enqueue queued tasks through the existing queue action path。
 - Human Gateway can accept externally signed requester tasks through the draft endpoint without holding the requester private key。
 - Human Gateway write actions can require a bearer token before mutation。
+- Human Gateway exposes its local deployment security posture through `/api/security`。
 - Direct Go tool tasks wait for explicit Human Gateway approval before execution。
 - Queued Go drains wait for explicit Human Gateway approval before tool execution。
 - Human Gateway approvals can deny or expire before tool execution。
@@ -169,6 +170,7 @@
 - queued drain Human Gateway approval gate。
 - approval denial/expiry gate。
 - signed approval receipts visible through Human Gateway。
+- local deployment security posture API。
 - checkpoint evidence receipts。
 - docs and protocol proofs。
 

@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.4 complete; v8.5+ planned
+状态：v8.5 complete; v8.6+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -107,8 +107,28 @@
 - 不做 token storage or rotation。
 - 不开放非 localhost bind。
 
+## v8.5: Human Gateway Security Posture
+
+状态：complete
+目标：Human Gateway exposes its local deployment security posture as a read-only API.
+
+新增：
+
+- `GET /api/security` reports the local bind host.
+- `GET /api/security` reports whether the Human Gateway write token is required.
+- `GET /api/security` reports that public transport is not enabled.
+
+不做：
+
+- 不做 login/session identity。
+- 不做 role model。
+- 不做 CSRF/session cookies。
+- 不做 TLS/QUIC/public transport。
+- 不做 token storage or rotation。
+- 不开放非 localhost bind。
+
 ## 后续方向
 
-- v8.5: deployment transport/security hardening or browser key management UI.
+- v8.6: browser key management UI or the next deployable transport/security hardening slice.
 
 Container sandbox and public transport remain separate hardening tracks。

@@ -781,6 +781,13 @@ setTimeout(() => {
     const queueBody = await queueResponse.json();
     assert.equal(queueBody.queue.some((item) => item.task_id === humanQueuedTask.task_id && item.status === "queued"), true);
 
+    const securityResponse = await fetch(`http://127.0.0.1:${humanPort}/api/security`);
+    assert.equal(securityResponse.status, 200);
+    const securityBody = await securityResponse.json();
+    assert.equal(securityBody.listen_host, "127.0.0.1");
+    assert.equal(securityBody.write_token_required, true);
+    assert.equal(securityBody.public_transport, false);
+
     const missingTokenQueueActionResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
