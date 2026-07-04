@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v7.15 assessment
+状态：v8.2 assessment
 
 ## 一句话
 
