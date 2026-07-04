@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.6 complete; v8.7+ planned
+状态：v8.7 complete; v8.8+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -150,8 +150,32 @@
 - 不做 polished task builder。
 - 不做 public deployment。
 
+## v8.7: Browser Requester Key Import/Export
+
+状态：complete
+目标：Human Gateway page can export and import the browser-held requester key bundle without giving the private key to Go.
+
+新增：
+
+- Browser Requester Key panel exposes `Export Key`.
+- Browser Requester Key panel exposes `Import Key`.
+- Export copies the current `{ descriptor, privateJwk }` bundle into a browser text field.
+- Import stores that same bundle shape back under `agent-space-browser-requester`.
+- Imported keys reuse the existing signed draft submission path.
+
+不做：
+
+- 不做 encrypted key store。
+- 不做 passphrase-protected export。
+- 不做 key rotation ceremony。
+- 不做 multi-key account manager。
+- 不做 cross-browser sync。
+- 不做 login/session identity。
+- 不做 server-side key custody。
+- 不做 public deployment。
+
 ## 后续方向
 
-- v8.7: key rotation/import-export UI or the next deployable transport/security hardening slice.
+- v8.8: key rotation ceremony or the next deployable transport/security hardening slice.
 
 Container sandbox and public transport remain separate hardening tracks。

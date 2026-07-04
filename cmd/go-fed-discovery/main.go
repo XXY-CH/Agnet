@@ -1006,7 +1006,7 @@ main{max-width:1120px;margin:0 auto;padding:28px 22px 48px}
 header{display:flex;justify-content:space-between;gap:18px;align-items:flex-end;border-bottom:1px solid #d9dee7;padding-bottom:18px;margin-bottom:22px}
 h1{font-size:24px;margin:0} h2{font-size:16px;margin:28px 0 10px}.metric{font-size:13px;color:#4c5563}
 table{width:100%;border-collapse:collapse;background:white;border:1px solid #d9dee7}th,td{text-align:left;padding:10px;border-bottom:1px solid #e8ebf0;font-size:14px;vertical-align:top}th{background:#eef1f5;font-weight:650}
-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;background:white;border:1px solid #d9dee7;padding:12px}label{display:grid;gap:4px;font-size:12px;color:#4c5563}input{font:inherit;padding:7px;border:1px solid #c8ced8}button{font:inherit;padding:7px 10px;border:1px solid #aab3c1;background:#eef1f5}.toolrow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}pre{white-space:pre-wrap;background:white;border:1px solid #d9dee7;padding:10px;font-size:12px}
+form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;background:white;border:1px solid #d9dee7;padding:12px}label{display:grid;gap:4px;font-size:12px;color:#4c5563}input,textarea{font:inherit;padding:7px;border:1px solid #c8ced8}button{font:inherit;padding:7px 10px;border:1px solid #aab3c1;background:#eef1f5}.toolrow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}pre{white-space:pre-wrap;background:white;border:1px solid #d9dee7;padding:10px;font-size:12px}
 a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
 </style></head><body><main>`)
 	b.WriteString(`<header><div><h1>Agent Space Human Gateway</h1><div class="metric">read-only / local proof</div></div><div class="metric">audit entries: `)
@@ -1114,7 +1114,7 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 }
 
 func browserRequesterPanel() string {
-	return `<section id="browser-requester"><h2>Browser Requester Key</h2><div class="toolrow"><button id="browser-generate-key" type="button">Generate</button><button id="browser-clear-key" type="button">Clear</button></div><form id="browser-draft-form"><label>Task<input id="browser-task-id" value="browser_draft_task"></label><label>Target<input id="browser-task-to" value="agent://zone-b/translator"></label><label>Intent<input id="browser-task-intent" value="Draft from a browser-held requester key."></label><label>Token<input id="browser-token" type="password" autocomplete="off"></label><button type="submit">Sign Draft</button></form><pre id="browser-requester-status"></pre></section><script>
+	return `<section id="browser-requester"><h2>Browser Requester Key</h2><div class="toolrow"><button id="browser-generate-key" type="button">Generate</button><button id="browser-clear-key" type="button">Clear</button><button id="browser-export-key" type="button">Export Key</button><button id="browser-import-key" type="button">Import Key</button></div><textarea id="browser-key-bundle" rows="4" spellcheck="false" aria-label="Browser requester key bundle"></textarea><form id="browser-draft-form"><label>Task<input id="browser-task-id" value="browser_draft_task"></label><label>Target<input id="browser-task-to" value="agent://zone-b/translator"></label><label>Intent<input id="browser-task-intent" value="Draft from a browser-held requester key."></label><label>Token<input id="browser-token" type="password" autocomplete="off"></label><button type="submit">Sign Draft</button></form><pre id="browser-requester-status"></pre></section><script>
 (() => {
   const storageKey = "agent-space-browser-requester";
   const encoder = new TextEncoder();
@@ -1161,6 +1161,24 @@ func browserRequesterPanel() string {
   document.getElementById("browser-clear-key").onclick = () => {
     localStorage.removeItem(storageKey);
     render();
+  };
+  document.getElementById("browser-export-key").onclick = () => {
+    const saved = localStorage.getItem(storageKey);
+    if (!saved) {
+      status.textContent = "No browser requester key";
+      return;
+    }
+    document.getElementById("browser-key-bundle").value = JSON.stringify(JSON.parse(saved), null, 2);
+  };
+  document.getElementById("browser-import-key").onclick = () => {
+    try {
+      const bundle = JSON.parse(document.getElementById("browser-key-bundle").value);
+      if (!bundle || !bundle.descriptor || !bundle.privateJwk) throw new Error("Invalid browser requester key bundle");
+      localStorage.setItem(storageKey, JSON.stringify(bundle));
+      render();
+    } catch (error) {
+      status.textContent = error.message;
+    }
   };
   document.getElementById("browser-draft-form").onsubmit = async (event) => {
     event.preventDefault();
