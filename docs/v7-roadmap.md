@@ -1,6 +1,6 @@
 # Agent Space v7 Roadmap
 
-状态：v7.4 complete; v7.5+ planned
+状态：v7.5 complete; v7.6+ planned
 目标：从 durable task state 进入 durable scheduler queue，让任务生命周期有本地所有权、可恢复入口和后续调度面。
 
 ## v7.0: Durable Queue Enqueue
@@ -103,9 +103,29 @@
 - 不做 priority。
 - 不做 multi-node scheduler。
 
+## v7.5: Human Gateway Queue Actions
+
+状态：complete
+目标：Human Gateway exposes explicit local queue actions without adding an automatic scheduler loop.
+
+新增：
+
+- `GET /api/queue` returns durable queue state files。
+- `POST /api/queue/actions` supports `claim` and `drain`。
+- Human Gateway page renders a Queue table。
+- Drain action reuses the existing queue drain path and records normal audit/state evidence。
+
+不做：
+
+- 不做 enqueue form。
+- 不做 retry form。
+- 不做 automatic scheduler loop。
+- 不做 auth/login。
+- 不做 multi-node scheduler。
+
 ## 后续方向
 
-- Human Gateway task creation and queue actions
+- Human Gateway task creation
 - checkpoint restore after queued execution exists
 
 Container sandbox and public transport remain separate hardening tracks。

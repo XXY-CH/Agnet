@@ -602,6 +602,42 @@ setTimeout(() => {
     assert.equal(retryBackoffClaimFrames[0].type, "FED_TASK_ERROR");
     assert.match(retryBackoffClaimFrames[0].error, /queue retry backoff active/);
 
+    const humanQueuedTask = {
+      ...task,
+      task_id: "go_fed_task_human_queue_action",
+      intent: "Drain through Human Gateway queue action.",
+    };
+    const humanQueuedFrames = await exchangeFrames(port, {
+      type: "FED_TASK_ENQUEUE",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      task: { ...humanQueuedTask, signature: signObject(requester.privateKey, humanQueuedTask) },
+    }, "FED_QUEUE_CLOSE");
+    assert.deepEqual(humanQueuedFrames.map((frame) => frame.type), ["FED_QUEUE_ACCEPTED", "FED_QUEUE_CLOSE"]);
+    const queueResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue`);
+    assert.equal(queueResponse.status, 200);
+    const queueBody = await queueResponse.json();
+    assert.equal(queueBody.queue.some((item) => item.task_id === humanQueuedTask.task_id && item.status === "queued"), true);
+
+    const humanClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "claim", task_id: humanQueuedTask.task_id, owner: "human://local" }),
+    });
+    assert.equal(humanClaimResponse.status, 200);
+    const humanClaimBody = await humanClaimResponse.json();
+    assert.match(humanClaimBody.lease_id, /^lease:sha256:[0-9a-f]{64}$/);
+
+    const humanDrainResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "drain", task_id: humanQueuedTask.task_id, lease_id: humanClaimBody.lease_id }),
+    });
+    assert.equal(humanDrainResponse.status, 200);
+    const humanDrainedQueueState = JSON.parse(await readFile("state/go-fed-discovery-audit-queue/go_fed_task_human_queue_action.json", "utf8"));
+    assert.equal(humanDrainedQueueState.status, "completed");
+    assert.equal(humanDrainedQueueState.lease_owner, "human://local");
+
     const executionFrames = await exchangeFrames(port, {
       type: "FED_TASK_OPEN",
       origin_zone: zoneA.descriptor,
@@ -994,7 +1030,7 @@ setTimeout(() => {
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 51);
+    assert.equal(auditBody.entries.length, 59);
 
     const tasksResponse = await fetch(`http://127.0.0.1:${humanPort}/api/tasks`);
     assert.equal(tasksResponse.status, 200);
@@ -1010,6 +1046,8 @@ setTimeout(() => {
     const pageText = await pageResponse.text();
     assert.match(pageText, /Agent Space Human Gateway/);
     assert.match(pageText, /Tasks/);
+    assert.match(pageText, /Queue/);
+    assert.match(pageText, /go_fed_task_human_queue_action/);
     assert.match(pageText, /go_fed_task_live_cancelled/);
     assert.match(pageText, /cancelled/);
     assert.match(pageText, /agent:\/\/zone-b\/translator/);

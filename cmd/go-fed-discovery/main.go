@@ -110,7 +110,7 @@ func taskErrorFrame(err error) map[string]any {
 func main() {
 	port := flag.String("port", "9090", "listen port")
 	wsPort := flag.String("ws-port", "", "optional WebSocket listen port")
-	humanPort := flag.String("human-port", "", "optional read-only Human Gateway HTTP port")
+	humanPort := flag.String("human-port", "", "optional Human Gateway HTTP port")
 	fixturePath := flag.String("fixture", "test-vectors/asp-v1.5-capability-credential.json", "signed descriptor fixture")
 	trustPath := flag.String("trusted", "state/go-fed-trusted-zones.json", "trusted origin zones")
 	authorityKeyPath := flag.String("authority-key", "state/keys/go-fed-authority.seed", "authority seed key file")
@@ -176,7 +176,7 @@ func serve(port, wsPort, humanPort, fixturePath, trustPath, authorityKeyPath, wo
 		if err != nil {
 			return err
 		}
-		go serveHumanGateway(humanListener, auditPath)
+		go serveHumanGateway(humanListener, auditPath, fixture)
 	}
 	if wsPort != "" || humanPort != "" {
 		status := map[string]any{"go_fed_discovery": "listening", "port": port}
@@ -666,8 +666,9 @@ func writeWebSocketText(conn net.Conn, text string) error {
 	return err
 }
 
-func serveHumanGateway(listener net.Listener, auditPath string) {
+func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture) {
 	taskStateDir := taskStateDirForAudit(auditPath)
+	queueDir := queueDirForAudit(auditPath)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -684,8 +685,13 @@ func serveHumanGateway(listener net.Listener, auditPath string) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		queue, err := readTaskStates(queueDir)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprint(w, renderHumanGateway(entries, tasks))
+		_, _ = fmt.Fprint(w, renderHumanGateway(entries, tasks, queue))
 	})
 	mux.HandleFunc("/api/audit", func(w http.ResponseWriter, r *http.Request) {
 		entries, err := readAuditEntriesOrEmpty(auditPath)
@@ -704,6 +710,37 @@ func serveHumanGateway(listener net.Listener, auditPath string) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"tasks": tasks})
+	})
+	mux.HandleFunc("/api/queue", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		queue, err := readTaskStates(queueDir)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"queue": queue})
+	})
+	mux.HandleFunc("/api/queue/actions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var action map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&action); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		result, err := fixture.applyQueueAction(action)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(result)
 	})
 	mux.Handle("/artifacts/", http.StripPrefix("/artifacts/", http.FileServer(http.Dir("artifacts"))))
 	_ = http.Serve(listener, mux)
@@ -754,7 +791,7 @@ func readTaskStates(dir string) ([]map[string]any, error) {
 	return tasks, nil
 }
 
-func renderHumanGateway(entries, tasks []map[string]any) string {
+func renderHumanGateway(entries, tasks, queue []map[string]any) string {
 	events := 0
 	receipts := []map[string]any{}
 	for _, entry := range entries {
@@ -797,6 +834,24 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 		b.WriteString(html.EscapeString(shortDigest(optionalString(task["receipt_digest"]))))
 		b.WriteString(`</code></td><td>`)
 		b.WriteString(html.EscapeString(optionalString(task["error"])))
+		b.WriteString(`</td></tr>`)
+	}
+	b.WriteString(`</tbody></table>`)
+	b.WriteString(`<h2>Queue</h2><table><thead><tr><th>Task</th><th>Status</th><th>Worker</th><th>Lease</th><th>Retry</th></tr></thead><tbody>`)
+	if len(queue) == 0 {
+		b.WriteString(`<tr><td colspan="5">No queue items</td></tr>`)
+	}
+	for _, item := range queue {
+		b.WriteString(`<tr><td><code>`)
+		b.WriteString(html.EscapeString(optionalString(item["task_id"])))
+		b.WriteString(`</code></td><td>`)
+		b.WriteString(html.EscapeString(optionalString(item["status"])))
+		b.WriteString(`</td><td>`)
+		b.WriteString(html.EscapeString(optionalString(item["worker"])))
+		b.WriteString(`</td><td><code>`)
+		b.WriteString(html.EscapeString(shortDigest(optionalString(item["lease_id"]))))
+		b.WriteString(`</code></td><td>`)
+		b.WriteString(html.EscapeString(optionalString(item["retry_after_at"])))
 		b.WriteString(`</td></tr>`)
 	}
 	b.WriteString(`</tbody></table>`)
@@ -1830,6 +1885,36 @@ func (f Fixture) retryQueueItem(origin map[string]any, frame map[string]any, ret
 		return "", err
 	}
 	return taskID, nil
+}
+
+func (f Fixture) applyQueueAction(action map[string]any) (map[string]any, error) {
+	taskID := fmt.Sprint(action["task_id"])
+	if taskID == "" || taskID == "<nil>" {
+		return nil, errors.New("queue action task_id missing")
+	}
+	switch optionalString(action["action"]) {
+	case "claim":
+		owner := fmt.Sprint(action["owner"])
+		if owner == "" || owner == "<nil>" {
+			return nil, errors.New("queue action owner missing")
+		}
+		leaseID, err := f.claimQueueItem(taskID, owner, frameSeconds(action, "lease_seconds", 60))
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"ok": true, "action": "claim", "task_id": taskID, "lease_id": leaseID, "owner": owner}, nil
+	case "drain":
+		leaseID := fmt.Sprint(action["lease_id"])
+		if leaseID == "" || leaseID == "<nil>" {
+			return nil, errors.New("queue action lease_id missing")
+		}
+		if err := f.drainQueueItem(func(map[string]any) {}, taskID, leaseID); err != nil {
+			return nil, err
+		}
+		return map[string]any{"ok": true, "action": "drain", "task_id": taskID}, nil
+	default:
+		return nil, errors.New("unsupported queue action")
+	}
 }
 
 func (f Fixture) reclaimQueueItem(taskID, owner string, leaseSeconds int) (string, error) {

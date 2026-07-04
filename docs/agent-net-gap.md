@@ -100,6 +100,7 @@
 - Signed task cancellation interrupts a running external tool through the in-memory runtime registry。
 - Running Go tasks persist state before external/MCP execution completes。
 - Failed Go queue items can be explicitly retried with durable retry/backoff state。
+- Human Gateway exposes durable queue state and explicit local claim/drain actions。
 
 主要缺：
 
@@ -107,7 +108,7 @@
 - interactive approval UI。
 - container-grade sandbox。
 - concurrency model。
-- task state UI / query surface。
+- task creation UI / query surface。
 - real checkpoint state restore。
 - automatic retry / backoff scanning。
 - binary/package provenance。
