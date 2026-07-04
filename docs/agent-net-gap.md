@@ -112,11 +112,13 @@
 - Human/local queue action grants carry action scope and expiry。
 - Human/local queue action grants are rejected on replay after successful use。
 - Human Gateway can draft, locally sign, and enqueue queued tasks through the existing queue action path。
+- Direct Go tool tasks wait for explicit Human Gateway approval before execution。
 
 主要缺：
 
 - richer MCP sessions/resources/prompts。
-- interactive approval UI。
+- queued drain approval blocking。
+- approval denial/expiry UI。
 - configurable actor authorization policy。
 - container-grade sandbox。
 - concurrency model。
@@ -159,6 +161,7 @@
 - CLI/test flows。
 - read-only Human Gateway。
 - simulated approval events。
+- direct Human Gateway approval API。
 - signed approval receipts visible through Human Gateway。
 - checkpoint evidence receipts。
 - docs and protocol proofs。
@@ -166,7 +169,7 @@
 主要缺：
 
 - task list / status view。
-- approval flow。
+- queued approval flow。
 - artifact browser。
 - audit viewer。
 - admin / tenant model。

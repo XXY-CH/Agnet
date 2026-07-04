@@ -97,6 +97,74 @@ function exchangeFrames(port, frame, closeType = "FED_TASK_CLOSE") {
   });
 }
 
+function exchangeFramesUntil(port, frame, predicate, closeType = "FED_TASK_CLOSE") {
+  const frames = [];
+  let checkpointResolved = false;
+  let resolveCheckpoint;
+  let rejectCheckpoint;
+  let resolveDone;
+  let rejectDone;
+  const checkpoint = new Promise((resolve, reject) => {
+    resolveCheckpoint = resolve;
+    rejectCheckpoint = reject;
+  });
+  const done = new Promise((resolve, reject) => {
+    resolveDone = resolve;
+    rejectDone = reject;
+  });
+  const socket = net.createConnection(port, "127.0.0.1");
+  let buffer = "";
+  const fail = (error) => {
+    rejectCheckpoint(error);
+    rejectDone(error);
+  };
+  socket.on("error", fail);
+  socket.on("connect", () => {
+    socket.write(`${JSON.stringify({ type: "HELLO", origin_zone: frame.origin_zone })}\n`);
+  });
+  socket.on("data", (chunk) => {
+    try {
+      buffer += chunk.toString();
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const item = JSON.parse(line);
+        if (item.type === "HELLO") {
+          const body = authBody(item.session_id, item.challenge, frame.origin_zone.zid, item.zone.zid);
+          socket.write(`${JSON.stringify({
+            type: "AUTH",
+            origin_zone: frame.origin_zone,
+            auth: { ...body, auth_signature: signObject(zoneA.privateKey, body) },
+          })}\n`);
+          continue;
+        }
+        if (item.type === "AUTH_OK") {
+          socket.write(`${JSON.stringify(frame)}\n`);
+          continue;
+        }
+        frames.push(item);
+        if (!checkpointResolved && predicate(item, frames)) {
+          checkpointResolved = true;
+          resolveCheckpoint(frames);
+        }
+        if (item.type === "FED_TASK_ERROR" || item.type === closeType) {
+          socket.end();
+          if (!checkpointResolved) {
+            checkpointResolved = true;
+            resolveCheckpoint(frames);
+          }
+          resolveDone(frames);
+        }
+      }
+    } catch (error) {
+      socket.destroy();
+      fail(error);
+    }
+  });
+  return { checkpoint, done };
+}
+
 let zoneA;
 
 function authBody(sessionId, challenge, peerZid, remoteZid) {
@@ -116,6 +184,30 @@ function queueActionGrant(action, taskId, task, extra = {}) {
     ...extra,
   };
   return { ...body, grant_signature: signObject(zoneA.privateKey, body) };
+}
+
+async function approveTask(humanPort, taskId) {
+  const response = await fetch(`http://127.0.0.1:${humanPort}/api/approvals/actions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action: "approve", task_id: taskId, actor: "human://local" }),
+  });
+  assert.equal(response.status, 200);
+  return response.json();
+}
+
+async function exchangeFramesWithHumanApproval(port, humanPort, frame, taskId, closeType = "FED_TASK_CLOSE") {
+  const run = exchangeFramesUntil(
+    port,
+    frame,
+    (item) => item.type === "FED_TASK_EVENT" && item.event.type === "approval.required",
+    closeType,
+  );
+  const frames = await run.checkpoint;
+  if (frames.some((item) => item.type === "FED_TASK_EVENT" && item.event.type === "approval.required")) {
+    await approveTask(humanPort, taskId);
+  }
+  return run.done;
 }
 
 function exchangeUnauthenticatedFrame(port, frame) {
@@ -355,6 +447,7 @@ setTimeout(() => {
   await rm("state/go-fed-discovery-audit.log", { force: true });
   await rm("state/go-fed-discovery-audit-tasks", { recursive: true, force: true });
   await rm("state/go-fed-discovery-audit-queue", { recursive: true, force: true });
+  await rm("state/go-fed-discovery-audit-approvals", { recursive: true, force: true });
   await writeTrustedZones("state/go-fed-discovery-trusted-origin.json", [zoneA]);
   await writeFile("state/node-trusts-go-discovery.json", `${JSON.stringify({ zones: [fixture.authority] }, null, 2)}\n`);
   const gateway = spawn("go", [
@@ -805,12 +898,30 @@ setTimeout(() => {
     const humanDraftedQueueBody = await humanDraftedQueueResponse.json();
     assert.equal(humanDraftedQueueBody.queue.some((item) => item.task_id === humanDraftedTaskId && item.status === "queued"), true);
 
-    const executionFrames = await exchangeFrames(port, {
+    const execution = exchangeFramesUntil(port, {
       type: "FED_TASK_OPEN",
       origin_zone: zoneA.descriptor,
       requester: requester.descriptor,
       task: { ...task, signature: signObject(requester.privateKey, task) },
-    });
+    }, (item) => item.type === "FED_TASK_EVENT" && item.event.type === "approval.required");
+    const approvalRequiredFrames = await execution.checkpoint;
+    assert.deepEqual(
+      approvalRequiredFrames.map((frame) => frame.type),
+      ["FED_TASK_EVENT", "FED_TASK_EVENT"],
+    );
+    assert.deepEqual(
+      approvalRequiredFrames.map((frame) => frame.event.type),
+      ["task.accepted", "approval.required"],
+    );
+    const pendingApprovalResponse = await fetch(`http://127.0.0.1:${humanPort}/api/approvals`);
+    assert.equal(pendingApprovalResponse.status, 200);
+    const pendingApprovalBody = await pendingApprovalResponse.json();
+    assert.equal(pendingApprovalBody.approvals.some((item) => item.task_id === task.task_id && item.status === "pending" && item.reasons.includes("tool")), true);
+    const approveBody = await approveTask(humanPort, task.task_id);
+    assert.equal(approveBody.approval.task_id, task.task_id);
+    assert.equal(approveBody.approval.by, "human://local");
+    assert.match(approveBody.approval.approval_signature, /^[A-Za-z0-9_-]+$/);
+    const executionFrames = await execution.done;
     assert.deepEqual(executionFrames.map((frame) => frame.type), [
       "FED_TASK_EVENT",
       "FED_TASK_EVENT",
@@ -968,13 +1079,13 @@ setTimeout(() => {
       task_id: "go_fed_task_resumed",
       intent: "Resume FED_TASK_OPEN from checkpoint.",
     };
-    const resumeFrames = await exchangeFrames(port, {
+    const resumeFrames = await exchangeFramesWithHumanApproval(port, humanPort, {
       type: "FED_TASK_RESUME",
       origin_zone: zoneA.descriptor,
       requester: requester.descriptor,
       checkpoint_id: checkpointEvent.checkpoint_id,
       task: { ...resumeTask, signature: signObject(requester.privateKey, resumeTask) },
-    });
+    }, resumeTask.task_id);
     assert.deepEqual(resumeFrames.map((frame) => frame.type), [
       "FED_TASK_EVENT",
       "FED_TASK_EVENT",
@@ -1064,13 +1175,13 @@ setTimeout(() => {
       task_id: "go_fed_task_retried",
       intent: "Retry FED_TASK_OPEN with lineage evidence.",
     };
-    const retryFrames = await exchangeFrames(port, {
+    const retryFrames = await exchangeFramesWithHumanApproval(port, humanPort, {
       type: "FED_TASK_RETRY",
       origin_zone: zoneA.descriptor,
       requester: requester.descriptor,
       retry_of: task.task_id,
       task: { ...retryTask, signature: signObject(requester.privateKey, retryTask) },
-    });
+    }, retryTask.task_id);
     assert.deepEqual(retryFrames.map((frame) => frame.type), [
       "FED_TASK_EVENT",
       "FED_TASK_EVENT",
@@ -1099,12 +1210,12 @@ setTimeout(() => {
       task_id: "go_fed_task_missing_mcp_required_arg",
       to: "agent://zone-b/strict-translator",
     };
-    const strictFrames = await exchangeFrames(port, {
+    const strictFrames = await exchangeFramesWithHumanApproval(port, humanPort, {
       type: "FED_TASK_OPEN",
       origin_zone: zoneA.descriptor,
       requester: requester.descriptor,
       task: { ...strictTask, signature: signObject(requester.privateKey, strictTask) },
-    });
+    }, strictTask.task_id);
     assert.equal(strictFrames.at(-1).type, "FED_TASK_ERROR");
     assert.match(strictFrames.at(-1).error, /mcp tool arguments missing required field: locale/);
     const failedTaskState = JSON.parse(await readFile("state/go-fed-discovery-audit-tasks/go_fed_task_missing_mcp_required_arg.json", "utf8"));
@@ -1172,12 +1283,14 @@ setTimeout(() => {
       intent: "Run slowly until cancelled.",
     };
     const slowStartedAt = Date.now();
-    const slowExecution = exchangeFrames(port, {
+    const slowExecution = exchangeFramesUntil(port, {
       type: "FED_TASK_OPEN",
       origin_zone: zoneA.descriptor,
       requester: requester.descriptor,
       task: { ...slowTask, signature: signObject(requester.privateKey, slowTask) },
-    });
+    }, (item) => item.type === "FED_TASK_EVENT" && item.event.type === "approval.required");
+    await slowExecution.checkpoint;
+    await approveTask(humanPort, slowTask.task_id);
     await new Promise((resolve) => setTimeout(resolve, 250));
     const runningTaskState = JSON.parse(await readFile("state/go-fed-discovery-audit-tasks/go_fed_task_live_cancelled.json", "utf8"));
     assert.equal(runningTaskState.task_id, slowTask.task_id);
@@ -1196,7 +1309,7 @@ setTimeout(() => {
       cancel: { ...liveCancel, signature: signObject(requester.privateKey, liveCancel) },
     }, "FED_CANCEL_CLOSE");
     assert.equal(liveCancelFrames[1].receipt.status, "cancelled");
-    const slowFrames = await slowExecution;
+    const slowFrames = await slowExecution.done;
     assert.equal(slowFrames.at(-1).type, "FED_TASK_ERROR");
     assert.match(slowFrames.at(-1).error, /external tool cancelled/);
     assert.ok(Date.now() - slowStartedAt < 1500);

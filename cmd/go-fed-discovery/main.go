@@ -40,6 +40,7 @@ type Fixture struct {
 	Audit               *AuditLog          `json:"-"`
 	TaskStateDir        string             `json:"-"`
 	QueueDir            string             `json:"-"`
+	ApprovalDir         string             `json:"-"`
 	Runtime             *TaskRuntime       `json:"-"`
 }
 
@@ -154,6 +155,7 @@ func serve(port, wsPort, humanPort, fixturePath, trustPath, authorityKeyPath, wo
 	fixture.Audit = audit
 	fixture.TaskStateDir = strings.TrimSuffix(auditPath, filepath.Ext(auditPath)) + "-tasks"
 	fixture.QueueDir = queueDirForAudit(auditPath)
+	fixture.ApprovalDir = approvalDirForAudit(auditPath)
 	fixture.Runtime = &TaskRuntime{running: map[string]context.CancelFunc{}, cancelled: map[string]bool{}}
 	trusted, err := loadTrustedZones(trustPath)
 	if err != nil {
@@ -303,7 +305,7 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(err))
 			return false
 		}
-		if err := fixture.executeTask(send, origin, worker, task, nil, "", nil, nil); err != nil {
+		if err := fixture.executeTask(send, origin, worker, task, nil, "", nil, true, nil); err != nil {
 			send(taskErrorFrame(err))
 			return false
 		}
@@ -385,7 +387,7 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(err))
 			return false
 		}
-		if err := fixture.executeTask(send, origin, worker, task, checkpointID, optionalString(parentCheckpoint["state_digest"]), nil, nil); err != nil {
+		if err := fixture.executeTask(send, origin, worker, task, checkpointID, optionalString(parentCheckpoint["state_digest"]), nil, true, nil); err != nil {
 			send(taskErrorFrame(err))
 			return false
 		}
@@ -400,7 +402,7 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(errors.New("retry_of missing")))
 			return false
 		}
-		if err := fixture.executeTask(send, origin, worker, task, nil, "", retryOf, nil); err != nil {
+		if err := fixture.executeTask(send, origin, worker, task, nil, "", retryOf, true, nil); err != nil {
 			send(taskErrorFrame(err))
 			return false
 		}
@@ -678,6 +680,7 @@ func writeWebSocketText(conn net.Conn, text string) error {
 func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture) {
 	taskStateDir := taskStateDirForAudit(auditPath)
 	queueDir := queueDirForAudit(auditPath)
+	approvalDir := approvalDirForAudit(auditPath)
 	mux := http.NewServeMux()
 	runQueueAction := func(action map[string]any) (map[string]any, int, error) {
 		if err := fixture.requireQueueActionGrant(action); err != nil {
@@ -718,8 +721,13 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		approvals, err := readTaskStates(approvalDir)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprint(w, renderHumanGateway(entries, tasks, queue))
+		_, _ = fmt.Fprint(w, renderHumanGateway(entries, tasks, queue, approvals))
 	})
 	mux.HandleFunc("/api/audit", func(w http.ResponseWriter, r *http.Request) {
 		entries, err := readAuditEntriesOrEmpty(auditPath)
@@ -751,6 +759,47 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"queue": queue})
+	})
+	mux.HandleFunc("/api/approvals", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		approvals, err := readTaskStates(approvalDir)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"approvals": approvals})
+	})
+	mux.HandleFunc("/api/approvals/actions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var action map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&action); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if optionalString(action["action"]) != "approve" {
+			http.Error(w, "unsupported approval action", http.StatusBadRequest)
+			return
+		}
+		taskID := optionalString(action["task_id"])
+		actor := optionalString(action["actor"])
+		if taskID == "" || actor != "human://local" {
+			http.Error(w, "approval task_id and local actor required", http.StatusBadRequest)
+			return
+		}
+		approval, err := fixture.approveTask(taskID, actor)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "approval": approval})
 	})
 	mux.HandleFunc("/api/queue/actions", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -837,6 +886,10 @@ func queueDirForAudit(auditPath string) string {
 	return strings.TrimSuffix(auditPath, filepath.Ext(auditPath)) + "-queue"
 }
 
+func approvalDirForAudit(auditPath string) string {
+	return strings.TrimSuffix(auditPath, filepath.Ext(auditPath)) + "-approvals"
+}
+
 func readTaskStates(dir string) ([]map[string]any, error) {
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, os.ErrNotExist) {
@@ -866,7 +919,7 @@ func readTaskStates(dir string) ([]map[string]any, error) {
 	return tasks, nil
 }
 
-func renderHumanGateway(entries, tasks, queue []map[string]any) string {
+func renderHumanGateway(entries, tasks, queue, approvals []map[string]any) string {
 	events := 0
 	receipts := []map[string]any{}
 	for _, entry := range entries {
@@ -927,6 +980,22 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 		b.WriteString(html.EscapeString(shortDigest(optionalString(item["lease_id"]))))
 		b.WriteString(`</code></td><td>`)
 		b.WriteString(html.EscapeString(optionalString(item["retry_after_at"])))
+		b.WriteString(`</td></tr>`)
+	}
+	b.WriteString(`</tbody></table>`)
+	b.WriteString(`<h2>Approvals</h2><table><thead><tr><th>Task</th><th>Status</th><th>Reasons</th><th>By</th></tr></thead><tbody>`)
+	if len(approvals) == 0 {
+		b.WriteString(`<tr><td colspan="4">No approvals</td></tr>`)
+	}
+	for _, approval := range approvals {
+		b.WriteString(`<tr><td><code>`)
+		b.WriteString(html.EscapeString(optionalString(approval["task_id"])))
+		b.WriteString(`</code></td><td>`)
+		b.WriteString(html.EscapeString(optionalString(approval["status"])))
+		b.WriteString(`</td><td>`)
+		b.WriteString(html.EscapeString(strings.Join(stringsFromAny(approval["reasons"]), ", ")))
+		b.WriteString(`</td><td>`)
+		b.WriteString(html.EscapeString(optionalString(approval["by"])))
 		b.WriteString(`</td></tr>`)
 	}
 	b.WriteString(`</tbody></table>`)
@@ -1308,7 +1377,7 @@ func (f Fixture) verifyTaskCancel(frame map[string]any) (*Worker, map[string]any
 	return worker, requester, cancel, nil
 }
 
-func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worker, task map[string]any, parentCheckpoint any, restoredStateDigest string, retryOf any, onReceipt func(map[string]any) error) error {
+func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worker, task map[string]any, parentCheckpoint any, restoredStateDigest string, retryOf any, requireHumanApproval bool, onReceipt func(map[string]any) error) error {
 	taskID := fmt.Sprint(task["task_id"])
 	ctx, cancelRun := context.WithCancel(context.Background())
 	f.Runtime.Register(taskID, cancelRun)
@@ -1320,10 +1389,22 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	approvals := toolApprovalReasons(worker.Profile)
 	approvalGrants := []map[string]any{}
 	if len(approvals) > 0 {
+		if requireHumanApproval {
+			if err := f.writeApprovalState(taskID, "pending", approvals, "", nil); err != nil {
+				return err
+			}
+		}
 		if err := f.sendTaskEvent(send, map[string]any{"type": "approval.required", "task_id": taskID, "reasons": approvals}); err != nil {
 			return err
 		}
-		grant := f.approvalGrant(taskID, approvals)
+		grant := f.approvalGrant(taskID, approvals, "human://go-gateway/operator")
+		if requireHumanApproval {
+			var err error
+			grant, err = f.waitForApproval(ctx, taskID)
+			if err != nil {
+				return err
+			}
+		}
 		approvalGrants = append(approvalGrants, grant)
 		if err := f.sendTaskEvent(send, map[string]any{"type": "approval.granted", "task_id": taskID, "by": grant["by"], "reasons": approvals, "grant": grant}); err != nil {
 			return err
@@ -1518,11 +1599,11 @@ func (w *Worker) checkpoint(task map[string]any, parent any, restoredStateDigest
 	return signBodyWithKey(w.PrivateKey, body, "checkpoint_signature")
 }
 
-func (f Fixture) approvalGrant(taskID string, reasons []string) map[string]any {
+func (f Fixture) approvalGrant(taskID string, reasons []string, by string) map[string]any {
 	return signBodyWithKey(f.AuthorityPrivateKey, map[string]any{
 		"task_id":   taskID,
 		"authority": f.Authority["zid"],
-		"by":        "human://go-gateway/operator",
+		"by":        by,
 		"method":    "local.signed",
 		"reasons":   reasons,
 	}, "approval_signature")
@@ -1911,6 +1992,82 @@ func (f Fixture) writeTaskState(taskID, status string, worker *Worker, extra map
 	}
 	// ponytail: one JSON file per task; replace with an indexed store when scheduling needs queries.
 	return os.WriteFile(filepath.Join(f.TaskStateDir, url.PathEscape(taskID)+".json"), append(data, '\n'), 0o644)
+}
+
+func (f Fixture) writeApprovalState(taskID, status string, reasons []string, by string, approval map[string]any) error {
+	if f.ApprovalDir == "" {
+		return nil
+	}
+	body := map[string]any{
+		"task_id": taskID,
+		"status":  status,
+		"reasons": stringsAny(reasons),
+	}
+	if by != "" {
+		body["by"] = by
+	}
+	if approval != nil {
+		body["approval"] = approval
+	}
+	if err := os.MkdirAll(f.ApprovalDir, 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(body, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(f.ApprovalDir, url.PathEscape(taskID)+".json"), append(data, '\n'), 0o644)
+}
+
+func (f Fixture) readApprovalState(taskID string) (map[string]any, error) {
+	if f.ApprovalDir == "" {
+		return nil, errors.New("approval state unavailable")
+	}
+	data, err := os.ReadFile(filepath.Join(f.ApprovalDir, url.PathEscape(taskID)+".json"))
+	if err != nil {
+		return nil, err
+	}
+	var state map[string]any
+	if err := json.Unmarshal(data, &state); err != nil {
+		return nil, err
+	}
+	return state, nil
+}
+
+func (f Fixture) approveTask(taskID, actor string) (map[string]any, error) {
+	state, err := f.readApprovalState(taskID)
+	if err != nil {
+		return nil, err
+	}
+	if optionalString(state["status"]) != "pending" {
+		return nil, errors.New("approval is not pending: " + taskID)
+	}
+	reasons := stringsFromAny(state["reasons"])
+	grant := f.approvalGrant(taskID, reasons, actor)
+	if err := f.writeApprovalState(taskID, "approved", reasons, actor, grant); err != nil {
+		return nil, err
+	}
+	return grant, nil
+}
+
+func (f Fixture) waitForApproval(ctx context.Context, taskID string) (map[string]any, error) {
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		state, err := f.readApprovalState(taskID)
+		if err == nil && optionalString(state["status"]) == "approved" {
+			approval, _ := state["approval"].(map[string]any)
+			if approval == nil {
+				return nil, errors.New("approved task missing approval grant: " + taskID)
+			}
+			return approval, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 func (f Fixture) writeQueueItem(origin map[string]any, worker *Worker, task map[string]any, status string, extra map[string]any) error {
@@ -2323,7 +2480,7 @@ func (f Fixture) drainQueueItem(send sendFunc, taskID, leaseID string) error {
 		parentCheckpoint = checkpointID
 		restoredStateDigest = optionalString(parent["state_digest"])
 	}
-	err = f.executeTask(send, origin, worker, task, parentCheckpoint, restoredStateDigest, nil, func(receipt map[string]any) error {
+	err = f.executeTask(send, origin, worker, task, parentCheckpoint, restoredStateDigest, nil, false, func(receipt map[string]any) error {
 		extra["receipt_digest"] = digestHex(receipt)
 		return f.writeQueueItem(origin, worker, task, "completed", extra)
 	})
@@ -2715,6 +2872,14 @@ func stringsFromAny(value any) []string {
 		if ok {
 			out = append(out, text)
 		}
+	}
+	return out
+}
+
+func stringsAny(items []string) []any {
+	out := make([]any, 0, len(items))
+	for _, item := range items {
+		out = append(out, item)
 	}
 	return out
 }
