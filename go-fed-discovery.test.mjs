@@ -5,7 +5,7 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { capabilityCredentialId, loadOrCreateAgent, loadOrCreateZone, publicKeyFromDescriptor, resolveAgent, signObject, verifyCredentialStatus, verifyObject, writeTrustedZones } from "./asp-core.mjs";
+import { canonical, capabilityCredentialId, loadOrCreateAgent, loadOrCreateZone, publicKeyFromDescriptor, resolveAgent, signObject, verifyCredentialStatus, verifyObject, writeTrustedZones } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -101,6 +101,17 @@ let zoneA;
 
 function authBody(sessionId, challenge, peerZid, remoteZid) {
   return { session_id: sessionId, challenge, peer_zid: peerZid, remote_zid: remoteZid };
+}
+
+function queueActionGrant(action, taskId, task) {
+  const body = {
+    action,
+    task_id: taskId,
+    task_digest: task ? createHash("sha256").update(canonical(task)).digest("hex") : null,
+    authority: zoneA.descriptor.zid,
+    authority_descriptor: zoneA.descriptor,
+  };
+  return { ...body, grant_signature: signObject(zoneA.privateKey, body) };
 }
 
 function exchangeUnauthenticatedFrame(port, frame) {
@@ -619,10 +630,23 @@ setTimeout(() => {
     const queueBody = await queueResponse.json();
     assert.equal(queueBody.queue.some((item) => item.task_id === humanQueuedTask.task_id && item.status === "queued"), true);
 
-    const humanClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
+    const unauthorisedHumanClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ action: "claim", task_id: humanQueuedTask.task_id, owner: "human://local" }),
+    });
+    assert.equal(unauthorisedHumanClaimResponse.status, 400);
+    assert.match(await unauthorisedHumanClaimResponse.text(), /queue action grant missing/);
+
+    const humanClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "claim",
+        task_id: humanQueuedTask.task_id,
+        owner: "human://local",
+        action_grant: queueActionGrant("claim", humanQueuedTask.task_id),
+      }),
     });
     assert.equal(humanClaimResponse.status, 200);
     const humanClaimBody = await humanClaimResponse.json();
@@ -631,7 +655,12 @@ setTimeout(() => {
     const humanDrainResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "drain", task_id: humanQueuedTask.task_id, lease_id: humanClaimBody.lease_id }),
+      body: JSON.stringify({
+        action: "drain",
+        task_id: humanQueuedTask.task_id,
+        lease_id: humanClaimBody.lease_id,
+        action_grant: queueActionGrant("drain", humanQueuedTask.task_id),
+      }),
     });
     assert.equal(humanDrainResponse.status, 200);
     const humanDrainedQueueState = JSON.parse(await readFile("state/go-fed-discovery-audit-queue/go_fed_task_human_queue_action.json", "utf8"));
@@ -643,6 +672,7 @@ setTimeout(() => {
       task_id: "go_fed_task_human_created_queue",
       intent: "Create queued task through Human Gateway action.",
     };
+    const signedHumanCreatedQueuedTask = { ...humanCreatedQueuedTask, signature: signObject(requester.privateKey, humanCreatedQueuedTask) };
     const humanEnqueueResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -650,7 +680,8 @@ setTimeout(() => {
         action: "enqueue",
         origin_zone: zoneA.descriptor,
         requester: requester.descriptor,
-        task: { ...humanCreatedQueuedTask, signature: signObject(requester.privateKey, humanCreatedQueuedTask) },
+        task: signedHumanCreatedQueuedTask,
+        action_grant: queueActionGrant("enqueue", humanCreatedQueuedTask.task_id, signedHumanCreatedQueuedTask),
       }),
     });
     assert.equal(humanEnqueueResponse.status, 200);
@@ -1100,13 +1131,15 @@ setTimeout(() => {
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 70);
+    assert.equal(auditBody.entries.length, 71);
     const queueActionRecords = auditBody.entries
       .map((entry) => entry.record)
       .filter((record) => record.kind === "go_queue_action");
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "ok"), true);
     assert.equal(queueActionRecords.some((record) => record.action === "drain" && record.task_id === humanQueuedTask.task_id && record.status === "ok"), true);
     assert.equal(queueActionRecords.some((record) => record.action === "enqueue" && record.task_id === humanCreatedQueuedTask.task_id && record.status === "ok"), true);
+    assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /grant missing/.test(record.error)), true);
+    assert.equal(queueActionRecords.filter((record) => record.status === "ok").every((record) => /^[0-9a-f]{64}$/.test(record.grant_digest)), true);
 
     const tasksResponse = await fetch(`http://127.0.0.1:${humanPort}/api/tasks`);
     assert.equal(tasksResponse.status, 200);

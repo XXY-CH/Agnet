@@ -737,6 +737,14 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if err := fixture.requireQueueActionGrant(action); err != nil {
+			if auditErr := fixture.recordQueueAction(action, nil, err); auditErr != nil {
+				http.Error(w, auditErr.Error(), http.StatusInternalServerError)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		result, err := fixture.applyQueueAction(action)
 		if err != nil {
 			if auditErr := fixture.recordQueueAction(action, nil, err); auditErr != nil {
@@ -1973,12 +1981,52 @@ func (f Fixture) applyQueueAction(action map[string]any) (map[string]any, error)
 	}
 }
 
+func (f Fixture) requireQueueActionGrant(action map[string]any) error {
+	grant, ok := action["action_grant"].(map[string]any)
+	if !ok {
+		return errors.New("queue action grant missing")
+	}
+	authority, ok := grant["authority_descriptor"].(map[string]any)
+	if !ok {
+		return errors.New("queue action grant authority descriptor missing")
+	}
+	if err := verifyZoneDescriptor(authority); err != nil {
+		return err
+	}
+	if grant["authority"] != authority["zid"] {
+		return errors.New("queue action grant authority mismatch")
+	}
+	if grant["action"] != action["action"] {
+		return errors.New("queue action grant action mismatch")
+	}
+	if grant["task_id"] != queueActionTaskID(action, nil) {
+		return errors.New("queue action grant task mismatch")
+	}
+	task, _ := action["task"].(map[string]any)
+	expectedTaskDigest := any(nil)
+	if task != nil {
+		expectedTaskDigest = digestHex(task)
+	}
+	if grant["task_digest"] != expectedTaskDigest {
+		return errors.New("queue action grant task digest mismatch")
+	}
+	authorityKey, _, err := publicKey(authority)
+	if err != nil {
+		return err
+	}
+	if err := verifyMapSignature(authorityKey, grant, "grant_signature"); err != nil {
+		return errors.New("queue action grant signature verification failed")
+	}
+	return nil
+}
+
 func (f Fixture) recordQueueAction(action map[string]any, result map[string]any, actionErr error) error {
 	record := map[string]any{
-		"kind":    "go_queue_action",
-		"action":  optionalString(action["action"]),
-		"task_id": queueActionTaskID(action, result),
-		"source":  "human_gateway.local",
+		"kind":         "go_queue_action",
+		"action":       optionalString(action["action"]),
+		"task_id":      queueActionTaskID(action, result),
+		"source":       "human_gateway.local",
+		"grant_digest": queueActionGrantDigest(action),
 	}
 	if actionErr != nil {
 		record["status"] = "error"
@@ -1988,6 +2036,14 @@ func (f Fixture) recordQueueAction(action map[string]any, result map[string]any,
 		record["result_digest"] = digestHex(result)
 	}
 	return f.appendAudit(record)
+}
+
+func queueActionGrantDigest(action map[string]any) any {
+	grant, ok := action["action_grant"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	return digestHex(grant)
 }
 
 func queueActionTaskID(action, result map[string]any) string {

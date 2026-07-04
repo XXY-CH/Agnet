@@ -104,6 +104,7 @@
 - Human Gateway can enqueue already signed tasks through the local queue action API。
 - Checkpoint resume can be queued durably before explicit drain。
 - Human/local queue actions are recorded as hash-chained audit evidence。
+- Human/local queue actions require signed action grants。
 
 主要缺：
 

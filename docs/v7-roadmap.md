@@ -1,6 +1,6 @@
 # Agent Space v7 Roadmap
 
-状态：v7.8 complete; v7.9+ planned
+状态：v7.9 complete; v7.10+ planned
 目标：从 durable task state 进入 durable scheduler queue，让任务生命周期有本地所有权、可恢复入口和后续调度面。
 
 ## v7.0: Durable Queue Enqueue
@@ -183,6 +183,28 @@
 - 不做 approval workflow。
 - 不把 federation frames 全量改成 action audit。
 - 不做 append-only queue action index。
+
+## v7.9: Queue Action Grant
+
+状态：complete
+目标：Human/local queue actions require a signed action grant.
+
+新增：
+
+- Human Gateway queue actions require `action_grant`。
+- Grant authority descriptor must be self-signed。
+- Grant signature must verify with the authority descriptor key。
+- Grant must match the requested action and task。
+- Enqueue grants bind the signed task digest。
+- `go_queue_action` audit records include `grant_digest` for successful grants。
+
+不做：
+
+- 不做 login/session identity。
+- 不做 browser-side signing UX。
+- 不做 persistent user accounts。
+- 不要求 remote federation frames use action grants。
+- 不开放非 localhost。
 
 ## 后续方向
 
