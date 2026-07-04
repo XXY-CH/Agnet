@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v7.13 complete
-当前代码基线：`v7.13-queue-actor-policy`
+状态：v7.14 complete
+当前代码基线：`v7.14-queue-action-audit-actor-evidence`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go `FED_TASK_ENQUEUE` durable local queue entry、Go `FED_QUEUE_CLAIM` lease ownership/expiry/backoff gate、Go `FED_QUEUE_RECLAIM` expired lease ownership transfer、Go `FED_QUEUE_RETRY` failed queue retry/backoff state、Go `FED_QUEUE_RESUME` queued checkpoint resume binding、Go `FED_QUEUE_DRAIN` explicit queued execution、Go Human Gateway queue state/action/creation surface、Go Human Gateway actor-bound scoped signed queue action grants、Go Human Gateway local actor policy gate、Go Human Gateway queue action grant replay rejection、Go Human Gateway queue action audit evidence、Go `FED_TASK_RESUME` audit-backed checkpoint link、Go signed `FED_TASK_CANCEL` evidence、Go live external task cancellation、Go `FED_TASK_RETRY` lineage evidence、Go 最小 task execution path、Go durable running/completed/cancelled/failed task state files、Go Human Gateway task state view、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、MCP initialize metadata evidence、MCP resources/prompts/tools metadata evidence、MCP selected tool binding、MCP selected schema digest evidence、MCP argument digest evidence、MCP required argument gate、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、sandbox isolation level evidence、signed sandbox proof、sandbox claim binding、tool command provenance digest、tool output digest alignment、protocol-native checkpoint evidence、artifact manifest digest evidence、canonical policy scope evidence、credential status evidence、authenticated session handshake，以及 remote audit query。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go `FED_TASK_ENQUEUE` durable local queue entry、Go `FED_QUEUE_CLAIM` lease ownership/expiry/backoff gate、Go `FED_QUEUE_RECLAIM` expired lease ownership transfer、Go `FED_QUEUE_RETRY` failed queue retry/backoff state、Go `FED_QUEUE_RESUME` queued checkpoint resume binding、Go `FED_QUEUE_DRAIN` explicit queued execution、Go Human Gateway queue state/action/creation surface、Go Human Gateway actor-bound scoped signed queue action grants、Go Human Gateway local actor policy gate、Go Human Gateway queue action grant replay rejection、Go Human Gateway queue action audit actor evidence、Go `FED_TASK_RESUME` audit-backed checkpoint link、Go signed `FED_TASK_CANCEL` evidence、Go live external task cancellation、Go `FED_TASK_RETRY` lineage evidence、Go 最小 task execution path、Go durable running/completed/cancelled/failed task state files、Go Human Gateway task state view、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、MCP initialize metadata evidence、MCP resources/prompts/tools metadata evidence、MCP selected tool binding、MCP selected schema digest evidence、MCP argument digest evidence、MCP required argument gate、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、sandbox isolation level evidence、signed sandbox proof、sandbox claim binding、tool command provenance digest、tool output digest alignment、protocol-native checkpoint evidence、artifact manifest digest evidence、canonical policy scope evidence、credential status evidence、authenticated session handshake，以及 remote audit query。
 
 还不是可产品化的 Agent Net。
 
@@ -82,6 +82,7 @@ Go
   -> Human Gateway /api/tasks and task table
   -> Human Gateway /api/queue and actor-bound scoped signed explicit queue enqueue/claim/drain actions with local actor policy and replay rejection
   -> go_queue_action audit evidence for Human Gateway queue actions
+  -> record actor policy inputs and reached policy results in queue action audit evidence
   -> FED_TASK_ENQUEUE durable local queue file
   -> FED_QUEUE_CLAIM lease ownership and expiry
   -> FED_QUEUE_RECLAIM expired lease ownership transfer
@@ -95,10 +96,10 @@ Go
 Next natural boundary:
 
 ```text
-v7.14 Queue Action Audit Actor Evidence Boundary
-  -> record actor policy inputs in queue action audit evidence
+v7.15 Queued Checkpoint State Restore Boundary
+  -> restore model/worker state after queued task execution
 ```
 
-Route detail: `docs/v5-roadmap.md`。
+Route detail: `docs/v7-roadmap.md`。
 
 Skipped until later: encrypted key store, public transport, interactive approval queue, container sandbox, Git/worktree/merge operations, scheduler queues, semantic routing.

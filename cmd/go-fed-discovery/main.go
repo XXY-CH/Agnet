@@ -2097,6 +2097,10 @@ func (f Fixture) recordQueueAction(action map[string]any, result map[string]any,
 		"task_id":      queueActionTaskID(action, result),
 		"source":       "human_gateway.local",
 		"grant_digest": queueActionGrantDigest(action),
+		"actor":        queueActionActor(action),
+	}
+	if actorPolicyResult := queueActionActorPolicyResult(action); actorPolicyResult != "" {
+		record["actor_policy_result"] = actorPolicyResult
 	}
 	if actionErr != nil {
 		record["status"] = "error"
@@ -2107,13 +2111,45 @@ func (f Fixture) recordQueueAction(action map[string]any, result map[string]any,
 	}
 	return f.appendAudit(record)
 }
-
 func queueActionGrantDigest(action map[string]any) any {
 	grant, ok := action["action_grant"].(map[string]any)
 	if !ok {
 		return nil
 	}
 	return digestHex(grant)
+}
+
+func queueActionActor(action map[string]any) string {
+	if actor := optionalString(action["actor"]); actor != "" {
+		return actor
+	}
+	if grant, ok := action["action_grant"].(map[string]any); ok {
+		return optionalString(grant["actor"])
+	}
+	return ""
+}
+
+func queueActionActorPolicyResult(action map[string]any) string {
+	actionName := optionalString(action["action"])
+	grant, ok := action["action_grant"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	authority, ok := grant["authority_descriptor"].(map[string]any)
+	if !ok || verifyZoneDescriptor(authority) != nil {
+		return ""
+	}
+	if grant["authority"] != authority["zid"] || grant["action"] != action["action"] || !queueActionGrantAllows(grant, actionName) {
+		return ""
+	}
+	actor := optionalString(action["actor"])
+	if actor == "" || optionalString(grant["actor"]) == "" || grant["actor"] != action["actor"] {
+		return ""
+	}
+	if queueActionActorAllowed(actor, actionName) {
+		return "allow"
+	}
+	return "deny"
 }
 
 func queueActionTaskID(action, result map[string]any) string {

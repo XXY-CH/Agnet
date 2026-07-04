@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v7.13 assessment
+状态：v7.14 assessment
 
 ## 一句话
 
@@ -107,6 +107,7 @@
 - Human/local queue actions require signed action grants。
 - Human/local queue action grants bind a local actor string。
 - Human/local queue actions pass a minimal local actor allowlist。
+- Human/local queue action audit records include actor evidence and local policy result evidence when the policy gate is reached。
 - Human/local queue action grants carry action scope and expiry。
 - Human/local queue action grants are rejected on replay after successful use。
 
