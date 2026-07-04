@@ -2480,7 +2480,7 @@ func (f Fixture) drainQueueItem(send sendFunc, taskID, leaseID string) error {
 		parentCheckpoint = checkpointID
 		restoredStateDigest = optionalString(parent["state_digest"])
 	}
-	err = f.executeTask(send, origin, worker, task, parentCheckpoint, restoredStateDigest, nil, false, func(receipt map[string]any) error {
+	err = f.executeTask(send, origin, worker, task, parentCheckpoint, restoredStateDigest, nil, true, func(receipt map[string]any) error {
 		extra["receipt_digest"] = digestHex(receipt)
 		return f.writeQueueItem(origin, worker, task, "completed", extra)
 	})

@@ -196,6 +196,18 @@ async function approveTask(humanPort, taskId) {
   return response.json();
 }
 
+async function waitForPendingApproval(humanPort, taskId) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const response = await fetch(`http://127.0.0.1:${humanPort}/api/approvals`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    const pending = body.approvals.find((item) => item.task_id === taskId && item.status === "pending");
+    if (pending) return pending;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`pending approval not found for ${taskId}`);
+}
+
 async function exchangeFramesWithHumanApproval(port, humanPort, frame, taskId, closeType = "FED_TASK_CLOSE") {
   const run = exchangeFramesUntil(
     port,
@@ -208,6 +220,18 @@ async function exchangeFramesWithHumanApproval(port, humanPort, frame, taskId, c
     await approveTask(humanPort, taskId);
   }
   return run.done;
+}
+
+async function fetchQueueActionWithHumanApproval(humanPort, taskId, body) {
+  const responsePromise = fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const pending = await waitForPendingApproval(humanPort, taskId);
+  assert.equal(pending.reasons.includes("tool"), true);
+  await approveTask(humanPort, taskId);
+  return responsePromise;
 }
 
 function exchangeUnauthenticatedFrame(port, frame) {
@@ -626,12 +650,17 @@ setTimeout(() => {
     assert.match(reclaimedQueueState.lease_expires_at, /^\d{4}-\d{2}-\d{2}T/);
     assert.notEqual(reclaimedQueueState.lease_expires_at, claimedQueueState.lease_expires_at);
 
-    const drainedFrames = await exchangeFrames(port, {
+    const drainRun = exchangeFramesUntil(port, {
       type: "FED_QUEUE_DRAIN",
       origin_zone: zoneA.descriptor,
       task_id: queuedTask.task_id,
       lease_id: reclaimFrames[0].lease_id,
-    });
+    }, (item) => item.type === "FED_TASK_EVENT" && item.event.type === "approval.required");
+    await drainRun.checkpoint;
+    const drainPending = await waitForPendingApproval(humanPort, queuedTask.task_id);
+    assert.equal(drainPending.reasons.includes("tool"), true);
+    await approveTask(humanPort, queuedTask.task_id);
+    const drainedFrames = await drainRun.done;
     assert.deepEqual(drainedFrames.map((frame) => frame.type), [
       "FED_TASK_EVENT",
       "FED_TASK_EVENT",
@@ -670,12 +699,12 @@ setTimeout(() => {
       owner: "scheduler://local",
     }, "FED_QUEUE_CLAIM_CLOSE");
     assert.deepEqual(failedClaimFrames.map((frame) => frame.type), ["FED_QUEUE_CLAIMED", "FED_QUEUE_CLAIM_CLOSE"]);
-    const failedDrainFrames = await exchangeFrames(port, {
+    const failedDrainFrames = await exchangeFramesWithHumanApproval(port, humanPort, {
       type: "FED_QUEUE_DRAIN",
       origin_zone: zoneA.descriptor,
       task_id: failedQueuedTask.task_id,
       lease_id: failedClaimFrames[0].lease_id,
-    });
+    }, failedQueuedTask.task_id);
     assert.equal(failedDrainFrames.at(-1).type, "FED_TASK_ERROR");
     assert.match(failedDrainFrames.at(-1).error, /mcp tool arguments missing required field: locale/);
     const failedQueueState = JSON.parse(await readFile("state/go-fed-discovery-audit-queue/go_fed_task_queued_failed.json", "utf8"));
@@ -834,16 +863,12 @@ setTimeout(() => {
     assert.equal(replayedHumanClaimResponse.status, 400);
     assert.match(await replayedHumanClaimResponse.text(), /queue action grant replay/);
 
-    const humanDrainResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        action: "drain",
-        task_id: humanQueuedTask.task_id,
-        lease_id: humanClaimBody.lease_id,
-        actor: "human://local",
-        action_grant: queueActionGrant("drain", humanQueuedTask.task_id),
-      }),
+    const humanDrainResponse = await fetchQueueActionWithHumanApproval(humanPort, humanQueuedTask.task_id, {
+      action: "drain",
+      task_id: humanQueuedTask.task_id,
+      lease_id: humanClaimBody.lease_id,
+      actor: "human://local",
+      action_grant: queueActionGrant("drain", humanQueuedTask.task_id),
     });
     assert.equal(humanDrainResponse.status, 200);
     const humanDrainedQueueState = JSON.parse(await readFile("state/go-fed-discovery-audit-queue/go_fed_task_human_queue_action.json", "utf8"));
@@ -1130,12 +1155,12 @@ setTimeout(() => {
       owner: "scheduler://resume",
     }, "FED_QUEUE_CLAIM_CLOSE");
     assert.deepEqual(queuedResumeClaimFrames.map((frame) => frame.type), ["FED_QUEUE_CLAIMED", "FED_QUEUE_CLAIM_CLOSE"]);
-    const queuedResumeDrainFrames = await exchangeFrames(port, {
+    const queuedResumeDrainFrames = await exchangeFramesWithHumanApproval(port, humanPort, {
       type: "FED_QUEUE_DRAIN",
       origin_zone: zoneA.descriptor,
       task_id: queuedResumeTask.task_id,
       lease_id: queuedResumeClaimFrames[0].lease_id,
-    });
+    }, queuedResumeTask.task_id);
     assert.deepEqual(queuedResumeDrainFrames.map((frame) => frame.type), [
       "FED_TASK_EVENT",
       "FED_TASK_EVENT",
