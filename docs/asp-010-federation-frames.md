@@ -284,7 +284,9 @@ This is not a durable scheduler or state restore. It only proves the protocol li
 
 v7.7 treats queued resume as durable scheduling state. The checkpoint must already exist in the audit log; the queue item records `resume_checkpoint`; later `FED_QUEUE_DRAIN` executes the task and records `resumed_from` in the receipt.
 
-This is not state restore. It does not recover model KV/cache, MCP sessions, or artifacts.
+v7.15 adds digest-bound restore evidence: resumed receipts and checkpoints record `restored_state_digest` from the parent checkpoint.
+
+This is not full state restore. It does not recover model KV/cache, MCP sessions, or artifacts.
 
 ## FED_TASK_RETRY
 

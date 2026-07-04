@@ -303,7 +303,7 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(err))
 			return false
 		}
-		if err := fixture.executeTask(send, origin, worker, task, nil, nil, nil); err != nil {
+		if err := fixture.executeTask(send, origin, worker, task, nil, "", nil, nil); err != nil {
 			send(taskErrorFrame(err))
 			return false
 		}
@@ -380,11 +380,12 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(errors.New("resume checkpoint_id missing")))
 			return false
 		}
-		if err := fixture.requireCheckpoint(checkpointID); err != nil {
+		parentCheckpoint, err := fixture.checkpointByID(checkpointID)
+		if err != nil {
 			send(taskErrorFrame(err))
 			return false
 		}
-		if err := fixture.executeTask(send, origin, worker, task, checkpointID, nil, nil); err != nil {
+		if err := fixture.executeTask(send, origin, worker, task, checkpointID, optionalString(parentCheckpoint["state_digest"]), nil, nil); err != nil {
 			send(taskErrorFrame(err))
 			return false
 		}
@@ -399,7 +400,7 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(errors.New("retry_of missing")))
 			return false
 		}
-		if err := fixture.executeTask(send, origin, worker, task, nil, retryOf, nil); err != nil {
+		if err := fixture.executeTask(send, origin, worker, task, nil, "", retryOf, nil); err != nil {
 			send(taskErrorFrame(err))
 			return false
 		}
@@ -443,15 +444,20 @@ func (f Fixture) auditProof(taskID string) (map[string]any, error) {
 }
 
 func (f Fixture) requireCheckpoint(checkpointID string) error {
+	_, err := f.checkpointByID(checkpointID)
+	return err
+}
+
+func (f Fixture) checkpointByID(checkpointID string) (map[string]any, error) {
 	if f.Audit == nil {
-		return errors.New("audit log unavailable")
+		return nil, errors.New("audit log unavailable")
 	}
 	entries, err := readAuditEntries(f.Audit.Path)
 	if errors.Is(err, os.ErrNotExist) {
-		return errors.New("resume checkpoint not found: " + checkpointID)
+		return nil, errors.New("resume checkpoint not found: " + checkpointID)
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// ponytail: linear scan keeps resume evidence honest; add an index when checkpoint lookup has real volume.
 	for _, entry := range entries {
@@ -459,16 +465,16 @@ func (f Fixture) requireCheckpoint(checkpointID string) error {
 		event, _ := record["event"].(map[string]any)
 		checkpoint, _ := event["checkpoint"].(map[string]any)
 		if checkpoint["checkpoint_id"] == checkpointID {
-			return nil
+			return checkpoint, nil
 		}
 		receipt, _ := record["receipt"].(map[string]any)
 		for _, checkpoint := range mapsFromAny(receipt["checkpoints"]) {
 			if checkpoint["checkpoint_id"] == checkpointID {
-				return nil
+				return checkpoint, nil
 			}
 		}
 	}
-	return errors.New("resume checkpoint not found: " + checkpointID)
+	return nil, errors.New("resume checkpoint not found: " + checkpointID)
 }
 
 func handleHello(send sendFunc, frame map[string]any, fixture Fixture, trusted map[string]map[string]any, session *Session) error {
@@ -1222,7 +1228,7 @@ func (f Fixture) verifyTaskCancel(frame map[string]any) (*Worker, map[string]any
 	return worker, requester, cancel, nil
 }
 
-func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worker, task map[string]any, parentCheckpoint, retryOf any, onReceipt func(map[string]any) error) error {
+func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worker, task map[string]any, parentCheckpoint any, restoredStateDigest string, retryOf any, onReceipt func(map[string]any) error) error {
 	taskID := fmt.Sprint(task["task_id"])
 	ctx, cancelRun := context.WithCancel(context.Background())
 	f.Runtime.Register(taskID, cancelRun)
@@ -1251,7 +1257,7 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	}
 	policyScope := taskPolicyScope(worker.Profile, worker.Descriptor, task)
 	policyDigest := digestHex(policyScope)
-	checkpoint := worker.checkpoint(task, parentCheckpoint, 3+len(approvals)*2, policyDigest)
+	checkpoint := worker.checkpoint(task, parentCheckpoint, restoredStateDigest, 3+len(approvals)*2, policyDigest)
 	if err := f.sendTaskEvent(send, map[string]any{"type": "checkpoint.created", "task_id": taskID, "checkpoint": checkpoint}); err != nil {
 		return err
 	}
@@ -1308,6 +1314,9 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	}
 	if parentCheckpoint != nil {
 		receipt["resumed_from"] = parentCheckpoint
+	}
+	if restoredStateDigest != "" {
+		receipt["restored_state_digest"] = restoredStateDigest
 	}
 	if retryOf != nil {
 		receipt["retry_of"] = retryOf
@@ -1411,7 +1420,7 @@ func (f Fixture) cancelTask(send sendFunc, origin map[string]any, worker *Worker
 	return nil
 }
 
-func (w *Worker) checkpoint(task map[string]any, parent any, eventIndex int, policyDigest string) map[string]any {
+func (w *Worker) checkpoint(task map[string]any, parent any, restoredStateDigest string, eventIndex int, policyDigest string) map[string]any {
 	taskID := fmt.Sprint(task["task_id"])
 	body := map[string]any{
 		"task_id":           taskID,
@@ -1421,6 +1430,9 @@ func (w *Worker) checkpoint(task map[string]any, parent any, eventIndex int, pol
 		"artifact_refs":     []string{},
 		"policy_digest":     policyDigest,
 		"created_by":        w.Descriptor["aid"],
+	}
+	if restoredStateDigest != "" {
+		body["restored_state_digest"] = restoredStateDigest
 	}
 	body["checkpoint_id"] = "checkpoint:sha256:" + digestHex(body)
 	return signBodyWithKey(w.PrivateKey, body, "checkpoint_signature")
@@ -2222,10 +2234,16 @@ func (f Fixture) drainQueueItem(send sendFunc, taskID, leaseID string) error {
 		return err
 	}
 	var parentCheckpoint any
+	restoredStateDigest := ""
 	if checkpointID := optionalString(item["resume_checkpoint"]); checkpointID != "" {
+		parent, err := f.checkpointByID(checkpointID)
+		if err != nil {
+			return err
+		}
 		parentCheckpoint = checkpointID
+		restoredStateDigest = optionalString(parent["state_digest"])
 	}
-	err = f.executeTask(send, origin, worker, task, parentCheckpoint, nil, func(receipt map[string]any) error {
+	err = f.executeTask(send, origin, worker, task, parentCheckpoint, restoredStateDigest, nil, func(receipt map[string]any) error {
 		extra["receipt_digest"] = digestHex(receipt)
 		return f.writeQueueItem(origin, worker, task, "completed", extra)
 	})

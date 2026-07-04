@@ -1018,7 +1018,9 @@ setTimeout(() => {
     const queuedResumeCheckpoint = queuedResumeDrainFrames[4].event.checkpoint;
     assert.equal(queuedResumeReceipt.task_id, queuedResumeTask.task_id);
     assert.equal(queuedResumeReceipt.resumed_from, checkpointEvent.checkpoint_id);
+    assert.equal(queuedResumeReceipt.restored_state_digest, checkpointEvent.state_digest);
     assert.equal(queuedResumeCheckpoint.parent_checkpoint, checkpointEvent.checkpoint_id);
+    assert.equal(queuedResumeCheckpoint.restored_state_digest, checkpointEvent.state_digest);
 
     const unknownCheckpointTask = {
       ...task,

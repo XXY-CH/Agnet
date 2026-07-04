@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v7.14 assessment
+状态：v7.15 assessment
 
 ## 一句话
 
@@ -103,6 +103,7 @@
 - Human Gateway exposes durable queue state and explicit local claim/drain actions。
 - Human Gateway can enqueue already signed tasks through the local queue action API。
 - Checkpoint resume can be queued durably before explicit drain。
+- Queued checkpoint resume records restored parent checkpoint state digest evidence。
 - Human/local queue actions are recorded as hash-chained audit evidence。
 - Human/local queue actions require signed action grants。
 - Human/local queue action grants bind a local actor string。
@@ -120,7 +121,7 @@
 - concurrency model。
 - task drafting/signing UI。
 - durable queue action nonce index。
-- real checkpoint state restore。
+- model KV/cache checkpoint restore。
 - automatic retry / backoff scanning。
 - binary/package provenance。
 - streamed output transcript evidence。
