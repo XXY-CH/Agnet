@@ -775,6 +775,22 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 		_, _ = fmt.Fprint(w, renderHumanGateway(entries, tasks, queue, approvals, rebindings, requesterRegistryAgents(requesterRegistry)))
 	})
 	mux.HandleFunc("/api/audit", func(w http.ResponseWriter, r *http.Request) {
+		if taskID := r.URL.Query().Get("task_id"); taskID != "" {
+			record, err := fixture.auditProof(taskID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"zone":         record["zone"],
+				"worker":       record["worker"],
+				"zone_binding": record["zone_binding"],
+				"receipt":      record["receipt"],
+				"task_id":      taskID,
+			})
+			return
+		}
 		entries, err := readAuditEntriesOrEmpty(auditPath)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1261,9 +1277,12 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 		worker, _ := record["worker"].(map[string]any)
 		receipt, _ := record["receipt"].(map[string]any)
 		sandbox, _ := receipt["sandbox"].(map[string]any)
+		taskID := fmt.Sprint(receipt["task_id"])
 		b.WriteString(`<tr><td><code>`)
-		b.WriteString(html.EscapeString(fmt.Sprint(receipt["task_id"])))
-		b.WriteString(`</code></td><td>`)
+		b.WriteString(html.EscapeString(taskID))
+		b.WriteString(`</code> <a href="/api/audit?task_id=`)
+		b.WriteString(html.EscapeString(url.QueryEscape(taskID)))
+		b.WriteString(`">proof</a></td><td>`)
 		b.WriteString(html.EscapeString(fmt.Sprint(worker["alias"])))
 		b.WriteString(`</td><td>`)
 		for index, artifact := range stringsFromAny(receipt["artifact_refs"]) {

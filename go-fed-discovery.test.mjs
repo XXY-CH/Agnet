@@ -1755,6 +1755,11 @@ setTimeout(() => {
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
     assert.equal(auditBody.entries.length, 84);
+    const auditProofResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit?task_id=${encodeURIComponent(task.task_id)}`);
+    assert.equal(auditProofResponse.status, 200);
+    const auditProofBody = await auditProofResponse.json();
+    assert.equal(auditProofBody.task_id, task.task_id);
+    assert.equal(auditProofBody.receipt.task_id, task.task_id);
     const queueActionRecords = auditBody.entries
       .map((entry) => entry.record)
       .filter((record) => record.kind === "go_queue_action");
@@ -1798,6 +1803,7 @@ setTimeout(() => {
     assert.match(pageText, /go_fed_task_verified/);
     assert.match(pageText, /tool-transcript\.json/);
     assert.match(pageText, /\/api\/artifacts\/manifest\?uri=/);
+    assert.match(pageText, /\/api\/audit\?task_id=go_fed_task_verified/);
     assert.match(pageText, /Browser Requester Key/);
     assert.match(pageText, /Requester Registry/);
     assert.match(pageText, /agent:\/\/browser\/assistant/);

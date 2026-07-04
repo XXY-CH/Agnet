@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.35 assessment
+状态：v8.36 assessment
 
 ## 一句话
 
@@ -140,6 +140,7 @@
 - Human Gateway page displays local approval session state from `/api/session`。
 - Human Gateway receipt table links all receipt artifacts, including persisted tool transcripts。
 - Human Gateway receipt table links artifacts to their read-only manifest API。
+- Human Gateway exposes task-scoped audit receipt proofs through `/api/audit?task_id=...` and receipt proof links。
 
 主要缺：
 
@@ -201,6 +202,7 @@
 - signed approval receipts visible through Human Gateway。
 - transcript artifact links visible through Human Gateway receipts。
 - artifact manifest links visible through Human Gateway receipts。
+- task-scoped audit receipt proof links visible through Human Gateway receipts。
 - local deployment security posture API。
 - browser-held requester key, rotation proof, rebinding proof API, local requester registry, requester registry table, alias rebinding UI, rebinding history table, and signed draft UI。
 - read-only artifact manifest API。
