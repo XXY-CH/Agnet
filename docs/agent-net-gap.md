@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.49 assessment
+状态：v8.50 assessment
 
 ## 一句话
 
@@ -145,6 +145,7 @@
 - Human Gateway streams completed tool transcripts through `/api/transcripts/stream?task_id=...` with receipt/audit/transcript proof headers。
 - Human Gateway receipt rows can load completed task transcript streams into a local transcript viewer。
 - Human Gateway reads running external tool stdout snapshots through `/api/transcripts/live?task_id=...`。
+- Human Gateway running task rows can load live transcript snapshots into the local transcript viewer。
 
 主要缺：
 
@@ -161,7 +162,7 @@
 - model KV/cache checkpoint restore。
 - automatic retry / backoff scanning。
 - package signature / SBOM provenance。
-- continuous live transcript tailing UI。
+- automatic/polling live transcript tailing UI。
 - MCP live transcript snapshots。
 - long-running MCP session reuse。
 - full MCP resource/prompt catalog storage。
@@ -211,6 +212,7 @@
 - receipt-scoped artifact verify/read links visible through Human Gateway receipts。
 - local deployment security posture API。
 - browser-held requester key, rotation proof, rebinding proof API, local requester registry, requester registry table, alias rebinding UI, rebinding history table, and signed draft UI。
+- running task live transcript snapshot button and viewer load action。
 - read-only artifact manifest API。
 - checkpoint evidence receipts。
 - docs and protocol proofs。

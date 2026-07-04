@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.49 complete; v8.50+ planned
+状态：v8.50 complete; v8.51+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -1246,8 +1246,34 @@ Example:
 - 不做 public deployment。
 - 不做 A2A/ARD compatibility。
 
+## v8.50: Running Transcript Snapshot UI
+
+状态：complete
+目标：Human Gateway running task rows can load live transcript snapshots into the local transcript viewer.
+
+新增：
+
+- Running task rows render a `live transcript` button.
+- `loadLiveTranscript(taskID)` fetches `/api/transcripts/live?task_id=<id>`.
+- The existing `transcript-viewer` displays the returned NDJSON snapshot text.
+- The integration test checks the running page includes the live transcript action and API fetch wiring before task cancellation.
+
+不做：
+
+- 不做 automatic polling。
+- 不做 SSE/WebSocket continuous tail。
+- 不做 MCP live transcript snapshots。
+- 不做 signed receipt proof for incomplete running output。
+- 不做 transcript search/index。
+- 不做 object-store backend。
+- 不做 artifact GC。
+- 不做 auth model for transcript reads。
+- 不做 container namespace sandbox。
+- 不做 public deployment。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
-- v8.50: continuous live transcript UI, MCP live transcript snapshots, container namespace sandboxing, object-store-backed artifacts, or another small Ultimate-aligned runtime/governance slice.
+- v8.51: automatic/polling live transcript tailing, MCP live transcript snapshots, container namespace sandboxing, object-store-backed artifacts, or another small Ultimate-aligned runtime/governance slice.
 
 Container sandbox and public transport remain separate hardening tracks。

@@ -1383,9 +1383,16 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 		b.WriteString(`<tr><td colspan="5">No tasks</td></tr>`)
 	}
 	for _, task := range tasks {
+		taskID := optionalString(task["task_id"])
 		b.WriteString(`<tr><td><code>`)
-		b.WriteString(html.EscapeString(optionalString(task["task_id"])))
-		b.WriteString(`</code></td><td>`)
+		b.WriteString(html.EscapeString(taskID))
+		b.WriteString(`</code>`)
+		if optionalString(task["status"]) == "running" {
+			b.WriteString(`<br><button type="button" onclick="loadLiveTranscript(`)
+			b.WriteString(html.EscapeString(strconv.Quote(taskID)))
+			b.WriteString(`)">live transcript</button>`)
+		}
+		b.WriteString(`</td><td>`)
 		b.WriteString(html.EscapeString(optionalString(task["status"])))
 		b.WriteString(`</td><td>`)
 		b.WriteString(html.EscapeString(optionalString(task["worker"])))
@@ -1521,6 +1528,11 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 async function loadTranscript(taskID) {
   const viewer = document.getElementById("transcript-viewer");
   const response = await fetch("/api/transcripts/stream?task_id=" + encodeURIComponent(taskID));
+  viewer.textContent = response.ok ? await response.text() : await response.text();
+}
+async function loadLiveTranscript(taskID) {
+  const viewer = document.getElementById("transcript-viewer");
+  const response = await fetch("/api/transcripts/live?task_id=" + encodeURIComponent(taskID));
   viewer.textContent = response.ok ? await response.text() : await response.text();
 }
 </script><h2>Audit</h2><table><thead><tr><th>Index</th><th>Kind</th><th>Hash</th></tr></thead><tbody>`)

@@ -1634,6 +1634,11 @@ setTimeout(() => {
     assert.equal(liveTranscriptLines[0].type, "stdout.chunk");
     assert.equal(liveTranscriptLines[0].task_id, slowTask.task_id);
     assert.match(liveTranscriptLines[0].text, /Started/);
+    const runningPageResponse = await fetch(`http://127.0.0.1:${humanPort}/`);
+    assert.equal(runningPageResponse.status, 200);
+    const runningPageText = await runningPageResponse.text();
+    assert.match(runningPageText, /loadLiveTranscript\(&#34;go_fed_task_live_cancelled&#34;\)/);
+    assert.match(runningPageText, /\/api\/transcripts\/live\?task_id=/);
     const liveCancel = {
       task_id: slowTask.task_id,
       from: requester.aid,
