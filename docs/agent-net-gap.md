@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.5 assessment
+状态：v8.6 assessment
 
 ## 一句话
 
@@ -115,6 +115,7 @@
 - Human Gateway can accept externally signed requester tasks through the draft endpoint without holding the requester private key。
 - Human Gateway write actions can require a bearer token before mutation。
 - Human Gateway exposes its local deployment security posture through `/api/security`。
+- Human Gateway page can generate a browser-held requester key and submit signed queue drafts。
 - Direct Go tool tasks wait for explicit Human Gateway approval before execution。
 - Queued Go drains wait for explicit Human Gateway approval before tool execution。
 - Human Gateway approvals can deny or expire before tool execution。
@@ -125,7 +126,7 @@
 - configurable actor authorization policy。
 - container-grade sandbox。
 - concurrency model。
-- browser-side private-key storage and requester key management UX。
+- encrypted browser-side private-key storage and requester key rotation UX。
 - login-backed approval identity。
 - token storage / rotation。
 - durable queue action nonce index。
@@ -171,12 +172,12 @@
 - approval denial/expiry gate。
 - signed approval receipts visible through Human Gateway。
 - local deployment security posture API。
+- browser-held requester key and signed draft UI。
 - checkpoint evidence receipts。
 - docs and protocol proofs。
 
 主要缺：
 
-- task list / status view。
 - login-backed approval identity。
 - artifact browser。
 - audit viewer。

@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.5 complete; v8.6+ planned
+状态：v8.6 complete; v8.7+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -127,8 +127,31 @@
 - 不做 token storage or rotation。
 - 不开放非 localhost bind。
 
+## v8.6: Browser Requester Key UI
+
+状态：complete
+目标：Human Gateway page can manage a browser-held requester key and submit signed queue drafts without giving the private key to Go.
+
+新增：
+
+- Human Gateway page exposes a Browser Requester Key panel.
+- Browser WebCrypto generates an Ed25519 requester key.
+- Browser `localStorage` keeps the requester private key under `agent-space-browser-requester`.
+- The browser derives `aid`, self-signs `descriptor_signature`, signs a draft task, and posts it to `POST /api/queue/drafts`.
+- The draft submit path reuses the existing external signed draft enqueue verification path.
+
+不做：
+
+- 不做 login/session identity。
+- 不做 role model。
+- 不做 encrypted key store。
+- 不做 cross-browser key sync。
+- 不做 key rotation UI。
+- 不做 polished task builder。
+- 不做 public deployment。
+
 ## 后续方向
 
-- v8.6: browser key management UI or the next deployable transport/security hardening slice.
+- v8.7: key rotation/import-export UI or the next deployable transport/security hardening slice.
 
 Container sandbox and public transport remain separate hardening tracks。

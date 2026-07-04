@@ -1006,6 +1006,7 @@ main{max-width:1120px;margin:0 auto;padding:28px 22px 48px}
 header{display:flex;justify-content:space-between;gap:18px;align-items:flex-end;border-bottom:1px solid #d9dee7;padding-bottom:18px;margin-bottom:22px}
 h1{font-size:24px;margin:0} h2{font-size:16px;margin:28px 0 10px}.metric{font-size:13px;color:#4c5563}
 table{width:100%;border-collapse:collapse;background:white;border:1px solid #d9dee7}th,td{text-align:left;padding:10px;border-bottom:1px solid #e8ebf0;font-size:14px;vertical-align:top}th{background:#eef1f5;font-weight:650}
+form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;background:white;border:1px solid #d9dee7;padding:12px}label{display:grid;gap:4px;font-size:12px;color:#4c5563}input{font:inherit;padding:7px;border:1px solid #c8ced8}button{font:inherit;padding:7px 10px;border:1px solid #aab3c1;background:#eef1f5}.toolrow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}pre{white-space:pre-wrap;background:white;border:1px solid #d9dee7;padding:10px;font-size:12px}
 a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
 </style></head><body><main>`)
 	b.WriteString(`<header><div><h1>Agent Space Human Gateway</h1><div class="metric">read-only / local proof</div></div><div class="metric">audit entries: `)
@@ -1015,6 +1016,7 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 	b.WriteString(` · receipts: `)
 	b.WriteString(fmt.Sprint(len(receipts)))
 	b.WriteString(`</div></header>`)
+	b.WriteString(browserRequesterPanel())
 	b.WriteString(`<h2>Tasks</h2><table><thead><tr><th>Task</th><th>Status</th><th>Worker</th><th>Receipt</th><th>Error</th></tr></thead><tbody>`)
 	if len(tasks) == 0 {
 		b.WriteString(`<tr><td colspan="5">No tasks</td></tr>`)
@@ -1109,6 +1111,86 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 	}
 	b.WriteString(`</tbody></table></main></body></html>`)
 	return b.String()
+}
+
+func browserRequesterPanel() string {
+	return `<section id="browser-requester"><h2>Browser Requester Key</h2><div class="toolrow"><button id="browser-generate-key" type="button">Generate</button><button id="browser-clear-key" type="button">Clear</button></div><form id="browser-draft-form"><label>Task<input id="browser-task-id" value="browser_draft_task"></label><label>Target<input id="browser-task-to" value="agent://zone-b/translator"></label><label>Intent<input id="browser-task-intent" value="Draft from a browser-held requester key."></label><label>Token<input id="browser-token" type="password" autocomplete="off"></label><button type="submit">Sign Draft</button></form><pre id="browser-requester-status"></pre></section><script>
+(() => {
+  const storageKey = "agent-space-browser-requester";
+  const encoder = new TextEncoder();
+  const status = document.getElementById("browser-requester-status");
+  const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const canonical = (value) => {
+    if (value === null || typeof value !== "object") return JSON.stringify(value);
+    if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]";
+    return "{" + Object.keys(value).sort().map((key) => JSON.stringify(key) + ":" + canonical(value[key])).join(",") + "}";
+  };
+  const joinBytes = (...parts) => {
+    const out = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
+    let offset = 0;
+    for (const part of parts) {
+      out.set(part, offset);
+      offset += part.length;
+    }
+    return out;
+  };
+  const signBody = async (privateKey, body, signatureKey) => {
+    const signature = await crypto.subtle.sign({ name: "Ed25519" }, privateKey, encoder.encode(canonical(body)));
+    return { ...body, [signatureKey]: b64url(signature) };
+  };
+  const render = () => {
+    const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
+    status.textContent = saved ? "aid: " + saved.descriptor.aid : "No browser requester key";
+  };
+  document.getElementById("browser-generate-key").onclick = async () => {
+    const keys = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
+    const spki = new Uint8Array(await crypto.subtle.exportKey("spki", keys.publicKey));
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", joinBytes(encoder.encode("asp-agent-id-v1"), new Uint8Array([0]), spki)));
+    const privateJwk = await crypto.subtle.exportKey("jwk", keys.privateKey);
+    const descriptor = await signBody(keys.privateKey, {
+      alias: "agent://browser/requester",
+      aid: "aid:ed25519:" + b64url(digest),
+      public_key_spki: b64url(spki),
+      transports: ["browser://local"],
+      capabilities: ["summarize.text"],
+      policy: {}
+    }, "descriptor_signature");
+    localStorage.setItem(storageKey, JSON.stringify({ descriptor, privateJwk }));
+    render();
+  };
+  document.getElementById("browser-clear-key").onclick = () => {
+    localStorage.removeItem(storageKey);
+    render();
+  };
+  document.getElementById("browser-draft-form").onsubmit = async (event) => {
+    event.preventDefault();
+    const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
+    if (!saved) {
+      status.textContent = "No browser requester key";
+      return;
+    }
+    const privateKey = await crypto.subtle.importKey("jwk", saved.privateJwk, { name: "Ed25519" }, true, ["sign"]);
+    const task = await signBody(privateKey, {
+      task_id: document.getElementById("browser-task-id").value,
+      from: saved.descriptor.aid,
+      to: document.getElementById("browser-task-to").value,
+      intent: document.getElementById("browser-task-intent").value,
+      scope: { network: false, write: [] },
+      budget: { tokens: 1000 }
+    }, "signature");
+    const token = document.getElementById("browser-token").value;
+    const headers = { "content-type": "application/json" };
+    if (token) headers.authorization = "Bearer " + token;
+    const response = await fetch("/api/queue/drafts", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ requester: saved.descriptor, task })
+    });
+    status.textContent = response.ok ? JSON.stringify(await response.json(), null, 2) : await response.text();
+  };
+  render();
+})();
+</script>`
 }
 
 func shortDigest(value string) string {

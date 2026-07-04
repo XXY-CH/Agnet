@@ -1543,6 +1543,11 @@ setTimeout(() => {
     assert.match(pageText, /cancelled/);
     assert.match(pageText, /agent:\/\/zone-b\/translator/);
     assert.match(pageText, /go_fed_task_verified/);
+    assert.match(pageText, /Browser Requester Key/);
+    assert.match(pageText, /crypto\.subtle\.generateKey/);
+    assert.match(pageText, /agent-space-browser-requester/);
+    assert.match(pageText, /descriptor_signature/);
+    assert.match(pageText, /\/api\/queue\/drafts/);
     assert.match(pageText, /1 signed/);
     assert.match(pageText, /local-temp-dir/);
 
