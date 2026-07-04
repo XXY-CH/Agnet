@@ -1,6 +1,6 @@
 # Agent Space v7 Roadmap
 
-状态：v7.11 complete; v7.12+ planned
+状态：v7.12 complete; v7.13+ planned
 目标：从 durable task state 进入 durable scheduler queue，让任务生命周期有本地所有权、可恢复入口和后续调度面。
 
 ## v7.0: Durable Queue Enqueue
@@ -244,6 +244,27 @@
 - 不做 grant revocation list。
 - 不做 durable nonce index。
 - 不做 concurrent replay race hardening。
+- 不做 browser-side signing UX。
+- 不开放非 localhost。
+
+## v7.12: Queue Action Grant Identity
+
+状态：complete
+目标：queue action grants bind to a local actor string.
+
+新增：
+
+- Queue action grants require `actor`。
+- Queue action request bodies must carry the same `actor`。
+- Missing request `actor` is rejected before applying the queue action。
+- Actor mismatch is rejected before applying the queue action。
+- Actor mismatch failures are recorded as `go_queue_action` audit records。
+
+不做：
+
+- 不做 login/session identity。
+- 不做 actor authorization policy。
+- 不做 persistent user accounts。
 - 不做 browser-side signing UX。
 - 不开放非 localhost。
 

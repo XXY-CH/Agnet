@@ -108,6 +108,7 @@ function queueActionGrant(action, taskId, task, extra = {}) {
     action,
     task_id: taskId,
     task_digest: task ? createHash("sha256").update(canonical(task)).digest("hex") : null,
+    actor: "human://local",
     authority: zoneA.descriptor.zid,
     authority_descriptor: zoneA.descriptor,
     scope: { actions: [action] },
@@ -648,6 +649,7 @@ setTimeout(() => {
         action: "claim",
         task_id: humanQueuedTask.task_id,
         owner: "human://local",
+        actor: "human://local",
         action_grant: queueActionGrant("claim", humanQueuedTask.task_id, null, { expires_at: "2000-01-01T00:00:00Z" }),
       }),
     });
@@ -661,11 +663,39 @@ setTimeout(() => {
         action: "claim",
         task_id: humanQueuedTask.task_id,
         owner: "human://local",
+        actor: "human://local",
         action_grant: queueActionGrant("claim", humanQueuedTask.task_id, null, { scope: { actions: ["drain"] } }),
       }),
     });
     assert.equal(outOfScopeGrantClaimResponse.status, 400);
     assert.match(await outOfScopeGrantClaimResponse.text(), /queue action grant scope mismatch/);
+
+    const missingActorGrantClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "claim",
+        task_id: humanQueuedTask.task_id,
+        owner: "human://local",
+        action_grant: queueActionGrant("claim", humanQueuedTask.task_id),
+      }),
+    });
+    assert.equal(missingActorGrantClaimResponse.status, 400);
+    assert.match(await missingActorGrantClaimResponse.text(), /queue action actor missing/);
+
+    const actorMismatchGrantClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "claim",
+        task_id: humanQueuedTask.task_id,
+        owner: "human://local",
+        actor: "human://other",
+        action_grant: queueActionGrant("claim", humanQueuedTask.task_id),
+      }),
+    });
+    assert.equal(actorMismatchGrantClaimResponse.status, 400);
+    assert.match(await actorMismatchGrantClaimResponse.text(), /queue action grant actor mismatch/);
 
     const humanClaimGrant = queueActionGrant("claim", humanQueuedTask.task_id);
     const humanClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
@@ -675,6 +705,7 @@ setTimeout(() => {
         action: "claim",
         task_id: humanQueuedTask.task_id,
         owner: "human://local",
+        actor: "human://local",
         action_grant: humanClaimGrant,
       }),
     });
@@ -689,6 +720,7 @@ setTimeout(() => {
         action: "claim",
         task_id: humanQueuedTask.task_id,
         owner: "human://local",
+        actor: "human://local",
         action_grant: humanClaimGrant,
       }),
     });
@@ -702,6 +734,7 @@ setTimeout(() => {
         action: "drain",
         task_id: humanQueuedTask.task_id,
         lease_id: humanClaimBody.lease_id,
+        actor: "human://local",
         action_grant: queueActionGrant("drain", humanQueuedTask.task_id),
       }),
     });
@@ -724,6 +757,7 @@ setTimeout(() => {
         origin_zone: zoneA.descriptor,
         requester: requester.descriptor,
         task: signedHumanCreatedQueuedTask,
+        actor: "human://local",
         action_grant: queueActionGrant("enqueue", humanCreatedQueuedTask.task_id, signedHumanCreatedQueuedTask),
       }),
     });
@@ -1174,7 +1208,7 @@ setTimeout(() => {
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 74);
+    assert.equal(auditBody.entries.length, 76);
     const queueActionRecords = auditBody.entries
       .map((entry) => entry.record)
       .filter((record) => record.kind === "go_queue_action");
@@ -1184,6 +1218,8 @@ setTimeout(() => {
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /grant missing/.test(record.error)), true);
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /grant expired/.test(record.error)), true);
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /scope mismatch/.test(record.error)), true);
+    assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /actor missing/.test(record.error)), true);
+    assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /actor mismatch/.test(record.error)), true);
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /grant replay/.test(record.error)), true);
     assert.equal(queueActionRecords.filter((record) => record.status === "ok").every((record) => /^[0-9a-f]{64}$/.test(record.grant_digest)), true);
 

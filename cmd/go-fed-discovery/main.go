@@ -2002,6 +2002,15 @@ func (f Fixture) requireQueueActionGrant(action map[string]any) error {
 	if !queueActionGrantAllows(grant, optionalString(action["action"])) {
 		return errors.New("queue action grant scope mismatch")
 	}
+	if optionalString(grant["actor"]) == "" {
+		return errors.New("queue action grant actor missing")
+	}
+	if optionalString(action["actor"]) == "" {
+		return errors.New("queue action actor missing")
+	}
+	if grant["actor"] != action["actor"] {
+		return errors.New("queue action grant actor mismatch")
+	}
 	expiresAt, err := time.Parse(time.RFC3339Nano, optionalString(grant["expires_at"]))
 	if err != nil {
 		return errors.New("queue action grant expires_at invalid")
