@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.8 assessment
+状态：v8.9 assessment
 
 ## 一句话
 
@@ -116,6 +116,7 @@
 - Human Gateway write actions can require a bearer token before mutation。
 - Human Gateway exposes its local deployment security posture through `/api/security`。
 - Human Gateway page can generate, export, import, rotate, and use a browser-held requester key to submit signed queue drafts。
+- Human Gateway can issue a Zone-signed requester alias rebinding proof after verifying browser requester rotation proof。
 - Direct Go tool tasks wait for explicit Human Gateway approval before execution。
 - Queued Go drains wait for explicit Human Gateway approval before tool execution。
 - Human Gateway approvals can deny or expire before tool execution。
@@ -127,7 +128,8 @@
 - container-grade sandbox。
 - concurrency model。
 - encrypted browser-side private-key storage。
-- Zone alias rebinding after browser requester key rotation。
+- persistent registry alias update after browser requester key rotation。
+- browser UI for requester alias rebinding submission。
 - server-side rotation registry。
 - passphrase-protected requester key export。
 - login-backed approval identity。
@@ -175,7 +177,7 @@
 - approval denial/expiry gate。
 - signed approval receipts visible through Human Gateway。
 - local deployment security posture API。
-- browser-held requester key, rotation proof, and signed draft UI。
+- browser-held requester key, rotation proof, rebinding proof API, and signed draft UI。
 - checkpoint evidence receipts。
 - docs and protocol proofs。
 

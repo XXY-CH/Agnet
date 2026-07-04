@@ -934,6 +934,42 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "requester": requester, "task": signedTask, "enqueue": result})
 	})
+	mux.HandleFunc("/api/requester/rebindings", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if !requireWriteToken(w, r) {
+			return
+		}
+		var request map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		previous, ok := request["previous_descriptor"].(map[string]any)
+		if !ok {
+			http.Error(w, "previous_descriptor is required", http.StatusBadRequest)
+			return
+		}
+		next, ok := request["next_descriptor"].(map[string]any)
+		if !ok {
+			http.Error(w, "next_descriptor is required", http.StatusBadRequest)
+			return
+		}
+		rotationProof, ok := request["rotation_proof"].(map[string]any)
+		if !ok {
+			http.Error(w, "rotation_proof is required", http.StatusBadRequest)
+			return
+		}
+		proof, err := fixture.requesterAliasRebindingProof(previous, next, rotationProof)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "authority_descriptor": fixture.Authority, "alias_rebinding_proof": proof})
+	})
 	mux.Handle("/artifacts/", http.StripPrefix("/artifacts/", http.FileServer(http.Dir("artifacts"))))
 	_ = http.Serve(listener, mux)
 }
@@ -1444,6 +1480,24 @@ func (f Fixture) humanGatewayRequester() (map[string]any, error) {
 		"policy":          map[string]any{"local_proof": true},
 	}
 	return signBodyWithKey(f.AuthorityPrivateKey, body, "descriptor_signature"), nil
+}
+
+func (f Fixture) requesterAliasRebindingProof(previous, next, rotationProof map[string]any) (map[string]any, error) {
+	if previous["alias"] != next["alias"] {
+		return nil, errors.New("alias rebinding requires matching aliases")
+	}
+	if err := verifyAgentRotationProof(rotationProof, previous, next); err != nil {
+		return nil, err
+	}
+	body := map[string]any{
+		"zone":         f.Authority["zid"],
+		"alias":        previous["alias"],
+		"previous_aid": previous["aid"],
+		"next_aid":     next["aid"],
+	}
+	proof := signBodyWithKey(f.AuthorityPrivateKey, body, "zone_signature")
+	proof["agent_rotation_proof"] = rotationProof
+	return proof, nil
 }
 
 func (f Fixture) workersByCapability(capability string) []Worker {
@@ -3257,6 +3311,44 @@ func verifyAgentDescriptor(agent map[string]any) error {
 		return errors.New("agent id mismatch")
 	}
 	return verifyMapSignature(key, agent, "descriptor_signature")
+}
+
+func verifyAgentRotationProof(proof, previous, next map[string]any) error {
+	if err := verifyAgentDescriptor(previous); err != nil {
+		return err
+	}
+	if err := verifyAgentDescriptor(next); err != nil {
+		return err
+	}
+	body := map[string]any{
+		"previous_aid": previous["aid"],
+		"next_aid":     next["aid"],
+	}
+	if proof["previous_aid"] != body["previous_aid"] || proof["next_aid"] != body["next_aid"] {
+		return errors.New("rotation proof aid mismatch")
+	}
+	previousKey, _, err := publicKey(previous)
+	if err != nil {
+		return err
+	}
+	nextKey, _, err := publicKey(next)
+	if err != nil {
+		return err
+	}
+	previousSigned := map[string]any{
+		"previous_aid":       body["previous_aid"],
+		"next_aid":           body["next_aid"],
+		"previous_signature": proof["previous_signature"],
+	}
+	if err := verifyMapSignature(previousKey, previousSigned, "previous_signature"); err != nil {
+		return err
+	}
+	nextSigned := map[string]any{
+		"previous_aid":   body["previous_aid"],
+		"next_aid":       body["next_aid"],
+		"next_signature": proof["next_signature"],
+	}
+	return verifyMapSignature(nextKey, nextSigned, "next_signature")
 }
 
 func publicKey(value map[string]any) (ed25519.PublicKey, []byte, error) {

@@ -5,7 +5,7 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { canonical, capabilityCredentialId, loadOrCreateAgent, loadOrCreateZone, publicKeyFromDescriptor, resolveAgent, signObject, verifyCredentialStatus, verifyObject, writeTrustedZones } from "./asp-core.mjs";
+import { canonical, capabilityCredentialId, createAgent, loadOrCreateAgent, loadOrCreateZone, publicKeyFromDescriptor, resolveAgent, rotationProof, signObject, verifyAliasRebindingProof, verifyCredentialStatus, verifyObject, writeTrustedZones } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -1003,6 +1003,29 @@ setTimeout(() => {
     assert.equal(browserHeldQueueResponse.status, 200);
     const browserHeldQueueBody = await browserHeldQueueResponse.json();
     assert.equal(browserHeldQueueBody.queue.some((item) => item.task_id === browserHeldTask.task_id && item.status === "queued"), true);
+
+    const previousBrowserRequester = createAgent("agent://browser/requester");
+    const nextBrowserRequester = createAgent("agent://browser/requester");
+    const browserRotationProof = rotationProof(previousBrowserRequester, nextBrowserRequester);
+    const browserRebindingResponse = await fetch(`http://127.0.0.1:${humanPort}/api/requester/rebindings`, {
+      method: "POST",
+      headers: humanHeaders(),
+      body: JSON.stringify({
+        previous_descriptor: previousBrowserRequester.descriptor,
+        next_descriptor: nextBrowserRequester.descriptor,
+        rotation_proof: browserRotationProof,
+      }),
+    });
+    assert.equal(browserRebindingResponse.status, 200);
+    const browserRebindingBody = await browserRebindingResponse.json();
+    assert.equal(browserRebindingBody.alias_rebinding_proof.alias, "agent://browser/requester");
+    assert.equal(browserRebindingBody.alias_rebinding_proof.agent_rotation_proof.previous_aid, previousBrowserRequester.aid);
+    assert.equal(verifyAliasRebindingProof(
+      browserRebindingBody.alias_rebinding_proof,
+      browserRebindingBody.authority_descriptor,
+      previousBrowserRequester.descriptor,
+      nextBrowserRequester.descriptor,
+    ), true);
 
     const deniedApprovalTask = {
       ...task,

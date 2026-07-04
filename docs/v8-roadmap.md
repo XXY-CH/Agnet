@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.8 complete; v8.9+ planned
+状态：v8.9 complete; v8.10+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -199,8 +199,32 @@
 - 不做 login/session identity。
 - 不做 public deployment。
 
+## v8.9: Requester Alias Rebinding Proof API
+
+状态：complete
+目标：Human Gateway can issue a Zone-signed requester alias rebinding proof after verifying a browser requester rotation proof.
+
+新增：
+
+- Human Gateway serves `POST /api/requester/rebindings`.
+- The endpoint requires the existing Human Gateway write token when configured.
+- Go verifies `previous_descriptor`, `next_descriptor`, and `rotation_proof`.
+- Go signs `alias_rebinding_proof` with the local Zone authority key.
+- The proof embeds the verified `agent_rotation_proof`.
+
+不做：
+
+- 不持久更新 registry alias binding。
+- 不做 server-side rotation registry。
+- 不做 browser UI for rebinding submission。
+- 不做 automatic rebinding after rotation。
+- 不做 multi-key account manager。
+- 不做 compromised-key recovery。
+- 不做 login/session identity。
+- 不做 public deployment。
+
 ## 后续方向
 
-- v8.9: Zone alias rebinding UI/API or the next deployable transport/security hardening slice.
+- v8.10: persistent alias binding registry update, browser rebinding UI, or the next deployable transport/security hardening slice.
 
 Container sandbox and public transport remain separate hardening tracks。
