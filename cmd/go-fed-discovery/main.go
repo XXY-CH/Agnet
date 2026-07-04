@@ -1082,6 +1082,26 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 			http.Error(w, "artifact uri is required", http.StatusBadRequest)
 			return
 		}
+		if taskID := r.URL.Query().Get("task_id"); taskID != "" {
+			record, err := fixture.auditProof(taskID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+			receipt, _ := record["receipt"].(map[string]any)
+			manifest, err := receiptArtifactManifest(receipt, uri)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+			if err := verifyArtifactManifests(receipt, fixture.ArtifactStoreDir); err != nil {
+				http.Error(w, err.Error(), http.StatusConflict)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"task_id": taskID, "uri": uri, "audit_hash": record["audit_hash"], "receipt_digest": digestHex(receipt), "manifest": manifest})
+			return
+		}
 		path, err := localArtifactPath(uri)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1372,7 +1392,9 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 			b.WriteString(`">`)
 			b.WriteString(html.EscapeString(artifact))
 			b.WriteString(`</a>`)
-			b.WriteString(` <a href="/api/artifacts/manifest?uri=`)
+			b.WriteString(` <a href="/api/artifacts/manifest?task_id=`)
+			b.WriteString(html.EscapeString(url.QueryEscape(taskID)))
+			b.WriteString(`&amp;uri=`)
 			b.WriteString(html.EscapeString(url.QueryEscape(artifact)))
 			b.WriteString(`">manifest</a>`)
 			b.WriteString(` <a href="/api/artifacts/verify?task_id=`)

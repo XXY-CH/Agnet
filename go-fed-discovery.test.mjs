@@ -1832,7 +1832,7 @@ setTimeout(() => {
     assert.match(pageText, /agent:\/\/zone-b\/translator/);
     assert.match(pageText, /go_fed_task_verified/);
     assert.match(pageText, /tool-transcript\.json/);
-    assert.match(pageText, /\/api\/artifacts\/manifest\?uri=/);
+    assert.match(pageText, /\/api\/artifacts\/manifest\?task_id=go_fed_task_verified&amp;uri=/);
     assert.match(pageText, /\/api\/artifacts\/verify\?task_id=go_fed_task_verified&amp;uri=/);
     assert.match(pageText, /\/api\/artifacts\/read\?task_id=go_fed_task_verified&amp;uri=/);
     assert.match(pageText, /\/api\/audit\?task_id=go_fed_task_verified/);
@@ -1872,6 +1872,14 @@ setTimeout(() => {
     const artifactManifestResponse = await fetch(`http://127.0.0.1:${humanPort}/api/artifacts/manifest?uri=${encodeURIComponent(artifactEvent.manifest.uri)}`);
     assert.equal(artifactManifestResponse.status, 200);
     assert.deepEqual(await artifactManifestResponse.json(), artifactEvent.manifest);
+    const scopedArtifactManifestResponse = await fetch(`http://127.0.0.1:${humanPort}/api/artifacts/manifest?task_id=${encodeURIComponent(task.task_id)}&uri=${encodeURIComponent(artifactEvent.manifest.uri)}`);
+    assert.equal(scopedArtifactManifestResponse.status, 200);
+    const scopedArtifactManifestBody = await scopedArtifactManifestResponse.json();
+    assert.equal(scopedArtifactManifestBody.task_id, task.task_id);
+    assert.equal(scopedArtifactManifestBody.uri, artifactEvent.manifest.uri);
+    assert.equal(scopedArtifactManifestBody.audit_hash, receiptAuditEntry.hash);
+    assert.equal(scopedArtifactManifestBody.receipt_digest, receiptDigest);
+    assert.deepEqual(scopedArtifactManifestBody.manifest, artifactEvent.manifest);
   } finally {
     try {
       process.kill(-gateway.pid, "SIGINT");
