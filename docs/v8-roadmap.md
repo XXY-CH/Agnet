@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.14 complete; v8.15+ planned
+状态：v8.15 complete; v8.16+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -341,8 +341,30 @@
 - 不做 login/session identity。
 - 不做 public deployment。
 
+## v8.15: Durable Queue Grant Nonce Index
+
+状态：complete
+目标：Human Gateway queue action grants are consumed through a durable local nonce index instead of replay checks depending on audit scans.
+
+新增：
+
+- Verified queue action grants create a local grant-use record in the audit-derived `*-queue-grants` directory.
+- The grant-use filename is the existing grant digest.
+- The grant-use record stores grant digest, action, task id, actor, and consumed timestamp.
+- Reusing the same grant digest is rejected through exclusive local file creation.
+- Existing `go_queue_action` audit evidence remains unchanged.
+
+不做：
+
+- 不做 distributed nonce service。
+- 不做 configurable actor authorization policy。
+- 不做 login/session identity。
+- 不做 token storage or rotation。
+- 不做 public deployment。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
-- v8.15: Human Gateway requester selector UI, alias delete/disable, or the next deployable transport/security hardening slice.
+- v8.16: configurable actor authorization policy, container sandbox hardening, or another small Ultimate-aligned governance/runtime slice.
 
 Container sandbox and public transport remain separate hardening tracks。

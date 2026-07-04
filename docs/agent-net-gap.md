@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.14 assessment
+状态：v8.15 assessment
 
 ## 一句话
 
@@ -110,7 +110,7 @@
 - Human/local queue actions pass a minimal local actor allowlist。
 - Human/local queue action audit records include actor evidence and local policy result evidence when the policy gate is reached。
 - Human/local queue action grants carry action scope and expiry。
-- Human/local queue action grants are rejected on replay after successful use。
+- Human/local queue action grants are rejected on replay through a durable local nonce index。
 - Human Gateway can draft, locally sign, and enqueue queued tasks through the existing queue action path。
 - Human Gateway can accept externally signed requester tasks through the draft endpoint without holding the requester private key。
 - Human Gateway write actions can require a bearer token before mutation。
@@ -137,7 +137,6 @@
 - passphrase-protected requester key export。
 - login-backed approval identity。
 - token storage / rotation。
-- durable queue action nonce index。
 - model KV/cache checkpoint restore。
 - automatic retry / backoff scanning。
 - binary/package provenance。

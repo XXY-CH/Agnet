@@ -1038,6 +1038,10 @@ func approvalDirForAudit(auditPath string) string {
 	return strings.TrimSuffix(auditPath, filepath.Ext(auditPath)) + "-approvals"
 }
 
+func queueGrantDirForAudit(auditPath string) string {
+	return strings.TrimSuffix(auditPath, filepath.Ext(auditPath)) + "-queue-grants"
+}
+
 func readTaskStates(dir string) ([]map[string]any, error) {
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, os.ErrNotExist) {
@@ -2781,14 +2785,7 @@ func (f Fixture) requireQueueActionGrant(action map[string]any) error {
 		return errors.New("queue action grant signature verification failed")
 	}
 	grantDigest := digestHex(grant)
-	used, err := f.queueActionGrantUsed(grantDigest)
-	if err != nil {
-		return err
-	}
-	if used {
-		return errors.New("queue action grant replay")
-	}
-	return nil
+	return f.consumeQueueActionGrant(grantDigest, action)
 }
 
 func queueActionGrantAllows(grant map[string]any, action string) bool {
@@ -2813,22 +2810,36 @@ func queueActionActorAllowed(actor, action string) bool {
 	}
 }
 
-func (f Fixture) queueActionGrantUsed(grantDigest string) (bool, error) {
+func (f Fixture) consumeQueueActionGrant(grantDigest string, action map[string]any) error {
 	if f.Audit == nil || f.Audit.Path == "" {
-		return false, nil
+		return nil
 	}
-	entries, err := readAuditEntriesOrEmpty(f.Audit.Path)
+	dir := queueGrantDirForAudit(f.Audit.Path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, grantDigest+".json")
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if errors.Is(err, os.ErrExist) {
+		return errors.New("queue action grant replay")
+	}
 	if err != nil {
-		return false, err
+		return err
 	}
-	// ponytail: linear audit scan is enough for local Human Gateway; add a nonce index before concurrent/non-local use.
-	for _, entry := range entries {
-		record, _ := entry["record"].(map[string]any)
-		if record["kind"] == "go_queue_action" && record["status"] == "ok" && optionalString(record["grant_digest"]) == grantDigest {
-			return true, nil
-		}
+	defer file.Close()
+	record := map[string]any{
+		"grant_digest": grantDigest,
+		"action":       optionalString(action["action"]),
+		"task_id":      queueActionTaskID(action, nil),
+		"actor":        queueActionActor(action),
+		"consumed_at":  time.Now().UTC().Format(time.RFC3339Nano),
 	}
-	return false, nil
+	data, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		return err
+	}
+	_, err = file.Write(append(data, '\n'))
+	return err
 }
 
 func (f Fixture) recordQueueAction(action map[string]any, result map[string]any, actionErr error) error {

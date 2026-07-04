@@ -495,6 +495,7 @@ setTimeout(() => {
   await rm("state/go-fed-discovery-audit-tasks", { recursive: true, force: true });
   await rm("state/go-fed-discovery-audit-queue", { recursive: true, force: true });
   await rm("state/go-fed-discovery-audit-approvals", { recursive: true, force: true });
+  await rm("state/go-fed-discovery-audit-queue-grants", { recursive: true, force: true });
   await rm("state/go-fed-discovery-requester-registry.json", { force: true });
   await rm("state/go-fed-discovery-requester-rebindings.json", { force: true });
   await writeTrustedZones("state/go-fed-discovery-trusted-origin.json", [zoneA]);
@@ -892,6 +893,7 @@ setTimeout(() => {
     assert.match(await actorPolicyDeniedClaimResponse.text(), /queue action actor policy denied/);
 
     const humanClaimGrant = queueActionGrant("claim", humanQueuedTask.task_id);
+    const humanClaimGrantDigest = createHash("sha256").update(canonical(humanClaimGrant)).digest("hex");
     const humanClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
       method: "POST",
       headers: humanHeaders(),
@@ -906,6 +908,11 @@ setTimeout(() => {
     assert.equal(humanClaimResponse.status, 200);
     const humanClaimBody = await humanClaimResponse.json();
     assert.match(humanClaimBody.lease_id, /^lease:sha256:[0-9a-f]{64}$/);
+    const grantUse = JSON.parse(await readFile(`state/go-fed-discovery-audit-queue-grants/${humanClaimGrantDigest}.json`, "utf8"));
+    assert.equal(grantUse.grant_digest, humanClaimGrantDigest);
+    assert.equal(grantUse.action, "claim");
+    assert.equal(grantUse.task_id, humanQueuedTask.task_id);
+    assert.equal(grantUse.actor, "human://local");
 
     const replayedHumanClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
       method: "POST",
