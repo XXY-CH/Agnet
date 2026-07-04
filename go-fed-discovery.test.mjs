@@ -1845,6 +1845,9 @@ setTimeout(() => {
     assert.match(pageText, /agent:\/\/zone-b\/translator/);
     assert.match(pageText, /go_fed_task_verified/);
     assert.match(pageText, /tool-transcript\.json/);
+    assert.match(pageText, /transcript-viewer/);
+    assert.match(pageText, /loadTranscript\(&#34;go_fed_task_verified&#34;\)/);
+    assert.match(pageText, /\/api\/transcripts\/stream\?task_id=/);
     assert.match(pageText, /\/api\/artifacts\/manifest\?task_id=go_fed_task_verified&amp;uri=/);
     assert.match(pageText, /\/api\/artifacts\/verify\?task_id=go_fed_task_verified&amp;uri=/);
     assert.match(pageText, /\/api\/artifacts\/read\?task_id=go_fed_task_verified&amp;uri=/);

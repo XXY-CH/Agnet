@@ -26,6 +26,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1449,6 +1450,7 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 		b.WriteString(`">proof</a></td><td>`)
 		b.WriteString(html.EscapeString(fmt.Sprint(worker["alias"])))
 		b.WriteString(`</td><td>`)
+		transcriptRef := optionalString(sandbox["tool_transcript_ref"])
 		for index, artifact := range stringsFromAny(receipt["artifact_refs"]) {
 			if index > 0 {
 				b.WriteString(`<br>`)
@@ -1474,6 +1476,11 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 			b.WriteString(html.EscapeString(url.QueryEscape(artifact)))
 			b.WriteString(`">read</a>`)
 		}
+		if transcriptRef != "" {
+			b.WriteString(`<br><button type="button" onclick="loadTranscript(`)
+			b.WriteString(html.EscapeString(strconv.Quote(taskID)))
+			b.WriteString(`)">stream transcript</button>`)
+		}
 		b.WriteString(`</td><td>`)
 		b.WriteString(html.EscapeString(fmt.Sprint(receipt["event_count"])))
 		b.WriteString(`</td><td>`)
@@ -1482,7 +1489,13 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 		b.WriteString(html.EscapeString(fmt.Sprint(sandbox["mode"])))
 		b.WriteString(`</td></tr>`)
 	}
-	b.WriteString(`</tbody></table><h2>Audit</h2><table><thead><tr><th>Index</th><th>Kind</th><th>Hash</th></tr></thead><tbody>`)
+	b.WriteString(`</tbody></table><h2>Transcript</h2><pre id="transcript-viewer">No transcript selected</pre><script>
+async function loadTranscript(taskID) {
+  const viewer = document.getElementById("transcript-viewer");
+  const response = await fetch("/api/transcripts/stream?task_id=" + encodeURIComponent(taskID));
+  viewer.textContent = response.ok ? await response.text() : await response.text();
+}
+</script><h2>Audit</h2><table><thead><tr><th>Index</th><th>Kind</th><th>Hash</th></tr></thead><tbody>`)
 	for index, entry := range entries {
 		record, _ := entry["record"].(map[string]any)
 		b.WriteString(`<tr><td>`)
