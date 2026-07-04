@@ -3377,6 +3377,17 @@ func verifyArtifactManifests(receipt map[string]any) error {
 		if err != nil {
 			return err
 		}
+		sidecarData, err := os.ReadFile(path + ".manifest.json")
+		if err != nil {
+			return err
+		}
+		var sidecar map[string]any
+		if err := json.Unmarshal(sidecarData, &sidecar); err != nil {
+			return err
+		}
+		if digestHex(sidecar) != digestHex(manifest) {
+			return errors.New("artifact manifest sidecar mismatch")
+		}
 		if float64(len(data)) != manifest["size"] {
 			return errors.New("artifact bytes size mismatch")
 		}
