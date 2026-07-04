@@ -1100,7 +1100,13 @@ setTimeout(() => {
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 67);
+    assert.equal(auditBody.entries.length, 70);
+    const queueActionRecords = auditBody.entries
+      .map((entry) => entry.record)
+      .filter((record) => record.kind === "go_queue_action");
+    assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "ok"), true);
+    assert.equal(queueActionRecords.some((record) => record.action === "drain" && record.task_id === humanQueuedTask.task_id && record.status === "ok"), true);
+    assert.equal(queueActionRecords.some((record) => record.action === "enqueue" && record.task_id === humanCreatedQueuedTask.task_id && record.status === "ok"), true);
 
     const tasksResponse = await fetch(`http://127.0.0.1:${humanPort}/api/tasks`);
     assert.equal(tasksResponse.status, 200);

@@ -739,7 +739,15 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture)
 		}
 		result, err := fixture.applyQueueAction(action)
 		if err != nil {
+			if auditErr := fixture.recordQueueAction(action, nil, err); auditErr != nil {
+				http.Error(w, auditErr.Error(), http.StatusInternalServerError)
+				return
+			}
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := fixture.recordQueueAction(action, result, nil); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -1963,6 +1971,34 @@ func (f Fixture) applyQueueAction(action map[string]any) (map[string]any, error)
 	default:
 		return nil, errors.New("unsupported queue action")
 	}
+}
+
+func (f Fixture) recordQueueAction(action map[string]any, result map[string]any, actionErr error) error {
+	record := map[string]any{
+		"kind":    "go_queue_action",
+		"action":  optionalString(action["action"]),
+		"task_id": queueActionTaskID(action, result),
+		"source":  "human_gateway.local",
+	}
+	if actionErr != nil {
+		record["status"] = "error"
+		record["error"] = actionErr.Error()
+	} else {
+		record["status"] = "ok"
+		record["result_digest"] = digestHex(result)
+	}
+	return f.appendAudit(record)
+}
+
+func queueActionTaskID(action, result map[string]any) string {
+	if taskID := optionalString(action["task_id"]); taskID != "" {
+		return taskID
+	}
+	if taskID := optionalString(result["task_id"]); taskID != "" {
+		return taskID
+	}
+	task, _ := action["task"].(map[string]any)
+	return optionalString(task["task_id"])
 }
 
 func (f Fixture) reclaimQueueItem(taskID, owner string, leaseSeconds int) (string, error) {

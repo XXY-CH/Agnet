@@ -103,6 +103,7 @@
 - Human Gateway exposes durable queue state and explicit local claim/drain actions。
 - Human Gateway can enqueue already signed tasks through the local queue action API。
 - Checkpoint resume can be queued durably before explicit drain。
+- Human/local queue actions are recorded as hash-chained audit evidence。
 
 主要缺：
 
