@@ -3072,9 +3072,10 @@ func writeArtifact(uri, text string) (map[string]any, error) {
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return nil, err
 	}
+	sha := digestBytesHex(data)
 	body := map[string]any{
 		"uri":        uri,
-		"sha256":     digestBytesHex(data),
+		"sha256":     sha,
 		"size":       float64(len(data)),
 		"media_type": "text/markdown; charset=utf-8",
 	}
@@ -3085,6 +3086,16 @@ func writeArtifact(uri, text string) (map[string]any, error) {
 	}
 	sidecar = append(sidecar, '\n')
 	if err := os.WriteFile(path+".manifest.json", sidecar, 0o644); err != nil {
+		return nil, err
+	}
+	digestPath := filepath.Join("artifacts", "by-sha256", sha)
+	if err := os.MkdirAll(filepath.Dir(digestPath), 0o755); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(digestPath, data, 0o644); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(digestPath+".manifest.json", sidecar, 0o644); err != nil {
 		return nil, err
 	}
 	return body, nil

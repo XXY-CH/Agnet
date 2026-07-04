@@ -1296,6 +1296,10 @@ setTimeout(() => {
     assert.equal(artifactEvent.manifest.sha256, createHash("sha256").update(artifactText).digest("hex"));
     const artifactManifestSidecar = JSON.parse(await readFile("artifacts/go_fed_task_verified/go-summary.md.manifest.json", "utf8"));
     assert.deepEqual(artifactManifestSidecar, artifactEvent.manifest);
+    const digestArtifactPath = `artifacts/by-sha256/${artifactEvent.manifest.sha256}`;
+    assert.equal(await readFile(digestArtifactPath, "utf8"), artifactText);
+    const digestArtifactManifestSidecar = JSON.parse(await readFile(`${digestArtifactPath}.manifest.json`, "utf8"));
+    assert.deepEqual(digestArtifactManifestSidecar, artifactEvent.manifest);
 
     const auditQuery = await execFileAsync(process.execPath, [
       "federation-gateway.mjs",
@@ -1676,6 +1680,9 @@ setTimeout(() => {
     const artifactResponse = await fetch(`http://127.0.0.1:${humanPort}/artifacts/go_fed_task_verified/go-summary.md`);
     assert.equal(artifactResponse.status, 200);
     assert.match(await artifactResponse.text(), /MCP Tool Translation/);
+    const digestArtifactResponse = await fetch(`http://127.0.0.1:${humanPort}/artifacts/by-sha256/${artifactEvent.manifest.sha256}`);
+    assert.equal(digestArtifactResponse.status, 200);
+    assert.equal(await digestArtifactResponse.text(), artifactText);
     const artifactManifestResponse = await fetch(`http://127.0.0.1:${humanPort}/api/artifacts/manifest?uri=${encodeURIComponent(artifactEvent.manifest.uri)}`);
     assert.equal(artifactManifestResponse.status, 200);
     assert.deepEqual(await artifactManifestResponse.json(), artifactEvent.manifest);
