@@ -830,6 +830,34 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if requester, ok := draft["requester"].(map[string]any); ok {
+			signedTask, ok := draft["task"].(map[string]any)
+			if !ok {
+				http.Error(w, "external draft task is required", http.StatusBadRequest)
+				return
+			}
+			taskID := optionalString(signedTask["task_id"])
+			if taskID == "" {
+				http.Error(w, "external draft task_id is required", http.StatusBadRequest)
+				return
+			}
+			action := map[string]any{
+				"action":       "enqueue",
+				"origin_zone":  fixture.Authority,
+				"requester":    requester,
+				"task":         signedTask,
+				"actor":        "human://local",
+				"action_grant": fixture.queueActionGrant("enqueue", taskID, signedTask),
+			}
+			result, status, err := runQueueAction(action)
+			if err != nil {
+				http.Error(w, err.Error(), status)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "requester": requester, "task": signedTask, "enqueue": result})
+			return
+		}
 		taskID := optionalString(draft["task_id"])
 		to := optionalString(draft["to"])
 		intent := optionalString(draft["intent"])

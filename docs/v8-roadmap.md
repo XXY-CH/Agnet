@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.2 complete; v8.3+ planned
+状态：v8.3 complete; v8.4+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -64,9 +64,29 @@
 - 不做 background expiry scanner。
 - 不做 public deployment。
 
+## v8.3: Browser-held Requester Draft Boundary
+
+状态：complete
+目标：Human Gateway draft endpoint can accept externally signed requester tasks without owning the requester private key.
+
+新增：
+
+- `POST /api/queue/drafts` accepts `requester` and signed `task`.
+- The external requester `aid` and task signature are preserved.
+- External draft enqueue reuses the existing actor-bound queue action grant path.
+- `/api/queue` exposes the newly queued external draft task.
+- `go_queue_action` audit records the enqueue with actor policy evidence.
+
+不做：
+
+- 不做 browser private-key storage。
+- 不做 WebCrypto UI。
+- 不做 login/session identity。
+- 不做 requester key management UI。
+- 不做 public deployment。
+
 ## 后续方向
 
-- v8.3: browser-side requester/key UX.
 - v8.4: deployable gateway security boundary.
 
 Container sandbox and public transport remain separate hardening tracks。

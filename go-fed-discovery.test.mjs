@@ -940,6 +940,31 @@ setTimeout(() => {
     const humanDraftedQueueBody = await humanDraftedQueueResponse.json();
     assert.equal(humanDraftedQueueBody.queue.some((item) => item.task_id === humanDraftedTaskId && item.status === "queued"), true);
 
+    const browserHeldTask = {
+      ...task,
+      task_id: "go_fed_task_browser_signed_draft",
+      intent: "Enqueue browser-held signed requester task through Human Gateway.",
+    };
+    const signedBrowserHeldTask = { ...browserHeldTask, signature: signObject(requester.privateKey, browserHeldTask) };
+    const browserHeldDraftResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/drafts`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        requester: requester.descriptor,
+        task: signedBrowserHeldTask,
+      }),
+    });
+    assert.equal(browserHeldDraftResponse.status, 200);
+    const browserHeldDraftBody = await browserHeldDraftResponse.json();
+    assert.equal(browserHeldDraftBody.requester.aid, requester.aid);
+    assert.equal(browserHeldDraftBody.task.task_id, browserHeldTask.task_id);
+    assert.equal(browserHeldDraftBody.task.from, requester.aid);
+    assert.equal(browserHeldDraftBody.task.signature, signedBrowserHeldTask.signature);
+    const browserHeldQueueResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue`);
+    assert.equal(browserHeldQueueResponse.status, 200);
+    const browserHeldQueueBody = await browserHeldQueueResponse.json();
+    assert.equal(browserHeldQueueBody.queue.some((item) => item.task_id === browserHeldTask.task_id && item.status === "queued"), true);
+
     const deniedApprovalTask = {
       ...task,
       task_id: "go_fed_task_approval_denied",
@@ -1441,7 +1466,7 @@ setTimeout(() => {
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 82);
+    assert.equal(auditBody.entries.length, 83);
     const queueActionRecords = auditBody.entries
       .map((entry) => entry.record)
       .filter((record) => record.kind === "go_queue_action");
@@ -1449,6 +1474,7 @@ setTimeout(() => {
     assert.equal(queueActionRecords.some((record) => record.action === "drain" && record.task_id === humanQueuedTask.task_id && record.status === "ok" && record.actor === "human://local" && record.actor_policy_result === "allow"), true);
     assert.equal(queueActionRecords.some((record) => record.action === "enqueue" && record.task_id === humanCreatedQueuedTask.task_id && record.status === "ok" && record.actor === "human://local" && record.actor_policy_result === "allow"), true);
     assert.equal(queueActionRecords.some((record) => record.action === "enqueue" && record.task_id === humanDraftedTaskId && record.status === "ok" && record.actor === "human://local" && record.actor_policy_result === "allow"), true);
+    assert.equal(queueActionRecords.some((record) => record.action === "enqueue" && record.task_id === browserHeldTask.task_id && record.status === "ok" && record.actor === "human://local" && record.actor_policy_result === "allow"), true);
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /grant missing/.test(record.error) && record.actor === ""), true);
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /grant expired/.test(record.error) && record.actor === "human://local" && record.actor_policy_result === "allow"), true);
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /scope mismatch/.test(record.error) && record.actor === "human://local" && record.actor_policy_result === undefined), true);
