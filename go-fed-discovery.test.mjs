@@ -1760,6 +1760,8 @@ setTimeout(() => {
     const auditProofBody = await auditProofResponse.json();
     assert.equal(auditProofBody.task_id, task.task_id);
     assert.equal(auditProofBody.receipt.task_id, task.task_id);
+    const receiptAuditEntry = auditBody.entries.find((entry) => entry.record.kind === "go_fed_receipt" && entry.record.receipt.task_id === task.task_id);
+    assert.match(receiptAuditEntry.hash, /^[0-9a-f]{64}$/);
     const artifactVerifyResponse = await fetch(`http://127.0.0.1:${humanPort}/api/artifacts/verify?task_id=${encodeURIComponent(task.task_id)}&uri=${encodeURIComponent(artifactEvent.manifest.uri)}`);
     assert.equal(artifactVerifyResponse.status, 200);
     const artifactVerifyBody = await artifactVerifyResponse.json();
@@ -1771,6 +1773,7 @@ setTimeout(() => {
     const artifactReadResponse = await fetch(`http://127.0.0.1:${humanPort}/api/artifacts/read?task_id=${encodeURIComponent(task.task_id)}&uri=${encodeURIComponent(artifactEvent.manifest.uri)}`);
     assert.equal(artifactReadResponse.status, 200);
     assert.equal(artifactReadResponse.headers.get("content-type"), artifactEvent.manifest.media_type);
+    assert.equal(artifactReadResponse.headers.get("x-agent-space-audit-hash"), receiptAuditEntry.hash);
     assert.equal(artifactReadResponse.headers.get("x-agent-space-receipt-digest"), receiptDigest);
     assert.equal(artifactReadResponse.headers.get("x-agent-space-artifact-sha256"), artifactEvent.manifest.sha256);
     assert.equal(artifactReadResponse.headers.get("x-agent-space-artifact-manifest-hash"), artifactEvent.manifest.manifest_hash);
@@ -1779,6 +1782,7 @@ setTimeout(() => {
     assert.equal(artifactHeadResponse.status, 200);
     assert.equal(artifactHeadResponse.headers.get("content-type"), artifactEvent.manifest.media_type);
     assert.equal(artifactHeadResponse.headers.get("content-length"), String(artifactEvent.manifest.size));
+    assert.equal(artifactHeadResponse.headers.get("x-agent-space-audit-hash"), receiptAuditEntry.hash);
     assert.equal(artifactHeadResponse.headers.get("x-agent-space-receipt-digest"), receiptDigest);
     assert.equal(artifactHeadResponse.headers.get("x-agent-space-artifact-sha256"), artifactEvent.manifest.sha256);
     assert.equal(artifactHeadResponse.headers.get("x-agent-space-artifact-manifest-hash"), artifactEvent.manifest.manifest_hash);
