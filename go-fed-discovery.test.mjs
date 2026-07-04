@@ -191,11 +191,11 @@ function queueActionGrant(action, taskId, task, extra = {}) {
   return { ...body, grant_signature: signObject(zoneA.privateKey, body) };
 }
 
-async function approveTask(humanPort, taskId) {
+async function approveTask(humanPort, taskId, actor = "human://local") {
   const response = await fetch(`http://127.0.0.1:${humanPort}/api/approvals/actions`, {
     method: "POST",
     headers: humanHeaders(),
-    body: JSON.stringify({ action: "approve", task_id: taskId, actor: "human://local" }),
+    body: JSON.stringify({ action: "approve", task_id: taskId, actor }),
   });
   assert.equal(response.status, 200);
   return response.json();
@@ -1159,9 +1159,9 @@ setTimeout(() => {
     assert.equal(pendingApprovalResponse.status, 200);
     const pendingApprovalBody = await pendingApprovalResponse.json();
     assert.equal(pendingApprovalBody.approvals.some((item) => item.task_id === task.task_id && item.status === "pending" && item.reasons.includes("tool")), true);
-    const approveBody = await approveTask(humanPort, task.task_id);
+    const approveBody = await approveTask(humanPort, task.task_id, "human://operator");
     assert.equal(approveBody.approval.task_id, task.task_id);
-    assert.equal(approveBody.approval.by, "human://local");
+    assert.equal(approveBody.approval.by, "human://operator");
     assert.match(approveBody.approval.approval_signature, /^[A-Za-z0-9_-]+$/);
     const executionFrames = await execution.done;
     assert.deepEqual(executionFrames.map((frame) => frame.type), [
@@ -1188,6 +1188,7 @@ setTimeout(() => {
     assert.equal(verifyObject(authorityPublicKey, approvalBody, approvalGrant.approval_signature), true);
     assert.equal(approvalGrant.task_id, task.task_id);
     assert.equal(approvalGrant.authority, fixture.authority.zid);
+    assert.equal(approvalGrant.by, "human://operator");
     assert.deepEqual(approvalGrant.reasons, ["tool"]);
     const receiptFrame = executionFrames[7];
     assert.equal(receiptFrame.zone.zid, fixture.authority.zid);

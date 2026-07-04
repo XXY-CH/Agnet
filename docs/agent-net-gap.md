@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.24 assessment
+状态：v8.25 assessment
 
 ## 一句话
 
@@ -129,6 +129,7 @@
 - Direct Go tool tasks wait for explicit Human Gateway approval before execution。
 - Queued Go drains wait for explicit Human Gateway approval before tool execution。
 - Human Gateway approvals can deny or expire before tool execution。
+- Human Gateway direct approvals preserve named local `human://...` actors in signed approval grants。
 
 主要缺：
 
@@ -172,7 +173,7 @@
 
 ### Product layer
 
-进度：约 16%。
+进度：约 17%。
 
 已有：
 
@@ -182,6 +183,7 @@
 - direct Human Gateway approval API。
 - queued drain Human Gateway approval gate。
 - approval denial/expiry gate。
+- named local human actor evidence in direct approval grants。
 - signed approval receipts visible through Human Gateway。
 - local deployment security posture API。
 - browser-held requester key, rotation proof, rebinding proof API, local requester registry, requester registry table, alias rebinding UI, rebinding history table, and signed draft UI。
