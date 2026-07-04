@@ -1248,6 +1248,7 @@ setTimeout(() => {
     assert.equal(receiptFrame.receipt.sandbox.network, "not_granted");
     assert.match(receiptFrame.receipt.sandbox.tool_command_digest, /^[0-9a-f]{64}$/);
     assert.match(receiptFrame.receipt.sandbox.tool_binary_digest, /^[0-9a-f]{64}$/);
+    assert.match(receiptFrame.receipt.sandbox.tool_transcript_digest, /^[0-9a-f]{64}$/);
     assert.deepEqual(receiptFrame.receipt.sandbox.mcp_session, {
       protocol_version: "2025-11-25",
       server_info: { name: "test-mcp", version: "0" },
@@ -1274,6 +1275,7 @@ setTimeout(() => {
     assert.equal(sandboxProof.sandbox.isolation_level, receiptFrame.receipt.sandbox.isolation_level);
     assert.equal(sandboxProof.sandbox.tool_command_digest, receiptFrame.receipt.sandbox.tool_command_digest);
     assert.equal(sandboxProof.sandbox.tool_binary_digest, receiptFrame.receipt.sandbox.tool_binary_digest);
+    assert.equal(sandboxProof.sandbox.tool_transcript_digest, receiptFrame.receipt.sandbox.tool_transcript_digest);
     assert.deepEqual(sandboxProof.sandbox.mcp_session, receiptFrame.receipt.sandbox.mcp_session);
     assert.equal(sandboxProof.sandbox.mcp_resources_digest, receiptFrame.receipt.sandbox.mcp_resources_digest);
     assert.equal(sandboxProof.sandbox.mcp_prompts_digest, receiptFrame.receipt.sandbox.mcp_prompts_digest);

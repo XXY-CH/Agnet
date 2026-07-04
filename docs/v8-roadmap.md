@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.17 complete; v8.18+ planned
+状态：v8.18 complete; v8.19+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -408,8 +408,29 @@
 - 不做 public deployment。
 - 不做 A2A/ARD compatibility。
 
+## v8.18: Tool Result Transcript Digest
+
+状态：complete
+目标：External/MCP sandbox evidence records a tool result transcript digest without storing the full transcript.
+
+新增：
+
+- External sandbox evidence records `tool_transcript_digest` over raw stdout bytes.
+- MCP sandbox evidence records `tool_transcript_digest` over the final `tools/call` response object.
+- `sandbox_proof` signs the transcript digest because it signs sandbox evidence.
+
+不做：
+
+- 不存完整 transcript。
+- 不做 streamed output UI。
+- 不做 transcript artifact store。
+- 不做 long-running MCP session reuse。
+- 不做 container sandbox。
+- 不做 public deployment。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
-- v8.18: streamed output transcript evidence, container sandbox hardening, artifact store hardening, or another small Ultimate-aligned runtime/governance slice.
+- v8.19: artifact store hardening, container sandbox hardening, full transcript storage, or another small Ultimate-aligned runtime/governance slice.
 
 Container sandbox and public transport remain separate hardening tracks。

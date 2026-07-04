@@ -2221,6 +2221,7 @@ func runExternalTool(parent context.Context, profile WorkerProfile, task, origin
 	if ctx.Err() == context.DeadlineExceeded {
 		return "", nil, errors.New("external tool timed out")
 	}
+	sandbox["tool_transcript_digest"] = digestBytesHex(output)
 	if err != nil {
 		message := strings.TrimSpace(stderr.String())
 		if message == "" {
@@ -2340,6 +2341,7 @@ func runMCPTool(parent context.Context, profile WorkerProfile, task, origin map[
 	if err != nil {
 		return "", nil, err
 	}
+	sandbox["tool_transcript_digest"] = digestHex(response)
 	_ = stdin.Close()
 	if ctx.Err() == context.Canceled {
 		return "", nil, errors.New("mcp tool cancelled")

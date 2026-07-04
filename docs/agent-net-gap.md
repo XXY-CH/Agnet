@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.17 assessment
+状态：v8.18 assessment
 
 ## 一句话
 
@@ -85,7 +85,7 @@
 - Signed `FED_TASK_CANCEL` evidence with worker cancellation receipts。
 - `FED_TASK_RETRY` lineage evidence with normal task execution。
 - Sandbox claim binding prevents overclaiming local-temp-dir as stronger isolation。
-- External/MCP sandbox evidence records tool command and executable binary digests。
+- External/MCP sandbox evidence records tool command, executable binary, and result transcript digests。
 - Tool output digest aligns signed receipt with artifact manifest。
 - MCP sandbox evidence records protocol/server initialize metadata。
 - MCP resources/prompts surfaces are recorded as count+digest evidence。
@@ -139,7 +139,7 @@
 - model KV/cache checkpoint restore。
 - automatic retry / backoff scanning。
 - package signature / SBOM provenance。
-- streamed output transcript evidence。
+- full streamed output transcript storage。
 - long-running MCP session reuse。
 - full MCP resource/prompt catalog storage。
 - full MCP schema verification。
