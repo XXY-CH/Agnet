@@ -1167,6 +1167,7 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 	b.WriteString(` · receipts: `)
 	b.WriteString(fmt.Sprint(len(receipts)))
 	b.WriteString(`</div></header>`)
+	b.WriteString(sessionPanel())
 	b.WriteString(browserRequesterPanel())
 	b.WriteString(`<h2>Tasks</h2><table><thead><tr><th>Task</th><th>Status</th><th>Worker</th><th>Receipt</th><th>Error</th></tr></thead><tbody>`)
 	if len(tasks) == 0 {
@@ -1294,6 +1295,25 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 	}
 	b.WriteString(`</tbody></table></main></body></html>`)
 	return b.String()
+}
+
+func sessionPanel() string {
+	return `<section id="session"><h2>Session</h2><div class="toolrow"><input id="session-token" type="password" autocomplete="off" placeholder="Bearer token"><button id="session-refresh" type="button">Refresh</button></div><pre id="session-status">Checking session...</pre></section><script>
+(() => {
+  const token = document.getElementById("session-token");
+  const status = document.getElementById("session-status");
+  const refresh = async () => {
+    const headers = token.value ? { authorization: "Bearer " + token.value } : {};
+    const response = await fetch("/api/session", { headers });
+    const session = await response.json();
+    status.textContent = session.authenticated
+      ? session.approval_actor + " · " + session.approval_actions.join(", ")
+      : "Unauthenticated";
+  };
+  document.getElementById("session-refresh").onclick = refresh;
+  refresh().catch((error) => { status.textContent = error.message; });
+})();
+</script>`
 }
 
 func browserRequesterPanel() string {

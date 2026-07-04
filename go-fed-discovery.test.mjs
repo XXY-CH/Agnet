@@ -1786,6 +1786,9 @@ setTimeout(() => {
     assert.equal(pageResponse.status, 200);
     const pageText = await pageResponse.text();
     assert.match(pageText, /Agent Space Human Gateway/);
+    assert.match(pageText, /Session/);
+    assert.match(pageText, /session-status/);
+    assert.match(pageText, /fetch\("\/api\/session"/);
     assert.match(pageText, /Tasks/);
     assert.match(pageText, /Queue/);
     assert.match(pageText, /go_fed_task_human_queue_action/);

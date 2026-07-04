@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.32 assessment
+状态：v8.33 assessment
 
 ## 一句话
 
@@ -137,6 +137,7 @@
 - Human Gateway direct approvals can derive the actor from configured local bearer approval sessions。
 - Human Gateway direct approval body actors cannot mismatch the configured bearer session actor。
 - Human Gateway exposes read-only local approval session state through `/api/session`。
+- Human Gateway page displays local approval session state from `/api/session`。
 
 主要缺：
 
@@ -148,7 +149,7 @@
 - Human Gateway requester selector UI。
 - server-side rotation registry。
 - passphrase-protected requester key export。
-- full login-state UI / roles。
+- roles / full login system。
 - token storage / rotation。
 - model KV/cache checkpoint restore。
 - automatic retry / backoff scanning。
@@ -180,7 +181,7 @@
 
 ### Product layer
 
-进度：约 17%。
+进度：约 18%。
 
 已有：
 
@@ -194,7 +195,7 @@
 - configurable local approval actor allowlist。
 - local bearer approval session actor mapping。
 - local approval session/body actor mismatch rejection。
-- read-only local approval session state API。
+- read-only local approval session state API and page panel。
 - signed approval receipts visible through Human Gateway。
 - local deployment security posture API。
 - browser-held requester key, rotation proof, rebinding proof API, local requester registry, requester registry table, alias rebinding UI, rebinding history table, and signed draft UI。
@@ -204,7 +205,7 @@
 
 主要缺：
 
-- full login-state UI / roles。
+- roles / full login system。
 - artifact browser。
 - audit viewer。
 - admin / tenant model。
