@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.18 complete; v8.19+ planned
+状态：v8.19 complete; v8.20+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -429,8 +429,32 @@
 - 不做 public deployment。
 - 不做 A2A/ARD compatibility。
 
+## v8.19: Artifact Manifest Sidecar
+
+状态：complete
+目标：Local artifacts persist their manifest sidecar and expose it through a read-only Human Gateway API.
+
+新增：
+
+- `writeArtifact` writes a sibling `.manifest.json` next to each local artifact.
+- The sidecar matches the manifest in `artifact.created` and the signed receipt.
+- Human Gateway exposes `GET /api/artifacts/manifest?uri=artifact://local/...`.
+- Artifact URI handling rejects unsupported schemes, empty paths, absolute paths, and `..` traversal.
+
+不做：
+
+- 不做 content-addressed artifact store。
+- 不做 remote artifact download。
+- 不做 artifact browser。
+- 不做 auth model for read-only artifact manifests。
+- 不做 object storage / MinIO / S3。
+- 不做 full transcript artifact storage。
+- 不做 container sandbox。
+- 不做 public deployment。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
-- v8.19: artifact store hardening, container sandbox hardening, full transcript storage, or another small Ultimate-aligned runtime/governance slice.
+- v8.20: content-addressed artifact storage, container sandbox hardening, full transcript storage, or another small Ultimate-aligned runtime/governance slice.
 
 Container sandbox and public transport remain separate hardening tracks。

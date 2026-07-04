@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.18 assessment
+状态：v8.19 assessment
 
 ## 一句话
 
@@ -14,7 +14,7 @@
 
 ### Protocol core
 
-进度：约 89%。
+进度：约 90%。
 
 已有：
 
@@ -68,7 +68,7 @@
 
 ### Runtime core
 
-进度：约 78%。
+进度：约 79%。
 
 已有：
 
@@ -87,6 +87,7 @@
 - Sandbox claim binding prevents overclaiming local-temp-dir as stronger isolation。
 - External/MCP sandbox evidence records tool command, executable binary, and result transcript digests。
 - Tool output digest aligns signed receipt with artifact manifest。
+- Artifact manifests persist as local sidecars and are retrievable through a read-only Human Gateway API。
 - MCP sandbox evidence records protocol/server initialize metadata。
 - MCP resources/prompts surfaces are recorded as count+digest evidence。
 - MCP tools surface is recorded as count+digest evidence。
@@ -143,7 +144,7 @@
 - long-running MCP session reuse。
 - full MCP resource/prompt catalog storage。
 - full MCP schema verification。
-- artifact store beyond local files。
+- content-addressed/remote artifact store beyond local files。
 
 ### Network layer
 
@@ -179,6 +180,7 @@
 - signed approval receipts visible through Human Gateway。
 - local deployment security posture API。
 - browser-held requester key, rotation proof, rebinding proof API, local requester registry, requester registry table, alias rebinding UI, rebinding history table, and signed draft UI。
+- read-only artifact manifest API。
 - checkpoint evidence receipts。
 - docs and protocol proofs。
 

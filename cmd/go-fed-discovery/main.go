@@ -1021,6 +1021,33 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "authority_descriptor": fixture.Authority, "alias_rebinding_proof": proof})
 	})
+	mux.HandleFunc("/api/artifacts/manifest", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		uri := r.URL.Query().Get("uri")
+		if uri == "" {
+			http.Error(w, "artifact uri is required", http.StatusBadRequest)
+			return
+		}
+		path, err := localArtifactPath(uri)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		data, err := os.ReadFile(path + ".manifest.json")
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				http.NotFound(w, r)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(data)
+	})
 	mux.Handle("/artifacts/", http.StripPrefix("/artifacts/", http.FileServer(http.Dir("artifacts"))))
 	_ = http.Serve(listener, mux)
 }
@@ -3034,11 +3061,10 @@ func (f Fixture) drainQueueItem(send sendFunc, taskID, leaseID string) error {
 }
 
 func writeArtifact(uri, text string) (map[string]any, error) {
-	const prefix = "artifact://local/"
-	if !strings.HasPrefix(uri, prefix) {
-		return nil, errors.New("unsupported artifact uri: " + uri)
+	path, err := localArtifactPath(uri)
+	if err != nil {
+		return nil, err
 	}
-	path := filepath.Join("artifacts", strings.TrimPrefix(uri, prefix))
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
@@ -3053,7 +3079,34 @@ func writeArtifact(uri, text string) (map[string]any, error) {
 		"media_type": "text/markdown; charset=utf-8",
 	}
 	body["manifest_hash"] = digestHex(body)
+	sidecar, err := json.MarshalIndent(body, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	sidecar = append(sidecar, '\n')
+	if err := os.WriteFile(path+".manifest.json", sidecar, 0o644); err != nil {
+		return nil, err
+	}
 	return body, nil
+}
+
+func localArtifactPath(uri string) (string, error) {
+	const prefix = "artifact://local/"
+	if !strings.HasPrefix(uri, prefix) {
+		return "", errors.New("unsupported artifact uri: " + uri)
+	}
+	raw := strings.TrimPrefix(uri, prefix)
+	normalized := strings.ReplaceAll(raw, "\\", "/")
+	if normalized == "" || strings.HasPrefix(normalized, "/") {
+		return "", errors.New("invalid artifact uri path: " + uri)
+	}
+	parts := strings.Split(normalized, "/")
+	for _, part := range parts {
+		if part == "" || part == "." || part == ".." {
+			return "", errors.New("invalid artifact uri path: " + uri)
+		}
+	}
+	return filepath.Join(append([]string{"artifacts"}, parts...)...), nil
 }
 
 const auditZeroHash = "0000000000000000000000000000000000000000000000000000000000000000"

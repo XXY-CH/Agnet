@@ -1294,6 +1294,8 @@ setTimeout(() => {
     assert.match(artifactText, /agnet-mcp-/);
     assert.equal(artifactEvent.manifest.size, Buffer.byteLength(artifactText));
     assert.equal(artifactEvent.manifest.sha256, createHash("sha256").update(artifactText).digest("hex"));
+    const artifactManifestSidecar = JSON.parse(await readFile("artifacts/go_fed_task_verified/go-summary.md.manifest.json", "utf8"));
+    assert.deepEqual(artifactManifestSidecar, artifactEvent.manifest);
 
     const auditQuery = await execFileAsync(process.execPath, [
       "federation-gateway.mjs",
@@ -1674,6 +1676,9 @@ setTimeout(() => {
     const artifactResponse = await fetch(`http://127.0.0.1:${humanPort}/artifacts/go_fed_task_verified/go-summary.md`);
     assert.equal(artifactResponse.status, 200);
     assert.match(await artifactResponse.text(), /MCP Tool Translation/);
+    const artifactManifestResponse = await fetch(`http://127.0.0.1:${humanPort}/api/artifacts/manifest?uri=${encodeURIComponent(artifactEvent.manifest.uri)}`);
+    assert.equal(artifactManifestResponse.status, 200);
+    assert.deepEqual(await artifactManifestResponse.json(), artifactEvent.manifest);
   } finally {
     try {
       process.kill(-gateway.pid, "SIGINT");

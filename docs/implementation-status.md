@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v8.18 complete
-当前代码基线：`v8.18-tool-transcript-digest`
+状态：v8.19 complete
+当前代码基线：`v8.19-artifact-manifest-sidecar`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go direct task Human Gateway explicit approval/denial/expiry、Go `FED_TASK_ENQUEUE` durable local queue entry、Go `FED_QUEUE_CLAIM` lease ownership/expiry/backoff gate、Go `FED_QUEUE_RECLAIM` expired lease ownership transfer、Go `FED_QUEUE_RETRY` failed queue retry/backoff state、Go `FED_QUEUE_RESUME` queued checkpoint resume binding、Go queued checkpoint state digest restore evidence、Go `FED_QUEUE_DRAIN` explicit queued execution with Human Gateway approval、Go Human Gateway queue state/action/creation/drafting/external signed draft/approval/security posture/browser requester key surface with import/export/rotation proof/rebinding proof API/multi-alias local requester registry persistence/requester registry view/browser alias rebinding UI/local rebinding history table、Go Human Gateway write bearer-token gate、Go Human Gateway actor-bound scoped signed queue action grants、Go Human Gateway configurable local actor policy gate、Go Human Gateway queue action grant durable nonce replay rejection、Go Human Gateway queue action audit actor evidence、Go `FED_TASK_RESUME` audit-backed checkpoint link、Go signed `FED_TASK_CANCEL` evidence、Go live external task cancellation、Go `FED_TASK_RETRY` lineage evidence、Go 最小 task execution path、Go durable running/completed/cancelled/failed task state files、Go Human Gateway task state view、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、MCP initialize metadata evidence、MCP resources/prompts/tools metadata evidence、MCP selected tool binding、MCP selected schema digest evidence、MCP argument digest evidence、MCP required argument gate、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、sandbox isolation level evidence、signed sandbox proof、sandbox claim binding、tool command/executable binary/result transcript provenance digest、tool output digest alignment、protocol-native checkpoint evidence、artifact manifest digest evidence、canonical policy scope evidence、credential status evidence、authenticated session handshake，以及 remote audit query。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go direct task Human Gateway explicit approval/denial/expiry、Go `FED_TASK_ENQUEUE` durable local queue entry、Go `FED_QUEUE_CLAIM` lease ownership/expiry/backoff gate、Go `FED_QUEUE_RECLAIM` expired lease ownership transfer、Go `FED_QUEUE_RETRY` failed queue retry/backoff state、Go `FED_QUEUE_RESUME` queued checkpoint resume binding、Go queued checkpoint state digest restore evidence、Go `FED_QUEUE_DRAIN` explicit queued execution with Human Gateway approval、Go Human Gateway queue state/action/creation/drafting/external signed draft/approval/security posture/browser requester key surface with import/export/rotation proof/rebinding proof API/multi-alias local requester registry persistence/requester registry view/browser alias rebinding UI/local rebinding history table、Go Human Gateway write bearer-token gate、Go Human Gateway actor-bound scoped signed queue action grants、Go Human Gateway configurable local actor policy gate、Go Human Gateway queue action grant durable nonce replay rejection、Go Human Gateway queue action audit actor evidence、Go `FED_TASK_RESUME` audit-backed checkpoint link、Go signed `FED_TASK_CANCEL` evidence、Go live external task cancellation、Go `FED_TASK_RETRY` lineage evidence、Go 最小 task execution path、Go durable running/completed/cancelled/failed task state files、Go Human Gateway task state view、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、MCP initialize metadata evidence、MCP resources/prompts/tools metadata evidence、MCP selected tool binding、MCP selected schema digest evidence、MCP argument digest evidence、MCP required argument gate、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、sandbox isolation level evidence、signed sandbox proof、sandbox claim binding、tool command/executable binary/result transcript provenance digest、tool output digest alignment、protocol-native checkpoint evidence、artifact manifest digest evidence、artifact manifest sidecar/API evidence、canonical policy scope evidence、credential status evidence、authenticated session handshake，以及 remote audit query。
 
 还不是可产品化的 Agent Net。
 
@@ -18,7 +18,7 @@
 | Local registry | done | multi-worker profile registry | `zone-registry.test.mjs`, `go-fed-discovery.test.mjs` | worker lifecycle API |
 | Local task execution | done | built-in + external stdio + MCP stdio tools/call + MCP initialize/resources/prompts/tools metadata + selected tool/schema/argument evidence + MCP required argument gate + explicit local-process isolation evidence + signed local sandbox proof + sandbox claim binding + tool command, binary, and transcript digests | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | container sandbox / long-running MCP sessions |
 | Events | done | minimal federation events + Go checkpoint event | `agent-runtime.test.mjs`, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | richer event lifecycle |
-| Artifact write | done | deterministic local artifact + Go artifact manifest digest evidence + tool output digest alignment | `mvp-demo.test.mjs`, `go-fed-discovery.test.mjs` | artifact store |
+| Artifact write | done | deterministic local artifact + Go artifact manifest digest evidence + tool output digest alignment + local manifest sidecar/API | `mvp-demo.test.mjs`, `go-fed-discovery.test.mjs` | content-addressed/remote artifact store |
 | Receipt signing | done | done for minimal Go execution | `test-vectors.test.mjs`, `go-fed-discovery.test.mjs` | receipt verification CLI |
 | Audit hash chain | done | done for Go execution, queue actions, and remote receipt proof query | `audit-chain.test.mjs`, `go-fed-discovery.test.mjs` | full log sync / remote search |
 | Federation resolve | done | done | `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | public transport |
@@ -77,6 +77,7 @@ Go
   -> FED_TASK_RESUME parent-checkpoint link verified against audit
   -> queued checkpoint resume restored state digest evidence
   -> artifact manifest digest evidence
+  -> artifact manifest sidecar and read-only Human Gateway manifest API
   -> canonical policy scope digest and stable deny codes
   -> Zone-signed credential status evidence
   -> authenticated session handshake
@@ -106,7 +107,7 @@ Go
 
 ## Next Boundary
 
-v8.18 records external/MCP result transcript digests in signed sandbox evidence. The next natural boundary is artifact store hardening, container sandbox hardening, full transcript storage, or another small Ultimate-aligned runtime/governance slice.
+v8.19 persists local artifact manifest sidecars and exposes them through a read-only Human Gateway API. The next natural boundary is content-addressed artifact storage, container sandbox hardening, full transcript storage, or another small Ultimate-aligned runtime/governance slice.
 
 Route detail: `docs/v8-roadmap.md`。
 
