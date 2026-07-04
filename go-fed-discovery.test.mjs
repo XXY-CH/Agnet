@@ -496,6 +496,7 @@ setTimeout(() => {
   await rm("state/go-fed-discovery-audit-queue", { recursive: true, force: true });
   await rm("state/go-fed-discovery-audit-approvals", { recursive: true, force: true });
   await rm("state/go-fed-discovery-audit-queue-grants", { recursive: true, force: true });
+  await rm("state/go-fed-artifact-store", { recursive: true, force: true });
   await rm("state/go-fed-discovery-requester-registry.json", { force: true });
   await rm("state/go-fed-discovery-requester-rebindings.json", { force: true });
   await writeFile("state/go-fed-discovery-actor-policy.json", `${JSON.stringify({
@@ -523,6 +524,8 @@ setTimeout(() => {
     humanToken,
     "--human-actor-policy",
     "state/go-fed-discovery-actor-policy.json",
+    "--artifact-store",
+    "state/go-fed-artifact-store",
     "--trusted",
     "state/go-fed-discovery-trusted-origin.json",
     "--fixture",
@@ -1319,11 +1322,19 @@ setTimeout(() => {
     assert.equal(await readFile(digestArtifactPath, "utf8"), artifactText);
     const digestArtifactManifestSidecar = JSON.parse(await readFile(`${digestArtifactPath}.manifest.json`, "utf8"));
     assert.deepEqual(digestArtifactManifestSidecar, artifactEvent.manifest);
+    const mirrorArtifactPath = `state/go-fed-artifact-store/by-sha256/${artifactEvent.manifest.sha256}`;
+    assert.equal(await readFile(mirrorArtifactPath, "utf8"), artifactText);
+    const mirrorArtifactManifestSidecar = JSON.parse(await readFile(`${mirrorArtifactPath}.manifest.json`, "utf8"));
+    assert.deepEqual(mirrorArtifactManifestSidecar, artifactEvent.manifest);
     const transcriptText = await readFile("artifacts/go_fed_task_verified/tool-transcript.json", "utf8");
     assert.equal(createHash("sha256").update(transcriptText).digest("hex"), receiptFrame.receipt.sandbox.tool_transcript_digest);
     assert.match(JSON.parse(transcriptText).result.content[0].text, /MCP Tool Translation/);
     const transcriptManifestSidecar = JSON.parse(await readFile("artifacts/go_fed_task_verified/tool-transcript.json.manifest.json", "utf8"));
     assert.deepEqual(transcriptManifestSidecar, transcriptManifest);
+    const mirrorTranscriptPath = `state/go-fed-artifact-store/by-sha256/${transcriptManifest.sha256}`;
+    assert.equal(await readFile(mirrorTranscriptPath, "utf8"), transcriptText);
+    const mirrorTranscriptManifestSidecar = JSON.parse(await readFile(`${mirrorTranscriptPath}.manifest.json`, "utf8"));
+    assert.deepEqual(mirrorTranscriptManifestSidecar, transcriptManifest);
 
     const auditQuery = await execFileAsync(process.execPath, [
       "federation-gateway.mjs",

@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.26 complete; v8.27+ planned
+状态：v8.27 complete; v8.28+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -612,8 +612,32 @@
 - 不做 public deployment。
 - 不做 A2A/ARD compatibility。
 
+## v8.27: Artifact Store Mirror
+
+状态：complete
+目标：Local artifacts can be mirrored to a configured filesystem artifact store.
+
+新增：
+
+- `--artifact-store <dir>` enables a filesystem artifact mirror.
+- Summary artifacts still write their named local path and local `artifacts/by-sha256/<sha256>` copy.
+- Summary artifact bytes and manifest sidecars also mirror to `<dir>/by-sha256/<sha256>`.
+- External/MCP transcript artifact bytes and manifest sidecars also mirror to `<dir>/by-sha256/<sha256>`.
+- The integration test verifies mirrored bytes and sidecars for both summary and transcript artifacts.
+
+不做：
+
+- 不做 S3/MinIO/object-store API。
+- 不做 remote artifact fetch/download。
+- 不做 artifact GC。
+- 不做 artifact browser。
+- 不做 auth model for mirrored artifacts。
+- 不做 container sandbox。
+- 不做 public deployment。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
-- v8.27: remote artifact storage, container sandbox hardening, login-backed sessions, streamed transcript UI, or another small Ultimate-aligned runtime/governance slice.
+- v8.28: container sandbox hardening, login-backed sessions, streamed transcript UI, object-store-backed artifacts, or another small Ultimate-aligned runtime/governance slice.
 
 Container sandbox and public transport remain separate hardening tracks。

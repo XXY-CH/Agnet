@@ -42,6 +42,7 @@ type Fixture struct {
 	TaskStateDir        string              `json:"-"`
 	QueueDir            string              `json:"-"`
 	ApprovalDir         string              `json:"-"`
+	ArtifactStoreDir    string              `json:"-"`
 	Runtime             *TaskRuntime        `json:"-"`
 	QueueActorPolicy    map[string][]string `json:"-"`
 	ApprovalActorPolicy map[string][]string `json:"-"`
@@ -120,6 +121,7 @@ func main() {
 	humanPort := flag.String("human-port", "", "optional Human Gateway HTTP port")
 	humanToken := flag.String("human-token", "", "optional Human Gateway bearer token for write actions")
 	humanActorPolicyPath := flag.String("human-actor-policy", "", "optional Human Gateway actor policy JSON file")
+	artifactStoreDir := flag.String("artifact-store", "", "optional filesystem artifact mirror directory")
 	fixturePath := flag.String("fixture", "test-vectors/asp-v1.5-capability-credential.json", "signed descriptor fixture")
 	trustPath := flag.String("trusted", "state/go-fed-trusted-zones.json", "trusted origin zones")
 	authorityKeyPath := flag.String("authority-key", "state/keys/go-fed-authority.seed", "authority seed key file")
@@ -137,13 +139,13 @@ func main() {
 		return
 	}
 
-	if err := serve(*port, *wsPort, *humanPort, *humanToken, *humanActorPolicyPath, *fixturePath, *trustPath, *authorityKeyPath, *workerKeyPath, *auditPath); err != nil {
+	if err := serve(*port, *wsPort, *humanPort, *humanToken, *humanActorPolicyPath, *artifactStoreDir, *fixturePath, *trustPath, *authorityKeyPath, *workerKeyPath, *auditPath); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, fixturePath, trustPath, authorityKeyPath, workerKeyPath, auditPath string) error {
+func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, artifactStoreDir, fixturePath, trustPath, authorityKeyPath, workerKeyPath, auditPath string) error {
 	authorityKey, err := loadPrivateKey(authorityKeyPath, "authority")
 	if err != nil {
 		return err
@@ -170,6 +172,7 @@ func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, fixturePat
 	fixture.TaskStateDir = strings.TrimSuffix(auditPath, filepath.Ext(auditPath)) + "-tasks"
 	fixture.QueueDir = queueDirForAudit(auditPath)
 	fixture.ApprovalDir = approvalDirForAudit(auditPath)
+	fixture.ArtifactStoreDir = artifactStoreDir
 	fixture.Runtime = &TaskRuntime{running: map[string]context.CancelFunc{}, cancelled: map[string]bool{}}
 	trusted, err := loadTrustedZones(trustPath)
 	if err != nil {
@@ -1930,7 +1933,7 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	}
 
 	artifactURI := "artifact://local/" + taskID + "/go-summary.md"
-	toolName, artifactText, sandbox, err := runTool(ctx, worker.Profile, task, origin)
+	toolName, artifactText, sandbox, err := runTool(ctx, worker.Profile, task, origin, f.ArtifactStoreDir)
 	if err != nil {
 		if f.Runtime.WasCancelled(taskID) {
 			return err
@@ -1942,7 +1945,7 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	if sandboxClaim != "" && sandbox["mode"] != sandboxClaim {
 		return errors.New("sandbox claim mismatch")
 	}
-	artifactManifest, err := writeArtifact(artifactURI, artifactText)
+	artifactManifest, err := writeArtifact(artifactURI, artifactText, f.ArtifactStoreDir)
 	if err != nil {
 		return err
 	}
@@ -2165,7 +2168,7 @@ func taskPolicyScope(profile WorkerProfile, worker, task map[string]any) map[str
 	}
 }
 
-func runTool(ctx context.Context, profile WorkerProfile, task, origin map[string]any) (string, string, map[string]any, error) {
+func runTool(ctx context.Context, profile WorkerProfile, task, origin map[string]any, artifactStoreDir string) (string, string, map[string]any, error) {
 	tool := profile.Tool
 	if tool == "" {
 		tool = "text.echo"
@@ -2178,10 +2181,10 @@ func runTool(ctx context.Context, profile WorkerProfile, task, origin map[string
 	case "translate.mock":
 		return tool, "# Go Tool Translation\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nTranslation: " + strings.ToUpper(intent) + "\n", inProcessSandbox(), nil
 	case "external.stdio":
-		text, sandbox, err := runExternalTool(ctx, profile, task, origin)
+		text, sandbox, err := runExternalTool(ctx, profile, task, origin, artifactStoreDir)
 		return tool, text, sandbox, err
 	case "mcp.stdio":
-		text, sandbox, err := runMCPTool(ctx, profile, task, origin)
+		text, sandbox, err := runMCPTool(ctx, profile, task, origin, artifactStoreDir)
 		return tool, text, sandbox, err
 	default:
 		return tool, "# Go Tool Output\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nOutput: " + intent + "\n", inProcessSandbox(), nil
@@ -2228,7 +2231,7 @@ func sandboxEnv() []string {
 	return []string{"PATH=/usr/bin:/bin"}
 }
 
-func runExternalTool(parent context.Context, profile WorkerProfile, task, origin map[string]any) (string, map[string]any, error) {
+func runExternalTool(parent context.Context, profile WorkerProfile, task, origin map[string]any, artifactStoreDir string) (string, map[string]any, error) {
 	if len(profile.ToolCommand) == 0 {
 		return "", nil, errors.New("external.stdio tool_command missing")
 	}
@@ -2272,7 +2275,7 @@ func runExternalTool(parent context.Context, profile WorkerProfile, task, origin
 		return "", nil, errors.New("external tool failed: " + message)
 	}
 	transcriptURI := "artifact://local/" + fmt.Sprint(task["task_id"]) + "/tool-transcript.json"
-	transcriptManifest, err := writeArtifactBytes(transcriptURI, output, "application/json; charset=utf-8")
+	transcriptManifest, err := writeArtifactBytes(transcriptURI, output, "application/json; charset=utf-8", artifactStoreDir)
 	if err != nil {
 		return "", nil, err
 	}
@@ -2289,7 +2292,7 @@ func runExternalTool(parent context.Context, profile WorkerProfile, task, origin
 	return text, sandbox, nil
 }
 
-func runMCPTool(parent context.Context, profile WorkerProfile, task, origin map[string]any) (string, map[string]any, error) {
+func runMCPTool(parent context.Context, profile WorkerProfile, task, origin map[string]any, artifactStoreDir string) (string, map[string]any, error) {
 	if len(profile.ToolCommand) == 0 {
 		return "", nil, errors.New("mcp.stdio tool_command missing")
 	}
@@ -2396,7 +2399,7 @@ func runMCPTool(parent context.Context, profile WorkerProfile, task, origin map[
 	}
 	sandbox["tool_transcript_digest"] = digestBytesHex(transcriptData)
 	transcriptURI := "artifact://local/" + fmt.Sprint(task["task_id"]) + "/tool-transcript.json"
-	transcriptManifest, err := writeArtifactBytes(transcriptURI, transcriptData, "application/json; charset=utf-8")
+	transcriptManifest, err := writeArtifactBytes(transcriptURI, transcriptData, "application/json; charset=utf-8", artifactStoreDir)
 	if err != nil {
 		return "", nil, err
 	}
@@ -3105,11 +3108,11 @@ func (f Fixture) drainQueueItem(send sendFunc, taskID, leaseID string) error {
 	return nil
 }
 
-func writeArtifact(uri, text string) (map[string]any, error) {
-	return writeArtifactBytes(uri, []byte(text), "text/markdown; charset=utf-8")
+func writeArtifact(uri, text, artifactStoreDir string) (map[string]any, error) {
+	return writeArtifactBytes(uri, []byte(text), "text/markdown; charset=utf-8", artifactStoreDir)
 }
 
-func writeArtifactBytes(uri string, data []byte, mediaType string) (map[string]any, error) {
+func writeArtifactBytes(uri string, data []byte, mediaType, artifactStoreDir string) (map[string]any, error) {
 	path, err := localArtifactPath(uri)
 	if err != nil {
 		return nil, err
@@ -3136,15 +3139,21 @@ func writeArtifactBytes(uri string, data []byte, mediaType string) (map[string]a
 	if err := os.WriteFile(path+".manifest.json", sidecar, 0o644); err != nil {
 		return nil, err
 	}
-	digestPath := filepath.Join("artifacts", "by-sha256", sha)
-	if err := os.MkdirAll(filepath.Dir(digestPath), 0o755); err != nil {
-		return nil, err
+	digestRoots := []string{"artifacts"}
+	if artifactStoreDir != "" {
+		digestRoots = append(digestRoots, artifactStoreDir)
 	}
-	if err := os.WriteFile(digestPath, data, 0o644); err != nil {
-		return nil, err
-	}
-	if err := os.WriteFile(digestPath+".manifest.json", sidecar, 0o644); err != nil {
-		return nil, err
+	for _, root := range digestRoots {
+		digestPath := filepath.Join(root, "by-sha256", sha)
+		if err := os.MkdirAll(filepath.Dir(digestPath), 0o755); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(digestPath, data, 0o644); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(digestPath+".manifest.json", sidecar, 0o644); err != nil {
+			return nil, err
+		}
 	}
 	return body, nil
 }

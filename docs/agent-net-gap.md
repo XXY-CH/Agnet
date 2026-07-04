@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.26 assessment
+状态：v8.27 assessment
 
 ## 一句话
 
@@ -68,7 +68,7 @@
 
 ### Runtime core
 
-进度：约 84%。
+进度：约 85%。
 
 已有：
 
@@ -90,6 +90,7 @@
 - Tool output digest aligns signed receipt with artifact manifest。
 - Artifact manifests persist as local sidecars and are retrievable through a read-only Human Gateway API。
 - Artifacts are also written under a local content-addressed SHA-256 path。
+- Artifacts can also mirror bytes and manifest sidecars to a configured filesystem artifact store。
 - Audit verification rejects local artifact bytes that no longer match signed manifests。
 - Audit verification rejects named artifact sidecars that no longer match signed manifests。
 - Audit verification rejects digest-addressed artifact sidecars that no longer match signed manifests。
@@ -151,7 +152,7 @@
 - long-running MCP session reuse。
 - full MCP resource/prompt catalog storage。
 - full MCP schema verification。
-- remote artifact store / GC beyond local files。
+- object-store artifact backend / GC beyond filesystem mirrors。
 
 ### Network layer
 
