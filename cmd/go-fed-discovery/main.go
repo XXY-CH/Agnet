@@ -788,6 +788,7 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 				"worker":       record["worker"],
 				"zone_binding": record["zone_binding"],
 				"receipt":      record["receipt"],
+				"audit_hash":   record["audit_hash"],
 				"task_id":      taskID,
 			})
 			return

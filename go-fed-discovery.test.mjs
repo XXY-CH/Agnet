@@ -1762,6 +1762,7 @@ setTimeout(() => {
     assert.equal(auditProofBody.receipt.task_id, task.task_id);
     const receiptAuditEntry = auditBody.entries.find((entry) => entry.record.kind === "go_fed_receipt" && entry.record.receipt.task_id === task.task_id);
     assert.match(receiptAuditEntry.hash, /^[0-9a-f]{64}$/);
+    assert.equal(auditProofBody.audit_hash, receiptAuditEntry.hash);
     const artifactVerifyResponse = await fetch(`http://127.0.0.1:${humanPort}/api/artifacts/verify?task_id=${encodeURIComponent(task.task_id)}&uri=${encodeURIComponent(artifactEvent.manifest.uri)}`);
     assert.equal(artifactVerifyResponse.status, 200);
     const artifactVerifyBody = await artifactVerifyResponse.json();

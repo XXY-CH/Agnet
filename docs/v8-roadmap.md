@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.42 complete; v8.43+ planned
+状态：v8.43 complete; v8.44+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -1038,8 +1038,35 @@ Example:
 - 不做 public deployment。
 - 不做 A2A/ARD compatibility。
 
+## v8.43: Task Audit Proof Hash
+
+状态：complete
+目标：Task-scoped audit receipt proofs expose the selected receipt audit hash directly.
+
+新增：
+
+- `GET /api/audit?task_id=<id>` returns `audit_hash`.
+- `audit_hash` equals the hash-chained audit entry that contains the returned signed receipt.
+- The integration test checks the task-scoped proof hash against the full audit entries.
+
+不做：
+
+- 不做 audit index。
+- 不做 audit viewer。
+- 不做 receipt store/index。
+- 不做 artifact browser。
+- 不做 transcript browser。
+- 不做 remote artifact fetch/download。
+- 不做 object-store backend。
+- 不做 artifact GC。
+- 不做 auth model for artifact reads。
+- 不做 streamed transcript UI。
+- 不做 container namespace sandbox。
+- 不做 public deployment。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
-- v8.43: container namespace sandboxing, streamed transcript UI, object-store-backed artifacts, or another small Ultimate-aligned runtime/governance slice.
+- v8.44: container namespace sandboxing, streamed transcript UI, object-store-backed artifacts, or another small Ultimate-aligned runtime/governance slice.
 
 Container sandbox and public transport remain separate hardening tracks。
