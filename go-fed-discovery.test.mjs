@@ -810,6 +810,21 @@ setTimeout(() => {
     assert.equal(securityBody.listen_host, "127.0.0.1");
     assert.equal(securityBody.write_token_required, true);
     assert.equal(securityBody.public_transport, false);
+    const sessionResponse = await fetch(`http://127.0.0.1:${humanPort}/api/session`, {
+      headers: humanHeaders(),
+    });
+    assert.equal(sessionResponse.status, 200);
+    const sessionBody = await sessionResponse.json();
+    assert.equal(sessionBody.authenticated, true);
+    assert.equal(sessionBody.approval_actor, "human://operator");
+    assert.deepEqual(sessionBody.approval_actions, ["approve", "deny"]);
+    assert.equal(sessionBody.write_token_required, true);
+    const anonymousSessionResponse = await fetch(`http://127.0.0.1:${humanPort}/api/session`);
+    assert.equal(anonymousSessionResponse.status, 200);
+    const anonymousSessionBody = await anonymousSessionResponse.json();
+    assert.equal(anonymousSessionBody.authenticated, false);
+    assert.equal(anonymousSessionBody.approval_actor, "");
+    assert.deepEqual(anonymousSessionBody.approval_actions, []);
 
     const missingTokenQueueActionResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
       method: "POST",

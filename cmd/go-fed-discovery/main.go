@@ -817,6 +817,20 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 			"public_transport":     false,
 		})
 	})
+	mux.HandleFunc("/api/session", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		actor := fixture.approvalSessionActor(r)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"authenticated":        actor != "",
+			"approval_actor":       actor,
+			"approval_actions":     fixture.approvalActionsFor(actor),
+			"write_token_required": humanToken != "",
+		})
+	})
 	mux.HandleFunc("/api/approvals", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -2941,6 +2955,19 @@ func (f Fixture) approvalActorAllowed(actor, action string) bool {
 		}
 	}
 	return false
+}
+
+func (f Fixture) approvalActionsFor(actor string) []string {
+	if actor == "" {
+		return []string{}
+	}
+	if len(f.ApprovalActorPolicy) == 0 {
+		if actor == "human://local" {
+			return []string{"approve", "deny"}
+		}
+		return []string{}
+	}
+	return append([]string{}, f.ApprovalActorPolicy[actor]...)
 }
 
 func (f Fixture) approvalSessionActor(r *http.Request) string {
