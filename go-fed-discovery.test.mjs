@@ -1769,8 +1769,10 @@ setTimeout(() => {
     assert.equal(artifactVerifyBody.ok, true);
     assert.equal(artifactVerifyBody.task_id, task.task_id);
     assert.equal(artifactVerifyBody.uri, artifactEvent.manifest.uri);
-    assert.deepEqual(artifactVerifyBody.manifest, artifactEvent.manifest);
     const receiptDigest = createHash("sha256").update(JSON.stringify(receiptFrame.receipt)).digest("hex");
+    assert.equal(artifactVerifyBody.audit_hash, receiptAuditEntry.hash);
+    assert.equal(artifactVerifyBody.receipt_digest, receiptDigest);
+    assert.deepEqual(artifactVerifyBody.manifest, artifactEvent.manifest);
     const artifactReadResponse = await fetch(`http://127.0.0.1:${humanPort}/api/artifacts/read?task_id=${encodeURIComponent(task.task_id)}&uri=${encodeURIComponent(artifactEvent.manifest.uri)}`);
     assert.equal(artifactReadResponse.status, 200);
     assert.equal(artifactReadResponse.headers.get("content-type"), artifactEvent.manifest.media_type);

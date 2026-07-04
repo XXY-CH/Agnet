@@ -1126,7 +1126,7 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "task_id": taskID, "uri": uri, "manifest": manifest})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "task_id": taskID, "uri": uri, "audit_hash": record["audit_hash"], "receipt_digest": digestHex(receipt), "manifest": manifest})
 	})
 	mux.HandleFunc("/api/artifacts/read", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
