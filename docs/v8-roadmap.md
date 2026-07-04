@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.51 complete; v8.52+ planned
+状态：v8.52 complete; v8.53+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -1298,8 +1298,35 @@ Example:
 - 不做 public deployment。
 - 不做 A2A/ARD compatibility。
 
+## v8.52: MCP Live Transcript Snapshot
+
+状态：complete
+目标：MCP stdio responses are copied into the live transcript snapshot surface.
+
+新增：
+
+- `runMCPTool` receives the audit-scoped live transcript directory.
+- MCP `initialize`, `resources/list`, `prompts/list`, `tools/list`, and `tools/call` responses are written as `mcp.response` NDJSON lines.
+- `/api/transcripts/live?task_id=<id>` returns MCP live snapshot lines using the existing endpoint.
+- The integration test checks initialize, tools/list, and tools/call snapshot lines for the MCP task.
+
+不做：
+
+- 不做 long-running MCP session reuse。
+- 不做 server-side push。
+- 不做 SSE/WebSocket continuous tail。
+- 不做 MCP resource/prompt catalog storage。
+- 不做 signed receipt proof for incomplete running output。
+- 不做 transcript search/index。
+- 不做 object-store backend。
+- 不做 artifact GC。
+- 不做 auth model for transcript reads。
+- 不做 container namespace sandbox。
+- 不做 public deployment。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
-- v8.52: MCP live transcript snapshots, container namespace sandboxing, object-store-backed artifacts, or another small Ultimate-aligned runtime/governance slice.
+- v8.53: container namespace sandboxing, object-store-backed artifacts, long-running MCP sessions, or another small Ultimate-aligned runtime/governance slice.
 
 Container sandbox and public transport remain separate hardening tracks。

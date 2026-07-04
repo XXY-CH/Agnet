@@ -1819,6 +1819,13 @@ setTimeout(() => {
     assert.equal(transcriptStreamLines[0].task_id, task.task_id);
     assert.equal(transcriptStreamLines[0].uri, transcriptRef);
     assert.match(transcriptStreamLines[0].transcript.result.content[0].text, /MCP Tool Translation/);
+    const mcpLiveTranscriptResponse = await fetch(`http://127.0.0.1:${humanPort}/api/transcripts/live?task_id=${encodeURIComponent(task.task_id)}`);
+    assert.equal(mcpLiveTranscriptResponse.status, 200);
+    assert.equal(mcpLiveTranscriptResponse.headers.get("content-type"), "application/x-ndjson; charset=utf-8");
+    const mcpLiveTranscriptLines = (await mcpLiveTranscriptResponse.text()).trim().split("\n").map((line) => JSON.parse(line));
+    assert.equal(mcpLiveTranscriptLines.some((line) => line.type === "mcp.response" && line.task_id === task.task_id && line.method === "initialize"), true);
+    assert.equal(mcpLiveTranscriptLines.some((line) => line.type === "mcp.response" && line.task_id === task.task_id && line.method === "tools/list" && line.response.result.tools[0].name === "translate"), true);
+    assert.equal(mcpLiveTranscriptLines.some((line) => line.type === "mcp.response" && line.task_id === task.task_id && line.method === "tools/call" && line.response.result.content[0].text.includes("MCP Tool Translation")), true);
     const queueActionRecords = auditBody.entries
       .map((entry) => entry.record)
       .filter((record) => record.kind === "go_queue_action");

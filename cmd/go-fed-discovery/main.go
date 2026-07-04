@@ -2489,7 +2489,7 @@ func runTool(ctx context.Context, profile WorkerProfile, task, origin map[string
 		text, sandbox, err := runExternalTool(ctx, profile, task, origin, artifactStoreDir, liveTranscriptDir)
 		return tool, text, sandbox, err
 	case "mcp.stdio":
-		text, sandbox, err := runMCPTool(ctx, profile, task, origin, artifactStoreDir)
+		text, sandbox, err := runMCPTool(ctx, profile, task, origin, artifactStoreDir, liveTranscriptDir)
 		return tool, text, sandbox, err
 	default:
 		return tool, "# Go Tool Output\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nOutput: " + intent + "\n", inProcessSandbox(), nil
@@ -2573,6 +2573,17 @@ func (w *liveTranscriptWriter) Write(p []byte) (int, error) {
 	}
 	_ = w.file.Sync()
 	return len(p), nil
+}
+
+func (w *liveTranscriptWriter) WriteMCPResponse(method string, response map[string]any) error {
+	if w == nil {
+		return nil
+	}
+	if err := json.NewEncoder(w.file).Encode(map[string]any{"type": "mcp.response", "task_id": w.taskID, "method": method, "response": response}); err != nil {
+		return err
+	}
+	_ = w.file.Sync()
+	return nil
 }
 
 func runExternalTool(parent context.Context, profile WorkerProfile, task, origin map[string]any, artifactStoreDir, liveTranscriptDir string) (string, map[string]any, error) {
@@ -2662,7 +2673,7 @@ func runExternalTool(parent context.Context, profile WorkerProfile, task, origin
 	return text, sandbox, nil
 }
 
-func runMCPTool(parent context.Context, profile WorkerProfile, task, origin map[string]any, artifactStoreDir string) (string, map[string]any, error) {
+func runMCPTool(parent context.Context, profile WorkerProfile, task, origin map[string]any, artifactStoreDir, liveTranscriptDir string) (string, map[string]any, error) {
 	if len(profile.ToolCommand) == 0 {
 		return "", nil, errors.New("mcp.stdio tool_command missing")
 	}
@@ -2690,6 +2701,11 @@ func runMCPTool(parent context.Context, profile WorkerProfile, task, origin map[
 	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
+	liveWriter, closeLive, err := newLiveTranscriptWriter(liveTranscriptDir, fmt.Sprint(task["task_id"]))
+	if err != nil {
+		return "", nil, err
+	}
+	defer closeLive()
 	if err := cmd.Start(); err != nil {
 		return "", nil, err
 	}
@@ -2718,6 +2734,9 @@ func runMCPTool(parent context.Context, profile WorkerProfile, task, origin map[
 	if err != nil {
 		return "", nil, err
 	}
+	if err := liveWriter.WriteMCPResponse("initialize", initializeResponse); err != nil {
+		return "", nil, err
+	}
 	if result, ok := initializeResponse["result"].(map[string]any); ok {
 		sandbox["mcp_session"] = map[string]any{
 			"protocol_version": result["protocolVersion"],
@@ -2727,13 +2746,13 @@ func runMCPTool(parent context.Context, profile WorkerProfile, task, origin map[
 	if err := writeRPC(map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized", "params": map[string]any{}}); err != nil {
 		return "", nil, err
 	}
-	if _, err := recordMCPListEvidence(writeRPC, scanner, sandbox, 2, "resources/list", "resources", "mcp_resources"); err != nil {
+	if _, err := recordMCPListEvidence(writeRPC, scanner, liveWriter, sandbox, 2, "resources/list", "resources", "mcp_resources"); err != nil {
 		return "", nil, err
 	}
-	if _, err := recordMCPListEvidence(writeRPC, scanner, sandbox, 3, "prompts/list", "prompts", "mcp_prompts"); err != nil {
+	if _, err := recordMCPListEvidence(writeRPC, scanner, liveWriter, sandbox, 3, "prompts/list", "prompts", "mcp_prompts"); err != nil {
 		return "", nil, err
 	}
-	tools, err := recordMCPListEvidence(writeRPC, scanner, sandbox, 4, "tools/list", "tools", "mcp_tools")
+	tools, err := recordMCPListEvidence(writeRPC, scanner, liveWriter, sandbox, 4, "tools/list", "tools", "mcp_tools")
 	if err != nil {
 		return "", nil, err
 	}
@@ -2761,6 +2780,9 @@ func runMCPTool(parent context.Context, profile WorkerProfile, task, origin map[
 	}
 	response, err := readRPCResponse(scanner, 5)
 	if err != nil {
+		return "", nil, err
+	}
+	if err := liveWriter.WriteMCPResponse("tools/call", response); err != nil {
 		return "", nil, err
 	}
 	transcriptData, err := json.Marshal(response)
@@ -2793,12 +2815,15 @@ func runMCPTool(parent context.Context, profile WorkerProfile, task, origin map[
 	return text, sandbox, err
 }
 
-func recordMCPListEvidence(writeRPC func(map[string]any) error, scanner *bufio.Scanner, sandbox map[string]any, id float64, method, field, prefix string) ([]any, error) {
+func recordMCPListEvidence(writeRPC func(map[string]any) error, scanner *bufio.Scanner, liveWriter *liveTranscriptWriter, sandbox map[string]any, id float64, method, field, prefix string) ([]any, error) {
 	if err := writeRPC(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": map[string]any{}}); err != nil {
 		return nil, err
 	}
 	response, err := readRPCResponse(scanner, id)
 	if err != nil {
+		return nil, err
+	}
+	if err := liveWriter.WriteMCPResponse(method, response); err != nil {
 		return nil, err
 	}
 	result, _ := response["result"].(map[string]any)
