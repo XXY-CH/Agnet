@@ -2166,6 +2166,18 @@ func newToolSandbox(kind string, toolCommand []string) (string, map[string]any, 
 	}
 	if len(toolCommand) > 0 {
 		sandbox["tool_command_digest"] = digestHex(toolCommand)
+		executable := toolCommand[0]
+		if !filepath.IsAbs(executable) {
+			executable, err = exec.LookPath(executable)
+			if err != nil {
+				return "", nil, nil, err
+			}
+		}
+		data, err := os.ReadFile(executable)
+		if err != nil {
+			return "", nil, nil, err
+		}
+		sandbox["tool_binary_digest"] = digestBytesHex(data)
 	}
 	return dir, sandbox, func() { _ = os.RemoveAll(dir) }, nil
 }

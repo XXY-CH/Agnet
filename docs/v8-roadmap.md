@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.16 complete; v8.17+ planned
+状态：v8.17 complete; v8.18+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -386,8 +386,30 @@
 - 不做 public deployment。
 - 不做 A2A/ARD compatibility。
 
+## v8.17: Tool Binary Provenance Digest
+
+状态：complete
+目标：External/MCP sandbox evidence records the executable binary digest, not only the command vector digest.
+
+新增：
+
+- External/MCP sandbox evidence records `tool_binary_digest`.
+- The digest is SHA-256 over the executable bytes resolved from `tool_command[0]`.
+- `sandbox_proof` signs the binary digest because it signs sandbox evidence.
+- Existing `tool_command_digest` remains unchanged.
+
+不做：
+
+- 不做 package signature verification。
+- 不做 SBOM。
+- 不做 dependency provenance。
+- 不做 container sandbox。
+- 不做 sandbox broker service。
+- 不做 public deployment。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
-- v8.17: container sandbox hardening, binary/package provenance, streamed output transcript evidence, or another small Ultimate-aligned runtime/governance slice.
+- v8.18: streamed output transcript evidence, container sandbox hardening, artifact store hardening, or another small Ultimate-aligned runtime/governance slice.
 
 Container sandbox and public transport remain separate hardening tracks。
