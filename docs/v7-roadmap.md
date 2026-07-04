@@ -1,6 +1,6 @@
 # Agent Space v7 Roadmap
 
-状态：v7.2 complete; v7.3+ planned
+状态：v7.4 complete; v7.5+ planned
 目标：从 durable task state 进入 durable scheduler queue，让任务生命周期有本地所有权、可恢复入口和后续调度面。
 
 ## v7.0: Durable Queue Enqueue
@@ -64,10 +64,47 @@
 - 不做 retry/backoff。
 - 不做 priority。
 
+## v7.3: Queue Lease Reclaim
+
+状态：complete
+目标：claimed task 的 lease 过期后不能继续 drain，但可以被显式 reclaim 换 owner/lease。
+
+新增：
+
+- Claim records `lease_expires_at`。
+- `FED_QUEUE_DRAIN` rejects expired leases。
+- `FED_QUEUE_RECLAIM` only reclaims expired claimed queue items。
+- Reclaim changes `lease_owner`, `lease_id`, and `lease_expires_at`。
+
+不做：
+
+- 不做 automatic drain loop。
+- 不做 automatic lease scan。
+- 不做 retry/backoff。
+- 不做 priority。
+
+## v7.4: Queue Retry Backoff
+
+状态：complete
+目标：failed queue item 可以被显式 retry 重新排队，并记录 retry/backoff 状态。
+
+新增：
+
+- `FED_QUEUE_RETRY` frame。
+- Retry only accepts failed queue items as parents。
+- Retry queue item records `retry_of`, `retry_attempt`, and `retry_after_at`。
+- `FED_QUEUE_CLAIM` rejects queued retry items while `retry_after_at` is still in the future。
+
+不做：
+
+- 不做 automatic retry。
+- 不做 automatic backoff scan。
+- 不做 retry worker。
+- 不做 priority。
+- 不做 multi-node scheduler。
+
 ## 后续方向
 
-- lease expiry and reclaim
-- retry/backoff state
 - Human Gateway task creation and queue actions
 - checkpoint restore after queued execution exists
 

@@ -320,6 +320,14 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 		}
 		send(map[string]any{"type": "FED_QUEUE_ACCEPTED", "task_id": task["task_id"], "worker": worker.Descriptor["aid"]})
 		send(map[string]any{"type": "FED_QUEUE_CLOSE", "task_id": task["task_id"]})
+	case "FED_QUEUE_RETRY":
+		taskID, err := fixture.retryQueueItem(origin, frame, frameSeconds(frame, "retry_after_seconds", 60))
+		if err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
+		send(map[string]any{"type": "FED_QUEUE_RETRY_ACCEPTED", "task_id": taskID, "retry_of": frame["retry_of"]})
+		send(map[string]any{"type": "FED_QUEUE_RETRY_CLOSE", "task_id": taskID})
 	case "FED_QUEUE_CLAIM":
 		taskID := fmt.Sprint(frame["task_id"])
 		owner := fmt.Sprint(frame["owner"])
@@ -327,13 +335,27 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(errors.New("queue claim task_id and owner required")))
 			return false
 		}
-		leaseID, err := fixture.claimQueueItem(taskID, owner)
+		leaseID, err := fixture.claimQueueItem(taskID, owner, frameSeconds(frame, "lease_seconds", 60))
 		if err != nil {
 			send(taskErrorFrame(err))
 			return false
 		}
 		send(map[string]any{"type": "FED_QUEUE_CLAIMED", "task_id": taskID, "lease_id": leaseID, "owner": owner})
 		send(map[string]any{"type": "FED_QUEUE_CLAIM_CLOSE", "task_id": taskID})
+	case "FED_QUEUE_RECLAIM":
+		taskID := fmt.Sprint(frame["task_id"])
+		owner := fmt.Sprint(frame["owner"])
+		if taskID == "" || taskID == "<nil>" || owner == "" || owner == "<nil>" {
+			send(taskErrorFrame(errors.New("queue reclaim task_id and owner required")))
+			return false
+		}
+		leaseID, err := fixture.reclaimQueueItem(taskID, owner, frameSeconds(frame, "lease_seconds", 60))
+		if err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
+		send(map[string]any{"type": "FED_QUEUE_RECLAIMED", "task_id": taskID, "lease_id": leaseID, "owner": owner})
+		send(map[string]any{"type": "FED_QUEUE_RECLAIM_CLOSE", "task_id": taskID})
 	case "FED_QUEUE_DRAIN":
 		taskID := fmt.Sprint(frame["task_id"])
 		if taskID == "" || taskID == "<nil>" {
@@ -1766,7 +1788,7 @@ func (f Fixture) readQueueItem(taskID string) (map[string]any, error) {
 	return item, nil
 }
 
-func (f Fixture) claimQueueItem(taskID, owner string) (string, error) {
+func (f Fixture) claimQueueItem(taskID, owner string, leaseSeconds int) (string, error) {
 	item, err := f.readQueueItem(taskID)
 	if err != nil {
 		return "", err
@@ -1774,6 +1796,57 @@ func (f Fixture) claimQueueItem(taskID, owner string) (string, error) {
 	if optionalString(item["status"]) != "queued" {
 		return "", errors.New("queue item is not queued: " + taskID)
 	}
+	if queueRetryBackoffActive(item) {
+		return "", errors.New("queue retry backoff active: " + taskID)
+	}
+	return f.writeClaimedQueueItem(taskID, owner, leaseSeconds, item)
+}
+
+func (f Fixture) retryQueueItem(origin map[string]any, frame map[string]any, retryAfterSeconds int) (string, error) {
+	retryOf := fmt.Sprint(frame["retry_of"])
+	if retryOf == "" || retryOf == "<nil>" {
+		return "", errors.New("queue retry_of missing")
+	}
+	parent, err := f.readQueueItem(retryOf)
+	if err != nil {
+		return "", err
+	}
+	if optionalString(parent["status"]) != "failed" {
+		return "", errors.New("queue retry parent is not failed: " + retryOf)
+	}
+	worker, task, err := f.verifyTaskOpen(frame)
+	if err != nil {
+		return "", err
+	}
+	taskID := fmt.Sprint(task["task_id"])
+	attempt := 1
+	if parentAttempt, ok := parent["retry_attempt"].(float64); ok {
+		attempt = int(parentAttempt) + 1
+	}
+	retryAfterAt := time.Now().Add(time.Duration(retryAfterSeconds) * time.Second).UTC().Format(time.RFC3339Nano)
+	requester, _ := frame["requester"].(map[string]any)
+	extra := map[string]any{"origin_zone_descriptor": origin, "requester": requester, "task": task, "retry_of": retryOf, "retry_attempt": attempt, "retry_after_at": retryAfterAt}
+	if err := f.writeQueueItem(origin, worker, task, "queued", extra); err != nil {
+		return "", err
+	}
+	return taskID, nil
+}
+
+func (f Fixture) reclaimQueueItem(taskID, owner string, leaseSeconds int) (string, error) {
+	item, err := f.readQueueItem(taskID)
+	if err != nil {
+		return "", err
+	}
+	if optionalString(item["status"]) != "claimed" {
+		return "", errors.New("queue item is not claimed: " + taskID)
+	}
+	if !queueLeaseExpired(item) {
+		return "", errors.New("queue lease is still active: " + taskID)
+	}
+	return f.writeClaimedQueueItem(taskID, owner, leaseSeconds, item)
+}
+
+func (f Fixture) writeClaimedQueueItem(taskID, owner string, leaseSeconds int, item map[string]any) (string, error) {
 	origin, _ := item["origin_zone_descriptor"].(map[string]any)
 	requester, _ := item["requester"].(map[string]any)
 	task, _ := item["task"].(map[string]any)
@@ -1781,8 +1854,10 @@ func (f Fixture) claimQueueItem(taskID, owner string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	leaseID := "lease:sha256:" + digestHex(map[string]any{"task_id": taskID, "owner": owner, "task_digest": item["task_digest"]})
-	extra := map[string]any{"origin_zone_descriptor": origin, "requester": requester, "task": task, "lease_owner": owner, "lease_id": leaseID}
+	leaseExpiresAt := time.Now().Add(time.Duration(leaseSeconds) * time.Second).UTC().Format(time.RFC3339Nano)
+	leaseID := "lease:sha256:" + digestHex(map[string]any{"task_id": taskID, "owner": owner, "task_digest": item["task_digest"], "lease_expires_at": leaseExpiresAt})
+	extra := map[string]any{"origin_zone_descriptor": origin, "requester": requester, "task": task, "lease_owner": owner, "lease_id": leaseID, "lease_expires_at": leaseExpiresAt}
+	copyQueueRetryFields(extra, item)
 	if err := f.writeQueueItem(origin, worker, task, "claimed", extra); err != nil {
 		return "", err
 	}
@@ -1800,6 +1875,9 @@ func (f Fixture) drainQueueItem(send sendFunc, taskID, leaseID string) error {
 	if leaseID == "" || leaseID == "<nil>" || optionalString(item["lease_id"]) != leaseID {
 		return errors.New("queue lease mismatch: " + taskID)
 	}
+	if queueLeaseExpired(item) {
+		return errors.New("queue lease expired: " + taskID)
+	}
 	origin, _ := item["origin_zone_descriptor"].(map[string]any)
 	requester, _ := item["requester"].(map[string]any)
 	task, _ := item["task"].(map[string]any)
@@ -1807,7 +1885,8 @@ func (f Fixture) drainQueueItem(send sendFunc, taskID, leaseID string) error {
 	if err != nil {
 		return err
 	}
-	extra := map[string]any{"origin_zone_descriptor": origin, "requester": requester, "task": task, "lease_owner": item["lease_owner"], "lease_id": item["lease_id"]}
+	extra := map[string]any{"origin_zone_descriptor": origin, "requester": requester, "task": task, "lease_owner": item["lease_owner"], "lease_id": item["lease_id"], "lease_expires_at": item["lease_expires_at"]}
+	copyQueueRetryFields(extra, item)
 	if err := f.writeQueueItem(origin, worker, task, "running", extra); err != nil {
 		return err
 	}
@@ -2210,6 +2289,39 @@ func stringsFromAny(value any) []string {
 func optionalString(value any) string {
 	text, _ := value.(string)
 	return text
+}
+
+func frameSeconds(frame map[string]any, key string, fallback int) int {
+	seconds, ok := frame[key].(float64)
+	if !ok {
+		return fallback
+	}
+	return int(seconds)
+}
+
+func queueRetryBackoffActive(item map[string]any) bool {
+	retryAfterAt := optionalString(item["retry_after_at"])
+	if retryAfterAt == "" {
+		return false
+	}
+	retryAfter, err := time.Parse(time.RFC3339Nano, retryAfterAt)
+	return err == nil && time.Now().UTC().Before(retryAfter)
+}
+
+func queueLeaseExpired(item map[string]any) bool {
+	expiresAt, err := time.Parse(time.RFC3339Nano, optionalString(item["lease_expires_at"]))
+	if err != nil {
+		return true
+	}
+	return !time.Now().UTC().Before(expiresAt)
+}
+
+func copyQueueRetryFields(dst, src map[string]any) {
+	for _, key := range []string{"retry_of", "retry_attempt", "retry_after_at"} {
+		if value, ok := src[key]; ok {
+			dst[key] = value
+		}
+	}
 }
 
 func mapsFromAny(value any) []map[string]any {

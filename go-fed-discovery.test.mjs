@@ -483,6 +483,7 @@ setTimeout(() => {
       origin_zone: zoneA.descriptor,
       task_id: queuedTask.task_id,
       owner: "scheduler://local",
+      lease_seconds: -1,
     }, "FED_QUEUE_CLAIM_CLOSE");
     assert.deepEqual(claimFrames.map((frame) => frame.type), ["FED_QUEUE_CLAIMED", "FED_QUEUE_CLAIM_CLOSE"]);
     assert.match(claimFrames[0].lease_id, /^lease:sha256:[0-9a-f]{64}$/);
@@ -490,12 +491,38 @@ setTimeout(() => {
     assert.equal(claimedQueueState.status, "claimed");
     assert.equal(claimedQueueState.lease_owner, "scheduler://local");
     assert.equal(claimedQueueState.lease_id, claimFrames[0].lease_id);
+    assert.match(claimedQueueState.lease_expires_at, /^\d{4}-\d{2}-\d{2}T/);
+
+    const expiredDrainFrames = await exchangeFrames(port, {
+      type: "FED_QUEUE_DRAIN",
+      origin_zone: zoneA.descriptor,
+      task_id: queuedTask.task_id,
+      lease_id: claimFrames[0].lease_id,
+    });
+    assert.equal(expiredDrainFrames[0].type, "FED_TASK_ERROR");
+    assert.match(expiredDrainFrames[0].error, /queue lease expired/);
+
+    const reclaimFrames = await exchangeFrames(port, {
+      type: "FED_QUEUE_RECLAIM",
+      origin_zone: zoneA.descriptor,
+      task_id: queuedTask.task_id,
+      owner: "scheduler://reclaimer",
+    }, "FED_QUEUE_RECLAIM_CLOSE");
+    assert.deepEqual(reclaimFrames.map((frame) => frame.type), ["FED_QUEUE_RECLAIMED", "FED_QUEUE_RECLAIM_CLOSE"]);
+    assert.match(reclaimFrames[0].lease_id, /^lease:sha256:[0-9a-f]{64}$/);
+    assert.notEqual(reclaimFrames[0].lease_id, claimFrames[0].lease_id);
+    const reclaimedQueueState = JSON.parse(await readFile("state/go-fed-discovery-audit-queue/go_fed_task_queued.json", "utf8"));
+    assert.equal(reclaimedQueueState.status, "claimed");
+    assert.equal(reclaimedQueueState.lease_owner, "scheduler://reclaimer");
+    assert.equal(reclaimedQueueState.lease_id, reclaimFrames[0].lease_id);
+    assert.match(reclaimedQueueState.lease_expires_at, /^\d{4}-\d{2}-\d{2}T/);
+    assert.notEqual(reclaimedQueueState.lease_expires_at, claimedQueueState.lease_expires_at);
 
     const drainedFrames = await exchangeFrames(port, {
       type: "FED_QUEUE_DRAIN",
       origin_zone: zoneA.descriptor,
       task_id: queuedTask.task_id,
-      lease_id: claimFrames[0].lease_id,
+      lease_id: reclaimFrames[0].lease_id,
     });
     assert.deepEqual(drainedFrames.map((frame) => frame.type), [
       "FED_TASK_EVENT",
@@ -512,8 +539,68 @@ setTimeout(() => {
     assert.equal(drainedReceipt.task_id, queuedTask.task_id);
     const drainedQueueState = JSON.parse(await readFile("state/go-fed-discovery-audit-queue/go_fed_task_queued.json", "utf8"));
     assert.equal(drainedQueueState.status, "completed");
-    assert.equal(drainedQueueState.lease_id, claimFrames[0].lease_id);
+    assert.equal(drainedQueueState.lease_id, reclaimFrames[0].lease_id);
     assert.equal(drainedQueueState.receipt_digest, createHash("sha256").update(JSON.stringify(drainedReceipt)).digest("hex"));
+
+    const failedQueuedTask = {
+      ...task,
+      task_id: "go_fed_task_queued_failed",
+      to: "agent://zone-b/strict-translator",
+      intent: "Queue a task that fails before receipt.",
+    };
+    const failedQueuedFrames = await exchangeFrames(port, {
+      type: "FED_TASK_ENQUEUE",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      task: { ...failedQueuedTask, signature: signObject(requester.privateKey, failedQueuedTask) },
+    }, "FED_QUEUE_CLOSE");
+    assert.deepEqual(failedQueuedFrames.map((frame) => frame.type), ["FED_QUEUE_ACCEPTED", "FED_QUEUE_CLOSE"]);
+    const failedClaimFrames = await exchangeFrames(port, {
+      type: "FED_QUEUE_CLAIM",
+      origin_zone: zoneA.descriptor,
+      task_id: failedQueuedTask.task_id,
+      owner: "scheduler://local",
+    }, "FED_QUEUE_CLAIM_CLOSE");
+    assert.deepEqual(failedClaimFrames.map((frame) => frame.type), ["FED_QUEUE_CLAIMED", "FED_QUEUE_CLAIM_CLOSE"]);
+    const failedDrainFrames = await exchangeFrames(port, {
+      type: "FED_QUEUE_DRAIN",
+      origin_zone: zoneA.descriptor,
+      task_id: failedQueuedTask.task_id,
+      lease_id: failedClaimFrames[0].lease_id,
+    });
+    assert.equal(failedDrainFrames.at(-1).type, "FED_TASK_ERROR");
+    assert.match(failedDrainFrames.at(-1).error, /mcp tool arguments missing required field: locale/);
+    const failedQueueState = JSON.parse(await readFile("state/go-fed-discovery-audit-queue/go_fed_task_queued_failed.json", "utf8"));
+    assert.equal(failedQueueState.status, "failed");
+
+    const retryQueuedTask = {
+      ...failedQueuedTask,
+      task_id: "go_fed_task_queued_retry",
+      intent: "Retry queued failed task with backoff state.",
+    };
+    const retryQueueFrames = await exchangeFrames(port, {
+      type: "FED_QUEUE_RETRY",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      retry_of: failedQueuedTask.task_id,
+      retry_after_seconds: 30,
+      task: { ...retryQueuedTask, signature: signObject(requester.privateKey, retryQueuedTask) },
+    }, "FED_QUEUE_RETRY_CLOSE");
+    assert.deepEqual(retryQueueFrames.map((frame) => frame.type), ["FED_QUEUE_RETRY_ACCEPTED", "FED_QUEUE_RETRY_CLOSE"]);
+    const retryQueueState = JSON.parse(await readFile("state/go-fed-discovery-audit-queue/go_fed_task_queued_retry.json", "utf8"));
+    assert.equal(retryQueueState.status, "queued");
+    assert.equal(retryQueueState.retry_of, failedQueuedTask.task_id);
+    assert.equal(retryQueueState.retry_attempt, 1);
+    assert.match(retryQueueState.retry_after_at, /^\d{4}-\d{2}-\d{2}T/);
+
+    const retryBackoffClaimFrames = await exchangeFrames(port, {
+      type: "FED_QUEUE_CLAIM",
+      origin_zone: zoneA.descriptor,
+      task_id: retryQueuedTask.task_id,
+      owner: "scheduler://too-early",
+    });
+    assert.equal(retryBackoffClaimFrames[0].type, "FED_TASK_ERROR");
+    assert.match(retryBackoffClaimFrames[0].error, /queue retry backoff active/);
 
     const executionFrames = await exchangeFrames(port, {
       type: "FED_TASK_OPEN",
@@ -907,7 +994,7 @@ setTimeout(() => {
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 46);
+    assert.equal(auditBody.entries.length, 51);
 
     const tasksResponse = await fetch(`http://127.0.0.1:${humanPort}/api/tasks`);
     assert.equal(tasksResponse.status, 200);

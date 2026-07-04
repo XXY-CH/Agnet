@@ -286,6 +286,31 @@ v5.3 treats retry as a new signed task with lineage. Zone B verifies the task as
 
 This is not automatic retry. There is no backoff, retry queue, scheduler, or lookup that proves the old task exists.
 
+## FED_QUEUE_RETRY
+
+```json
+{
+  "type": "FED_QUEUE_RETRY",
+  "origin_zone": { "...": "Zone A descriptor" },
+  "requester": { "...": "requester descriptor" },
+  "retry_of": "fed_task_failed",
+  "retry_after_seconds": 60,
+  "task": {
+    "task_id": "fed_task_retry_1",
+    "from": "aid:ed25519:...",
+    "to": "agent://zone-b/summarizer",
+    "intent": "Retry after failure.",
+    "scope": { "network": false },
+    "budget": { "time_seconds": 30 },
+    "signature": "..."
+  }
+}
+```
+
+v7.4 treats queue retry as explicit durable requeue state. The parent queue item must be `failed`; the new queue item records `retry_of`, `retry_attempt`, and `retry_after_at`. `FED_QUEUE_CLAIM` rejects that retry item while the backoff time is still in the future.
+
+This is not automatic retry. There is no scanner, retry worker, or background scheduler loop.
+
 ## FED_TASK_CANCEL
 
 ```json

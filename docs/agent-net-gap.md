@@ -99,6 +99,7 @@
 - Failed Go task execution persists error state before a receipt exists。
 - Signed task cancellation interrupts a running external tool through the in-memory runtime registry。
 - Running Go tasks persist state before external/MCP execution completes。
+- Failed Go queue items can be explicitly retried with durable retry/backoff state。
 
 主要缺：
 
@@ -108,7 +109,7 @@
 - concurrency model。
 - task state UI / query surface。
 - real checkpoint state restore。
-- automatic retry / backoff。
+- automatic retry / backoff scanning。
 - binary/package provenance。
 - streamed output transcript evidence。
 - long-running MCP session reuse。
