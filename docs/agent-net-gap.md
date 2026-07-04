@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v6.3 assessment
+状态：v7.10 assessment
 
 ## 一句话
 
@@ -105,6 +105,7 @@
 - Checkpoint resume can be queued durably before explicit drain。
 - Human/local queue actions are recorded as hash-chained audit evidence。
 - Human/local queue actions require signed action grants。
+- Human/local queue action grants carry action scope and expiry。
 
 主要缺：
 
@@ -113,6 +114,7 @@
 - container-grade sandbox。
 - concurrency model。
 - task drafting/signing UI。
+- queue action grant replay/nonce boundary。
 - real checkpoint state restore。
 - automatic retry / backoff scanning。
 - binary/package provenance。

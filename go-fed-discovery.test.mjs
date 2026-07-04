@@ -103,13 +103,16 @@ function authBody(sessionId, challenge, peerZid, remoteZid) {
   return { session_id: sessionId, challenge, peer_zid: peerZid, remote_zid: remoteZid };
 }
 
-function queueActionGrant(action, taskId, task) {
+function queueActionGrant(action, taskId, task, extra = {}) {
   const body = {
     action,
     task_id: taskId,
     task_digest: task ? createHash("sha256").update(canonical(task)).digest("hex") : null,
     authority: zoneA.descriptor.zid,
     authority_descriptor: zoneA.descriptor,
+    scope: { actions: [action] },
+    expires_at: "2099-01-01T00:00:00Z",
+    ...extra,
   };
   return { ...body, grant_signature: signObject(zoneA.privateKey, body) };
 }
@@ -638,6 +641,32 @@ setTimeout(() => {
     assert.equal(unauthorisedHumanClaimResponse.status, 400);
     assert.match(await unauthorisedHumanClaimResponse.text(), /queue action grant missing/);
 
+    const expiredGrantClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "claim",
+        task_id: humanQueuedTask.task_id,
+        owner: "human://local",
+        action_grant: queueActionGrant("claim", humanQueuedTask.task_id, null, { expires_at: "2000-01-01T00:00:00Z" }),
+      }),
+    });
+    assert.equal(expiredGrantClaimResponse.status, 400);
+    assert.match(await expiredGrantClaimResponse.text(), /queue action grant expired/);
+
+    const outOfScopeGrantClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "claim",
+        task_id: humanQueuedTask.task_id,
+        owner: "human://local",
+        action_grant: queueActionGrant("claim", humanQueuedTask.task_id, null, { scope: { actions: ["drain"] } }),
+      }),
+    });
+    assert.equal(outOfScopeGrantClaimResponse.status, 400);
+    assert.match(await outOfScopeGrantClaimResponse.text(), /queue action grant scope mismatch/);
+
     const humanClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -1131,7 +1160,7 @@ setTimeout(() => {
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 71);
+    assert.equal(auditBody.entries.length, 73);
     const queueActionRecords = auditBody.entries
       .map((entry) => entry.record)
       .filter((record) => record.kind === "go_queue_action");
@@ -1139,6 +1168,8 @@ setTimeout(() => {
     assert.equal(queueActionRecords.some((record) => record.action === "drain" && record.task_id === humanQueuedTask.task_id && record.status === "ok"), true);
     assert.equal(queueActionRecords.some((record) => record.action === "enqueue" && record.task_id === humanCreatedQueuedTask.task_id && record.status === "ok"), true);
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /grant missing/.test(record.error)), true);
+    assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /grant expired/.test(record.error)), true);
+    assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /scope mismatch/.test(record.error)), true);
     assert.equal(queueActionRecords.filter((record) => record.status === "ok").every((record) => /^[0-9a-f]{64}$/.test(record.grant_digest)), true);
 
     const tasksResponse = await fetch(`http://127.0.0.1:${humanPort}/api/tasks`);

@@ -1999,6 +1999,16 @@ func (f Fixture) requireQueueActionGrant(action map[string]any) error {
 	if grant["action"] != action["action"] {
 		return errors.New("queue action grant action mismatch")
 	}
+	if !queueActionGrantAllows(grant, optionalString(action["action"])) {
+		return errors.New("queue action grant scope mismatch")
+	}
+	expiresAt, err := time.Parse(time.RFC3339Nano, optionalString(grant["expires_at"]))
+	if err != nil {
+		return errors.New("queue action grant expires_at invalid")
+	}
+	if !time.Now().UTC().Before(expiresAt) {
+		return errors.New("queue action grant expired")
+	}
 	if grant["task_id"] != queueActionTaskID(action, nil) {
 		return errors.New("queue action grant task mismatch")
 	}
@@ -2018,6 +2028,16 @@ func (f Fixture) requireQueueActionGrant(action map[string]any) error {
 		return errors.New("queue action grant signature verification failed")
 	}
 	return nil
+}
+
+func queueActionGrantAllows(grant map[string]any, action string) bool {
+	scope, _ := grant["scope"].(map[string]any)
+	for _, item := range stringsFromAny(scope["actions"]) {
+		if item == action {
+			return true
+		}
+	}
+	return false
 }
 
 func (f Fixture) recordQueueAction(action map[string]any, result map[string]any, actionErr error) error {

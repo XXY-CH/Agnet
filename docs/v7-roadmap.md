@@ -1,6 +1,6 @@
 # Agent Space v7 Roadmap
 
-状态：v7.9 complete; v7.10+ planned
+状态：v7.10 complete; v7.11+ planned
 目标：从 durable task state 进入 durable scheduler queue，让任务生命周期有本地所有权、可恢复入口和后续调度面。
 
 ## v7.0: Durable Queue Enqueue
@@ -204,6 +204,27 @@
 - 不做 browser-side signing UX。
 - 不做 persistent user accounts。
 - 不要求 remote federation frames use action grants。
+- 不开放非 localhost。
+
+## v7.10: Queue Action Grant Scope
+
+状态：complete
+目标：queue action grants carry explicit scope and expiry.
+
+新增：
+
+- Action grant requires `scope.actions`。
+- Requested action must be included in `scope.actions`。
+- Action grant requires `expires_at`。
+- Expired grants are rejected before applying the queue action。
+- Failed grant checks are recorded as `go_queue_action` audit records。
+
+不做：
+
+- 不做 user/session identity。
+- 不做 grant revocation list。
+- 不做 replay nonce。
+- 不做 browser-side signing UX。
 - 不开放非 localhost。
 
 ## 后续方向
