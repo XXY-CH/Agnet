@@ -1639,6 +1639,8 @@ setTimeout(() => {
     const runningPageText = await runningPageResponse.text();
     assert.match(runningPageText, /loadLiveTranscript\(&#34;go_fed_task_live_cancelled&#34;\)/);
     assert.match(runningPageText, /\/api\/transcripts\/live\?task_id=/);
+    assert.match(runningPageText, /setInterval\(\(\) => refreshLiveTranscript\(taskID\), 1000\)/);
+    assert.match(runningPageText, /clearInterval\(liveTranscriptPoller\)/);
     const liveCancel = {
       task_id: slowTask.task_id,
       from: requester.aid,

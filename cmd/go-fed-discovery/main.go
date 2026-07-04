@@ -1525,15 +1525,22 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 		b.WriteString(`</td></tr>`)
 	}
 	b.WriteString(`</tbody></table><h2>Transcript</h2><pre id="transcript-viewer">No transcript selected</pre><script>
+let liveTranscriptPoller;
 async function loadTranscript(taskID) {
+  clearInterval(liveTranscriptPoller);
   const viewer = document.getElementById("transcript-viewer");
   const response = await fetch("/api/transcripts/stream?task_id=" + encodeURIComponent(taskID));
   viewer.textContent = response.ok ? await response.text() : await response.text();
 }
-async function loadLiveTranscript(taskID) {
+async function refreshLiveTranscript(taskID) {
   const viewer = document.getElementById("transcript-viewer");
   const response = await fetch("/api/transcripts/live?task_id=" + encodeURIComponent(taskID));
   viewer.textContent = response.ok ? await response.text() : await response.text();
+}
+async function loadLiveTranscript(taskID) {
+  clearInterval(liveTranscriptPoller);
+  await refreshLiveTranscript(taskID);
+  liveTranscriptPoller = setInterval(() => refreshLiveTranscript(taskID), 1000);
 }
 </script><h2>Audit</h2><table><thead><tr><th>Index</th><th>Kind</th><th>Hash</th></tr></thead><tbody>`)
 	for index, entry := range entries {
