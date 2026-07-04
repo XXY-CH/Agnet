@@ -1607,6 +1607,18 @@ setTimeout(() => {
       "state/go-fed-discovery-audit.log",
     ]);
     assert.match(verifiedAudit.stdout, /"go_audit_verify":"ok"/);
+    await writeFile("artifacts/go_fed_task_verified/go-summary.md", "x".repeat(Buffer.byteLength(artifactText)));
+    await assert.rejects(
+      execFileAsync("go", [
+        "run",
+        "./cmd/go-fed-discovery",
+        "--verify-audit",
+        "--audit",
+        "state/go-fed-discovery-audit.log",
+      ]),
+      /artifact bytes digest mismatch/,
+    );
+    await writeFile("artifacts/go_fed_task_verified/go-summary.md", artifactText);
 
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);

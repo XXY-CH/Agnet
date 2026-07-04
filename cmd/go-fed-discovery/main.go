@@ -3369,6 +3369,20 @@ func verifyArtifactManifests(receipt map[string]any) error {
 		if _, ok := manifest["size"].(float64); !ok {
 			return errors.New("artifact manifest size missing")
 		}
+		path, err := localArtifactPath(refs[index])
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if float64(len(data)) != manifest["size"] {
+			return errors.New("artifact bytes size mismatch")
+		}
+		if digestBytesHex(data) != manifest["sha256"] {
+			return errors.New("artifact bytes digest mismatch")
+		}
 		body := map[string]any{}
 		for k, v := range manifest {
 			if k != "manifest_hash" {

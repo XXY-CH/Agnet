@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.20 complete; v8.21+ planned
+状态：v8.21 complete; v8.22+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -478,8 +478,31 @@
 - 不做 public deployment。
 - 不做 A2A/ARD compatibility。
 
+## v8.21: Artifact Byte Verification
+
+状态：complete
+目标：Audit verification checks local artifact bytes against signed artifact manifests.
+
+新增：
+
+- `--verify-audit` reads each local `artifact://local/...` file referenced by a receipt.
+- The verifier rejects artifact byte length mismatch against manifest `size`.
+- The verifier rejects artifact SHA-256 mismatch against manifest `sha256`.
+- The integration test tampers with an artifact after a successful audit verify and expects verification failure.
+
+不做：
+
+- 不做 remote artifact fetch。
+- 不校验 remote object store。
+- 不做 artifact GC。
+- 不做 artifact browser。
+- 不做 full transcript artifact storage。
+- 不做 container sandbox。
+- 不做 public deployment。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
-- v8.21: remote artifact storage, container sandbox hardening, full transcript storage, or another small Ultimate-aligned runtime/governance slice.
+- v8.22: remote artifact storage, container sandbox hardening, full transcript storage, or another small Ultimate-aligned runtime/governance slice.
 
 Container sandbox and public transport remain separate hardening tracks。
