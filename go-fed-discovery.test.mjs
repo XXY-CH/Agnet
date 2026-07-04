@@ -1548,8 +1548,13 @@ setTimeout(() => {
     assert.match(pageText, /agent-space-browser-requester/);
     assert.match(pageText, /Export Key/);
     assert.match(pageText, /Import Key/);
+    assert.match(pageText, /Rotate Key/);
     assert.match(pageText, /browser-export-key/);
     assert.match(pageText, /browser-import-key/);
+    assert.match(pageText, /browser-rotate-key/);
+    assert.match(pageText, /rotation_proof/);
+    assert.match(pageText, /previous_signature/);
+    assert.match(pageText, /next_signature/);
     assert.match(pageText, /descriptor_signature/);
     assert.match(pageText, /\/api\/queue\/drafts/);
     assert.match(pageText, /1 signed/);

@@ -1114,7 +1114,7 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 }
 
 func browserRequesterPanel() string {
-	return `<section id="browser-requester"><h2>Browser Requester Key</h2><div class="toolrow"><button id="browser-generate-key" type="button">Generate</button><button id="browser-clear-key" type="button">Clear</button><button id="browser-export-key" type="button">Export Key</button><button id="browser-import-key" type="button">Import Key</button></div><textarea id="browser-key-bundle" rows="4" spellcheck="false" aria-label="Browser requester key bundle"></textarea><form id="browser-draft-form"><label>Task<input id="browser-task-id" value="browser_draft_task"></label><label>Target<input id="browser-task-to" value="agent://zone-b/translator"></label><label>Intent<input id="browser-task-intent" value="Draft from a browser-held requester key."></label><label>Token<input id="browser-token" type="password" autocomplete="off"></label><button type="submit">Sign Draft</button></form><pre id="browser-requester-status"></pre></section><script>
+	return `<section id="browser-requester"><h2>Browser Requester Key</h2><div class="toolrow"><button id="browser-generate-key" type="button">Generate</button><button id="browser-clear-key" type="button">Clear</button><button id="browser-export-key" type="button">Export Key</button><button id="browser-import-key" type="button">Import Key</button><button id="browser-rotate-key" type="button">Rotate Key</button></div><textarea id="browser-key-bundle" rows="4" spellcheck="false" aria-label="Browser requester key bundle"></textarea><form id="browser-draft-form"><label>Task<input id="browser-task-id" value="browser_draft_task"></label><label>Target<input id="browser-task-to" value="agent://zone-b/translator"></label><label>Intent<input id="browser-task-intent" value="Draft from a browser-held requester key."></label><label>Token<input id="browser-token" type="password" autocomplete="off"></label><button type="submit">Sign Draft</button></form><pre id="browser-requester-status"></pre></section><script>
 (() => {
   const storageKey = "agent-space-browser-requester";
   const encoder = new TextEncoder();
@@ -1134,15 +1134,14 @@ func browserRequesterPanel() string {
     }
     return out;
   };
-  const signBody = async (privateKey, body, signatureKey) => {
+  const signatureFor = async (privateKey, body) => {
     const signature = await crypto.subtle.sign({ name: "Ed25519" }, privateKey, encoder.encode(canonical(body)));
-    return { ...body, [signatureKey]: b64url(signature) };
+    return b64url(signature);
   };
-  const render = () => {
-    const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
-    status.textContent = saved ? "aid: " + saved.descriptor.aid : "No browser requester key";
+  const signBody = async (privateKey, body, signatureKey) => {
+    return { ...body, [signatureKey]: await signatureFor(privateKey, body) };
   };
-  document.getElementById("browser-generate-key").onclick = async () => {
+  const newRequesterBundle = async () => {
     const keys = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
     const spki = new Uint8Array(await crypto.subtle.exportKey("spki", keys.publicKey));
     const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", joinBytes(encoder.encode("asp-agent-id-v1"), new Uint8Array([0]), spki)));
@@ -1155,7 +1154,15 @@ func browserRequesterPanel() string {
       capabilities: ["summarize.text"],
       policy: {}
     }, "descriptor_signature");
-    localStorage.setItem(storageKey, JSON.stringify({ descriptor, privateJwk }));
+    return { descriptor, privateJwk, privateKey: keys.privateKey };
+  };
+  const render = () => {
+    const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
+    status.textContent = saved ? "aid: " + saved.descriptor.aid : "No browser requester key";
+  };
+  document.getElementById("browser-generate-key").onclick = async () => {
+    const bundle = await newRequesterBundle();
+    localStorage.setItem(storageKey, JSON.stringify({ descriptor: bundle.descriptor, privateJwk: bundle.privateJwk }));
     render();
   };
   document.getElementById("browser-clear-key").onclick = () => {
@@ -1179,6 +1186,23 @@ func browserRequesterPanel() string {
     } catch (error) {
       status.textContent = error.message;
     }
+  };
+  document.getElementById("browser-rotate-key").onclick = async () => {
+    const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
+    if (!saved) {
+      status.textContent = "No browser requester key";
+      return;
+    }
+    const previousKey = await crypto.subtle.importKey("jwk", saved.privateJwk, { name: "Ed25519" }, true, ["sign"]);
+    const next = await newRequesterBundle();
+    const body = { previous_aid: saved.descriptor.aid, next_aid: next.descriptor.aid };
+    const rotation_proof = {
+      ...body,
+      previous_signature: await signatureFor(previousKey, body),
+      next_signature: await signatureFor(next.privateKey, body)
+    };
+    localStorage.setItem(storageKey, JSON.stringify({ descriptor: next.descriptor, privateJwk: next.privateJwk, previous_descriptor: saved.descriptor, rotation_proof }));
+    render();
   };
   document.getElementById("browser-draft-form").onsubmit = async (event) => {
     event.preventDefault();

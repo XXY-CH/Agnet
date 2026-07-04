@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.7 complete; v8.8+ planned
+状态：v8.8 complete; v8.9+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -174,8 +174,33 @@
 - 不做 server-side key custody。
 - 不做 public deployment。
 
+## v8.8: Browser Requester Key Rotation Proof
+
+状态：complete
+目标：Human Gateway page can rotate the browser-held requester key and produce a browser-side Agent rotation proof without giving either private key to Go.
+
+新增：
+
+- Browser Requester Key panel exposes `Rotate Key`.
+- Rotation generates a fresh browser requester key.
+- The browser signs `{ previous_aid, next_aid }` with the previous requester private key.
+- The browser signs the same body with the next requester private key.
+- The new stored key bundle includes `previous_descriptor` and `rotation_proof`.
+
+不做：
+
+- 不做 Zone alias rebinding。
+- 不做 server-side rotation registry。
+- 不做 automatic key rotation schedule。
+- 不做 multi-key account manager。
+- 不做 encrypted key store。
+- 不做 passphrase-protected export。
+- 不做 compromised-key recovery。
+- 不做 login/session identity。
+- 不做 public deployment。
+
 ## 后续方向
 
-- v8.8: key rotation ceremony or the next deployable transport/security hardening slice.
+- v8.9: Zone alias rebinding UI/API or the next deployable transport/security hardening slice.
 
 Container sandbox and public transport remain separate hardening tracks。
