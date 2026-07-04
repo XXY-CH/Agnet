@@ -1073,7 +1073,7 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "authority_descriptor": fixture.Authority, "alias_rebinding_proof": proof})
 	})
 	mux.HandleFunc("/api/artifacts/manifest", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
@@ -1099,7 +1099,18 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Agent-Space-Audit-Hash", fmt.Sprint(record["audit_hash"]))
+			w.Header().Set("X-Agent-Space-Receipt-Digest", digestHex(receipt))
+			w.Header().Set("X-Agent-Space-Artifact-SHA256", fmt.Sprint(manifest["sha256"]))
+			w.Header().Set("X-Agent-Space-Artifact-Manifest-Hash", fmt.Sprint(manifest["manifest_hash"]))
+			if r.Method == http.MethodHead {
+				return
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"task_id": taskID, "uri": uri, "audit_hash": record["audit_hash"], "receipt_digest": digestHex(receipt), "manifest": manifest})
+			return
+		}
+		if r.Method == http.MethodHead {
+			http.Error(w, "task_id is required for artifact manifest HEAD", http.StatusBadRequest)
 			return
 		}
 		path, err := localArtifactPath(uri)

@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.45 complete; v8.46+ planned
+状态：v8.46 complete; v8.47+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -1124,8 +1124,41 @@ Example:
 - 不做 public deployment。
 - 不做 A2A/ARD compatibility。
 
+## v8.46: Artifact Manifest HEAD Proof
+
+状态：complete
+目标：Task-scoped artifact manifest proofs support HEAD proof headers without returning JSON bytes.
+
+新增：
+
+- `HEAD /api/artifacts/manifest?task_id=<id>&uri=<artifact-uri>` runs the same task-scoped receipt and artifact verification path as GET.
+- The response returns `X-Agent-Space-Audit-Hash`.
+- The response returns `X-Agent-Space-Receipt-Digest`.
+- The response returns `X-Agent-Space-Artifact-SHA256`.
+- The response returns `X-Agent-Space-Artifact-Manifest-Hash`.
+- The integration test checks the headers and empty body.
+
+不做：
+
+- 不做 URI-only manifest HEAD。
+- 不做 audit index。
+- 不做 audit viewer。
+- 不做 receipt store/index。
+- 不做 artifact browser。
+- 不做 transcript browser。
+- 不做 remote artifact fetch/download。
+- 不做 object-store backend。
+- 不做 artifact GC。
+- 不做 auth model for artifact reads。
+- 不做 HTTP cache protocol。
+- 不做 range requests。
+- 不做 streamed transcript UI。
+- 不做 container namespace sandbox。
+- 不做 public deployment。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
-- v8.46: container namespace sandboxing, streamed transcript UI, object-store-backed artifacts, or another small Ultimate-aligned runtime/governance slice.
+- v8.47: container namespace sandboxing, streamed transcript UI, object-store-backed artifacts, or another small Ultimate-aligned runtime/governance slice.
 
 Container sandbox and public transport remain separate hardening tracks。

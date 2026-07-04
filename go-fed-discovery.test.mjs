@@ -1880,6 +1880,13 @@ setTimeout(() => {
     assert.equal(scopedArtifactManifestBody.audit_hash, receiptAuditEntry.hash);
     assert.equal(scopedArtifactManifestBody.receipt_digest, receiptDigest);
     assert.deepEqual(scopedArtifactManifestBody.manifest, artifactEvent.manifest);
+    const scopedArtifactManifestHeadResponse = await fetch(`http://127.0.0.1:${humanPort}/api/artifacts/manifest?task_id=${encodeURIComponent(task.task_id)}&uri=${encodeURIComponent(artifactEvent.manifest.uri)}`, { method: "HEAD" });
+    assert.equal(scopedArtifactManifestHeadResponse.status, 200);
+    assert.equal(scopedArtifactManifestHeadResponse.headers.get("x-agent-space-audit-hash"), receiptAuditEntry.hash);
+    assert.equal(scopedArtifactManifestHeadResponse.headers.get("x-agent-space-receipt-digest"), receiptDigest);
+    assert.equal(scopedArtifactManifestHeadResponse.headers.get("x-agent-space-artifact-sha256"), artifactEvent.manifest.sha256);
+    assert.equal(scopedArtifactManifestHeadResponse.headers.get("x-agent-space-artifact-manifest-hash"), artifactEvent.manifest.manifest_hash);
+    assert.equal(await scopedArtifactManifestHeadResponse.text(), "");
   } finally {
     try {
       process.kill(-gateway.pid, "SIGINT");
