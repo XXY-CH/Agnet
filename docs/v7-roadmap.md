@@ -1,6 +1,6 @@
 # Agent Space v7 Roadmap
 
-状态：v7.12 complete; v7.13+ planned
+状态：v7.13 complete; v7.14+ planned
 目标：从 durable task state 进入 durable scheduler queue，让任务生命周期有本地所有权、可恢复入口和后续调度面。
 
 ## v7.0: Durable Queue Enqueue
@@ -264,6 +264,27 @@
 
 - 不做 login/session identity。
 - 不做 actor authorization policy。
+- 不做 persistent user accounts。
+- 不做 browser-side signing UX。
+- 不开放非 localhost。
+
+## v7.13: Queue Action Actor Policy
+
+状态：complete
+目标：Human Gateway queue actions pass a local actor policy before execution.
+
+新增：
+
+- Actor policy runs after actor binding and before applying the queue action。
+- Local proof policy allows `human://local` for `enqueue`, `claim`, and `drain`。
+- Other actors are rejected before applying the queue action。
+- Actor policy failures are recorded as `go_queue_action` audit records。
+
+不做：
+
+- 不做 login/session identity。
+- 不做 role model。
+- 不做 actor policy config file。
 - 不做 persistent user accounts。
 - 不做 browser-side signing UX。
 - 不开放非 localhost。

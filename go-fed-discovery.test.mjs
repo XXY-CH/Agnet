@@ -697,6 +697,20 @@ setTimeout(() => {
     assert.equal(actorMismatchGrantClaimResponse.status, 400);
     assert.match(await actorMismatchGrantClaimResponse.text(), /queue action grant actor mismatch/);
 
+    const actorPolicyDeniedClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "claim",
+        task_id: humanQueuedTask.task_id,
+        owner: "human://guest",
+        actor: "human://guest",
+        action_grant: queueActionGrant("claim", humanQueuedTask.task_id, null, { actor: "human://guest" }),
+      }),
+    });
+    assert.equal(actorPolicyDeniedClaimResponse.status, 400);
+    assert.match(await actorPolicyDeniedClaimResponse.text(), /queue action actor policy denied/);
+
     const humanClaimGrant = queueActionGrant("claim", humanQueuedTask.task_id);
     const humanClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
       method: "POST",
@@ -1208,7 +1222,7 @@ setTimeout(() => {
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 76);
+    assert.equal(auditBody.entries.length, 77);
     const queueActionRecords = auditBody.entries
       .map((entry) => entry.record)
       .filter((record) => record.kind === "go_queue_action");
@@ -1220,6 +1234,7 @@ setTimeout(() => {
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /scope mismatch/.test(record.error)), true);
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /actor missing/.test(record.error)), true);
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /actor mismatch/.test(record.error)), true);
+    assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /actor policy denied/.test(record.error)), true);
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /grant replay/.test(record.error)), true);
     assert.equal(queueActionRecords.filter((record) => record.status === "ok").every((record) => /^[0-9a-f]{64}$/.test(record.grant_digest)), true);
 

@@ -2011,6 +2011,9 @@ func (f Fixture) requireQueueActionGrant(action map[string]any) error {
 	if grant["actor"] != action["actor"] {
 		return errors.New("queue action grant actor mismatch")
 	}
+	if !queueActionActorAllowed(optionalString(action["actor"]), optionalString(action["action"])) {
+		return errors.New("queue action actor policy denied")
+	}
 	expiresAt, err := time.Parse(time.RFC3339Nano, optionalString(grant["expires_at"]))
 	if err != nil {
 		return errors.New("queue action grant expires_at invalid")
@@ -2055,6 +2058,18 @@ func queueActionGrantAllows(grant map[string]any, action string) bool {
 		}
 	}
 	return false
+}
+
+func queueActionActorAllowed(actor, action string) bool {
+	if actor != "human://local" {
+		return false
+	}
+	switch action {
+	case "enqueue", "claim", "drain":
+		return true
+	default:
+		return false
+	}
 }
 
 func (f Fixture) queueActionGrantUsed(grantDigest string) (bool, error) {

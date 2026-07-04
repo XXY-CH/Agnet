@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v7.12 assessment
+状态：v7.13 assessment
 
 ## 一句话
 
@@ -106,6 +106,7 @@
 - Human/local queue actions are recorded as hash-chained audit evidence。
 - Human/local queue actions require signed action grants。
 - Human/local queue action grants bind a local actor string。
+- Human/local queue actions pass a minimal local actor allowlist。
 - Human/local queue action grants carry action scope and expiry。
 - Human/local queue action grants are rejected on replay after successful use。
 
@@ -113,7 +114,7 @@
 
 - richer MCP sessions/resources/prompts。
 - interactive approval UI。
-- actor authorization policy。
+- configurable actor authorization policy。
 - container-grade sandbox。
 - concurrency model。
 - task drafting/signing UI。
