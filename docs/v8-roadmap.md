@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.15 complete; v8.16+ planned
+状态：v8.16 complete; v8.17+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -363,8 +363,31 @@
 - 不做 public deployment。
 - 不做 A2A/ARD compatibility。
 
+## v8.16: Configurable Queue Actor Policy
+
+状态：complete
+目标：Human Gateway queue action actor policy can be configured from a local JSON file instead of being hardcoded to only `human://local`.
+
+新增：
+
+- Go gateway accepts `--human-actor-policy`.
+- The policy file contains a `queue_actions` actor-to-actions allowlist.
+- Queue action grant verification checks actor/action against the configured policy.
+- Missing policy file keeps the previous default: `human://local` may `enqueue`, `claim`, and `drain`.
+- Queue action audit evidence records configured-policy allows and denies through the existing `actor_policy_result` field.
+
+不做：
+
+- 不做 dynamic policy service。
+- 不做 role model。
+- 不做 policy UI。
+- 不做 policy hot reload。
+- 不做 login/session identity。
+- 不做 public deployment。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
-- v8.16: configurable actor authorization policy, container sandbox hardening, or another small Ultimate-aligned governance/runtime slice.
+- v8.17: container sandbox hardening, binary/package provenance, streamed output transcript evidence, or another small Ultimate-aligned runtime/governance slice.
 
 Container sandbox and public transport remain separate hardening tracks。

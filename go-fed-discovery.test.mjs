@@ -498,6 +498,12 @@ setTimeout(() => {
   await rm("state/go-fed-discovery-audit-queue-grants", { recursive: true, force: true });
   await rm("state/go-fed-discovery-requester-registry.json", { force: true });
   await rm("state/go-fed-discovery-requester-rebindings.json", { force: true });
+  await writeFile("state/go-fed-discovery-actor-policy.json", `${JSON.stringify({
+    queue_actions: {
+      "human://local": ["enqueue", "claim", "drain"],
+      "human://guest": ["enqueue"],
+    },
+  }, null, 2)}\n`);
   await writeTrustedZones("state/go-fed-discovery-trusted-origin.json", [zoneA]);
   await writeFile("state/node-trusts-go-discovery.json", `${JSON.stringify({ zones: [fixture.authority] }, null, 2)}\n`);
   const gateway = spawn("go", [
@@ -511,6 +517,8 @@ setTimeout(() => {
     String(humanPort),
     "--human-token",
     humanToken,
+    "--human-actor-policy",
+    "state/go-fed-discovery-actor-policy.json",
     "--trusted",
     "state/go-fed-discovery-trusted-origin.json",
     "--fixture",
@@ -891,6 +899,28 @@ setTimeout(() => {
     });
     assert.equal(actorPolicyDeniedClaimResponse.status, 400);
     assert.match(await actorPolicyDeniedClaimResponse.text(), /queue action actor policy denied/);
+
+    const guestCreatedQueuedTask = {
+      ...task,
+      task_id: "go_fed_task_guest_created_queue",
+      intent: "Create queued task through configured guest actor policy.",
+    };
+    const signedGuestCreatedQueuedTask = { ...guestCreatedQueuedTask, signature: signObject(requester.privateKey, guestCreatedQueuedTask) };
+    const guestCreatedQueueResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
+      method: "POST",
+      headers: humanHeaders(),
+      body: JSON.stringify({
+        action: "enqueue",
+        origin_zone: zoneA.descriptor,
+        requester: requester.descriptor,
+        task: signedGuestCreatedQueuedTask,
+        actor: "human://guest",
+        action_grant: queueActionGrant("enqueue", guestCreatedQueuedTask.task_id, signedGuestCreatedQueuedTask, { actor: "human://guest" }),
+      }),
+    });
+    assert.equal(guestCreatedQueueResponse.status, 200);
+    const guestCreatedQueueBody = await guestCreatedQueueResponse.json();
+    assert.equal(guestCreatedQueueBody.task_id, guestCreatedQueuedTask.task_id);
 
     const humanClaimGrant = queueActionGrant("claim", humanQueuedTask.task_id);
     const humanClaimGrantDigest = createHash("sha256").update(canonical(humanClaimGrant)).digest("hex");
@@ -1571,7 +1601,7 @@ setTimeout(() => {
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 83);
+    assert.equal(auditBody.entries.length, 84);
     const queueActionRecords = auditBody.entries
       .map((entry) => entry.record)
       .filter((record) => record.kind === "go_queue_action");
@@ -1580,6 +1610,7 @@ setTimeout(() => {
     assert.equal(queueActionRecords.some((record) => record.action === "enqueue" && record.task_id === humanCreatedQueuedTask.task_id && record.status === "ok" && record.actor === "human://local" && record.actor_policy_result === "allow"), true);
     assert.equal(queueActionRecords.some((record) => record.action === "enqueue" && record.task_id === humanDraftedTaskId && record.status === "ok" && record.actor === "human://local" && record.actor_policy_result === "allow"), true);
     assert.equal(queueActionRecords.some((record) => record.action === "enqueue" && record.task_id === browserHeldTask.task_id && record.status === "ok" && record.actor === "human://local" && record.actor_policy_result === "allow"), true);
+    assert.equal(queueActionRecords.some((record) => record.action === "enqueue" && record.task_id === guestCreatedQueuedTask.task_id && record.status === "ok" && record.actor === "human://guest" && record.actor_policy_result === "allow"), true);
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /grant missing/.test(record.error) && record.actor === ""), true);
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /grant expired/.test(record.error) && record.actor === "human://local" && record.actor_policy_result === "allow"), true);
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /scope mismatch/.test(record.error) && record.actor === "human://local" && record.actor_policy_result === undefined), true);

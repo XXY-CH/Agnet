@@ -32,17 +32,18 @@ import (
 )
 
 type Fixture struct {
-	Authority           map[string]any     `json:"authority"`
-	WorkerProfile       WorkerProfile      `json:"worker_profile"`
-	WorkerProfiles      []WorkerProfile    `json:"worker_profiles"`
-	Workers             []Worker           `json:"-"`
-	Credential          map[string]any     `json:"credential"`
-	AuthorityPrivateKey ed25519.PrivateKey `json:"-"`
-	Audit               *AuditLog          `json:"-"`
-	TaskStateDir        string             `json:"-"`
-	QueueDir            string             `json:"-"`
-	ApprovalDir         string             `json:"-"`
-	Runtime             *TaskRuntime       `json:"-"`
+	Authority           map[string]any      `json:"authority"`
+	WorkerProfile       WorkerProfile       `json:"worker_profile"`
+	WorkerProfiles      []WorkerProfile     `json:"worker_profiles"`
+	Workers             []Worker            `json:"-"`
+	Credential          map[string]any      `json:"credential"`
+	AuthorityPrivateKey ed25519.PrivateKey  `json:"-"`
+	Audit               *AuditLog           `json:"-"`
+	TaskStateDir        string              `json:"-"`
+	QueueDir            string              `json:"-"`
+	ApprovalDir         string              `json:"-"`
+	Runtime             *TaskRuntime        `json:"-"`
+	QueueActorPolicy    map[string][]string `json:"-"`
 }
 
 const requesterRegistryPath = "state/go-fed-discovery-requester-registry.json"
@@ -117,6 +118,7 @@ func main() {
 	wsPort := flag.String("ws-port", "", "optional WebSocket listen port")
 	humanPort := flag.String("human-port", "", "optional Human Gateway HTTP port")
 	humanToken := flag.String("human-token", "", "optional Human Gateway bearer token for write actions")
+	humanActorPolicyPath := flag.String("human-actor-policy", "", "optional Human Gateway queue actor policy JSON file")
 	fixturePath := flag.String("fixture", "test-vectors/asp-v1.5-capability-credential.json", "signed descriptor fixture")
 	trustPath := flag.String("trusted", "state/go-fed-trusted-zones.json", "trusted origin zones")
 	authorityKeyPath := flag.String("authority-key", "state/keys/go-fed-authority.seed", "authority seed key file")
@@ -134,13 +136,13 @@ func main() {
 		return
 	}
 
-	if err := serve(*port, *wsPort, *humanPort, *humanToken, *fixturePath, *trustPath, *authorityKeyPath, *workerKeyPath, *auditPath); err != nil {
+	if err := serve(*port, *wsPort, *humanPort, *humanToken, *humanActorPolicyPath, *fixturePath, *trustPath, *authorityKeyPath, *workerKeyPath, *auditPath); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func serve(port, wsPort, humanPort, humanToken, fixturePath, trustPath, authorityKeyPath, workerKeyPath, auditPath string) error {
+func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, fixturePath, trustPath, authorityKeyPath, workerKeyPath, auditPath string) error {
 	authorityKey, err := loadPrivateKey(authorityKeyPath, "authority")
 	if err != nil {
 		return err
@@ -153,6 +155,11 @@ func serve(port, wsPort, humanPort, humanToken, fixturePath, trustPath, authorit
 	if err != nil {
 		return err
 	}
+	actorPolicy, err := loadQueueActorPolicy(humanActorPolicyPath)
+	if err != nil {
+		return err
+	}
+	fixture.QueueActorPolicy = actorPolicy
 	audit, err := openAuditLog(auditPath)
 	if err != nil {
 		return err
@@ -1415,6 +1422,23 @@ func loadFixture(path string, authorityKey, workerKey ed25519.PrivateKey) (Fixtu
 	}
 	fixture.Workers = workers
 	return fixture, nil
+}
+
+func loadQueueActorPolicy(path string) (map[string][]string, error) {
+	if path == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var policy struct {
+		QueueActions map[string][]string `json:"queue_actions"`
+	}
+	if err := json.Unmarshal(data, &policy); err != nil {
+		return nil, err
+	}
+	return policy.QueueActions, nil
 }
 
 func loadPrivateKey(path, label string) (ed25519.PrivateKey, error) {
@@ -2756,7 +2780,7 @@ func (f Fixture) requireQueueActionGrant(action map[string]any) error {
 	if grant["actor"] != action["actor"] {
 		return errors.New("queue action grant actor mismatch")
 	}
-	if !queueActionActorAllowed(optionalString(action["actor"]), optionalString(action["action"])) {
+	if !f.queueActionActorAllowed(optionalString(action["actor"]), optionalString(action["action"])) {
 		return errors.New("queue action actor policy denied")
 	}
 	expiresAt, err := time.Parse(time.RFC3339Nano, optionalString(grant["expires_at"]))
@@ -2798,16 +2822,16 @@ func queueActionGrantAllows(grant map[string]any, action string) bool {
 	return false
 }
 
-func queueActionActorAllowed(actor, action string) bool {
-	if actor != "human://local" {
-		return false
+func (f Fixture) queueActionActorAllowed(actor, action string) bool {
+	if len(f.QueueActorPolicy) == 0 {
+		return actor == "human://local" && (action == "enqueue" || action == "claim" || action == "drain")
 	}
-	switch action {
-	case "enqueue", "claim", "drain":
-		return true
-	default:
-		return false
+	for _, allowed := range f.QueueActorPolicy[actor] {
+		if allowed == action {
+			return true
+		}
 	}
+	return false
 }
 
 func (f Fixture) consumeQueueActionGrant(grantDigest string, action map[string]any) error {
@@ -2851,7 +2875,7 @@ func (f Fixture) recordQueueAction(action map[string]any, result map[string]any,
 		"grant_digest": queueActionGrantDigest(action),
 		"actor":        queueActionActor(action),
 	}
-	if actorPolicyResult := queueActionActorPolicyResult(action); actorPolicyResult != "" {
+	if actorPolicyResult := f.queueActionActorPolicyResult(action); actorPolicyResult != "" {
 		record["actor_policy_result"] = actorPolicyResult
 	}
 	if actionErr != nil {
@@ -2881,7 +2905,7 @@ func queueActionActor(action map[string]any) string {
 	return ""
 }
 
-func queueActionActorPolicyResult(action map[string]any) string {
+func (f Fixture) queueActionActorPolicyResult(action map[string]any) string {
 	actionName := optionalString(action["action"])
 	grant, ok := action["action_grant"].(map[string]any)
 	if !ok {
@@ -2898,7 +2922,7 @@ func queueActionActorPolicyResult(action map[string]any) string {
 	if actor == "" || optionalString(grant["actor"]) == "" || grant["actor"] != action["actor"] {
 		return ""
 	}
-	if queueActionActorAllowed(actor, actionName) {
+	if f.queueActionActorAllowed(actor, actionName) {
 		return "allow"
 	}
 	return "deny"
