@@ -1163,6 +1163,8 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 			return
 		}
 		w.Header().Set("Content-Type", fmt.Sprint(manifest["media_type"]))
+		w.Header().Set("X-Agent-Space-Artifact-SHA256", fmt.Sprint(manifest["sha256"]))
+		w.Header().Set("X-Agent-Space-Artifact-Manifest-Hash", fmt.Sprint(manifest["manifest_hash"]))
 		_, _ = w.Write(data)
 	})
 	mux.Handle("/artifacts/", http.StripPrefix("/artifacts/", http.FileServer(http.Dir("artifacts"))))
