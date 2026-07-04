@@ -196,6 +196,16 @@ async function approveTask(humanPort, taskId) {
   return response.json();
 }
 
+async function denyTask(humanPort, taskId) {
+  const response = await fetch(`http://127.0.0.1:${humanPort}/api/approvals/actions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action: "deny", task_id: taskId, actor: "human://local" }),
+  });
+  assert.equal(response.status, 200);
+  return response.json();
+}
+
 async function waitForPendingApproval(humanPort, taskId) {
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const response = await fetch(`http://127.0.0.1:${humanPort}/api/approvals`);
@@ -206,6 +216,13 @@ async function waitForPendingApproval(humanPort, taskId) {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(`pending approval not found for ${taskId}`);
+}
+
+async function approvalState(humanPort, taskId) {
+  const response = await fetch(`http://127.0.0.1:${humanPort}/api/approvals`);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  return body.approvals.find((item) => item.task_id === taskId);
 }
 
 async function exchangeFramesWithHumanApproval(port, humanPort, frame, taskId, closeType = "FED_TASK_CLOSE") {
@@ -923,6 +940,46 @@ setTimeout(() => {
     const humanDraftedQueueBody = await humanDraftedQueueResponse.json();
     assert.equal(humanDraftedQueueBody.queue.some((item) => item.task_id === humanDraftedTaskId && item.status === "queued"), true);
 
+    const deniedApprovalTask = {
+      ...task,
+      task_id: "go_fed_task_approval_denied",
+      intent: "Require explicit denial before tool execution.",
+    };
+    const deniedApprovalExecution = exchangeFramesUntil(port, {
+      type: "FED_TASK_OPEN",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      task: { ...deniedApprovalTask, signature: signObject(requester.privateKey, deniedApprovalTask) },
+    }, (item) => item.type === "FED_TASK_EVENT" && item.event.type === "approval.required");
+    await deniedApprovalExecution.checkpoint;
+    const denyBody = await denyTask(humanPort, deniedApprovalTask.task_id);
+    assert.equal(denyBody.approval.task_id, deniedApprovalTask.task_id);
+    assert.equal(denyBody.approval.status, "denied");
+    const deniedApprovalFrames = await deniedApprovalExecution.done;
+    assert.equal(deniedApprovalFrames.at(-1).type, "FED_TASK_ERROR");
+    assert.match(deniedApprovalFrames.at(-1).error, /approval denied/);
+    assert.equal(deniedApprovalFrames.some((frame) => frame.type === "FED_TASK_EVENT" && frame.event.type === "task.started"), false);
+    const deniedApprovalState = await approvalState(humanPort, deniedApprovalTask.task_id);
+    assert.equal(deniedApprovalState.status, "denied");
+
+    const expiredApprovalTask = {
+      ...task,
+      task_id: "go_fed_task_approval_expired",
+      intent: "Expire pending approval before tool execution.",
+      approval_expires_at: "2000-01-01T00:00:00Z",
+    };
+    const expiredApprovalFrames = await exchangeFrames(port, {
+      type: "FED_TASK_OPEN",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      task: { ...expiredApprovalTask, signature: signObject(requester.privateKey, expiredApprovalTask) },
+    });
+    assert.equal(expiredApprovalFrames.at(-1).type, "FED_TASK_ERROR");
+    assert.match(expiredApprovalFrames.at(-1).error, /approval expired/);
+    assert.equal(expiredApprovalFrames.some((frame) => frame.type === "FED_TASK_EVENT" && frame.event.type === "task.started"), false);
+    const expiredApprovalState = await approvalState(humanPort, expiredApprovalTask.task_id);
+    assert.equal(expiredApprovalState.status, "expired");
+
     const execution = exchangeFramesUntil(port, {
       type: "FED_TASK_OPEN",
       origin_zone: zoneA.descriptor,
@@ -1384,7 +1441,7 @@ setTimeout(() => {
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 78);
+    assert.equal(auditBody.entries.length, 82);
     const queueActionRecords = auditBody.entries
       .map((entry) => entry.record)
       .filter((record) => record.kind === "go_queue_action");

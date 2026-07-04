@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.1 complete; v8.2+ planned
+状态：v8.2 complete; v8.3+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -44,9 +44,28 @@
 - 不做 browser-side identity/key UX。
 - 不做 public deployment。
 
+## v8.2: Approval Denial and Expiry
+
+状态：complete
+目标：pending approvals can deny or expire before tool execution.
+
+新增：
+
+- Human Gateway `POST /api/approvals/actions` supports local `deny`.
+- Pending approval state records `expires_at`.
+- Denied approvals stop execution before `task.started`.
+- Expired approvals stop execution before `task.started` and persist `expired` state.
+
+不做：
+
+- 不做 denial reason schema。
+- 不做 role model。
+- 不做 login/session identity。
+- 不做 background expiry scanner。
+- 不做 public deployment。
+
 ## 后续方向
 
-- v8.2: approval denial/expiry.
 - v8.3: browser-side requester/key UX.
 - v8.4: deployable gateway security boundary.
 

@@ -1,11 +1,11 @@
 # Agent Space Implementation Status
 
-状态：v8.1 complete
-当前代码基线：`v8.1-queued-drain-explicit-approval`
+状态：v8.2 complete
+当前代码基线：`v8.2-approval-denial-expiry`
 
 ## 一句话
 
-当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go direct task Human Gateway explicit approval、Go `FED_TASK_ENQUEUE` durable local queue entry、Go `FED_QUEUE_CLAIM` lease ownership/expiry/backoff gate、Go `FED_QUEUE_RECLAIM` expired lease ownership transfer、Go `FED_QUEUE_RETRY` failed queue retry/backoff state、Go `FED_QUEUE_RESUME` queued checkpoint resume binding、Go queued checkpoint state digest restore evidence、Go `FED_QUEUE_DRAIN` explicit queued execution with Human Gateway approval、Go Human Gateway queue state/action/creation/drafting/approval surface、Go Human Gateway actor-bound scoped signed queue action grants、Go Human Gateway local actor policy gate、Go Human Gateway queue action grant replay rejection、Go Human Gateway queue action audit actor evidence、Go `FED_TASK_RESUME` audit-backed checkpoint link、Go signed `FED_TASK_CANCEL` evidence、Go live external task cancellation、Go `FED_TASK_RETRY` lineage evidence、Go 最小 task execution path、Go durable running/completed/cancelled/failed task state files、Go Human Gateway task state view、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、MCP initialize metadata evidence、MCP resources/prompts/tools metadata evidence、MCP selected tool binding、MCP selected schema digest evidence、MCP argument digest evidence、MCP required argument gate、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、sandbox isolation level evidence、signed sandbox proof、sandbox claim binding、tool command provenance digest、tool output digest alignment、protocol-native checkpoint evidence、artifact manifest digest evidence、canonical policy scope evidence、credential status evidence、authenticated session handshake，以及 remote audit query。
+当前实现已经证明了 Agent identity、signed task、local runtime、Node federation execution、Go federation discovery、Go dynamic signing、Go key files、Go `FED_TASK_OPEN` verification、Go direct task Human Gateway explicit approval/denial/expiry、Go `FED_TASK_ENQUEUE` durable local queue entry、Go `FED_QUEUE_CLAIM` lease ownership/expiry/backoff gate、Go `FED_QUEUE_RECLAIM` expired lease ownership transfer、Go `FED_QUEUE_RETRY` failed queue retry/backoff state、Go `FED_QUEUE_RESUME` queued checkpoint resume binding、Go queued checkpoint state digest restore evidence、Go `FED_QUEUE_DRAIN` explicit queued execution with Human Gateway approval、Go Human Gateway queue state/action/creation/drafting/approval surface、Go Human Gateway actor-bound scoped signed queue action grants、Go Human Gateway local actor policy gate、Go Human Gateway queue action grant replay rejection、Go Human Gateway queue action audit actor evidence、Go `FED_TASK_RESUME` audit-backed checkpoint link、Go signed `FED_TASK_CANCEL` evidence、Go live external task cancellation、Go `FED_TASK_RETRY` lineage evidence、Go 最小 task execution path、Go durable running/completed/cancelled/failed task state files、Go Human Gateway task state view、Go audit/receipt verification、Go multi-worker registry、Go WebSocket transport binding、thin Human Gateway、Go 内置 tool adapter、external stdio tool adapter、最小 MCP stdio `tools/call`、MCP initialize metadata evidence、MCP resources/prompts/tools metadata evidence、MCP selected tool binding、MCP selected schema digest evidence、MCP argument digest evidence、MCP required argument gate、外部/MCP tool approval gate、signed approval evidence、本地临时目录 sandbox evidence、sandbox isolation level evidence、signed sandbox proof、sandbox claim binding、tool command provenance digest、tool output digest alignment、protocol-native checkpoint evidence、artifact manifest digest evidence、canonical policy scope evidence、credential status evidence、authenticated session handshake，以及 remote audit query。
 
 还不是可产品化的 Agent Net。
 
@@ -30,7 +30,7 @@
 | `FED_TASK_CANCEL` | not yet | signed cancellation receipt evidence + durable cancelled state file + live external process interruption | `go-fed-discovery.test.mjs` | persisted running registry / multi-node cancel |
 | `FED_TASK_RETRY` | not yet | signed retry lineage evidence | `go-fed-discovery.test.mjs` | automatic retry / backoff / scheduler state |
 | Policy checks | done | network/write subset + Go canonical policy scope digest + stable deny codes | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | policy negotiation / dynamic policy service |
-| Human approval | simulated | direct Go task execution and queued drain write pending approval state and wait for explicit Human Gateway approve before running tools | Node events, `go-fed-discovery.test.mjs` | approval denial/expiry / login-state UI |
+| Human approval | simulated | direct Go task execution and queued drain write pending approval state; approve continues, deny/expiry stops before tools | Node events, `go-fed-discovery.test.mjs` | login-state UI / roles |
 | Checkpoint evidence | not yet | signed protocol-native checkpoint evidence + audit-backed immediate and queued resume parent links + restored state digest evidence + receipt-linked task state file | `go-fed-discovery.test.mjs` | model KV/cache restore |
 | Transport | local TCP / local process + authenticated session handshake | local TCP + minimal WebSocket + authenticated session handshake | README commands, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | TLS, QUIC |
 | Product surface | CLI/tests only | thin Human Gateway with task table, queue table, approval table/API, actor-bound scoped signed explicit local enqueue/claim/drain actions, and local draft/sign/enqueue endpoint | README, `go-fed-discovery.test.mjs` | browser-side key UX, admin, deployment |
@@ -59,7 +59,7 @@ Go
   -> built-in pure-text tool adapter
   -> external stdio tool adapter with process envelope
   -> minimal MCP stdio tools/call adapter
-  -> direct task and queued drain Human Gateway pending approval state and explicit approve action
+  -> direct task and queued drain Human Gateway pending approval state with approve/deny/expiry outcomes
   -> signed local approval grants for external/MCP tools
   -> signed local sandbox proof for external/MCP tools
   -> sandbox claim binding in receipt/proof
@@ -97,8 +97,8 @@ Go
 
 ## Next Boundary
 
-v8.1 extends explicit approval to queued drain. The next natural boundary is approval denial/expiry or browser-side requester/key UX.
+v8.2 adds approval denial/expiry. The next natural boundary is browser-side requester/key UX.
 
 Route detail: `docs/v8-roadmap.md`。
 
-Skipped until later: encrypted key store, public transport, approval denial/expiry, container sandbox, Git/worktree/merge operations, scheduler queues, semantic routing.
+Skipped until later: encrypted key store, public transport, login/session identity, container sandbox, Git/worktree/merge operations, scheduler queues, semantic routing.

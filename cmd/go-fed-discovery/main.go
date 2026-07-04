@@ -783,7 +783,8 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if optionalString(action["action"]) != "approve" {
+		actionName := optionalString(action["action"])
+		if actionName != "approve" && actionName != "deny" {
 			http.Error(w, "unsupported approval action", http.StatusBadRequest)
 			return
 		}
@@ -793,7 +794,7 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture)
 			http.Error(w, "approval task_id and local actor required", http.StatusBadRequest)
 			return
 		}
-		approval, err := fixture.approveTask(taskID, actor)
+		approval, err := fixture.applyApprovalAction(taskID, actor, actionName)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -1390,7 +1391,7 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	approvalGrants := []map[string]any{}
 	if len(approvals) > 0 {
 		if requireHumanApproval {
-			if err := f.writeApprovalState(taskID, "pending", approvals, "", nil); err != nil {
+			if err := f.writeApprovalState(taskID, "pending", approvals, "", nil, approvalExpiresAt(task)); err != nil {
 				return err
 			}
 		}
@@ -1994,7 +1995,14 @@ func (f Fixture) writeTaskState(taskID, status string, worker *Worker, extra map
 	return os.WriteFile(filepath.Join(f.TaskStateDir, url.PathEscape(taskID)+".json"), append(data, '\n'), 0o644)
 }
 
-func (f Fixture) writeApprovalState(taskID, status string, reasons []string, by string, approval map[string]any) error {
+func approvalExpiresAt(task map[string]any) string {
+	if expiresAt := optionalString(task["approval_expires_at"]); expiresAt != "" {
+		return expiresAt
+	}
+	return time.Now().Add(60 * time.Second).UTC().Format(time.RFC3339Nano)
+}
+
+func (f Fixture) writeApprovalState(taskID, status string, reasons []string, by string, approval map[string]any, expiresAt string) error {
 	if f.ApprovalDir == "" {
 		return nil
 	}
@@ -2002,6 +2010,9 @@ func (f Fixture) writeApprovalState(taskID, status string, reasons []string, by 
 		"task_id": taskID,
 		"status":  status,
 		"reasons": stringsAny(reasons),
+	}
+	if expiresAt != "" {
+		body["expires_at"] = expiresAt
 	}
 	if by != "" {
 		body["by"] = by
@@ -2034,7 +2045,7 @@ func (f Fixture) readApprovalState(taskID string) (map[string]any, error) {
 	return state, nil
 }
 
-func (f Fixture) approveTask(taskID, actor string) (map[string]any, error) {
+func (f Fixture) applyApprovalAction(taskID, actor, action string) (map[string]any, error) {
 	state, err := f.readApprovalState(taskID)
 	if err != nil {
 		return nil, err
@@ -2043,11 +2054,35 @@ func (f Fixture) approveTask(taskID, actor string) (map[string]any, error) {
 		return nil, errors.New("approval is not pending: " + taskID)
 	}
 	reasons := stringsFromAny(state["reasons"])
+	expiresAt := optionalString(state["expires_at"])
+	if approvalExpired(expiresAt) {
+		if err := f.writeApprovalState(taskID, "expired", reasons, "", nil, expiresAt); err != nil {
+			return nil, err
+		}
+		return nil, errors.New("approval expired: " + taskID)
+	}
+	if action == "deny" {
+		if err := f.writeApprovalState(taskID, "denied", reasons, actor, nil, expiresAt); err != nil {
+			return nil, err
+		}
+		return map[string]any{"task_id": taskID, "status": "denied", "by": actor, "reasons": stringsAny(reasons), "expires_at": expiresAt}, nil
+	}
 	grant := f.approvalGrant(taskID, reasons, actor)
-	if err := f.writeApprovalState(taskID, "approved", reasons, actor, grant); err != nil {
+	if err := f.writeApprovalState(taskID, "approved", reasons, actor, grant, expiresAt); err != nil {
 		return nil, err
 	}
 	return grant, nil
+}
+
+func approvalExpired(expiresAt string) bool {
+	if expiresAt == "" {
+		return false
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, expiresAt)
+	if err != nil {
+		return true
+	}
+	return !time.Now().UTC().Before(parsed)
 }
 
 func (f Fixture) waitForApproval(ctx context.Context, taskID string) (map[string]any, error) {
@@ -2055,12 +2090,26 @@ func (f Fixture) waitForApproval(ctx context.Context, taskID string) (map[string
 	defer ticker.Stop()
 	for {
 		state, err := f.readApprovalState(taskID)
-		if err == nil && optionalString(state["status"]) == "approved" {
-			approval, _ := state["approval"].(map[string]any)
-			if approval == nil {
-				return nil, errors.New("approved task missing approval grant: " + taskID)
+		if err == nil {
+			switch optionalString(state["status"]) {
+			case "approved":
+				approval, _ := state["approval"].(map[string]any)
+				if approval == nil {
+					return nil, errors.New("approved task missing approval grant: " + taskID)
+				}
+				return approval, nil
+			case "denied":
+				return nil, errors.New("approval denied: " + taskID)
+			case "pending":
+				if approvalExpired(optionalString(state["expires_at"])) {
+					if writeErr := f.writeApprovalState(taskID, "expired", stringsFromAny(state["reasons"]), "", nil, optionalString(state["expires_at"])); writeErr != nil {
+						return nil, writeErr
+					}
+					return nil, errors.New("approval expired: " + taskID)
+				}
+			case "expired":
+				return nil, errors.New("approval expired: " + taskID)
 			}
-			return approval, nil
 		}
 		select {
 		case <-ctx.Done():
