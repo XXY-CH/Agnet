@@ -508,6 +508,9 @@ setTimeout(() => {
       "human://local": ["approve", "deny"],
       "human://operator": ["approve"],
     },
+    approval_sessions: {
+      [humanToken]: "human://operator",
+    },
   }, null, 2)}\n`);
   await writeTrustedZones("state/go-fed-discovery-trusted-origin.json", [zoneA]);
   await writeFile("state/node-trusts-go-discovery.json", `${JSON.stringify({ zones: [fixture.authority] }, null, 2)}\n`);
@@ -1173,7 +1176,13 @@ setTimeout(() => {
     });
     assert.equal(guestApprovalResponse.status, 400);
     assert.match(await guestApprovalResponse.text(), /approval actor policy denied/);
-    const approveBody = await approveTask(humanPort, task.task_id, "human://operator");
+    const approveResponse = await fetch(`http://127.0.0.1:${humanPort}/api/approvals/actions`, {
+      method: "POST",
+      headers: humanHeaders(),
+      body: JSON.stringify({ action: "approve", task_id: task.task_id }),
+    });
+    assert.equal(approveResponse.status, 200);
+    const approveBody = await approveResponse.json();
     assert.equal(approveBody.approval.task_id, task.task_id);
     assert.equal(approveBody.approval.by, "human://operator");
     assert.match(approveBody.approval.approval_signature, /^[A-Za-z0-9_-]+$/);

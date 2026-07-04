@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.29 assessment
+状态：v8.30 assessment
 
 ## 一句话
 
@@ -134,6 +134,7 @@
 - Human Gateway approvals can deny or expire before tool execution。
 - Human Gateway direct approvals preserve named local `human://...` actors in signed approval grants。
 - Human Gateway direct approval actors pass a configurable local allowlist。
+- Human Gateway direct approvals can derive the actor from configured local bearer approval sessions。
 
 主要缺：
 
@@ -145,7 +146,7 @@
 - Human Gateway requester selector UI。
 - server-side rotation registry。
 - passphrase-protected requester key export。
-- login-backed approval identity。
+- full login-state UI / roles。
 - token storage / rotation。
 - model KV/cache checkpoint restore。
 - automatic retry / backoff scanning。
@@ -189,6 +190,7 @@
 - approval denial/expiry gate。
 - named local human actor evidence in direct approval grants。
 - configurable local approval actor allowlist。
+- local bearer approval session actor mapping。
 - signed approval receipts visible through Human Gateway。
 - local deployment security posture API。
 - browser-held requester key, rotation proof, rebinding proof API, local requester registry, requester registry table, alias rebinding UI, rebinding history table, and signed draft UI。
@@ -198,7 +200,7 @@
 
 主要缺：
 
-- login-backed approval identity。
+- full login-state UI / roles。
 - artifact browser。
 - audit viewer。
 - admin / tenant model。

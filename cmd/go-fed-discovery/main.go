@@ -46,6 +46,7 @@ type Fixture struct {
 	Runtime             *TaskRuntime        `json:"-"`
 	QueueActorPolicy    map[string][]string `json:"-"`
 	ApprovalActorPolicy map[string][]string `json:"-"`
+	ApprovalSessions    map[string]string   `json:"-"`
 }
 
 const requesterRegistryPath = "state/go-fed-discovery-requester-registry.json"
@@ -158,12 +159,13 @@ func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, artifactSt
 	if err != nil {
 		return err
 	}
-	actorPolicy, approvalPolicy, err := loadHumanActorPolicy(humanActorPolicyPath)
+	actorPolicy, approvalPolicy, approvalSessions, err := loadHumanActorPolicy(humanActorPolicyPath)
 	if err != nil {
 		return err
 	}
 	fixture.QueueActorPolicy = actorPolicy
 	fixture.ApprovalActorPolicy = approvalPolicy
+	fixture.ApprovalSessions = approvalSessions
 	audit, err := openAuditLog(auditPath)
 	if err != nil {
 		return err
@@ -848,6 +850,9 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 		}
 		taskID := optionalString(action["task_id"])
 		actor := optionalString(action["actor"])
+		if actor == "" {
+			actor = fixture.approvalSessionActor(r)
+		}
 		if taskID == "" || actor == "" || !strings.HasPrefix(actor, "human://") {
 			http.Error(w, "approval task_id and human actor required", http.StatusBadRequest)
 			return
@@ -1460,22 +1465,23 @@ func loadFixture(path string, authorityKey, workerKey ed25519.PrivateKey) (Fixtu
 	return fixture, nil
 }
 
-func loadHumanActorPolicy(path string) (map[string][]string, map[string][]string, error) {
+func loadHumanActorPolicy(path string) (map[string][]string, map[string][]string, map[string]string, error) {
 	if path == "" {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	var policy struct {
-		QueueActions    map[string][]string `json:"queue_actions"`
-		ApprovalActions map[string][]string `json:"approval_actions"`
+		QueueActions     map[string][]string `json:"queue_actions"`
+		ApprovalActions  map[string][]string `json:"approval_actions"`
+		ApprovalSessions map[string]string   `json:"approval_sessions"`
 	}
 	if err := json.Unmarshal(data, &policy); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return policy.QueueActions, policy.ApprovalActions, nil
+	return policy.QueueActions, policy.ApprovalActions, policy.ApprovalSessions, nil
 }
 
 func loadPrivateKey(path, label string) (ed25519.PrivateKey, error) {
@@ -2930,6 +2936,17 @@ func (f Fixture) approvalActorAllowed(actor, action string) bool {
 		}
 	}
 	return false
+}
+
+func (f Fixture) approvalSessionActor(r *http.Request) string {
+	if len(f.ApprovalSessions) == 0 {
+		return ""
+	}
+	header := r.Header.Get("Authorization")
+	if !strings.HasPrefix(header, "Bearer ") {
+		return ""
+	}
+	return f.ApprovalSessions[strings.TrimPrefix(header, "Bearer ")]
 }
 
 func (f Fixture) consumeQueueActionGrant(grantDigest string, action map[string]any) error {
