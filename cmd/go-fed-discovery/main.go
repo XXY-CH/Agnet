@@ -752,8 +752,13 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		requesterRegistry, err := readRequesterRegistry()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprint(w, renderHumanGateway(entries, tasks, queue, approvals, rebindings))
+		_, _ = fmt.Fprint(w, renderHumanGateway(entries, tasks, queue, approvals, rebindings, requesterRegistryAgents(requesterRegistry)))
 	})
 	mux.HandleFunc("/api/audit", func(w http.ResponseWriter, r *http.Request) {
 		entries, err := readAuditEntriesOrEmpty(auditPath)
@@ -842,6 +847,19 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "approval": approval})
+	})
+	mux.HandleFunc("/api/requester/registry", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		registry, err := readRequesterRegistry()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(registry)
 	})
 	mux.HandleFunc("/api/queue/actions", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -1049,7 +1067,7 @@ func readTaskStates(dir string) ([]map[string]any, error) {
 	return tasks, nil
 }
 
-func renderHumanGateway(entries, tasks, queue, approvals, rebindings []map[string]any) string {
+func renderHumanGateway(entries, tasks, queue, approvals, rebindings, requesterAgents []map[string]any) string {
 	events := 0
 	receipts := []map[string]any{}
 	for _, entry := range entries {
@@ -1129,6 +1147,22 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 		b.WriteString(`</td><td>`)
 		b.WriteString(html.EscapeString(optionalString(approval["by"])))
 		b.WriteString(`</td></tr>`)
+	}
+	b.WriteString(`</tbody></table>`)
+	b.WriteString(`<h2>Requester Registry</h2><table><thead><tr><th>Alias</th><th>AID</th><th>Zone</th></tr></thead><tbody>`)
+	if len(requesterAgents) == 0 {
+		b.WriteString(`<tr><td colspan="3">No requester registry entries</td></tr>`)
+	}
+	for _, entry := range requesterAgents {
+		descriptor, _ := entry["descriptor"].(map[string]any)
+		binding, _ := entry["zone_binding"].(map[string]any)
+		b.WriteString(`<tr><td><code>`)
+		b.WriteString(html.EscapeString(optionalString(descriptor["alias"])))
+		b.WriteString(`</code></td><td><code>`)
+		b.WriteString(html.EscapeString(optionalString(descriptor["aid"])))
+		b.WriteString(`</code></td><td><code>`)
+		b.WriteString(html.EscapeString(optionalString(binding["zone"])))
+		b.WriteString(`</code></td></tr>`)
 	}
 	b.WriteString(`</tbody></table>`)
 	b.WriteString(`<h2>Requester Rebindings</h2><table><thead><tr><th>Alias</th><th>Previous</th><th>Next</th><th>Proof</th></tr></thead><tbody>`)
@@ -1609,6 +1643,17 @@ func readRequesterRegistry() (map[string]any, error) {
 		return nil, err
 	}
 	return registry, nil
+}
+
+func requesterRegistryAgents(registry map[string]any) []map[string]any {
+	items, _ := registry["agents"].([]any)
+	agents := []map[string]any{}
+	for _, item := range items {
+		if entry, ok := item.(map[string]any); ok {
+			agents = append(agents, entry)
+		}
+	}
+	return agents
 }
 
 func readRequesterRebindingHistory() ([]map[string]any, error) {

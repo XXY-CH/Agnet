@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.13 assessment
+状态：v8.14 assessment
 
 ## 一句话
 
@@ -118,6 +118,7 @@
 - Human Gateway page can generate, export, import, rotate, bind the alias for, and use a browser-held requester key to submit signed queue drafts。
 - Human Gateway can issue a Zone-signed requester alias rebinding proof after verifying browser requester rotation proof。
 - Human Gateway persists rebound requester aliases in a multi-alias local registry JSON file。
+- Human Gateway exposes the local requester registry as a read-only API and table。
 - Human Gateway exposes a local requester alias rebinding history API and table。
 - Direct Go tool tasks wait for explicit Human Gateway approval before execution。
 - Queued Go drains wait for explicit Human Gateway approval before tool execution。
@@ -179,7 +180,7 @@
 - approval denial/expiry gate。
 - signed approval receipts visible through Human Gateway。
 - local deployment security posture API。
-- browser-held requester key, rotation proof, rebinding proof API, local requester registry, alias rebinding UI, rebinding history table, and signed draft UI。
+- browser-held requester key, rotation proof, rebinding proof API, local requester registry, requester registry table, alias rebinding UI, rebinding history table, and signed draft UI。
 - checkpoint evidence receipts。
 - docs and protocol proofs。
 

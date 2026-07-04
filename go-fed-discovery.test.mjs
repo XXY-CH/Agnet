@@ -1056,6 +1056,12 @@ setTimeout(() => {
     const multiRequesterRegistry = await loadRegistry("state/go-fed-discovery-requester-registry.json");
     assert.equal(resolveAgent(multiRequesterRegistry, "agent://browser/requester").descriptor.aid, nextBrowserRequester.aid);
     assert.equal(resolveAgent(multiRequesterRegistry, "agent://browser/assistant").descriptor.aid, nextBrowserAssistant.aid);
+    const requesterRegistryResponse = await fetch(`http://127.0.0.1:${humanPort}/api/requester/registry`);
+    assert.equal(requesterRegistryResponse.status, 200);
+    const requesterRegistryBody = await requesterRegistryResponse.json();
+    assert.equal(requesterRegistryBody.agents.length, 2);
+    assert.equal(requesterRegistryBody.agents.some((entry) => entry.descriptor.alias === "agent://browser/requester"), true);
+    assert.equal(requesterRegistryBody.agents.some((entry) => entry.descriptor.alias === "agent://browser/assistant"), true);
 
     const deniedApprovalTask = {
       ...task,
@@ -1597,6 +1603,8 @@ setTimeout(() => {
     assert.match(pageText, /agent:\/\/zone-b\/translator/);
     assert.match(pageText, /go_fed_task_verified/);
     assert.match(pageText, /Browser Requester Key/);
+    assert.match(pageText, /Requester Registry/);
+    assert.match(pageText, /agent:\/\/browser\/assistant/);
     assert.match(pageText, /Requester Rebindings/);
     assert.match(pageText, new RegExp(previousBrowserRequester.aid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.match(pageText, new RegExp(nextBrowserRequester.aid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));

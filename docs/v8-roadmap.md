@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.13 complete; v8.14+ planned
+状态：v8.14 complete; v8.15+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -318,8 +318,31 @@
 - 不做 login/session identity。
 - 不做 public deployment。
 
+## v8.14: Requester Registry View
+
+状态：complete
+目标：Human Gateway exposes the local requester registry as a read-only API and table.
+
+新增：
+
+- Human Gateway serves `GET /api/requester/registry`.
+- The endpoint returns the existing local requester registry JSON shape.
+- Human Gateway renders a `Requester Registry` table.
+- The table shows requester alias, requester `aid`, and Zone binding id.
+- The table reflects multiple requester aliases persisted by v8.13.
+
+不做：
+
+- 不做 browser multi-key manager。
+- 不做 Human Gateway requester selector UI。
+- 不做 alias delete/disable。
+- 不做 registry mutation API。
+- 不做 server-side browser private-key custody。
+- 不做 login/session identity。
+- 不做 public deployment。
+
 ## 后续方向
 
-- v8.14: Human Gateway requester selector UI, alias delete/disable, or the next deployable transport/security hardening slice.
+- v8.15: Human Gateway requester selector UI, alias delete/disable, or the next deployable transport/security hardening slice.
 
 Container sandbox and public transport remain separate hardening tracks。
