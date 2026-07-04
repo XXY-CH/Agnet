@@ -679,6 +679,25 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture)
 	taskStateDir := taskStateDirForAudit(auditPath)
 	queueDir := queueDirForAudit(auditPath)
 	mux := http.NewServeMux()
+	runQueueAction := func(action map[string]any) (map[string]any, int, error) {
+		if err := fixture.requireQueueActionGrant(action); err != nil {
+			if auditErr := fixture.recordQueueAction(action, nil, err); auditErr != nil {
+				return nil, http.StatusInternalServerError, auditErr
+			}
+			return nil, http.StatusBadRequest, err
+		}
+		result, err := fixture.applyQueueAction(action)
+		if err != nil {
+			if auditErr := fixture.recordQueueAction(action, nil, err); auditErr != nil {
+				return nil, http.StatusInternalServerError, auditErr
+			}
+			return nil, http.StatusBadRequest, err
+		}
+		if err := fixture.recordQueueAction(action, result, nil); err != nil {
+			return nil, http.StatusInternalServerError, err
+		}
+		return result, http.StatusOK, nil
+	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
@@ -743,29 +762,60 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err := fixture.requireQueueActionGrant(action); err != nil {
-			if auditErr := fixture.recordQueueAction(action, nil, err); auditErr != nil {
-				http.Error(w, auditErr.Error(), http.StatusInternalServerError)
-				return
-			}
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		result, err := fixture.applyQueueAction(action)
+		result, status, err := runQueueAction(action)
 		if err != nil {
-			if auditErr := fixture.recordQueueAction(action, nil, err); auditErr != nil {
-				http.Error(w, auditErr.Error(), http.StatusInternalServerError)
-				return
-			}
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if err := fixture.recordQueueAction(action, result, nil); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(w, err.Error(), status)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(result)
+	})
+	mux.HandleFunc("/api/queue/drafts", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var draft map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&draft); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		taskID := optionalString(draft["task_id"])
+		to := optionalString(draft["to"])
+		intent := optionalString(draft["intent"])
+		if taskID == "" || to == "" || intent == "" {
+			http.Error(w, "draft task_id, to, and intent are required", http.StatusBadRequest)
+			return
+		}
+		requester, err := fixture.humanGatewayRequester()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		task := map[string]any{
+			"task_id": taskID,
+			"from":    requester["aid"],
+			"to":      to,
+			"intent":  intent,
+			"scope":   draft["scope"],
+			"budget":  draft["budget"],
+		}
+		signedTask := signBody(fixture.AuthorityPrivateKey, task)
+		action := map[string]any{
+			"action":       "enqueue",
+			"origin_zone":  fixture.Authority,
+			"requester":    requester,
+			"task":         signedTask,
+			"actor":        "human://local",
+			"action_grant": fixture.queueActionGrant("enqueue", taskID, signedTask),
+		}
+		result, status, err := runQueueAction(action)
+		if err != nil {
+			http.Error(w, err.Error(), status)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "requester": requester, "task": signedTask, "enqueue": result})
 	})
 	mux.Handle("/artifacts/", http.StripPrefix("/artifacts/", http.FileServer(http.Dir("artifacts"))))
 	_ = http.Serve(listener, mux)
@@ -1118,6 +1168,23 @@ func (f Fixture) workerByAlias(alias string) *Worker {
 	return nil
 }
 
+func (f Fixture) humanGatewayRequester() (map[string]any, error) {
+	publicKey := f.AuthorityPrivateKey.Public().(ed25519.PublicKey)
+	encoded, der, err := publicKeySPKI(publicKey)
+	if err != nil {
+		return nil, err
+	}
+	body := map[string]any{
+		"alias":           "agent://human-gateway/local",
+		"aid":             aidFromSPKI(der),
+		"public_key_spki": encoded,
+		"transports":      []string{"human-gateway.local"},
+		"capabilities":    []string{"queue.draft"},
+		"policy":          map[string]any{"local_proof": true},
+	}
+	return signBodyWithKey(f.AuthorityPrivateKey, body, "descriptor_signature"), nil
+}
+
 func (f Fixture) workersByCapability(capability string) []Worker {
 	workers := []Worker{}
 	for _, worker := range f.Workers {
@@ -1152,6 +1219,19 @@ func (f Fixture) credentialStatus(credential map[string]any, status string) map[
 		"subject":       credential["subject"],
 		"status":        status,
 	}, "status_signature")
+}
+
+func (f Fixture) queueActionGrant(action, taskID string, task map[string]any) map[string]any {
+	return signBodyWithKey(f.AuthorityPrivateKey, map[string]any{
+		"action":               action,
+		"task_id":              taskID,
+		"task_digest":          digestHex(task),
+		"actor":                "human://local",
+		"authority":            f.Authority["zid"],
+		"authority_descriptor": f.Authority,
+		"scope":                map[string]any{"actions": []any{action}},
+		"expires_at":           "2099-01-01T00:00:00Z",
+	}, "grant_signature")
 }
 
 func credentialID(credential map[string]any) string {

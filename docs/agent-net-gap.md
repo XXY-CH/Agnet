@@ -111,6 +111,7 @@
 - Human/local queue action audit records include actor evidence and local policy result evidence when the policy gate is reached。
 - Human/local queue action grants carry action scope and expiry。
 - Human/local queue action grants are rejected on replay after successful use。
+- Human Gateway can draft, locally sign, and enqueue queued tasks through the existing queue action path。
 
 主要缺：
 
@@ -119,7 +120,7 @@
 - configurable actor authorization policy。
 - container-grade sandbox。
 - concurrency model。
-- task drafting/signing UI。
+- browser-side task signing and requester key management UX。
 - durable queue action nonce index。
 - model KV/cache checkpoint restore。
 - automatic retry / backoff scanning。

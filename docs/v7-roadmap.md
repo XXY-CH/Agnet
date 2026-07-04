@@ -1,6 +1,6 @@
 # Agent Space v7 Roadmap
 
-状态：v7.15 complete; v7.16+ planned
+状态：v7.16 complete; v7 closed
 目标：从 durable task state 进入 durable scheduler queue，让任务生命周期有本地所有权、可恢复入口和后续调度面。
 
 ## v7.0: Durable Queue Enqueue
@@ -328,8 +328,30 @@
 - 不做 artifact merge。
 - 不做 automatic scheduler loop。
 
+## v7.16: Human Gateway Task Drafting Boundary
+
+状态：complete
+目标：Human Gateway can draft, locally sign, and enqueue queued work through the existing queue action path.
+
+新增：
+
+- `POST /api/queue/drafts` accepts `task_id`, `to`, `intent`, `scope`, and `budget`。
+- Human Gateway creates a local requester descriptor and signs the drafted task。
+- Draft enqueue reuses the existing actor-bound queue action grant path。
+- The resulting queued task is visible through `/api/queue`。
+- `go_queue_action` audit records the local enqueue action with actor policy evidence。
+
+不做：
+
+- 不做 browser-side private-key storage。
+- 不做 login/session identity。
+- 不做 requester key management UI。
+- 不做 form builder。
+- 不做 automatic scheduler loop。
+- 不开放非 localhost。
+
 ## 后续方向
 
-- Human Gateway task drafting/signing surface
+- v8: Human approval workflow, browser-side identity/key UX, or deployable gateway security.
 
 Container sandbox and public transport remain separate hardening tracks。

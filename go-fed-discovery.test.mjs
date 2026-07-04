@@ -783,6 +783,28 @@ setTimeout(() => {
     const humanCreatedQueueBody = await humanCreatedQueueResponse.json();
     assert.equal(humanCreatedQueueBody.queue.some((item) => item.task_id === humanCreatedQueuedTask.task_id && item.status === "queued"), true);
 
+    const humanDraftedTaskId = "go_fed_task_human_drafted_queue";
+    const humanDraftResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/drafts`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        task_id: humanDraftedTaskId,
+        to: "agent://zone-b/translator",
+        intent: "Draft and sign queued task through Human Gateway.",
+        scope: task.scope,
+        budget: task.budget,
+      }),
+    });
+    assert.equal(humanDraftResponse.status, 200);
+    const humanDraftBody = await humanDraftResponse.json();
+    assert.equal(humanDraftBody.task.task_id, humanDraftedTaskId);
+    assert.equal(humanDraftBody.task.from, humanDraftBody.requester.aid);
+    assert.match(humanDraftBody.task.signature, /^[A-Za-z0-9_-]+$/);
+    const humanDraftedQueueResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue`);
+    assert.equal(humanDraftedQueueResponse.status, 200);
+    const humanDraftedQueueBody = await humanDraftedQueueResponse.json();
+    assert.equal(humanDraftedQueueBody.queue.some((item) => item.task_id === humanDraftedTaskId && item.status === "queued"), true);
+
     const executionFrames = await exchangeFrames(port, {
       type: "FED_TASK_OPEN",
       origin_zone: zoneA.descriptor,
@@ -1224,13 +1246,14 @@ setTimeout(() => {
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 77);
+    assert.equal(auditBody.entries.length, 78);
     const queueActionRecords = auditBody.entries
       .map((entry) => entry.record)
       .filter((record) => record.kind === "go_queue_action");
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "ok" && record.actor === "human://local" && record.actor_policy_result === "allow"), true);
     assert.equal(queueActionRecords.some((record) => record.action === "drain" && record.task_id === humanQueuedTask.task_id && record.status === "ok" && record.actor === "human://local" && record.actor_policy_result === "allow"), true);
     assert.equal(queueActionRecords.some((record) => record.action === "enqueue" && record.task_id === humanCreatedQueuedTask.task_id && record.status === "ok" && record.actor === "human://local" && record.actor_policy_result === "allow"), true);
+    assert.equal(queueActionRecords.some((record) => record.action === "enqueue" && record.task_id === humanDraftedTaskId && record.status === "ok" && record.actor === "human://local" && record.actor_policy_result === "allow"), true);
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /grant missing/.test(record.error) && record.actor === ""), true);
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /grant expired/.test(record.error) && record.actor === "human://local" && record.actor_policy_result === "allow"), true);
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /scope mismatch/.test(record.error) && record.actor === "human://local" && record.actor_policy_result === undefined), true);
