@@ -1379,6 +1379,9 @@ setTimeout(() => {
     assert.equal(await readFile(mirrorTranscriptPath, "utf8"), transcriptText);
     const mirrorTranscriptManifestSidecar = JSON.parse(await readFile(`${mirrorTranscriptPath}.manifest.json`, "utf8"));
     assert.deepEqual(mirrorTranscriptManifestSidecar, transcriptManifest);
+    const artifactStoreIndex = (await readFile("state/go-fed-artifact-store/objects.ndjson", "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+    assert.equal(artifactStoreIndex.some((item) => item.sha256 === artifactEvent.manifest.sha256 && item.uri === artifactEvent.manifest.uri && item.size === artifactEvent.manifest.size), true);
+    assert.equal(artifactStoreIndex.some((item) => item.sha256 === transcriptManifest.sha256 && item.uri === transcriptManifest.uri && item.media_type === "application/json; charset=utf-8"), true);
 
     const auditQuery = await execFileAsync(process.execPath, [
       "federation-gateway.mjs",

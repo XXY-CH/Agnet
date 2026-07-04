@@ -3573,8 +3573,34 @@ func writeArtifactBytes(uri string, data []byte, mediaType, artifactStoreDir str
 		if err := os.WriteFile(digestPath+".manifest.json", sidecar, 0o644); err != nil {
 			return nil, err
 		}
+		if root == artifactStoreDir {
+			if err := appendArtifactStoreIndex(root, body); err != nil {
+				return nil, err
+			}
+		}
 	}
 	return body, nil
+}
+
+func appendArtifactStoreIndex(root string, manifest map[string]any) error {
+	if root == "" {
+		return nil
+	}
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return err
+	}
+	file, err := os.OpenFile(filepath.Join(root, "objects.ndjson"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	return json.NewEncoder(file).Encode(map[string]any{
+		"uri":           manifest["uri"],
+		"sha256":        manifest["sha256"],
+		"size":          manifest["size"],
+		"media_type":    manifest["media_type"],
+		"manifest_hash": manifest["manifest_hash"],
+	})
 }
 
 func localArtifactPath(uri string) (string, error) {

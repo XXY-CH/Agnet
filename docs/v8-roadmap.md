@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.52 complete; v8.53+ planned
+状态：v8.53 complete; v8 closed
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -1325,8 +1325,34 @@ Example:
 - 不做 public deployment。
 - 不做 A2A/ARD compatibility。
 
+## v8.53: Artifact Store Object Index
+
+状态：complete
+目标：filesystem artifact mirrors maintain a minimal content-addressed object index.
+
+新增：
+
+- `--artifact-store` mirror writes append-only `objects.ndjson`.
+- Each index line records `uri`, `sha256`, `size`, `media_type`, and `manifest_hash`.
+- The index lives beside the existing mirror `by-sha256/<digest>` files.
+- The integration test checks both the summary artifact and transcript artifact are indexed.
+
+不做：
+
+- 不做 S3/MinIO/object-store API。
+- 不做 remote artifact upload/download。
+- 不做 artifact GC。
+- 不做 index compaction/dedup。
+- 不做 receipt/artifact schema change。
+- 不做 artifact browser。
+- 不做 auth model for mirrored artifacts。
+- 不做 container namespace sandbox。
+- 不做 public deployment。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
-- v8.53: container namespace sandboxing, object-store-backed artifacts, long-running MCP sessions, or another small Ultimate-aligned runtime/governance slice.
+- v8 is closed at v8.53.
+- v9 should start from artifact lifecycle, container namespace sandboxing, object-store-backed artifacts, long-running MCP sessions, or another small Ultimate-aligned runtime/governance slice.
 
 Container sandbox and public transport remain separate hardening tracks。
