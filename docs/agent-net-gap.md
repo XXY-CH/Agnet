@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.48 assessment
+状态：v8.49 assessment
 
 ## 一句话
 
@@ -144,6 +144,7 @@
 - Human Gateway verifies and reads receipt-scoped artifacts through `/api/artifacts/verify?task_id=...&uri=...`, `GET/HEAD /api/artifacts/read?task_id=...&uri=...`, signed proof headers, verify proof fields, receipt digest headers, audit hash headers, and receipt links。
 - Human Gateway streams completed tool transcripts through `/api/transcripts/stream?task_id=...` with receipt/audit/transcript proof headers。
 - Human Gateway receipt rows can load completed task transcript streams into a local transcript viewer。
+- Human Gateway reads running external tool stdout snapshots through `/api/transcripts/live?task_id=...`。
 
 主要缺：
 
@@ -160,7 +161,8 @@
 - model KV/cache checkpoint restore。
 - automatic retry / backoff scanning。
 - package signature / SBOM provenance。
-- running-task live transcript tailing。
+- continuous live transcript tailing UI。
+- MCP live transcript snapshots。
 - long-running MCP session reuse。
 - full MCP resource/prompt catalog storage。
 - full MCP schema verification。

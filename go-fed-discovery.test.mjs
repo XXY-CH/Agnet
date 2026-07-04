@@ -489,6 +489,7 @@ rl.on("line", (line) => {
 });
 `);
   await writeFile("state/go-fed-slow-tool.mjs", `
+process.stdout.write(JSON.stringify({ text: "# Slow Tool\\n\\nStarted" }));
 setTimeout(() => {
   process.stdout.write(JSON.stringify({ text: "# Slow Tool\\n\\nFinished" }));
 }, 5000);
@@ -498,6 +499,7 @@ setTimeout(() => {
   await rm("state/go-fed-discovery-audit-queue", { recursive: true, force: true });
   await rm("state/go-fed-discovery-audit-approvals", { recursive: true, force: true });
   await rm("state/go-fed-discovery-audit-queue-grants", { recursive: true, force: true });
+  await rm("state/go-fed-discovery-audit-live-transcripts", { recursive: true, force: true });
   await rm("state/go-fed-artifact-store", { recursive: true, force: true });
   await rm("state/go-fed-discovery-requester-registry.json", { force: true });
   await rm("state/go-fed-discovery-requester-rebindings.json", { force: true });
@@ -1625,6 +1627,13 @@ setTimeout(() => {
     assert.equal(runningTaskState.task_id, slowTask.task_id);
     assert.equal(runningTaskState.status, "running");
     assert.equal(runningTaskState.worker, resolvedSlowResult.aid);
+    const liveTranscriptResponse = await fetch(`http://127.0.0.1:${humanPort}/api/transcripts/live?task_id=${encodeURIComponent(slowTask.task_id)}`);
+    assert.equal(liveTranscriptResponse.status, 200);
+    assert.equal(liveTranscriptResponse.headers.get("content-type"), "application/x-ndjson; charset=utf-8");
+    const liveTranscriptLines = (await liveTranscriptResponse.text()).trim().split("\n").map((line) => JSON.parse(line));
+    assert.equal(liveTranscriptLines[0].type, "stdout.chunk");
+    assert.equal(liveTranscriptLines[0].task_id, slowTask.task_id);
+    assert.match(liveTranscriptLines[0].text, /Started/);
     const liveCancel = {
       task_id: slowTask.task_id,
       from: requester.aid,

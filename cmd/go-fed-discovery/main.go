@@ -44,6 +44,7 @@ type Fixture struct {
 	QueueDir            string              `json:"-"`
 	ApprovalDir         string              `json:"-"`
 	ArtifactStoreDir    string              `json:"-"`
+	LiveTranscriptDir   string              `json:"-"`
 	Runtime             *TaskRuntime        `json:"-"`
 	QueueActorPolicy    map[string][]string `json:"-"`
 	ApprovalActorPolicy map[string][]string `json:"-"`
@@ -176,6 +177,7 @@ func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, artifactSt
 	fixture.QueueDir = queueDirForAudit(auditPath)
 	fixture.ApprovalDir = approvalDirForAudit(auditPath)
 	fixture.ArtifactStoreDir = artifactStoreDir
+	fixture.LiveTranscriptDir = liveTranscriptDirForAudit(auditPath)
 	fixture.Runtime = &TaskRuntime{running: map[string]context.CancelFunc{}, cancelled: map[string]bool{}}
 	trusted, err := loadTrustedZones(trustPath)
 	if err != nil {
@@ -1262,6 +1264,28 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 			flusher.Flush()
 		}
 	})
+	mux.HandleFunc("/api/transcripts/live", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		taskID := r.URL.Query().Get("task_id")
+		if taskID == "" {
+			http.Error(w, "task_id is required", http.StatusBadRequest)
+			return
+		}
+		data, err := os.ReadFile(filepath.Join(fixture.LiveTranscriptDir, url.PathEscape(taskID)+".ndjson"))
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				http.NotFound(w, r)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
+		_, _ = w.Write(data)
+	})
 	mux.Handle("/artifacts/", http.StripPrefix("/artifacts/", http.FileServer(http.Dir("artifacts"))))
 	_ = http.Serve(listener, mux)
 }
@@ -1284,6 +1308,10 @@ func queueDirForAudit(auditPath string) string {
 
 func approvalDirForAudit(auditPath string) string {
 	return strings.TrimSuffix(auditPath, filepath.Ext(auditPath)) + "-approvals"
+}
+
+func liveTranscriptDirForAudit(auditPath string) string {
+	return strings.TrimSuffix(auditPath, filepath.Ext(auditPath)) + "-live-transcripts"
 }
 
 func queueGrantDirForAudit(auditPath string) string {
@@ -2191,7 +2219,7 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	}
 
 	artifactURI := "artifact://local/" + taskID + "/go-summary.md"
-	toolName, artifactText, sandbox, err := runTool(ctx, worker.Profile, task, origin, f.ArtifactStoreDir)
+	toolName, artifactText, sandbox, err := runTool(ctx, worker.Profile, task, origin, f.ArtifactStoreDir, f.LiveTranscriptDir)
 	if err != nil {
 		if f.Runtime.WasCancelled(taskID) {
 			return err
@@ -2426,7 +2454,7 @@ func taskPolicyScope(profile WorkerProfile, worker, task map[string]any) map[str
 	}
 }
 
-func runTool(ctx context.Context, profile WorkerProfile, task, origin map[string]any, artifactStoreDir string) (string, string, map[string]any, error) {
+func runTool(ctx context.Context, profile WorkerProfile, task, origin map[string]any, artifactStoreDir, liveTranscriptDir string) (string, string, map[string]any, error) {
 	tool := profile.Tool
 	if tool == "" {
 		tool = "text.echo"
@@ -2439,7 +2467,7 @@ func runTool(ctx context.Context, profile WorkerProfile, task, origin map[string
 	case "translate.mock":
 		return tool, "# Go Tool Translation\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nTranslation: " + strings.ToUpper(intent) + "\n", inProcessSandbox(), nil
 	case "external.stdio":
-		text, sandbox, err := runExternalTool(ctx, profile, task, origin, artifactStoreDir)
+		text, sandbox, err := runExternalTool(ctx, profile, task, origin, artifactStoreDir, liveTranscriptDir)
 		return tool, text, sandbox, err
 	case "mcp.stdio":
 		text, sandbox, err := runMCPTool(ctx, profile, task, origin, artifactStoreDir)
@@ -2498,7 +2526,37 @@ func sandboxEnv(dir string) []string {
 	}
 }
 
-func runExternalTool(parent context.Context, profile WorkerProfile, task, origin map[string]any, artifactStoreDir string) (string, map[string]any, error) {
+type liveTranscriptWriter struct {
+	file   *os.File
+	taskID string
+}
+
+func newLiveTranscriptWriter(dir, taskID string) (*liveTranscriptWriter, func(), error) {
+	if dir == "" {
+		return nil, func() {}, nil
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, nil, err
+	}
+	file, err := os.Create(filepath.Join(dir, url.PathEscape(taskID)+".ndjson"))
+	if err != nil {
+		return nil, nil, err
+	}
+	return &liveTranscriptWriter{file: file, taskID: taskID}, func() { _ = file.Close() }, nil
+}
+
+func (w *liveTranscriptWriter) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if err := json.NewEncoder(w.file).Encode(map[string]any{"type": "stdout.chunk", "task_id": w.taskID, "text": string(p)}); err != nil {
+		return 0, err
+	}
+	_ = w.file.Sync()
+	return len(p), nil
+}
+
+func runExternalTool(parent context.Context, profile WorkerProfile, task, origin map[string]any, artifactStoreDir, liveTranscriptDir string) (string, map[string]any, error) {
 	if len(profile.ToolCommand) == 0 {
 		return "", nil, errors.New("external.stdio tool_command missing")
 	}
@@ -2524,16 +2582,42 @@ func runExternalTool(parent context.Context, profile WorkerProfile, task, origin
 		return "", nil, err
 	}
 	cmd.Stdin = bytes.NewReader(data)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", nil, err
+	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	output, err := cmd.Output()
+	liveWriter, closeLive, err := newLiveTranscriptWriter(liveTranscriptDir, fmt.Sprint(task["task_id"]))
+	if err != nil {
+		return "", nil, err
+	}
+	defer closeLive()
+	if err := cmd.Start(); err != nil {
+		return "", nil, err
+	}
+	var output bytes.Buffer
+	writers := []io.Writer{&output}
+	if liveWriter != nil {
+		writers = append(writers, liveWriter)
+	}
+	copyDone := make(chan error, 1)
+	go func() {
+		_, err := io.Copy(io.MultiWriter(writers...), stdout)
+		copyDone <- err
+	}()
+	err = cmd.Wait()
+	if copyErr := <-copyDone; copyErr != nil && err == nil {
+		err = copyErr
+	}
 	if ctx.Err() == context.Canceled {
 		return "", nil, errors.New("external tool cancelled")
 	}
 	if ctx.Err() == context.DeadlineExceeded {
 		return "", nil, errors.New("external tool timed out")
 	}
-	sandbox["tool_transcript_digest"] = digestBytesHex(output)
+	transcriptData := output.Bytes()
+	sandbox["tool_transcript_digest"] = digestBytesHex(transcriptData)
 	if err != nil {
 		message := strings.TrimSpace(stderr.String())
 		if message == "" {
@@ -2542,14 +2626,14 @@ func runExternalTool(parent context.Context, profile WorkerProfile, task, origin
 		return "", nil, errors.New("external tool failed: " + message)
 	}
 	transcriptURI := "artifact://local/" + fmt.Sprint(task["task_id"]) + "/tool-transcript.json"
-	transcriptManifest, err := writeArtifactBytes(transcriptURI, output, "application/json; charset=utf-8", artifactStoreDir)
+	transcriptManifest, err := writeArtifactBytes(transcriptURI, transcriptData, "application/json; charset=utf-8", artifactStoreDir)
 	if err != nil {
 		return "", nil, err
 	}
 	sandbox["tool_transcript_ref"] = transcriptURI
 	sandbox["tool_transcript_manifest"] = transcriptManifest
 	var result map[string]any
-	if err := json.Unmarshal(output, &result); err != nil {
+	if err := json.Unmarshal(transcriptData, &result); err != nil {
 		return "", nil, err
 	}
 	text, ok := result["text"].(string)
