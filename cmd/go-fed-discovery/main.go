@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
@@ -112,6 +113,7 @@ func main() {
 	port := flag.String("port", "9090", "listen port")
 	wsPort := flag.String("ws-port", "", "optional WebSocket listen port")
 	humanPort := flag.String("human-port", "", "optional Human Gateway HTTP port")
+	humanToken := flag.String("human-token", "", "optional Human Gateway bearer token for write actions")
 	fixturePath := flag.String("fixture", "test-vectors/asp-v1.5-capability-credential.json", "signed descriptor fixture")
 	trustPath := flag.String("trusted", "state/go-fed-trusted-zones.json", "trusted origin zones")
 	authorityKeyPath := flag.String("authority-key", "state/keys/go-fed-authority.seed", "authority seed key file")
@@ -129,13 +131,13 @@ func main() {
 		return
 	}
 
-	if err := serve(*port, *wsPort, *humanPort, *fixturePath, *trustPath, *authorityKeyPath, *workerKeyPath, *auditPath); err != nil {
+	if err := serve(*port, *wsPort, *humanPort, *humanToken, *fixturePath, *trustPath, *authorityKeyPath, *workerKeyPath, *auditPath); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func serve(port, wsPort, humanPort, fixturePath, trustPath, authorityKeyPath, workerKeyPath, auditPath string) error {
+func serve(port, wsPort, humanPort, humanToken, fixturePath, trustPath, authorityKeyPath, workerKeyPath, auditPath string) error {
 	authorityKey, err := loadPrivateKey(authorityKeyPath, "authority")
 	if err != nil {
 		return err
@@ -178,7 +180,7 @@ func serve(port, wsPort, humanPort, fixturePath, trustPath, authorityKeyPath, wo
 		if err != nil {
 			return err
 		}
-		go serveHumanGateway(humanListener, auditPath, fixture)
+		go serveHumanGateway(humanListener, auditPath, fixture, humanToken)
 	}
 	if wsPort != "" || humanPort != "" {
 		status := map[string]any{"go_fed_discovery": "listening", "port": port}
@@ -677,11 +679,27 @@ func writeWebSocketText(conn net.Conn, text string) error {
 	return err
 }
 
-func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture) {
+func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture, humanToken string) {
 	taskStateDir := taskStateDirForAudit(auditPath)
 	queueDir := queueDirForAudit(auditPath)
 	approvalDir := approvalDirForAudit(auditPath)
 	mux := http.NewServeMux()
+	requireWriteToken := func(w http.ResponseWriter, r *http.Request) bool {
+		if humanToken == "" {
+			return true
+		}
+		header := r.Header.Get("Authorization")
+		if !strings.HasPrefix(header, "Bearer ") {
+			http.Error(w, "human gateway token required", http.StatusUnauthorized)
+			return false
+		}
+		got := strings.TrimPrefix(header, "Bearer ")
+		if subtle.ConstantTimeCompare([]byte(got), []byte(humanToken)) != 1 {
+			http.Error(w, "human gateway token required", http.StatusUnauthorized)
+			return false
+		}
+		return true
+	}
 	runQueueAction := func(action map[string]any) (map[string]any, int, error) {
 		if err := fixture.requireQueueActionGrant(action); err != nil {
 			if auditErr := fixture.recordQueueAction(action, nil, err); auditErr != nil {
@@ -778,6 +796,9 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture)
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		if !requireWriteToken(w, r) {
+			return
+		}
 		var action map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&action); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -807,6 +828,9 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture)
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		if !requireWriteToken(w, r) {
+			return
+		}
 		var action map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&action); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -823,6 +847,9 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture)
 	mux.HandleFunc("/api/queue/drafts", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if !requireWriteToken(w, r) {
 			return
 		}
 		var draft map[string]any

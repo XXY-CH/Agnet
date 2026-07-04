@@ -166,9 +166,14 @@ function exchangeFramesUntil(port, frame, predicate, closeType = "FED_TASK_CLOSE
 }
 
 let zoneA;
+let humanToken;
 
 function authBody(sessionId, challenge, peerZid, remoteZid) {
   return { session_id: sessionId, challenge, peer_zid: peerZid, remote_zid: remoteZid };
+}
+
+function humanHeaders() {
+  return { "content-type": "application/json", authorization: `Bearer ${humanToken}` };
 }
 
 function queueActionGrant(action, taskId, task, extra = {}) {
@@ -189,7 +194,7 @@ function queueActionGrant(action, taskId, task, extra = {}) {
 async function approveTask(humanPort, taskId) {
   const response = await fetch(`http://127.0.0.1:${humanPort}/api/approvals/actions`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: humanHeaders(),
     body: JSON.stringify({ action: "approve", task_id: taskId, actor: "human://local" }),
   });
   assert.equal(response.status, 200);
@@ -199,7 +204,7 @@ async function approveTask(humanPort, taskId) {
 async function denyTask(humanPort, taskId) {
   const response = await fetch(`http://127.0.0.1:${humanPort}/api/approvals/actions`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: humanHeaders(),
     body: JSON.stringify({ action: "deny", task_id: taskId, actor: "human://local" }),
   });
   assert.equal(response.status, 200);
@@ -242,7 +247,7 @@ async function exchangeFramesWithHumanApproval(port, humanPort, frame, taskId, c
 async function fetchQueueActionWithHumanApproval(humanPort, taskId, body) {
   const responsePromise = fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: humanHeaders(),
     body: JSON.stringify(body),
   });
   const pending = await waitForPendingApproval(humanPort, taskId);
@@ -389,6 +394,7 @@ function exchangeWebSocketFrames(port, frame, closeType) {
 
 test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", async () => {
   const [port, wsPort, humanPort] = await freePorts(3);
+  humanToken = "test-human-gateway-token";
   zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
   const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/go-fed-requester.pkcs8");
   const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
@@ -500,6 +506,8 @@ setTimeout(() => {
     String(wsPort),
     "--human-port",
     String(humanPort),
+    "--human-token",
+    humanToken,
     "--trusted",
     "state/go-fed-discovery-trusted-origin.json",
     "--fixture",
@@ -773,9 +781,33 @@ setTimeout(() => {
     const queueBody = await queueResponse.json();
     assert.equal(queueBody.queue.some((item) => item.task_id === humanQueuedTask.task_id && item.status === "queued"), true);
 
-    const unauthorisedHumanClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
+    const missingTokenQueueActionResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "claim", task_id: humanQueuedTask.task_id, owner: "human://local" }),
+    });
+    assert.equal(missingTokenQueueActionResponse.status, 401);
+    assert.match(await missingTokenQueueActionResponse.text(), /human gateway token required/);
+
+    const rawTokenQueueActionResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: humanToken },
+      body: JSON.stringify({ action: "claim", task_id: humanQueuedTask.task_id, owner: "human://local" }),
+    });
+    assert.equal(rawTokenQueueActionResponse.status, 401);
+    assert.match(await rawTokenQueueActionResponse.text(), /human gateway token required/);
+
+    const missingTokenApprovalResponse = await fetch(`http://127.0.0.1:${humanPort}/api/approvals/actions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "approve", task_id: humanQueuedTask.task_id, actor: "human://local" }),
+    });
+    assert.equal(missingTokenApprovalResponse.status, 401);
+    assert.match(await missingTokenApprovalResponse.text(), /human gateway token required/);
+
+    const unauthorisedHumanClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
+      method: "POST",
+      headers: humanHeaders(),
       body: JSON.stringify({ action: "claim", task_id: humanQueuedTask.task_id, owner: "human://local" }),
     });
     assert.equal(unauthorisedHumanClaimResponse.status, 400);
@@ -783,7 +815,7 @@ setTimeout(() => {
 
     const expiredGrantClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: humanHeaders(),
       body: JSON.stringify({
         action: "claim",
         task_id: humanQueuedTask.task_id,
@@ -797,7 +829,7 @@ setTimeout(() => {
 
     const outOfScopeGrantClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: humanHeaders(),
       body: JSON.stringify({
         action: "claim",
         task_id: humanQueuedTask.task_id,
@@ -811,7 +843,7 @@ setTimeout(() => {
 
     const missingActorGrantClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: humanHeaders(),
       body: JSON.stringify({
         action: "claim",
         task_id: humanQueuedTask.task_id,
@@ -824,7 +856,7 @@ setTimeout(() => {
 
     const actorMismatchGrantClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: humanHeaders(),
       body: JSON.stringify({
         action: "claim",
         task_id: humanQueuedTask.task_id,
@@ -838,7 +870,7 @@ setTimeout(() => {
 
     const actorPolicyDeniedClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: humanHeaders(),
       body: JSON.stringify({
         action: "claim",
         task_id: humanQueuedTask.task_id,
@@ -853,7 +885,7 @@ setTimeout(() => {
     const humanClaimGrant = queueActionGrant("claim", humanQueuedTask.task_id);
     const humanClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: humanHeaders(),
       body: JSON.stringify({
         action: "claim",
         task_id: humanQueuedTask.task_id,
@@ -868,7 +900,7 @@ setTimeout(() => {
 
     const replayedHumanClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: humanHeaders(),
       body: JSON.stringify({
         action: "claim",
         task_id: humanQueuedTask.task_id,
@@ -900,7 +932,7 @@ setTimeout(() => {
     const signedHumanCreatedQueuedTask = { ...humanCreatedQueuedTask, signature: signObject(requester.privateKey, humanCreatedQueuedTask) };
     const humanEnqueueResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: humanHeaders(),
       body: JSON.stringify({
         action: "enqueue",
         origin_zone: zoneA.descriptor,
@@ -921,7 +953,7 @@ setTimeout(() => {
     const humanDraftedTaskId = "go_fed_task_human_drafted_queue";
     const humanDraftResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/drafts`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: humanHeaders(),
       body: JSON.stringify({
         task_id: humanDraftedTaskId,
         to: "agent://zone-b/translator",
@@ -948,7 +980,7 @@ setTimeout(() => {
     const signedBrowserHeldTask = { ...browserHeldTask, signature: signObject(requester.privateKey, browserHeldTask) };
     const browserHeldDraftResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/drafts`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: humanHeaders(),
       body: JSON.stringify({
         requester: requester.descriptor,
         task: signedBrowserHeldTask,

@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.3 assessment
+状态：v8.4 assessment
 
 ## 一句话
 
@@ -113,6 +113,7 @@
 - Human/local queue action grants are rejected on replay after successful use。
 - Human Gateway can draft, locally sign, and enqueue queued tasks through the existing queue action path。
 - Human Gateway can accept externally signed requester tasks through the draft endpoint without holding the requester private key。
+- Human Gateway write actions can require a bearer token before mutation。
 - Direct Go tool tasks wait for explicit Human Gateway approval before execution。
 - Queued Go drains wait for explicit Human Gateway approval before tool execution。
 - Human Gateway approvals can deny or expire before tool execution。
@@ -124,6 +125,8 @@
 - container-grade sandbox。
 - concurrency model。
 - browser-side private-key storage and requester key management UX。
+- login-backed approval identity。
+- token storage / rotation。
 - durable queue action nonce index。
 - model KV/cache checkpoint restore。
 - automatic retry / backoff scanning。
