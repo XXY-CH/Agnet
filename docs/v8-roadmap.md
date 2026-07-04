@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.12 complete; v8.13+ planned
+状态：v8.13 complete; v8.14+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -294,8 +294,32 @@
 - 不做 login/session identity。
 - 不做 public deployment。
 
+## v8.13: Multi-requester Registry Upsert
+
+状态：complete
+目标：The local requester registry preserves multiple requester aliases instead of replacing the registry on each rebinding.
+
+新增：
+
+- Successful `POST /api/requester/rebindings` upserts the rebound requester alias into `state/go-fed-discovery-requester-registry.json`.
+- New aliases append a new `agents[]` entry.
+- Existing aliases replace their current `agents[]` entry.
+- The registry keeps the existing Node registry shape.
+- Existing `loadRegistry` / `resolveAgent` can resolve more than one rebound requester alias.
+
+不做：
+
+- 不做 browser multi-key manager。
+- 不做 Human Gateway requester selector UI。
+- 不做 alias delete/disable。
+- 不做 conflict policy beyond same-alias replace。
+- 不做 server-side rotation registry。
+- 不做 remote registry sync。
+- 不做 login/session identity。
+- 不做 public deployment。
+
 ## 后续方向
 
-- v8.13: multi-requester registry or the next deployable transport/security hardening slice.
+- v8.14: Human Gateway requester selector UI, alias delete/disable, or the next deployable transport/security hardening slice.
 
 Container sandbox and public transport remain separate hardening tracks。

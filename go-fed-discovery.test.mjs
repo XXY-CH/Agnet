@@ -1040,6 +1040,23 @@ setTimeout(() => {
     assert.equal(browserRebindingHistoryBody.rebindings[0].previous_aid, previousBrowserRequester.aid);
     assert.equal(browserRebindingHistoryBody.rebindings[0].next_aid, nextBrowserRequester.aid);
 
+    const previousBrowserAssistant = createAgent("agent://browser/assistant");
+    const nextBrowserAssistant = createAgent("agent://browser/assistant");
+    const browserAssistantRotationProof = rotationProof(previousBrowserAssistant, nextBrowserAssistant);
+    const browserAssistantRebindingResponse = await fetch(`http://127.0.0.1:${humanPort}/api/requester/rebindings`, {
+      method: "POST",
+      headers: humanHeaders(),
+      body: JSON.stringify({
+        previous_descriptor: previousBrowserAssistant.descriptor,
+        next_descriptor: nextBrowserAssistant.descriptor,
+        rotation_proof: browserAssistantRotationProof,
+      }),
+    });
+    assert.equal(browserAssistantRebindingResponse.status, 200);
+    const multiRequesterRegistry = await loadRegistry("state/go-fed-discovery-requester-registry.json");
+    assert.equal(resolveAgent(multiRequesterRegistry, "agent://browser/requester").descriptor.aid, nextBrowserRequester.aid);
+    assert.equal(resolveAgent(multiRequesterRegistry, "agent://browser/assistant").descriptor.aid, nextBrowserAssistant.aid);
+
     const deniedApprovalTask = {
       ...task,
       task_id: "go_fed_task_approval_denied",

@@ -1559,16 +1559,33 @@ func (f Fixture) requesterAliasRebindingProof(previous, next, rotationProof map[
 }
 
 func (f Fixture) writeRequesterRegistry(descriptor map[string]any) error {
-	registry := map[string]any{
-		"zone":        f.Authority,
-		"revocations": []any{},
-		"agents": []any{
-			map[string]any{
-				"descriptor":   descriptor,
-				"zone_binding": f.zoneBindingForDescriptor(descriptor),
-			},
-		},
+	registry, err := readRequesterRegistry()
+	if err != nil {
+		return err
 	}
+	registry["zone"] = f.Authority
+	if _, ok := registry["revocations"].([]any); !ok {
+		registry["revocations"] = []any{}
+	}
+	agents, _ := registry["agents"].([]any)
+	next := map[string]any{
+		"descriptor":   descriptor,
+		"zone_binding": f.zoneBindingForDescriptor(descriptor),
+	}
+	replaced := false
+	for index, item := range agents {
+		entry, _ := item.(map[string]any)
+		existing, _ := entry["descriptor"].(map[string]any)
+		if existing["alias"] == descriptor["alias"] {
+			agents[index] = next
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		agents = append(agents, next)
+	}
+	registry["agents"] = agents
 	if err := os.MkdirAll(filepath.Dir(requesterRegistryPath), 0755); err != nil {
 		return err
 	}
@@ -1577,6 +1594,21 @@ func (f Fixture) writeRequesterRegistry(descriptor map[string]any) error {
 		return err
 	}
 	return os.WriteFile(requesterRegistryPath, append(data, '\n'), 0644)
+}
+
+func readRequesterRegistry() (map[string]any, error) {
+	data, err := os.ReadFile(requesterRegistryPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return map[string]any{"revocations": []any{}, "agents": []any{}}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var registry map[string]any
+	if err := json.Unmarshal(data, &registry); err != nil {
+		return nil, err
+	}
+	return registry, nil
 }
 
 func readRequesterRebindingHistory() ([]map[string]any, error) {
