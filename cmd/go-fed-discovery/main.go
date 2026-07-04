@@ -1939,6 +1939,16 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	if err != nil {
 		return err
 	}
+	artifactRefs := []string{artifactURI}
+	artifactManifests := []map[string]any{artifactManifest}
+	if transcriptRef := optionalString(sandbox["tool_transcript_ref"]); transcriptRef != "" {
+		transcriptManifest, ok := sandbox["tool_transcript_manifest"].(map[string]any)
+		if !ok {
+			return errors.New("tool transcript manifest missing")
+		}
+		artifactRefs = append(artifactRefs, transcriptRef)
+		artifactManifests = append(artifactManifests, transcriptManifest)
+	}
 	if err := f.sendTaskEvent(send, map[string]any{"type": "artifact.created", "task_id": taskID, "uri": artifactURI, "manifest": artifactManifest}); err != nil {
 		return err
 	}
@@ -1948,15 +1958,13 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	sandboxProof := f.sandboxProof(taskID, worker, sandbox, policyDigest, sandboxClaim)
 
 	receipt := map[string]any{
-		"task_id":        taskID,
-		"from":           task["from"],
-		"origin_zone":    origin["zid"],
-		"executing_zone": f.Authority["zid"],
-		"to":             worker.Descriptor["aid"],
-		"artifact_refs":  []string{artifactURI},
-		"artifact_manifests": []map[string]any{
-			artifactManifest,
-		},
+		"task_id":            taskID,
+		"from":               task["from"],
+		"origin_zone":        origin["zid"],
+		"executing_zone":     f.Authority["zid"],
+		"to":                 worker.Descriptor["aid"],
+		"artifact_refs":      artifactRefs,
+		"artifact_manifests": artifactManifests,
 		"tool_output_digest": artifactManifest["sha256"],
 		"event_count":        float64(5 + len(approvals)*2),
 		"approvals":          approvals,
@@ -2256,6 +2264,13 @@ func runExternalTool(parent context.Context, profile WorkerProfile, task, origin
 		}
 		return "", nil, errors.New("external tool failed: " + message)
 	}
+	transcriptURI := "artifact://local/" + fmt.Sprint(task["task_id"]) + "/tool-transcript.json"
+	transcriptManifest, err := writeArtifactBytes(transcriptURI, output, "application/json; charset=utf-8")
+	if err != nil {
+		return "", nil, err
+	}
+	sandbox["tool_transcript_ref"] = transcriptURI
+	sandbox["tool_transcript_manifest"] = transcriptManifest
 	var result map[string]any
 	if err := json.Unmarshal(output, &result); err != nil {
 		return "", nil, err
@@ -2368,7 +2383,18 @@ func runMCPTool(parent context.Context, profile WorkerProfile, task, origin map[
 	if err != nil {
 		return "", nil, err
 	}
-	sandbox["tool_transcript_digest"] = digestHex(response)
+	transcriptData, err := json.Marshal(response)
+	if err != nil {
+		return "", nil, err
+	}
+	sandbox["tool_transcript_digest"] = digestBytesHex(transcriptData)
+	transcriptURI := "artifact://local/" + fmt.Sprint(task["task_id"]) + "/tool-transcript.json"
+	transcriptManifest, err := writeArtifactBytes(transcriptURI, transcriptData, "application/json; charset=utf-8")
+	if err != nil {
+		return "", nil, err
+	}
+	sandbox["tool_transcript_ref"] = transcriptURI
+	sandbox["tool_transcript_manifest"] = transcriptManifest
 	_ = stdin.Close()
 	if ctx.Err() == context.Canceled {
 		return "", nil, errors.New("mcp tool cancelled")
@@ -3061,6 +3087,10 @@ func (f Fixture) drainQueueItem(send sendFunc, taskID, leaseID string) error {
 }
 
 func writeArtifact(uri, text string) (map[string]any, error) {
+	return writeArtifactBytes(uri, []byte(text), "text/markdown; charset=utf-8")
+}
+
+func writeArtifactBytes(uri string, data []byte, mediaType string) (map[string]any, error) {
 	path, err := localArtifactPath(uri)
 	if err != nil {
 		return nil, err
@@ -3068,7 +3098,6 @@ func writeArtifact(uri, text string) (map[string]any, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
-	data := []byte(text)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return nil, err
 	}
@@ -3077,7 +3106,7 @@ func writeArtifact(uri, text string) (map[string]any, error) {
 		"uri":        uri,
 		"sha256":     sha,
 		"size":       float64(len(data)),
-		"media_type": "text/markdown; charset=utf-8",
+		"media_type": mediaType,
 	}
 	body["manifest_hash"] = digestHex(body)
 	sidecar, err := json.MarshalIndent(body, "", "  ")

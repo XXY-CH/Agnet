@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.23 assessment
+状态：v8.24 assessment
 
 ## 一句话
 
@@ -68,7 +68,7 @@
 
 ### Runtime core
 
-进度：约 83%。
+进度：约 84%。
 
 已有：
 
@@ -86,6 +86,7 @@
 - `FED_TASK_RETRY` lineage evidence with normal task execution。
 - Sandbox claim binding prevents overclaiming local-temp-dir as stronger isolation。
 - External/MCP sandbox evidence records tool command, executable binary, and result transcript digests。
+- External/MCP result transcripts are persisted as local artifacts linked from signed receipts。
 - Tool output digest aligns signed receipt with artifact manifest。
 - Artifact manifests persist as local sidecars and are retrievable through a read-only Human Gateway API。
 - Artifacts are also written under a local content-addressed SHA-256 path。

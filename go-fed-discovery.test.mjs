@@ -1207,8 +1207,14 @@ setTimeout(() => {
     assert.equal(receiptFrame.receipt.executing_zone, fixture.authority.zid);
     assert.equal(receiptFrame.worker.alias, "agent://zone-b/translator");
     assert.equal(receiptFrame.receipt.to, receiptFrame.worker.aid);
-    assert.equal(receiptFrame.receipt.artifact_refs[0], "artifact://local/go_fed_task_verified/go-summary.md");
-    assert.deepEqual(receiptFrame.receipt.artifact_manifests, [artifactEvent.manifest]);
+    const transcriptRef = "artifact://local/go_fed_task_verified/tool-transcript.json";
+    assert.deepEqual(receiptFrame.receipt.artifact_refs, ["artifact://local/go_fed_task_verified/go-summary.md", transcriptRef]);
+    assert.deepEqual(receiptFrame.receipt.artifact_manifests[0], artifactEvent.manifest);
+    const transcriptManifest = receiptFrame.receipt.artifact_manifests[1];
+    assert.equal(transcriptManifest.uri, transcriptRef);
+    assert.equal(transcriptManifest.media_type, "application/json; charset=utf-8");
+    assert.equal(transcriptManifest.sha256, receiptFrame.receipt.sandbox.tool_transcript_digest);
+    assert.match(transcriptManifest.manifest_hash, /^[0-9a-f]{64}$/);
     assert.equal(artifactEvent.manifest.uri, receiptFrame.receipt.artifact_refs[0]);
     assert.match(artifactEvent.manifest.sha256, /^[0-9a-f]{64}$/);
     assert.equal(receiptFrame.receipt.tool_output_digest, artifactEvent.manifest.sha256);
@@ -1249,6 +1255,7 @@ setTimeout(() => {
     assert.match(receiptFrame.receipt.sandbox.tool_command_digest, /^[0-9a-f]{64}$/);
     assert.match(receiptFrame.receipt.sandbox.tool_binary_digest, /^[0-9a-f]{64}$/);
     assert.match(receiptFrame.receipt.sandbox.tool_transcript_digest, /^[0-9a-f]{64}$/);
+    assert.equal(receiptFrame.receipt.sandbox.tool_transcript_ref, transcriptRef);
     assert.deepEqual(receiptFrame.receipt.sandbox.mcp_session, {
       protocol_version: "2025-11-25",
       server_info: { name: "test-mcp", version: "0" },
@@ -1300,6 +1307,11 @@ setTimeout(() => {
     assert.equal(await readFile(digestArtifactPath, "utf8"), artifactText);
     const digestArtifactManifestSidecar = JSON.parse(await readFile(`${digestArtifactPath}.manifest.json`, "utf8"));
     assert.deepEqual(digestArtifactManifestSidecar, artifactEvent.manifest);
+    const transcriptText = await readFile("artifacts/go_fed_task_verified/tool-transcript.json", "utf8");
+    assert.equal(createHash("sha256").update(transcriptText).digest("hex"), receiptFrame.receipt.sandbox.tool_transcript_digest);
+    assert.match(JSON.parse(transcriptText).result.content[0].text, /MCP Tool Translation/);
+    const transcriptManifestSidecar = JSON.parse(await readFile("artifacts/go_fed_task_verified/tool-transcript.json.manifest.json", "utf8"));
+    assert.deepEqual(transcriptManifestSidecar, transcriptManifest);
 
     const auditQuery = await execFileAsync(process.execPath, [
       "federation-gateway.mjs",
@@ -1314,7 +1326,7 @@ setTimeout(() => {
     assert.equal(auditQueryResult.receipt.task_id, task.task_id);
     assert.deepEqual(auditQueryResult.receipt.sandbox_proof, sandboxProof);
     assert.deepEqual(auditQueryResult.receipt.checkpoints, [checkpointEvent]);
-    assert.deepEqual(auditQueryResult.receipt.artifact_manifests, [artifactEvent.manifest]);
+    assert.deepEqual(auditQueryResult.receipt.artifact_manifests, [artifactEvent.manifest, transcriptManifest]);
 
     const auditFrames = await exchangeFrames(port, {
       type: "FED_AUDIT_QUERY",
@@ -1324,7 +1336,7 @@ setTimeout(() => {
     assert.deepEqual(auditFrames.map((frame) => frame.type), ["FED_AUDIT_RESULT", "FED_AUDIT_CLOSE"]);
     assert.equal(auditFrames[0].task_id, task.task_id);
     assert.deepEqual(auditFrames[0].receipt.checkpoints, [checkpointEvent]);
-    assert.deepEqual(auditFrames[0].receipt.artifact_manifests, [artifactEvent.manifest]);
+    assert.deepEqual(auditFrames[0].receipt.artifact_manifests, [artifactEvent.manifest, transcriptManifest]);
 
     const resumeTask = {
       ...task,

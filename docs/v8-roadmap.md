@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.23 complete; v8.24+ planned
+状态：v8.24 complete; v8.25+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -546,8 +546,31 @@
 - 不做 public deployment。
 - 不做 A2A/ARD compatibility。
 
+## v8.24: Transcript Artifact Storage
+
+状态：complete
+目标：External/MCP tool result transcripts are persisted as local artifacts.
+
+新增：
+
+- External/MCP tools write `artifact://local/<task_id>/tool-transcript.json`.
+- Receipts include transcript artifact refs and manifests alongside the summary artifact.
+- Sandbox evidence records `tool_transcript_ref` next to `tool_transcript_digest`.
+- The integration test verifies transcript artifact bytes hash to `tool_transcript_digest`.
+
+不做：
+
+- 不做 streamed transcript UI。
+- 不做 transcript browser。
+- 不做 remote transcript/object storage。
+- 不做 artifact GC。
+- 不做 long-running MCP session reuse。
+- 不做 container sandbox。
+- 不做 public deployment。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
-- v8.24: remote artifact storage, container sandbox hardening, full transcript storage, login-backed approval identity, or another small Ultimate-aligned runtime/governance slice.
+- v8.25: remote artifact storage, container sandbox hardening, login-backed approval identity, streamed transcript UI, or another small Ultimate-aligned runtime/governance slice.
 
 Container sandbox and public transport remain separate hardening tracks。
