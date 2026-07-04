@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.34 complete; v8.35+ planned
+状态：v8.35 complete; v8.36+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -821,8 +821,33 @@ Example:
 - 不做 public deployment。
 - 不做 A2A/ARD compatibility。
 
+## v8.35: Artifact Manifest Link UI
+
+状态：complete
+目标：Human Gateway receipt artifact links also expose their signed manifest read surface.
+
+新增：
+
+- Human Gateway receipt table renders a `manifest` link next to each artifact link.
+- The manifest link reuses the existing `GET /api/artifacts/manifest?uri=...` endpoint.
+- Summary and transcript artifacts both get manifest links because the table iterates all `artifact_refs`.
+- The integration test checks that the page includes the manifest API link.
+
+不做：
+
+- 不做 artifact browser。
+- 不做 transcript browser。
+- 不做 remote artifact fetch/download。
+- 不做 object-store backend。
+- 不做 artifact GC。
+- 不做 auth model for artifact reads。
+- 不做 streamed transcript UI。
+- 不做 container namespace sandbox。
+- 不做 public deployment。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
-- v8.35: container namespace sandboxing, streamed transcript UI, object-store-backed artifacts, or another small Ultimate-aligned runtime/governance slice.
+- v8.36: container namespace sandboxing, streamed transcript UI, object-store-backed artifacts, or another small Ultimate-aligned runtime/governance slice.
 
 Container sandbox and public transport remain separate hardening tracks。

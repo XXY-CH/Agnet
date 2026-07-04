@@ -1275,6 +1275,9 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 			b.WriteString(`">`)
 			b.WriteString(html.EscapeString(artifact))
 			b.WriteString(`</a>`)
+			b.WriteString(` <a href="/api/artifacts/manifest?uri=`)
+			b.WriteString(html.EscapeString(url.QueryEscape(artifact)))
+			b.WriteString(`">manifest</a>`)
 		}
 		b.WriteString(`</td><td>`)
 		b.WriteString(html.EscapeString(fmt.Sprint(receipt["event_count"])))
