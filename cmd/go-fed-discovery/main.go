@@ -1154,6 +1154,7 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 		}
 		w.Header().Set("Content-Type", fmt.Sprint(manifest["media_type"]))
 		w.Header().Set("Content-Length", fmt.Sprint(manifest["size"]))
+		w.Header().Set("X-Agent-Space-Receipt-Digest", digestHex(receipt))
 		w.Header().Set("X-Agent-Space-Artifact-SHA256", fmt.Sprint(manifest["sha256"]))
 		w.Header().Set("X-Agent-Space-Artifact-Manifest-Hash", fmt.Sprint(manifest["manifest_hash"]))
 		if r.Method == http.MethodHead {

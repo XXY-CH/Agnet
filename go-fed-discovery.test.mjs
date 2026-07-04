@@ -1767,9 +1767,11 @@ setTimeout(() => {
     assert.equal(artifactVerifyBody.task_id, task.task_id);
     assert.equal(artifactVerifyBody.uri, artifactEvent.manifest.uri);
     assert.deepEqual(artifactVerifyBody.manifest, artifactEvent.manifest);
+    const receiptDigest = createHash("sha256").update(JSON.stringify(receiptFrame.receipt)).digest("hex");
     const artifactReadResponse = await fetch(`http://127.0.0.1:${humanPort}/api/artifacts/read?task_id=${encodeURIComponent(task.task_id)}&uri=${encodeURIComponent(artifactEvent.manifest.uri)}`);
     assert.equal(artifactReadResponse.status, 200);
     assert.equal(artifactReadResponse.headers.get("content-type"), artifactEvent.manifest.media_type);
+    assert.equal(artifactReadResponse.headers.get("x-agent-space-receipt-digest"), receiptDigest);
     assert.equal(artifactReadResponse.headers.get("x-agent-space-artifact-sha256"), artifactEvent.manifest.sha256);
     assert.equal(artifactReadResponse.headers.get("x-agent-space-artifact-manifest-hash"), artifactEvent.manifest.manifest_hash);
     assert.equal(await artifactReadResponse.text(), artifactText);
@@ -1777,6 +1779,7 @@ setTimeout(() => {
     assert.equal(artifactHeadResponse.status, 200);
     assert.equal(artifactHeadResponse.headers.get("content-type"), artifactEvent.manifest.media_type);
     assert.equal(artifactHeadResponse.headers.get("content-length"), String(artifactEvent.manifest.size));
+    assert.equal(artifactHeadResponse.headers.get("x-agent-space-receipt-digest"), receiptDigest);
     assert.equal(artifactHeadResponse.headers.get("x-agent-space-artifact-sha256"), artifactEvent.manifest.sha256);
     assert.equal(artifactHeadResponse.headers.get("x-agent-space-artifact-manifest-hash"), artifactEvent.manifest.manifest_hash);
     assert.equal(await artifactHeadResponse.text(), "");
