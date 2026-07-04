@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.9 complete; v8.10+ planned
+状态：v8.10 complete; v8.11+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -223,8 +223,33 @@
 - 不做 login/session identity。
 - 不做 public deployment。
 
+## v8.10: Requester Alias Registry Persistence
+
+状态：complete
+目标：Human Gateway persists the Zone-approved browser requester alias rebinding into a local registry file that existing registry tooling can resolve.
+
+新增：
+
+- `POST /api/requester/rebindings` writes `state/go-fed-discovery-requester-registry.json`.
+- The registry uses the existing Node registry shape.
+- The registry stores the rotated `next_descriptor`.
+- The registry stores a Zone-signed `zone_binding` for `agent://browser/requester`.
+- Existing `loadRegistry` / `resolveAgent` can resolve the rebound requester alias.
+
+不做：
+
+- 不做 browser UI for rebinding submission。
+- 不做 multi-requester registry。
+- 不做 rebinding history table。
+- 不做 server-side rotation registry。
+- 不做 remote registry sync。
+- 不做 automatic rebinding after rotation。
+- 不做 multi-tenant admin model。
+- 不做 login/session identity。
+- 不做 public deployment。
+
 ## 后续方向
 
-- v8.10: persistent alias binding registry update, browser rebinding UI, or the next deployable transport/security hardening slice.
+- v8.11: browser rebinding UI, multi-requester registry, or the next deployable transport/security hardening slice.
 
 Container sandbox and public transport remain separate hardening tracks。

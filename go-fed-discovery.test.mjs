@@ -5,7 +5,7 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { canonical, capabilityCredentialId, createAgent, loadOrCreateAgent, loadOrCreateZone, publicKeyFromDescriptor, resolveAgent, rotationProof, signObject, verifyAliasRebindingProof, verifyCredentialStatus, verifyObject, writeTrustedZones } from "./asp-core.mjs";
+import { canonical, capabilityCredentialId, createAgent, loadOrCreateAgent, loadOrCreateZone, loadRegistry, publicKeyFromDescriptor, resolveAgent, rotationProof, signObject, verifyAliasRebindingProof, verifyCredentialStatus, verifyObject, writeTrustedZones } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -495,6 +495,7 @@ setTimeout(() => {
   await rm("state/go-fed-discovery-audit-tasks", { recursive: true, force: true });
   await rm("state/go-fed-discovery-audit-queue", { recursive: true, force: true });
   await rm("state/go-fed-discovery-audit-approvals", { recursive: true, force: true });
+  await rm("state/go-fed-discovery-requester-registry.json", { force: true });
   await writeTrustedZones("state/go-fed-discovery-trusted-origin.json", [zoneA]);
   await writeFile("state/node-trusts-go-discovery.json", `${JSON.stringify({ zones: [fixture.authority] }, null, 2)}\n`);
   const gateway = spawn("go", [
@@ -1026,6 +1027,10 @@ setTimeout(() => {
       previousBrowserRequester.descriptor,
       nextBrowserRequester.descriptor,
     ), true);
+    const browserRequesterRegistry = await loadRegistry("state/go-fed-discovery-requester-registry.json");
+    const reboundBrowserRequester = resolveAgent(browserRequesterRegistry, "agent://browser/requester");
+    assert.equal(reboundBrowserRequester.descriptor.aid, nextBrowserRequester.aid);
+    assert.equal(reboundBrowserRequester.zone.zid, browserRebindingBody.authority_descriptor.zid);
 
     const deniedApprovalTask = {
       ...task,

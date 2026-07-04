@@ -45,6 +45,8 @@ type Fixture struct {
 	Runtime             *TaskRuntime       `json:"-"`
 }
 
+const requesterRegistryPath = "state/go-fed-discovery-requester-registry.json"
+
 type WorkerProfile struct {
 	KeyFile      string         `json:"key_file,omitempty"`
 	Alias        string         `json:"alias"`
@@ -967,6 +969,10 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if err := fixture.writeRequesterRegistry(next); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "authority_descriptor": fixture.Authority, "alias_rebinding_proof": proof})
 	})
@@ -1500,6 +1506,27 @@ func (f Fixture) requesterAliasRebindingProof(previous, next, rotationProof map[
 	return proof, nil
 }
 
+func (f Fixture) writeRequesterRegistry(descriptor map[string]any) error {
+	registry := map[string]any{
+		"zone":        f.Authority,
+		"revocations": []any{},
+		"agents": []any{
+			map[string]any{
+				"descriptor":   descriptor,
+				"zone_binding": f.zoneBindingForDescriptor(descriptor),
+			},
+		},
+	}
+	if err := os.MkdirAll(filepath.Dir(requesterRegistryPath), 0755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(registry, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(requesterRegistryPath, append(data, '\n'), 0644)
+}
+
 func (f Fixture) workersByCapability(capability string) []Worker {
 	workers := []Worker{}
 	for _, worker := range f.Workers {
@@ -1511,10 +1538,14 @@ func (f Fixture) workersByCapability(capability string) []Worker {
 }
 
 func (f Fixture) zoneBinding(worker *Worker) map[string]any {
+	return f.zoneBindingForDescriptor(worker.Descriptor)
+}
+
+func (f Fixture) zoneBindingForDescriptor(descriptor map[string]any) map[string]any {
 	return signBody(f.AuthorityPrivateKey, map[string]any{
 		"zone":  f.Authority["zid"],
-		"alias": worker.Descriptor["alias"],
-		"aid":   worker.Descriptor["aid"],
+		"alias": descriptor["alias"],
+		"aid":   descriptor["aid"],
 	})
 }
 
