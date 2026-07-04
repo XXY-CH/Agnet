@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.25 complete; v8.26+ planned
+状态：v8.26 complete; v8.27+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -590,8 +590,30 @@
 - 不做 public deployment。
 - 不做 A2A/ARD compatibility。
 
+## v8.26: Approval Actor Policy
+
+状态：complete
+目标：Human Gateway direct approval actors pass a configurable local allowlist.
+
+新增：
+
+- `--human-actor-policy` reads `approval_actions`.
+- `/api/approvals/actions` denies actors not allowed for the requested approval action.
+- Default behavior remains local-only without a configured approval policy.
+- The integration test denies `human://guest` approval and allows `human://operator` approval.
+
+不做：
+
+- 不做 login/session store。
+- 不做 roles/admin model。
+- 不做 dynamic policy service。
+- 不做 hot reload。
+- 不做 token storage / rotation。
+- 不做 public deployment。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
-- v8.26: approval actor policy, remote artifact storage, container sandbox hardening, login-backed sessions, streamed transcript UI, or another small Ultimate-aligned runtime/governance slice.
+- v8.27: remote artifact storage, container sandbox hardening, login-backed sessions, streamed transcript UI, or another small Ultimate-aligned runtime/governance slice.
 
 Container sandbox and public transport remain separate hardening tracks。

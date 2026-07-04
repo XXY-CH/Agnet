@@ -44,6 +44,7 @@ type Fixture struct {
 	ApprovalDir         string              `json:"-"`
 	Runtime             *TaskRuntime        `json:"-"`
 	QueueActorPolicy    map[string][]string `json:"-"`
+	ApprovalActorPolicy map[string][]string `json:"-"`
 }
 
 const requesterRegistryPath = "state/go-fed-discovery-requester-registry.json"
@@ -118,7 +119,7 @@ func main() {
 	wsPort := flag.String("ws-port", "", "optional WebSocket listen port")
 	humanPort := flag.String("human-port", "", "optional Human Gateway HTTP port")
 	humanToken := flag.String("human-token", "", "optional Human Gateway bearer token for write actions")
-	humanActorPolicyPath := flag.String("human-actor-policy", "", "optional Human Gateway queue actor policy JSON file")
+	humanActorPolicyPath := flag.String("human-actor-policy", "", "optional Human Gateway actor policy JSON file")
 	fixturePath := flag.String("fixture", "test-vectors/asp-v1.5-capability-credential.json", "signed descriptor fixture")
 	trustPath := flag.String("trusted", "state/go-fed-trusted-zones.json", "trusted origin zones")
 	authorityKeyPath := flag.String("authority-key", "state/keys/go-fed-authority.seed", "authority seed key file")
@@ -155,11 +156,12 @@ func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, fixturePat
 	if err != nil {
 		return err
 	}
-	actorPolicy, err := loadQueueActorPolicy(humanActorPolicyPath)
+	actorPolicy, approvalPolicy, err := loadHumanActorPolicy(humanActorPolicyPath)
 	if err != nil {
 		return err
 	}
 	fixture.QueueActorPolicy = actorPolicy
+	fixture.ApprovalActorPolicy = approvalPolicy
 	audit, err := openAuditLog(auditPath)
 	if err != nil {
 		return err
@@ -847,6 +849,10 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 			http.Error(w, "approval task_id and human actor required", http.StatusBadRequest)
 			return
 		}
+		if !fixture.approvalActorAllowed(actor, actionName) {
+			http.Error(w, "approval actor policy denied", http.StatusBadRequest)
+			return
+		}
 		approval, err := fixture.applyApprovalAction(taskID, actor, actionName)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1451,21 +1457,22 @@ func loadFixture(path string, authorityKey, workerKey ed25519.PrivateKey) (Fixtu
 	return fixture, nil
 }
 
-func loadQueueActorPolicy(path string) (map[string][]string, error) {
+func loadHumanActorPolicy(path string) (map[string][]string, map[string][]string, error) {
 	if path == "" {
-		return nil, nil
+		return nil, nil, nil
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var policy struct {
-		QueueActions map[string][]string `json:"queue_actions"`
+		QueueActions    map[string][]string `json:"queue_actions"`
+		ApprovalActions map[string][]string `json:"approval_actions"`
 	}
 	if err := json.Unmarshal(data, &policy); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return policy.QueueActions, nil
+	return policy.QueueActions, policy.ApprovalActions, nil
 }
 
 func loadPrivateKey(path, label string) (ed25519.PrivateKey, error) {
@@ -2894,6 +2901,18 @@ func (f Fixture) queueActionActorAllowed(actor, action string) bool {
 		return actor == "human://local" && (action == "enqueue" || action == "claim" || action == "drain")
 	}
 	for _, allowed := range f.QueueActorPolicy[actor] {
+		if allowed == action {
+			return true
+		}
+	}
+	return false
+}
+
+func (f Fixture) approvalActorAllowed(actor, action string) bool {
+	if len(f.ApprovalActorPolicy) == 0 {
+		return actor == "human://local" && (action == "approve" || action == "deny")
+	}
+	for _, allowed := range f.ApprovalActorPolicy[actor] {
 		if allowed == action {
 			return true
 		}
