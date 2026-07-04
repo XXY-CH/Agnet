@@ -131,7 +131,7 @@ func main() {
 	flag.Parse()
 
 	if *verifyAudit {
-		if err := verifyAuditFile(*auditPath); err != nil {
+		if err := verifyAuditFile(*auditPath, *artifactStoreDir); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
@@ -3225,7 +3225,7 @@ func (a *AuditLog) Append(record map[string]any) error {
 	return nil
 }
 
-func verifyAuditFile(path string) error {
+func verifyAuditFile(path, artifactStoreDir string) error {
 	entries, err := readAuditEntries(path)
 	if err != nil {
 		return err
@@ -3240,7 +3240,7 @@ func verifyAuditFile(path string) error {
 			return errors.New("audit record missing")
 		}
 		if record["kind"] == "go_fed_receipt" {
-			if err := verifyReceiptRecord(record); err != nil {
+			if err := verifyReceiptRecord(record, artifactStoreDir); err != nil {
 				return err
 			}
 		}
@@ -3302,7 +3302,7 @@ func auditEntry(prev string, record map[string]any) (map[string]any, error) {
 	return map[string]any{"prev_hash": prev, "record": record, "hash": hex.EncodeToString(hash[:])}, nil
 }
 
-func verifyReceiptRecord(record map[string]any) error {
+func verifyReceiptRecord(record map[string]any, artifactStoreDir string) error {
 	zone, ok := record["zone"].(map[string]any)
 	if !ok {
 		return errors.New("receipt zone missing")
@@ -3351,7 +3351,7 @@ func verifyReceiptRecord(record map[string]any) error {
 	if err := verifyCheckpoints(workerKey, receipt); err != nil {
 		return err
 	}
-	if err := verifyArtifactManifests(receipt); err != nil {
+	if err := verifyArtifactManifests(receipt, artifactStoreDir); err != nil {
 		return err
 	}
 	if err := verifyPolicyScope(receipt); err != nil {
@@ -3408,7 +3408,7 @@ func verifyCheckpoints(workerKey ed25519.PublicKey, receipt map[string]any) erro
 	return nil
 }
 
-func verifyArtifactManifests(receipt map[string]any) error {
+func verifyArtifactManifests(receipt map[string]any, artifactStoreDir string) error {
 	refs := stringsFromAny(receipt["artifact_refs"])
 	manifests := mapsFromAny(receipt["artifact_manifests"])
 	if len(refs) != len(manifests) {
@@ -3455,6 +3455,30 @@ func verifyArtifactManifests(receipt map[string]any) error {
 		}
 		if digestHex(digestSidecar) != digestHex(manifest) {
 			return errors.New("artifact digest sidecar mismatch")
+		}
+		if artifactStoreDir != "" {
+			mirrorPath := filepath.Join(artifactStoreDir, "by-sha256", fmt.Sprint(manifest["sha256"]))
+			mirrorData, err := os.ReadFile(mirrorPath)
+			if err != nil {
+				return err
+			}
+			mirrorSidecarData, err := os.ReadFile(mirrorPath + ".manifest.json")
+			if err != nil {
+				return err
+			}
+			var mirrorSidecar map[string]any
+			if err := json.Unmarshal(mirrorSidecarData, &mirrorSidecar); err != nil {
+				return err
+			}
+			if digestHex(mirrorSidecar) != digestHex(manifest) {
+				return errors.New("artifact mirror sidecar mismatch")
+			}
+			if float64(len(mirrorData)) != manifest["size"] {
+				return errors.New("artifact mirror bytes size mismatch")
+			}
+			if digestBytesHex(mirrorData) != manifest["sha256"] {
+				return errors.New("artifact mirror bytes digest mismatch")
+			}
 		}
 		if float64(len(data)) != manifest["size"] {
 			return errors.New("artifact bytes size mismatch")

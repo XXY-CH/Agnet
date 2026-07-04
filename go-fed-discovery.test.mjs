@@ -1638,6 +1638,8 @@ setTimeout(() => {
       "run",
       "./cmd/go-fed-discovery",
       "--verify-audit",
+      "--artifact-store",
+      "state/go-fed-artifact-store",
       "--audit",
       "state/go-fed-discovery-audit.log",
     ]);
@@ -1678,6 +1680,34 @@ setTimeout(() => {
       /artifact bytes digest mismatch/,
     );
     await writeFile("artifacts/go_fed_task_verified/go-summary.md", artifactText);
+    await writeFile(`${mirrorArtifactPath}.manifest.json`, "{}\n");
+    await assert.rejects(
+      execFileAsync("go", [
+        "run",
+        "./cmd/go-fed-discovery",
+        "--verify-audit",
+        "--artifact-store",
+        "state/go-fed-artifact-store",
+        "--audit",
+        "state/go-fed-discovery-audit.log",
+      ]),
+      /artifact mirror sidecar mismatch/,
+    );
+    await writeFile(`${mirrorArtifactPath}.manifest.json`, `${JSON.stringify(artifactEvent.manifest, null, 2)}\n`);
+    await writeFile(mirrorArtifactPath, "x".repeat(Buffer.byteLength(artifactText)));
+    await assert.rejects(
+      execFileAsync("go", [
+        "run",
+        "./cmd/go-fed-discovery",
+        "--verify-audit",
+        "--artifact-store",
+        "state/go-fed-artifact-store",
+        "--audit",
+        "state/go-fed-discovery-audit.log",
+      ]),
+      /artifact mirror bytes digest mismatch/,
+    );
+    await writeFile(mirrorArtifactPath, artifactText);
 
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);

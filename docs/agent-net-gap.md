@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.27 assessment
+状态：v8.28 assessment
 
 ## 一句话
 
@@ -94,6 +94,7 @@
 - Audit verification rejects local artifact bytes that no longer match signed manifests。
 - Audit verification rejects named artifact sidecars that no longer match signed manifests。
 - Audit verification rejects digest-addressed artifact sidecars that no longer match signed manifests。
+- Audit verification can reject filesystem artifact mirror bytes or sidecars that no longer match signed manifests。
 - MCP sandbox evidence records protocol/server initialize metadata。
 - MCP resources/prompts surfaces are recorded as count+digest evidence。
 - MCP tools surface is recorded as count+digest evidence。

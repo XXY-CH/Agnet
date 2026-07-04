@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.27 complete; v8.28+ planned
+状态：v8.28 complete; v8.29+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -636,8 +636,32 @@
 - 不做 public deployment。
 - 不做 A2A/ARD compatibility。
 
+## v8.28: Artifact Mirror Verification
+
+状态：complete
+目标：Audit verification checks configured filesystem artifact mirrors against signed manifests.
+
+新增：
+
+- `--verify-audit --artifact-store <dir>` reads mirrored artifact bytes from `<dir>/by-sha256/<sha256>`.
+- `--verify-audit --artifact-store <dir>` reads mirrored sidecars from `<dir>/by-sha256/<sha256>.manifest.json`.
+- The verifier rejects mirrored sidecars that differ from receipt artifact manifests.
+- The verifier rejects mirrored bytes whose size or SHA-256 differs from receipt artifact manifests.
+- The integration test tampers with mirror sidecar and bytes and expects verification failure.
+
+不做：
+
+- 不做 S3/MinIO/object-store API。
+- 不做 remote artifact fetch/download。
+- 不做 artifact GC。
+- 不做 artifact browser。
+- 不做 auth model for mirrored artifacts。
+- 不做 container sandbox。
+- 不做 public deployment。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
-- v8.28: container sandbox hardening, login-backed sessions, streamed transcript UI, object-store-backed artifacts, or another small Ultimate-aligned runtime/governance slice.
+- v8.29: container sandbox hardening, login-backed sessions, streamed transcript UI, object-store-backed artifacts, or another small Ultimate-aligned runtime/governance slice.
 
 Container sandbox and public transport remain separate hardening tracks。
