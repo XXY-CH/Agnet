@@ -308,18 +308,13 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			return false
 		}
 	case "FED_TASK_ENQUEUE":
-		worker, task, err := fixture.verifyTaskOpen(frame)
+		taskID, workerID, err := fixture.enqueueQueueItem(origin, frame)
 		if err != nil {
 			send(taskErrorFrame(err))
 			return false
 		}
-		requester, _ := frame["requester"].(map[string]any)
-		if err := fixture.writeQueueItem(origin, worker, task, "queued", map[string]any{"origin_zone_descriptor": origin, "requester": requester, "task": task}); err != nil {
-			send(taskErrorFrame(err))
-			return false
-		}
-		send(map[string]any{"type": "FED_QUEUE_ACCEPTED", "task_id": task["task_id"], "worker": worker.Descriptor["aid"]})
-		send(map[string]any{"type": "FED_QUEUE_CLOSE", "task_id": task["task_id"]})
+		send(map[string]any{"type": "FED_QUEUE_ACCEPTED", "task_id": taskID, "worker": workerID})
+		send(map[string]any{"type": "FED_QUEUE_CLOSE", "task_id": taskID})
 	case "FED_QUEUE_RETRY":
 		taskID, err := fixture.retryQueueItem(origin, frame, frameSeconds(frame, "retry_after_seconds", 60))
 		if err != nil {
@@ -1843,6 +1838,18 @@ func (f Fixture) readQueueItem(taskID string) (map[string]any, error) {
 	return item, nil
 }
 
+func (f Fixture) enqueueQueueItem(origin map[string]any, frame map[string]any) (string, any, error) {
+	worker, task, err := f.verifyTaskOpen(frame)
+	if err != nil {
+		return "", nil, err
+	}
+	requester, _ := frame["requester"].(map[string]any)
+	if err := f.writeQueueItem(origin, worker, task, "queued", map[string]any{"origin_zone_descriptor": origin, "requester": requester, "task": task}); err != nil {
+		return "", nil, err
+	}
+	return fmt.Sprint(task["task_id"]), worker.Descriptor["aid"], nil
+}
+
 func (f Fixture) claimQueueItem(taskID, owner string, leaseSeconds int) (string, error) {
 	item, err := f.readQueueItem(taskID)
 	if err != nil {
@@ -1888,12 +1895,22 @@ func (f Fixture) retryQueueItem(origin map[string]any, frame map[string]any, ret
 }
 
 func (f Fixture) applyQueueAction(action map[string]any) (map[string]any, error) {
-	taskID := fmt.Sprint(action["task_id"])
-	if taskID == "" || taskID == "<nil>" {
-		return nil, errors.New("queue action task_id missing")
-	}
 	switch optionalString(action["action"]) {
+	case "enqueue":
+		origin, _ := action["origin_zone"].(map[string]any)
+		if len(origin) == 0 {
+			return nil, errors.New("queue action origin_zone missing")
+		}
+		taskID, workerID, err := f.enqueueQueueItem(origin, action)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"ok": true, "action": "enqueue", "task_id": taskID, "worker": workerID}, nil
 	case "claim":
+		taskID := fmt.Sprint(action["task_id"])
+		if taskID == "" || taskID == "<nil>" {
+			return nil, errors.New("queue action task_id missing")
+		}
 		owner := fmt.Sprint(action["owner"])
 		if owner == "" || owner == "<nil>" {
 			return nil, errors.New("queue action owner missing")
@@ -1904,6 +1921,10 @@ func (f Fixture) applyQueueAction(action map[string]any) (map[string]any, error)
 		}
 		return map[string]any{"ok": true, "action": "claim", "task_id": taskID, "lease_id": leaseID, "owner": owner}, nil
 	case "drain":
+		taskID := fmt.Sprint(action["task_id"])
+		if taskID == "" || taskID == "<nil>" {
+			return nil, errors.New("queue action task_id missing")
+		}
 		leaseID := fmt.Sprint(action["lease_id"])
 		if leaseID == "" || leaseID == "<nil>" {
 			return nil, errors.New("queue action lease_id missing")

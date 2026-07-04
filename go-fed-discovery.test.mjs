@@ -638,6 +638,29 @@ setTimeout(() => {
     assert.equal(humanDrainedQueueState.status, "completed");
     assert.equal(humanDrainedQueueState.lease_owner, "human://local");
 
+    const humanCreatedQueuedTask = {
+      ...task,
+      task_id: "go_fed_task_human_created_queue",
+      intent: "Create queued task through Human Gateway action.",
+    };
+    const humanEnqueueResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "enqueue",
+        origin_zone: zoneA.descriptor,
+        requester: requester.descriptor,
+        task: { ...humanCreatedQueuedTask, signature: signObject(requester.privateKey, humanCreatedQueuedTask) },
+      }),
+    });
+    assert.equal(humanEnqueueResponse.status, 200);
+    const humanEnqueueBody = await humanEnqueueResponse.json();
+    assert.equal(humanEnqueueBody.task_id, humanCreatedQueuedTask.task_id);
+    const humanCreatedQueueResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue`);
+    assert.equal(humanCreatedQueueResponse.status, 200);
+    const humanCreatedQueueBody = await humanCreatedQueueResponse.json();
+    assert.equal(humanCreatedQueueBody.queue.some((item) => item.task_id === humanCreatedQueuedTask.task_id && item.status === "queued"), true);
+
     const executionFrames = await exchangeFrames(port, {
       type: "FED_TASK_OPEN",
       origin_zone: zoneA.descriptor,

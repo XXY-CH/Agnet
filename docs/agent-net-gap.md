@@ -101,6 +101,7 @@
 - Running Go tasks persist state before external/MCP execution completes。
 - Failed Go queue items can be explicitly retried with durable retry/backoff state。
 - Human Gateway exposes durable queue state and explicit local claim/drain actions。
+- Human Gateway can enqueue already signed tasks through the local queue action API。
 
 主要缺：
 
@@ -108,7 +109,7 @@
 - interactive approval UI。
 - container-grade sandbox。
 - concurrency model。
-- task creation UI / query surface。
+- task drafting/signing UI。
 - real checkpoint state restore。
 - automatic retry / backoff scanning。
 - binary/package provenance。

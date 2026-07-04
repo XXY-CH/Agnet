@@ -1,6 +1,6 @@
 # Agent Space v7 Roadmap
 
-状态：v7.5 complete; v7.6+ planned
+状态：v7.6 complete; v7.7+ planned
 目标：从 durable task state 进入 durable scheduler queue，让任务生命周期有本地所有权、可恢复入口和后续调度面。
 
 ## v7.0: Durable Queue Enqueue
@@ -123,9 +123,29 @@
 - 不做 auth/login。
 - 不做 multi-node scheduler。
 
+## v7.6: Human Gateway Queue Creation
+
+状态：complete
+目标：Human Gateway can create durable queued work from an already signed task.
+
+新增：
+
+- `POST /api/queue/actions` supports `enqueue`。
+- Enqueue action accepts `origin_zone`, `requester`, and a signed `task`。
+- Enqueue action reuses the same verification and queue write path as `FED_TASK_ENQUEUE`。
+- `/api/queue` exposes the newly queued item。
+
+不做：
+
+- 不做 browser-side signing。
+- 不做 requester private-key storage。
+- 不做 task drafting form。
+- 不做 automatic scheduler loop。
+- 不做 auth/login。
+
 ## 后续方向
 
-- Human Gateway task creation
 - checkpoint restore after queued execution exists
+- Human Gateway task drafting/signing surface
 
 Container sandbox and public transport remain separate hardening tracks。
