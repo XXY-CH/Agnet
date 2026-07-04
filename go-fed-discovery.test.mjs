@@ -1619,6 +1619,18 @@ setTimeout(() => {
       /artifact manifest sidecar mismatch/,
     );
     await writeFile("artifacts/go_fed_task_verified/go-summary.md.manifest.json", `${JSON.stringify(artifactEvent.manifest, null, 2)}\n`);
+    await writeFile(`${digestArtifactPath}.manifest.json`, "{}\n");
+    await assert.rejects(
+      execFileAsync("go", [
+        "run",
+        "./cmd/go-fed-discovery",
+        "--verify-audit",
+        "--audit",
+        "state/go-fed-discovery-audit.log",
+      ]),
+      /artifact digest sidecar mismatch/,
+    );
+    await writeFile(`${digestArtifactPath}.manifest.json`, `${JSON.stringify(artifactEvent.manifest, null, 2)}\n`);
     await writeFile("artifacts/go_fed_task_verified/go-summary.md", "x".repeat(Buffer.byteLength(artifactText)));
     await assert.rejects(
       execFileAsync("go", [

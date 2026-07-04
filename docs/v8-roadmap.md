@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.22 complete; v8.23+ planned
+状态：v8.23 complete; v8.24+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -524,8 +524,30 @@
 - 不做 public deployment。
 - 不做 A2A/ARD compatibility。
 
+## v8.23: Digest Sidecar Verification
+
+状态：complete
+目标：Audit verification checks digest-addressed artifact manifest sidecars against signed receipt manifests.
+
+新增：
+
+- `--verify-audit` reads `artifacts/by-sha256/<sha256>.manifest.json`.
+- The verifier rejects digest-addressed sidecars that differ from signed receipt artifact manifests.
+- The integration test tampers with the digest-addressed sidecar and expects verification failure.
+
+不做：
+
+- 不做 remote artifact fetch。
+- 不校验 remote object store。
+- 不做 artifact GC。
+- 不做 artifact browser。
+- 不做 full transcript artifact storage。
+- 不做 container sandbox。
+- 不做 public deployment。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
-- v8.23: digest-addressed sidecar verification, remote artifact storage, container sandbox hardening, full transcript storage, or another small Ultimate-aligned runtime/governance slice.
+- v8.24: remote artifact storage, container sandbox hardening, full transcript storage, login-backed approval identity, or another small Ultimate-aligned runtime/governance slice.
 
 Container sandbox and public transport remain separate hardening tracks。
