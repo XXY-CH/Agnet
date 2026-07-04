@@ -1156,7 +1156,7 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 }
 
 func browserRequesterPanel() string {
-	return `<section id="browser-requester"><h2>Browser Requester Key</h2><div class="toolrow"><button id="browser-generate-key" type="button">Generate</button><button id="browser-clear-key" type="button">Clear</button><button id="browser-export-key" type="button">Export Key</button><button id="browser-import-key" type="button">Import Key</button><button id="browser-rotate-key" type="button">Rotate Key</button></div><textarea id="browser-key-bundle" rows="4" spellcheck="false" aria-label="Browser requester key bundle"></textarea><form id="browser-draft-form"><label>Task<input id="browser-task-id" value="browser_draft_task"></label><label>Target<input id="browser-task-to" value="agent://zone-b/translator"></label><label>Intent<input id="browser-task-intent" value="Draft from a browser-held requester key."></label><label>Token<input id="browser-token" type="password" autocomplete="off"></label><button type="submit">Sign Draft</button></form><pre id="browser-requester-status"></pre></section><script>
+	return `<section id="browser-requester"><h2>Browser Requester Key</h2><div class="toolrow"><button id="browser-generate-key" type="button">Generate</button><button id="browser-clear-key" type="button">Clear</button><button id="browser-export-key" type="button">Export Key</button><button id="browser-import-key" type="button">Import Key</button><button id="browser-rotate-key" type="button">Rotate Key</button><button id="browser-rebind-key" type="button">Bind Alias</button></div><textarea id="browser-key-bundle" rows="4" spellcheck="false" aria-label="Browser requester key bundle"></textarea><form id="browser-draft-form"><label>Task<input id="browser-task-id" value="browser_draft_task"></label><label>Target<input id="browser-task-to" value="agent://zone-b/translator"></label><label>Intent<input id="browser-task-intent" value="Draft from a browser-held requester key."></label><label>Token<input id="browser-token" type="password" autocomplete="off"></label><button type="submit">Sign Draft</button></form><pre id="browser-requester-status"></pre></section><script>
 (() => {
   const storageKey = "agent-space-browser-requester";
   const encoder = new TextEncoder();
@@ -1245,6 +1245,22 @@ func browserRequesterPanel() string {
     };
     localStorage.setItem(storageKey, JSON.stringify({ descriptor: next.descriptor, privateJwk: next.privateJwk, previous_descriptor: saved.descriptor, rotation_proof }));
     render();
+  };
+  document.getElementById("browser-rebind-key").onclick = async () => {
+    const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
+    if (!saved || !saved.previous_descriptor || !saved.rotation_proof) {
+      status.textContent = "Rotate key before binding alias";
+      return;
+    }
+    const token = document.getElementById("browser-token").value;
+    const headers = { "content-type": "application/json" };
+    if (token) headers.authorization = "Bearer " + token;
+    const response = await fetch("/api/requester/rebindings", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ previous_descriptor: saved.previous_descriptor, next_descriptor: saved.descriptor, rotation_proof: saved.rotation_proof })
+    });
+    status.textContent = response.ok ? JSON.stringify(await response.json(), null, 2) : await response.text();
   };
   document.getElementById("browser-draft-form").onsubmit = async (event) => {
     event.preventDefault();

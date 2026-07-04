@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.10 complete; v8.11+ planned
+状态：v8.11 complete; v8.12+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -248,8 +248,32 @@
 - 不做 login/session identity。
 - 不做 public deployment。
 
+## v8.11: Browser Requester Alias Rebinding UI
+
+状态：complete
+目标：Human Gateway page can submit the browser-held requester rotation bundle to the existing requester alias rebinding API.
+
+新增：
+
+- Browser Requester Key panel exposes `Bind Alias`.
+- The button reads `previous_descriptor`, current `descriptor`, and `rotation_proof` from the browser-held requester bundle.
+- The browser posts those values as `previous_descriptor`, `next_descriptor`, and `rotation_proof` to `POST /api/requester/rebindings`.
+- The request reuses the existing Human Gateway bearer token input.
+- The response renders in the existing browser requester status area.
+
+不做：
+
+- 不做 automatic rebinding after rotation。
+- 不做 multi-requester registry。
+- 不做 rebinding history table。
+- 不做 server-side rotation registry。
+- 不做 encrypted key store。
+- 不做 passphrase-protected export。
+- 不做 login/session identity。
+- 不做 public deployment。
+
 ## 后续方向
 
-- v8.11: browser rebinding UI, multi-requester registry, or the next deployable transport/security hardening slice.
+- v8.12: multi-requester registry, rebinding history table, or the next deployable transport/security hardening slice.
 
 Container sandbox and public transport remain separate hardening tracks。

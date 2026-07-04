@@ -1577,14 +1577,19 @@ setTimeout(() => {
     assert.match(pageText, /Export Key/);
     assert.match(pageText, /Import Key/);
     assert.match(pageText, /Rotate Key/);
+    assert.match(pageText, /Bind Alias/);
     assert.match(pageText, /browser-export-key/);
     assert.match(pageText, /browser-import-key/);
     assert.match(pageText, /browser-rotate-key/);
+    assert.match(pageText, /browser-rebind-key/);
     assert.match(pageText, /rotation_proof/);
+    assert.match(pageText, /previous_descriptor/);
+    assert.match(pageText, /next_descriptor/);
     assert.match(pageText, /previous_signature/);
     assert.match(pageText, /next_signature/);
     assert.match(pageText, /descriptor_signature/);
     assert.match(pageText, /\/api\/queue\/drafts/);
+    assert.match(pageText, /\/api\/requester\/rebindings/);
     assert.match(pageText, /1 signed/);
     assert.match(pageText, /local-temp-dir/);
 

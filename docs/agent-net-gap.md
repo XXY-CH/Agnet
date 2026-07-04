@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.10 assessment
+状态：v8.11 assessment
 
 ## 一句话
 
@@ -68,7 +68,7 @@
 
 ### Runtime core
 
-进度：约 77%。
+进度：约 78%。
 
 已有：
 
@@ -115,7 +115,7 @@
 - Human Gateway can accept externally signed requester tasks through the draft endpoint without holding the requester private key。
 - Human Gateway write actions can require a bearer token before mutation。
 - Human Gateway exposes its local deployment security posture through `/api/security`。
-- Human Gateway page can generate, export, import, rotate, and use a browser-held requester key to submit signed queue drafts。
+- Human Gateway page can generate, export, import, rotate, bind the alias for, and use a browser-held requester key to submit signed queue drafts。
 - Human Gateway can issue a Zone-signed requester alias rebinding proof after verifying browser requester rotation proof。
 - Human Gateway persists the rebound browser requester alias in a local registry JSON file。
 - Direct Go tool tasks wait for explicit Human Gateway approval before execution。
@@ -129,7 +129,6 @@
 - container-grade sandbox。
 - concurrency model。
 - encrypted browser-side private-key storage。
-- browser UI for requester alias rebinding submission。
 - multi-requester registry。
 - rebinding history table。
 - server-side rotation registry。
@@ -167,7 +166,7 @@
 
 ### Product layer
 
-进度：约 15%。
+进度：约 16%。
 
 已有：
 
@@ -179,7 +178,7 @@
 - approval denial/expiry gate。
 - signed approval receipts visible through Human Gateway。
 - local deployment security posture API。
-- browser-held requester key, rotation proof, rebinding proof API, local requester registry, and signed draft UI。
+- browser-held requester key, rotation proof, rebinding proof API, local requester registry, alias rebinding UI, and signed draft UI。
 - checkpoint evidence receipts。
 - docs and protocol proofs。
 
