@@ -1796,6 +1796,7 @@ setTimeout(() => {
     assert.match(pageText, /cancelled/);
     assert.match(pageText, /agent:\/\/zone-b\/translator/);
     assert.match(pageText, /go_fed_task_verified/);
+    assert.match(pageText, /tool-transcript\.json/);
     assert.match(pageText, /Browser Requester Key/);
     assert.match(pageText, /Requester Registry/);
     assert.match(pageText, /agent:\/\/browser\/assistant/);

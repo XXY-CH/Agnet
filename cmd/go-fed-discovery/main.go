@@ -1253,7 +1253,7 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 		b.WriteString(`</code></td></tr>`)
 	}
 	b.WriteString(`</tbody></table>`)
-	b.WriteString(`<h2>Receipts</h2><table><thead><tr><th>Task</th><th>Worker</th><th>Artifact</th><th>Events</th><th>Approvals</th><th>Sandbox</th></tr></thead><tbody>`)
+	b.WriteString(`<h2>Receipts</h2><table><thead><tr><th>Task</th><th>Worker</th><th>Artifacts</th><th>Events</th><th>Approvals</th><th>Sandbox</th></tr></thead><tbody>`)
 	if len(receipts) == 0 {
 		b.WriteString(`<tr><td colspan="6">No receipts</td></tr>`)
 	}
@@ -1261,13 +1261,15 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 		worker, _ := record["worker"].(map[string]any)
 		receipt, _ := record["receipt"].(map[string]any)
 		sandbox, _ := receipt["sandbox"].(map[string]any)
-		artifact := firstString(receipt["artifact_refs"])
 		b.WriteString(`<tr><td><code>`)
 		b.WriteString(html.EscapeString(fmt.Sprint(receipt["task_id"])))
 		b.WriteString(`</code></td><td>`)
 		b.WriteString(html.EscapeString(fmt.Sprint(worker["alias"])))
 		b.WriteString(`</td><td>`)
-		if artifact != "" {
+		for index, artifact := range stringsFromAny(receipt["artifact_refs"]) {
+			if index > 0 {
+				b.WriteString(`<br>`)
+			}
 			b.WriteString(`<a href="/artifacts/`)
 			b.WriteString(html.EscapeString(strings.TrimPrefix(artifact, "artifact://local/")))
 			b.WriteString(`">`)
