@@ -850,8 +850,13 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 		}
 		taskID := optionalString(action["task_id"])
 		actor := optionalString(action["actor"])
+		sessionActor := fixture.approvalSessionActor(r)
+		if actor != "" && sessionActor != "" && actor != sessionActor {
+			http.Error(w, "approval actor session mismatch", http.StatusBadRequest)
+			return
+		}
 		if actor == "" {
-			actor = fixture.approvalSessionActor(r)
+			actor = sessionActor
 		}
 		if taskID == "" || actor == "" || !strings.HasPrefix(actor, "human://") {
 			http.Error(w, "approval task_id and human actor required", http.StatusBadRequest)

@@ -191,11 +191,13 @@ function queueActionGrant(action, taskId, task, extra = {}) {
   return { ...body, grant_signature: signObject(zoneA.privateKey, body) };
 }
 
-async function approveTask(humanPort, taskId, actor = "human://local") {
+async function approveTask(humanPort, taskId, actor) {
+  const body = { action: "approve", task_id: taskId };
+  if (actor !== undefined) body.actor = actor;
   const response = await fetch(`http://127.0.0.1:${humanPort}/api/approvals/actions`, {
     method: "POST",
     headers: humanHeaders(),
-    body: JSON.stringify({ action: "approve", task_id: taskId, actor }),
+    body: JSON.stringify(body),
   });
   assert.equal(response.status, 200);
   return response.json();
@@ -205,7 +207,7 @@ async function denyTask(humanPort, taskId) {
   const response = await fetch(`http://127.0.0.1:${humanPort}/api/approvals/actions`, {
     method: "POST",
     headers: humanHeaders(),
-    body: JSON.stringify({ action: "deny", task_id: taskId, actor: "human://local" }),
+    body: JSON.stringify({ action: "deny", task_id: taskId }),
   });
   assert.equal(response.status, 200);
   return response.json();
@@ -506,7 +508,7 @@ setTimeout(() => {
     },
     approval_actions: {
       "human://local": ["approve", "deny"],
-      "human://operator": ["approve"],
+      "human://operator": ["approve", "deny"],
     },
     approval_sessions: {
       [humanToken]: "human://operator",
@@ -1175,7 +1177,14 @@ setTimeout(() => {
       body: JSON.stringify({ action: "approve", task_id: task.task_id, actor: "human://guest" }),
     });
     assert.equal(guestApprovalResponse.status, 400);
-    assert.match(await guestApprovalResponse.text(), /approval actor policy denied/);
+    assert.match(await guestApprovalResponse.text(), /approval actor session mismatch/);
+    const spoofedApprovalResponse = await fetch(`http://127.0.0.1:${humanPort}/api/approvals/actions`, {
+      method: "POST",
+      headers: humanHeaders(),
+      body: JSON.stringify({ action: "approve", task_id: task.task_id, actor: "human://local" }),
+    });
+    assert.equal(spoofedApprovalResponse.status, 400);
+    assert.match(await spoofedApprovalResponse.text(), /approval actor session mismatch/);
     const approveResponse = await fetch(`http://127.0.0.1:${humanPort}/api/approvals/actions`, {
       method: "POST",
       headers: humanHeaders(),

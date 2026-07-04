@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.30 assessment
+状态：v8.31 assessment
 
 ## 一句话
 
@@ -135,6 +135,7 @@
 - Human Gateway direct approvals preserve named local `human://...` actors in signed approval grants。
 - Human Gateway direct approval actors pass a configurable local allowlist。
 - Human Gateway direct approvals can derive the actor from configured local bearer approval sessions。
+- Human Gateway direct approval body actors cannot mismatch the configured bearer session actor。
 
 主要缺：
 
@@ -191,6 +192,7 @@
 - named local human actor evidence in direct approval grants。
 - configurable local approval actor allowlist。
 - local bearer approval session actor mapping。
+- local approval session/body actor mismatch rejection。
 - signed approval receipts visible through Human Gateway。
 - local deployment security posture API。
 - browser-held requester key, rotation proof, rebinding proof API, local requester registry, requester registry table, alias rebinding UI, rebinding history table, and signed draft UI。

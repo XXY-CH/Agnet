@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.30 complete; v8.31+ planned
+状态：v8.31 complete; v8.32+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -721,8 +721,32 @@ Example:
 - 不做 public deployment。
 - 不做 A2A/ARD compatibility。
 
+## v8.31: Approval Session Actor Enforcement
+
+状态：complete
+目标：Direct Human Gateway approvals reject body actors that mismatch the configured bearer approval session actor.
+
+新增：
+
+- `/api/approvals/actions` still accepts explicit body actors for local compatibility.
+- If the bearer token maps to an `approval_sessions` actor, a different body actor is rejected.
+- If the body omits `actor`, the bearer session actor is still used.
+- The derived or matched actor still passes the existing `approval_actions` allowlist.
+- The integration test rejects an approval body that tries to use `human://local` while the bearer session maps to `human://operator`.
+
+不做：
+
+- 不做 login UI。
+- 不做 password/session store。
+- 不做 roles/admin model。
+- 不做 token rotation/storage。
+- 不做 CSRF/session cookies。
+- 不做 dynamic policy service。
+- 不做 public deployment。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
-- v8.31: stronger session enforcement, container namespace sandboxing, streamed transcript UI, object-store-backed artifacts, or another small Ultimate-aligned runtime/governance slice.
+- v8.32: login-state UI, container namespace sandboxing, streamed transcript UI, object-store-backed artifacts, or another small Ultimate-aligned runtime/governance slice.
 
 Container sandbox and public transport remain separate hardening tracks。
