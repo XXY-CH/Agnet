@@ -496,6 +496,7 @@ setTimeout(() => {
   await rm("state/go-fed-discovery-audit-queue", { recursive: true, force: true });
   await rm("state/go-fed-discovery-audit-approvals", { recursive: true, force: true });
   await rm("state/go-fed-discovery-requester-registry.json", { force: true });
+  await rm("state/go-fed-discovery-requester-rebindings.json", { force: true });
   await writeTrustedZones("state/go-fed-discovery-trusted-origin.json", [zoneA]);
   await writeFile("state/node-trusts-go-discovery.json", `${JSON.stringify({ zones: [fixture.authority] }, null, 2)}\n`);
   const gateway = spawn("go", [
@@ -1031,6 +1032,13 @@ setTimeout(() => {
     const reboundBrowserRequester = resolveAgent(browserRequesterRegistry, "agent://browser/requester");
     assert.equal(reboundBrowserRequester.descriptor.aid, nextBrowserRequester.aid);
     assert.equal(reboundBrowserRequester.zone.zid, browserRebindingBody.authority_descriptor.zid);
+    const browserRebindingHistoryResponse = await fetch(`http://127.0.0.1:${humanPort}/api/requester/rebindings`);
+    assert.equal(browserRebindingHistoryResponse.status, 200);
+    const browserRebindingHistoryBody = await browserRebindingHistoryResponse.json();
+    assert.equal(browserRebindingHistoryBody.rebindings.length, 1);
+    assert.equal(browserRebindingHistoryBody.rebindings[0].alias, "agent://browser/requester");
+    assert.equal(browserRebindingHistoryBody.rebindings[0].previous_aid, previousBrowserRequester.aid);
+    assert.equal(browserRebindingHistoryBody.rebindings[0].next_aid, nextBrowserRequester.aid);
 
     const deniedApprovalTask = {
       ...task,
@@ -1572,6 +1580,9 @@ setTimeout(() => {
     assert.match(pageText, /agent:\/\/zone-b\/translator/);
     assert.match(pageText, /go_fed_task_verified/);
     assert.match(pageText, /Browser Requester Key/);
+    assert.match(pageText, /Requester Rebindings/);
+    assert.match(pageText, new RegExp(previousBrowserRequester.aid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(pageText, new RegExp(nextBrowserRequester.aid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.match(pageText, /crypto\.subtle\.generateKey/);
     assert.match(pageText, /agent-space-browser-requester/);
     assert.match(pageText, /Export Key/);

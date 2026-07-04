@@ -46,6 +46,7 @@ type Fixture struct {
 }
 
 const requesterRegistryPath = "state/go-fed-discovery-requester-registry.json"
+const requesterRebindingHistoryPath = "state/go-fed-discovery-requester-rebindings.json"
 
 type WorkerProfile struct {
 	KeyFile      string         `json:"key_file,omitempty"`
@@ -746,8 +747,13 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		rebindings, err := readRequesterRebindingHistory()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprint(w, renderHumanGateway(entries, tasks, queue, approvals))
+		_, _ = fmt.Fprint(w, renderHumanGateway(entries, tasks, queue, approvals, rebindings))
 	})
 	mux.HandleFunc("/api/audit", func(w http.ResponseWriter, r *http.Request) {
 		entries, err := readAuditEntriesOrEmpty(auditPath)
@@ -937,6 +943,16 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "requester": requester, "task": signedTask, "enqueue": result})
 	})
 	mux.HandleFunc("/api/requester/rebindings", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			rebindings, err := readRequesterRebindingHistory()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"rebindings": rebindings})
+			return
+		}
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -970,6 +986,10 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 			return
 		}
 		if err := fixture.writeRequesterRegistry(next); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := fixture.appendRequesterRebindingHistory(proof); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -1029,7 +1049,7 @@ func readTaskStates(dir string) ([]map[string]any, error) {
 	return tasks, nil
 }
 
-func renderHumanGateway(entries, tasks, queue, approvals []map[string]any) string {
+func renderHumanGateway(entries, tasks, queue, approvals, rebindings []map[string]any) string {
 	events := 0
 	receipts := []map[string]any{}
 	for _, entry := range entries {
@@ -1109,6 +1129,22 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 		b.WriteString(`</td><td>`)
 		b.WriteString(html.EscapeString(optionalString(approval["by"])))
 		b.WriteString(`</td></tr>`)
+	}
+	b.WriteString(`</tbody></table>`)
+	b.WriteString(`<h2>Requester Rebindings</h2><table><thead><tr><th>Alias</th><th>Previous</th><th>Next</th><th>Proof</th></tr></thead><tbody>`)
+	if len(rebindings) == 0 {
+		b.WriteString(`<tr><td colspan="4">No requester rebindings</td></tr>`)
+	}
+	for _, rebinding := range rebindings {
+		b.WriteString(`<tr><td><code>`)
+		b.WriteString(html.EscapeString(optionalString(rebinding["alias"])))
+		b.WriteString(`</code></td><td><code>`)
+		b.WriteString(html.EscapeString(optionalString(rebinding["previous_aid"])))
+		b.WriteString(`</code></td><td><code>`)
+		b.WriteString(html.EscapeString(optionalString(rebinding["next_aid"])))
+		b.WriteString(`</code></td><td><code>`)
+		b.WriteString(html.EscapeString(shortDigest(optionalString(rebinding["proof_digest"]))))
+		b.WriteString(`</code></td></tr>`)
 	}
 	b.WriteString(`</tbody></table>`)
 	b.WriteString(`<h2>Receipts</h2><table><thead><tr><th>Task</th><th>Worker</th><th>Artifact</th><th>Events</th><th>Approvals</th><th>Sandbox</th></tr></thead><tbody>`)
@@ -1541,6 +1577,44 @@ func (f Fixture) writeRequesterRegistry(descriptor map[string]any) error {
 		return err
 	}
 	return os.WriteFile(requesterRegistryPath, append(data, '\n'), 0644)
+}
+
+func readRequesterRebindingHistory() ([]map[string]any, error) {
+	data, err := os.ReadFile(requesterRebindingHistoryPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return []map[string]any{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var rebindings []map[string]any
+	if err := json.Unmarshal(data, &rebindings); err != nil {
+		return nil, err
+	}
+	return rebindings, nil
+}
+
+func (f Fixture) appendRequesterRebindingHistory(proof map[string]any) error {
+	rebindings, err := readRequesterRebindingHistory()
+	if err != nil {
+		return err
+	}
+	rebindings = append(rebindings, map[string]any{
+		"zone":                  proof["zone"],
+		"alias":                 proof["alias"],
+		"previous_aid":          proof["previous_aid"],
+		"next_aid":              proof["next_aid"],
+		"proof_digest":          digestHex(proof),
+		"alias_rebinding_proof": proof,
+	})
+	if err := os.MkdirAll(filepath.Dir(requesterRebindingHistoryPath), 0755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(rebindings, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(requesterRebindingHistoryPath, append(data, '\n'), 0644)
 }
 
 func (f Fixture) workersByCapability(capability string) []Worker {

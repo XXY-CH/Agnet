@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.11 complete; v8.12+ planned
+状态：v8.12 complete; v8.13+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -272,8 +272,30 @@
 - 不做 login/session identity。
 - 不做 public deployment。
 
+## v8.12: Requester Rebinding History
+
+状态：complete
+目标：Human Gateway keeps a local requester alias rebinding history that humans can inspect.
+
+新增：
+
+- Successful `POST /api/requester/rebindings` appends a history record to `state/go-fed-discovery-requester-rebindings.json`.
+- The history record stores alias, previous `aid`, next `aid`, Zone id, proof digest, and the Zone-signed alias rebinding proof.
+- `GET /api/requester/rebindings` returns the local history.
+- Human Gateway renders a `Requester Rebindings` table.
+
+不做：
+
+- 不做 multi-requester registry。
+- 不做 server-side rotation registry。
+- 不做 remote registry sync。
+- 不做 automatic rebinding after rotation。
+- 不做 audit hash-chain entry for rebinding history。
+- 不做 login/session identity。
+- 不做 public deployment。
+
 ## 后续方向
 
-- v8.12: multi-requester registry, rebinding history table, or the next deployable transport/security hardening slice.
+- v8.13: multi-requester registry or the next deployable transport/security hardening slice.
 
 Container sandbox and public transport remain separate hardening tracks。
