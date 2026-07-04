@@ -1,6 +1,6 @@
 # Agent Space v8 Roadmap
 
-状态：v8.28 complete; v8.29+ planned
+状态：v8.29 complete; v8.30+ planned
 目标：把 v7 的 durable queue/Human Gateway proof 推向更真实的产品控制面，先补 human approval，再补身份/key UX 和部署安全。
 
 ## v8.0: Human Gateway Explicit Approval
@@ -660,8 +660,32 @@
 - 不做 public deployment。
 - 不做 A2A/ARD compatibility。
 
+## v8.29: Sandbox Env Binding
+
+状态：complete
+目标：External/MCP local-process sandbox runs with home/cache/temp environment variables bound to the sandbox directory.
+
+新增：
+
+- External/MCP tool subprocesses receive `HOME=<sandbox cwd>`.
+- External/MCP tool subprocesses receive `TMPDIR=<sandbox cwd>`.
+- External/MCP tool subprocesses receive `XDG_CACHE_HOME=<sandbox cwd>/cache`.
+- The cache directory is created before tool execution.
+- Sandbox evidence records the same environment passed to the subprocess.
+- The integration test verifies the MCP tool observes those environment values.
+
+不做：
+
+- 不做 container namespace sandbox。
+- 不做 syscall filtering。
+- 不做 filesystem mount isolation。
+- 不做 network namespace isolation。
+- 不做 long-running MCP session reuse。
+- 不做 public deployment。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
-- v8.29: container sandbox hardening, login-backed sessions, streamed transcript UI, object-store-backed artifacts, or another small Ultimate-aligned runtime/governance slice.
+- v8.30: container namespace sandboxing, login-backed sessions, streamed transcript UI, object-store-backed artifacts, or another small Ultimate-aligned runtime/governance slice.
 
 Container sandbox and public transport remain separate hardening tracks。

@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.28 assessment
+状态：v8.29 assessment
 
 ## 一句话
 
@@ -103,6 +103,7 @@
 - MCP tool arguments are recorded as digest evidence。
 - MCP tool arguments are rejected when selected schema required fields are missing。
 - External/MCP sandbox evidence records explicit `local-process` isolation level。
+- External/MCP tool environments bind `HOME`, `TMPDIR`, and `XDG_CACHE_HOME` to the local sandbox directory。
 - Completed/cancelled Go tasks persist minimal state files linked to receipt digests。
 - Failed Go task execution persists error state before a receipt exists。
 - Signed task cancellation interrupts a running external tool through the in-memory runtime registry。
@@ -137,7 +138,7 @@
 主要缺：
 
 - richer MCP sessions/resources/prompts。
-- container-grade sandbox。
+- container namespace sandbox。
 - concurrency model。
 - encrypted browser-side private-key storage。
 - browser multi-key manager。

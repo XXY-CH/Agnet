@@ -2200,12 +2200,16 @@ func newToolSandbox(kind string, toolCommand []string) (string, map[string]any, 
 	if err != nil {
 		return "", nil, nil, err
 	}
+	if err := os.MkdirAll(filepath.Join(dir, "cache"), 0o755); err != nil {
+		return "", nil, nil, err
+	}
+	env := sandboxEnv(dir)
 	sandbox := map[string]any{
 		"mode":            "local-temp-dir",
 		"isolation_level": "local-process",
 		"kind":            kind,
 		"cwd":             dir,
-		"env":             []string{"PATH=/usr/bin:/bin"},
+		"env":             env,
 		"network":         "not_granted",
 		"cleanup":         "remove-all",
 	}
@@ -2227,8 +2231,13 @@ func newToolSandbox(kind string, toolCommand []string) (string, map[string]any, 
 	return dir, sandbox, func() { _ = os.RemoveAll(dir) }, nil
 }
 
-func sandboxEnv() []string {
-	return []string{"PATH=/usr/bin:/bin"}
+func sandboxEnv(dir string) []string {
+	return []string{
+		"PATH=/usr/bin:/bin",
+		"HOME=" + dir,
+		"TMPDIR=" + dir,
+		"XDG_CACHE_HOME=" + filepath.Join(dir, "cache"),
+	}
 }
 
 func runExternalTool(parent context.Context, profile WorkerProfile, task, origin map[string]any, artifactStoreDir string) (string, map[string]any, error) {
@@ -2244,7 +2253,7 @@ func runExternalTool(parent context.Context, profile WorkerProfile, task, origin
 	defer cancel()
 	cmd := exec.CommandContext(ctx, profile.ToolCommand[0], profile.ToolCommand[1:]...)
 	cmd.Dir = dir
-	cmd.Env = sandboxEnv()
+	cmd.Env = sandboxEnv(dir)
 	input := map[string]any{
 		"task_id": task["task_id"],
 		"intent":  task["intent"],
@@ -2309,7 +2318,7 @@ func runMCPTool(parent context.Context, profile WorkerProfile, task, origin map[
 	defer cancel()
 	cmd := exec.CommandContext(ctx, profile.ToolCommand[0], profile.ToolCommand[1:]...)
 	cmd.Dir = dir
-	cmd.Env = sandboxEnv()
+	cmd.Env = sandboxEnv(dir)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return "", nil, err

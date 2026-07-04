@@ -480,7 +480,7 @@ rl.on("line", (line) => {
     process.stdout.write(JSON.stringify({
       jsonrpc: "2.0",
       id: message.id,
-      result: { content: [{ type: "text", text: \`# MCP Tool Translation\\n\\nTask: \${args.task_id}\\nTranslation: \${String(args.intent).toUpperCase()}\\nCWD: \${process.cwd()}\\n\` }] }
+      result: { content: [{ type: "text", text: \`# MCP Tool Translation\\n\\nTask: \${args.task_id}\\nTranslation: \${String(args.intent).toUpperCase()}\\nCWD: \${process.cwd()}\\nHOME: \${process.env.HOME}\\nTMPDIR: \${process.env.TMPDIR}\\nXDG_CACHE_HOME: \${process.env.XDG_CACHE_HOME}\\n\` }] }
     }) + "\\n");
     process.exit(0);
   }
@@ -1265,7 +1265,12 @@ setTimeout(() => {
     assert.equal(receiptFrame.receipt.sandbox.isolation_level, "local-process");
     assert.notEqual(receiptFrame.receipt.sandbox.isolation_level, "container");
     assert.equal(receiptFrame.receipt.sandbox.kind, "mcp");
-    assert.deepEqual(receiptFrame.receipt.sandbox.env, ["PATH=/usr/bin:/bin"]);
+    assert.deepEqual(receiptFrame.receipt.sandbox.env, [
+      "PATH=/usr/bin:/bin",
+      `HOME=${receiptFrame.receipt.sandbox.cwd}`,
+      `TMPDIR=${receiptFrame.receipt.sandbox.cwd}`,
+      `XDG_CACHE_HOME=${receiptFrame.receipt.sandbox.cwd}/cache`,
+    ]);
     assert.equal(receiptFrame.receipt.sandbox.network, "not_granted");
     assert.match(receiptFrame.receipt.sandbox.tool_command_digest, /^[0-9a-f]{64}$/);
     assert.match(receiptFrame.receipt.sandbox.tool_binary_digest, /^[0-9a-f]{64}$/);
@@ -1314,6 +1319,10 @@ setTimeout(() => {
     assert.match(artifactText, /MCP Tool Translation/);
     assert.match(artifactText, /VERIFY FED_TASK_OPEN IN GO\./);
     assert.match(artifactText, /agnet-mcp-/);
+    const escapedSandboxCwd = receiptFrame.receipt.sandbox.cwd.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    assert.match(artifactText, new RegExp(`HOME: ${escapedSandboxCwd}`));
+    assert.match(artifactText, new RegExp(`TMPDIR: ${escapedSandboxCwd}`));
+    assert.match(artifactText, new RegExp(`XDG_CACHE_HOME: ${escapedSandboxCwd}/cache`));
     assert.equal(artifactEvent.manifest.size, Buffer.byteLength(artifactText));
     assert.equal(artifactEvent.manifest.sha256, createHash("sha256").update(artifactText).digest("hex"));
     const artifactManifestSidecar = JSON.parse(await readFile("artifacts/go_fed_task_verified/go-summary.md.manifest.json", "utf8"));
