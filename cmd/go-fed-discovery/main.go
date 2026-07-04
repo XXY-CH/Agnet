@@ -1097,6 +1097,35 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(data)
 	})
+	mux.HandleFunc("/api/artifacts/verify", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		taskID := r.URL.Query().Get("task_id")
+		uri := r.URL.Query().Get("uri")
+		if taskID == "" || uri == "" {
+			http.Error(w, "task_id and artifact uri are required", http.StatusBadRequest)
+			return
+		}
+		record, err := fixture.auditProof(taskID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		receipt, _ := record["receipt"].(map[string]any)
+		manifest, err := receiptArtifactManifest(receipt, uri)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if err := verifyArtifactManifests(receipt, fixture.ArtifactStoreDir); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "task_id": taskID, "uri": uri, "manifest": manifest})
+	})
 	mux.Handle("/artifacts/", http.StripPrefix("/artifacts/", http.FileServer(http.Dir("artifacts"))))
 	_ = http.Serve(listener, mux)
 }
@@ -1297,6 +1326,11 @@ a{color:#0b5cad;text-decoration:none}code{font-family:ui-monospace,SFMono-Regula
 			b.WriteString(` <a href="/api/artifacts/manifest?uri=`)
 			b.WriteString(html.EscapeString(url.QueryEscape(artifact)))
 			b.WriteString(`">manifest</a>`)
+			b.WriteString(` <a href="/api/artifacts/verify?task_id=`)
+			b.WriteString(html.EscapeString(url.QueryEscape(taskID)))
+			b.WriteString(`&amp;uri=`)
+			b.WriteString(html.EscapeString(url.QueryEscape(artifact)))
+			b.WriteString(`">verify</a>`)
 		}
 		b.WriteString(`</td><td>`)
 		b.WriteString(html.EscapeString(fmt.Sprint(receipt["event_count"])))
@@ -3602,6 +3636,17 @@ func verifyArtifactManifests(receipt map[string]any, artifactStoreDir string) er
 		return errors.New("tool output digest mismatch")
 	}
 	return nil
+}
+
+func receiptArtifactManifest(receipt map[string]any, uri string) (map[string]any, error) {
+	refs := stringsFromAny(receipt["artifact_refs"])
+	manifests := mapsFromAny(receipt["artifact_manifests"])
+	for index, ref := range refs {
+		if ref == uri && index < len(manifests) {
+			return manifests[index], nil
+		}
+	}
+	return nil, errors.New("receipt artifact not found: " + uri)
 }
 
 func verifyPolicyScope(receipt map[string]any) error {
