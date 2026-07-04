@@ -667,6 +667,7 @@ setTimeout(() => {
     assert.equal(outOfScopeGrantClaimResponse.status, 400);
     assert.match(await outOfScopeGrantClaimResponse.text(), /queue action grant scope mismatch/);
 
+    const humanClaimGrant = queueActionGrant("claim", humanQueuedTask.task_id);
     const humanClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -674,12 +675,25 @@ setTimeout(() => {
         action: "claim",
         task_id: humanQueuedTask.task_id,
         owner: "human://local",
-        action_grant: queueActionGrant("claim", humanQueuedTask.task_id),
+        action_grant: humanClaimGrant,
       }),
     });
     assert.equal(humanClaimResponse.status, 200);
     const humanClaimBody = await humanClaimResponse.json();
     assert.match(humanClaimBody.lease_id, /^lease:sha256:[0-9a-f]{64}$/);
+
+    const replayedHumanClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "claim",
+        task_id: humanQueuedTask.task_id,
+        owner: "human://local",
+        action_grant: humanClaimGrant,
+      }),
+    });
+    assert.equal(replayedHumanClaimResponse.status, 400);
+    assert.match(await replayedHumanClaimResponse.text(), /queue action grant replay/);
 
     const humanDrainResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
       method: "POST",
@@ -1160,7 +1174,7 @@ setTimeout(() => {
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 73);
+    assert.equal(auditBody.entries.length, 74);
     const queueActionRecords = auditBody.entries
       .map((entry) => entry.record)
       .filter((record) => record.kind === "go_queue_action");
@@ -1170,6 +1184,7 @@ setTimeout(() => {
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /grant missing/.test(record.error)), true);
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /grant expired/.test(record.error)), true);
     assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /scope mismatch/.test(record.error)), true);
+    assert.equal(queueActionRecords.some((record) => record.action === "claim" && record.task_id === humanQueuedTask.task_id && record.status === "error" && /grant replay/.test(record.error)), true);
     assert.equal(queueActionRecords.filter((record) => record.status === "ok").every((record) => /^[0-9a-f]{64}$/.test(record.grant_digest)), true);
 
     const tasksResponse = await fetch(`http://127.0.0.1:${humanPort}/api/tasks`);

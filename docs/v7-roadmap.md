@@ -1,6 +1,6 @@
 # Agent Space v7 Roadmap
 
-状态：v7.10 complete; v7.11+ planned
+状态：v7.11 complete; v7.12+ planned
 目标：从 durable task state 进入 durable scheduler queue，让任务生命周期有本地所有权、可恢复入口和后续调度面。
 
 ## v7.0: Durable Queue Enqueue
@@ -224,6 +224,26 @@
 - 不做 user/session identity。
 - 不做 grant revocation list。
 - 不做 replay nonce。
+- 不做 browser-side signing UX。
+- 不开放非 localhost。
+
+## v7.11: Queue Action Grant Replay
+
+状态：complete
+目标：successful queue action grants cannot be replayed.
+
+新增：
+
+- Successful queue action grants are consumed by their `grant_digest`。
+- Reusing the same signed grant after a successful queue action is rejected before applying the action。
+- Replay failures are recorded as `go_queue_action` audit records。
+
+不做：
+
+- 不做 user/session identity。
+- 不做 grant revocation list。
+- 不做 durable nonce index。
+- 不做 concurrent replay race hardening。
 - 不做 browser-side signing UX。
 - 不开放非 localhost。
 

@@ -2027,6 +2027,14 @@ func (f Fixture) requireQueueActionGrant(action map[string]any) error {
 	if err := verifyMapSignature(authorityKey, grant, "grant_signature"); err != nil {
 		return errors.New("queue action grant signature verification failed")
 	}
+	grantDigest := digestHex(grant)
+	used, err := f.queueActionGrantUsed(grantDigest)
+	if err != nil {
+		return err
+	}
+	if used {
+		return errors.New("queue action grant replay")
+	}
 	return nil
 }
 
@@ -2038,6 +2046,24 @@ func queueActionGrantAllows(grant map[string]any, action string) bool {
 		}
 	}
 	return false
+}
+
+func (f Fixture) queueActionGrantUsed(grantDigest string) (bool, error) {
+	if f.Audit == nil || f.Audit.Path == "" {
+		return false, nil
+	}
+	entries, err := readAuditEntriesOrEmpty(f.Audit.Path)
+	if err != nil {
+		return false, err
+	}
+	// ponytail: linear audit scan is enough for local Human Gateway; add a nonce index before concurrent/non-local use.
+	for _, entry := range entries {
+		record, _ := entry["record"].(map[string]any)
+		if record["kind"] == "go_queue_action" && record["status"] == "ok" && optionalString(record["grant_digest"]) == grantDigest {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (f Fixture) recordQueueAction(action map[string]any, result map[string]any, actionErr error) error {
