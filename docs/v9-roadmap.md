@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.25 complete; v9.26+ planned
+状态：v9.26 complete; v9.27+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -619,8 +619,39 @@
 - 不做 container namespace sandbox。
 - 不做 A2A/ARD compatibility。
 
+## v9.26: Explicit Swarm DAG Seed
+
+状态：complete
+目标：Go federation gateway accepts one explicit two-step Swarm DAG and binds downstream receipt evidence to upstream artifact manifests.
+
+新增：
+
+- `FED_SWARM_OPEN` is accepted after the existing authenticated federation handshake.
+- The frame carries a caller-supplied `swarm_id` and ordered `steps`.
+- Each step reuses the existing signed task verifier and task execution path.
+- A step can declare `after: [...]`; dependencies must already have completed in the same frame.
+- Swarm receipts include a signed `swarm` object with `swarm_id`, `step_id`, `after`, and `input_artifacts`.
+- Dependent receipts bind upstream artifacts by `step_id`, `uri`, `sha256`, and `manifest_hash`.
+- Integration coverage proves two different Go workers execute a summary step followed by a translation step.
+
+不做：
+
+- 不做 dynamic decomposition。
+- 不做 candidate discovery / selection。
+- 不做 scheduler。
+- 不做 automatic drain。
+- 不做 parallel execution。
+- 不做 conflict resolution。
+- 不做 Swarm UI。
+- 不做 cross-Zone Swarm。
+- 不做 Node Swarm server。
+- 不做 container namespace sandbox。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
 - real container namespace sandboxing。
 - public federation deployment / QUIC binding。
+- Node artifact manifest parity。
+- richer Swarm orchestration: scheduler-owned DAG execution, cross-Zone workers, and conflict/merge receipts。
 - more cross-implementation conformance fixtures。

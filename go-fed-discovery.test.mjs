@@ -473,6 +473,14 @@ test("Go discovery gateway serves FED_RESOLVE, FED_QUERY, and FED_TASK_OPEN to N
       policy: { allow_network: false, approval_required: ["tool"] },
     },
     {
+      key_file: "state/go-fed-discovery-mock-translator.seed",
+      alias: "agent://zone-b/mock-translator",
+      tool: "translate.mock",
+      transports: ["fed+tcp://127.0.0.1:8995"],
+      capabilities: ["translate.mock"],
+      policy: { allow_network: false },
+    },
+    {
       key_file: "state/go-fed-discovery-strict-translator.seed",
       alias: "agent://zone-b/strict-translator",
       tool: "mcp.stdio",
@@ -509,6 +517,7 @@ test("Go discovery gateway serves FED_RESOLVE, FED_QUERY, and FED_TASK_OPEN to N
   await writeFile("state/go-fed-discovery-authority.seed", `${fixture.authority_seed_hex}\n`);
   await writeFile("state/go-fed-discovery-worker.seed", `${fixture.worker_seed_hex}\n`);
   await writeFile("state/go-fed-discovery-translator.seed", "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f\n");
+  await writeFile("state/go-fed-discovery-mock-translator.seed", "909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeaf\n");
   await writeFile("state/go-fed-discovery-strict-translator.seed", "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf\n");
   await writeFile("state/go-fed-discovery-slow.seed", "c0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf\n");
   await writeFile("state/go-fed-discovery-container-claimed.seed", "d0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeef\n");
@@ -678,6 +687,74 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     assert.equal(requestedResult.receipt.to, fixture.worker.aid);
     assert.equal(requestedResult.events.at(-1).type, "task.completed");
     assert.equal(requestedResult.receipt.artifact_refs.some((uri) => uri.endsWith("/go-summary.md")), true);
+
+    const swarmSummaryTask = {
+      task_id: "go_fed_swarm_summary",
+      from: requester.aid,
+      to: "agent://zone-b/summarizer",
+      intent: "Summarize as the first Swarm DAG step.",
+      scope: { network: false },
+      budget: { time_seconds: 30 },
+    };
+    const swarmTranslateTask = {
+      task_id: "go_fed_swarm_translate",
+      from: requester.aid,
+      to: "agent://zone-b/mock-translator",
+      intent: "Translate the Swarm summary artifact.",
+      scope: { network: false },
+      budget: { time_seconds: 30 },
+    };
+    const swarmFrames = await exchangeFrames(port, {
+      type: "FED_SWARM_OPEN",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      swarm: {
+        swarm_id: "swarm://local/go_fed_swarm_two_step",
+        steps: [
+          {
+            step_id: "summary",
+            task: { ...swarmSummaryTask, signature: signObject(requester.privateKey, swarmSummaryTask) },
+          },
+          {
+            step_id: "translation",
+            after: ["summary"],
+            task: { ...swarmTranslateTask, signature: signObject(requester.privateKey, swarmTranslateTask) },
+          },
+        ],
+      },
+    }, "FED_SWARM_CLOSE");
+    assert.deepEqual(swarmFrames.map((frame) => frame.type), [
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_RECEIPT",
+      "FED_TASK_CLOSE",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
+      "FED_RECEIPT",
+      "FED_TASK_CLOSE",
+      "FED_SWARM_CLOSE",
+    ]);
+    const summaryReceipt = swarmFrames[5].receipt;
+    const translationReceipt = swarmFrames[12].receipt;
+    assert.equal(summaryReceipt.task_id, swarmSummaryTask.task_id);
+    assert.equal(translationReceipt.task_id, swarmTranslateTask.task_id);
+    assert.equal(summaryReceipt.swarm.swarm_id, "swarm://local/go_fed_swarm_two_step");
+    assert.equal(summaryReceipt.swarm.step_id, "summary");
+    assert.deepEqual(summaryReceipt.swarm.after, []);
+    assert.equal(translationReceipt.swarm.step_id, "translation");
+    assert.deepEqual(translationReceipt.swarm.after, ["summary"]);
+    assert.deepEqual(translationReceipt.swarm.input_artifacts, [{
+      step_id: "summary",
+      uri: summaryReceipt.artifact_manifests[0].uri,
+      sha256: summaryReceipt.artifact_manifests[0].sha256,
+      manifest_hash: summaryReceipt.artifact_manifests[0].manifest_hash,
+    }]);
 
     const unauthenticated = await exchangeUnauthenticatedFrame(port, {
       type: "FED_QUERY",

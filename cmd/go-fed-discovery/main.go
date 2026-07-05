@@ -509,7 +509,12 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(err))
 			return false
 		}
-		if err := fixture.executeTask(send, origin, worker, task, nil, "", nil, true, nil); err != nil {
+		if err := fixture.executeTask(send, origin, worker, task, nil, "", nil, true, nil, nil); err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
+	case "FED_SWARM_OPEN":
+		if err := fixture.executeSwarm(send, origin, frame); err != nil {
 			send(taskErrorFrame(err))
 			return false
 		}
@@ -591,7 +596,7 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(err))
 			return false
 		}
-		if err := fixture.executeTask(send, origin, worker, task, checkpointID, optionalString(parentCheckpoint["state_digest"]), nil, true, nil); err != nil {
+		if err := fixture.executeTask(send, origin, worker, task, checkpointID, optionalString(parentCheckpoint["state_digest"]), nil, true, nil, nil); err != nil {
 			send(taskErrorFrame(err))
 			return false
 		}
@@ -606,7 +611,7 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(errors.New("retry_of missing")))
 			return false
 		}
-		if err := fixture.executeTask(send, origin, worker, task, nil, "", retryOf, true, nil); err != nil {
+		if err := fixture.executeTask(send, origin, worker, task, nil, "", retryOf, true, nil, nil); err != nil {
 			send(taskErrorFrame(err))
 			return false
 		}
@@ -2502,7 +2507,7 @@ func (f Fixture) verifyTaskCancel(frame map[string]any) (*Worker, map[string]any
 	return worker, requester, cancel, nil
 }
 
-func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worker, task map[string]any, parentCheckpoint any, restoredStateDigest string, retryOf any, requireHumanApproval bool, onReceipt func(map[string]any) error) error {
+func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worker, task map[string]any, parentCheckpoint any, restoredStateDigest string, retryOf any, requireHumanApproval bool, receiptExtra map[string]any, onReceipt func(map[string]any) error) error {
 	taskID := fmt.Sprint(task["task_id"])
 	ctx, cancelRun := context.WithCancel(context.Background())
 	f.Runtime.Register(taskID, cancelRun)
@@ -2624,6 +2629,9 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	if retryOf != nil {
 		receipt["retry_of"] = retryOf
 	}
+	for key, value := range receiptExtra {
+		receipt[key] = value
+	}
 	signedReceipt := signBody(worker.PrivateKey, receipt)
 	receiptRecord := map[string]any{
 		"kind":         "go_fed_receipt",
@@ -2651,6 +2659,80 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		"receipt":      receiptRecord["receipt"],
 	})
 	send(map[string]any{"type": "FED_TASK_CLOSE", "task_id": taskID})
+	return nil
+}
+
+func (f Fixture) executeSwarm(send sendFunc, origin, frame map[string]any) error {
+	requester, ok := frame["requester"].(map[string]any)
+	if !ok {
+		return errors.New("swarm requester missing")
+	}
+	swarm, ok := frame["swarm"].(map[string]any)
+	if !ok {
+		return errors.New("swarm body missing")
+	}
+	swarmID := optionalString(swarm["swarm_id"])
+	if swarmID == "" {
+		return errors.New("swarm_id missing")
+	}
+	steps, ok := swarm["steps"].([]any)
+	if !ok || len(steps) == 0 {
+		return errors.New("swarm steps missing")
+	}
+	completed := map[string]map[string]any{}
+	for _, item := range steps {
+		step, ok := item.(map[string]any)
+		if !ok {
+			return errors.New("swarm step invalid")
+		}
+		stepID := optionalString(step["step_id"])
+		if stepID == "" {
+			return errors.New("swarm step_id missing")
+		}
+		if _, exists := completed[stepID]; exists {
+			return errors.New("duplicate swarm step: " + stepID)
+		}
+		after := stringsFromAny(step["after"])
+		inputArtifacts := []map[string]any{}
+		for _, dependency := range after {
+			receipt, ok := completed[dependency]
+			if !ok {
+				return errors.New("swarm dependency not completed: " + dependency)
+			}
+			manifests := mapsFromAny(receipt["artifact_manifests"])
+			if len(manifests) == 0 {
+				return errors.New("swarm dependency artifact missing: " + dependency)
+			}
+			manifest := manifests[0]
+			inputArtifacts = append(inputArtifacts, map[string]any{
+				"step_id":       dependency,
+				"uri":           manifest["uri"],
+				"sha256":        manifest["sha256"],
+				"manifest_hash": manifest["manifest_hash"],
+			})
+		}
+		task, ok := step["task"].(map[string]any)
+		if !ok {
+			return errors.New("swarm step task missing")
+		}
+		worker, task, err := f.verifyTaskOpen(map[string]any{"requester": requester, "task": task})
+		if err != nil {
+			return err
+		}
+		proof := map[string]any{
+			"swarm_id":        swarmID,
+			"step_id":         stepID,
+			"after":           after,
+			"input_artifacts": inputArtifacts,
+		}
+		if err := f.executeTask(send, origin, worker, task, nil, "", nil, false, map[string]any{"swarm": proof}, func(receipt map[string]any) error {
+			completed[stepID] = receipt
+			return nil
+		}); err != nil {
+			return err
+		}
+	}
+	send(map[string]any{"type": "FED_SWARM_CLOSE", "swarm_id": swarmID})
 	return nil
 }
 
@@ -3943,7 +4025,7 @@ func (f Fixture) drainQueueItem(send sendFunc, taskID, leaseID string) error {
 		parentCheckpoint = checkpointID
 		restoredStateDigest = optionalString(parent["state_digest"])
 	}
-	err = f.executeTask(send, origin, worker, task, parentCheckpoint, restoredStateDigest, nil, true, func(receipt map[string]any) error {
+	err = f.executeTask(send, origin, worker, task, parentCheckpoint, restoredStateDigest, nil, true, nil, func(receipt map[string]any) error {
 		extra["receipt_digest"] = digestHex(receipt)
 		return f.writeQueueItem(origin, worker, task, "completed", extra)
 	})

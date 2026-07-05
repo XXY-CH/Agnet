@@ -1,12 +1,12 @@
 # Agent Net Gap
 
-状态：v9.25 assessment
+状态：v9.26 assessment
 
 ## 一句话
 
 当前项目是 Agent Net 的 protocol seed，不是 Agent Net 产品。
 
-它已经抓住了真正 Agent Net 的底层骨架：identity、signed task、policy、artifact、receipt、audit、federation、Node/Go bidirectional task interop、Go federation explicit bind host primitive，以及 shared `FED_TASK_OPEN` / `FED_RECEIPT` conformance fixtures。
+它已经抓住了真正 Agent Net 的底层骨架：identity、signed task、policy、artifact、receipt、audit、federation、Node/Go bidirectional task interop、Go federation explicit bind host primitive、shared `FED_TASK_OPEN` / `FED_RECEIPT` conformance fixtures，以及 Go 侧最小 explicit Swarm DAG seed。
 
 它还缺产品面、运行面、部署面、多人协作面和真实工具执行面。
 
@@ -14,12 +14,13 @@
 
 ### Protocol core
 
-进度：约 94%。
+进度：约 95%。
 
 已有：
 
 - Ed25519 Agent/Zone identity。
 - shared Node/Go `FED_TASK_OPEN` and `FED_RECEIPT` conformance fixtures。
+- Go `FED_SWARM_OPEN` explicit two-step DAG seed with signed artifact dependency evidence。
 - `agent://` alias -> `aid:` descriptor。
 - signed task。
 - policy scope。
@@ -71,7 +72,7 @@
 
 ### Runtime core
 
-进度：约 86%。
+进度：约 87%。
 
 已有：
 
@@ -157,9 +158,11 @@
 - Human Gateway live transcript loading polls the running snapshot until another transcript is selected。
 - MCP stdio responses are copied into live transcript snapshots as NDJSON。
 - Filesystem artifact mirrors maintain and verify an `objects.ndjson` content-addressed object index, can produce a GC plan, and can delete orphaned mirror objects from that plan。
+- Explicit Swarm seed executes two ordered Go worker steps and signs the downstream artifact dependency into the receipt。
 
 主要缺：
 
+- dynamic Swarm decomposition, candidate selection, scheduler-owned DAG execution, parallel execution, conflict resolution, and cross-Zone Swarm。
 - richer MCP sessions/resources/prompts。
 - real container namespace sandbox; unsupported `container-namespace` claims currently fail before approval/tool start, persist runtime probe evidence, can distinguish missing versus configured `AGNET_CONTAINER_RUNTIME` candidates, can fingerprint readable runtime binaries with `runtime_sha256`, and can be checked with `--sandbox-probe` or required fail-closed with `--sandbox-require`。
 - Node cross-process audit locking and distributed audit log sync。
