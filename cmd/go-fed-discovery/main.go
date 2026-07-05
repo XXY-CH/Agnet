@@ -135,6 +135,7 @@ func taskErrorFrame(err error) map[string]any {
 }
 
 func main() {
+	listenHost := flag.String("listen-host", "127.0.0.1", "main federation TCP listen host")
 	port := flag.String("port", "9090", "listen port")
 	wsPort := flag.String("ws-port", "", "optional WebSocket listen port")
 	humanPort := flag.String("human-port", "", "optional Human Gateway HTTP port")
@@ -267,13 +268,13 @@ func main() {
 		return
 	}
 
-	if err := serve(*port, *wsPort, *humanPort, *humanToken, *humanActorPolicyPath, *tlsCertPath, *tlsKeyPath, *tlsClientCAPath, *artifactStoreDir, *fixturePath, *trustPath, *authorityKeyPath, *workerKeyPath, *auditPath); err != nil {
+	if err := serve(*listenHost, *port, *wsPort, *humanPort, *humanToken, *humanActorPolicyPath, *tlsCertPath, *tlsKeyPath, *tlsClientCAPath, *artifactStoreDir, *fixturePath, *trustPath, *authorityKeyPath, *workerKeyPath, *auditPath); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, tlsClientCAPath, artifactStoreDir, fixturePath, trustPath, authorityKeyPath, workerKeyPath, auditPath string) error {
+func serve(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, tlsClientCAPath, artifactStoreDir, fixturePath, trustPath, authorityKeyPath, workerKeyPath, auditPath string) error {
 	authorityKey, err := loadPrivateKey(authorityKeyPath, "authority")
 	if err != nil {
 		return err
@@ -308,7 +309,7 @@ func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPat
 	if err != nil {
 		return err
 	}
-	listener, transport, err := listenFederation(port, tlsCertPath, tlsKeyPath, tlsClientCAPath)
+	listener, transport, err := listenFederation(listenHost, port, tlsCertPath, tlsKeyPath, tlsClientCAPath)
 	if err != nil {
 		return err
 	}
@@ -325,10 +326,10 @@ func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPat
 		if err != nil {
 			return err
 		}
-		go serveHumanGateway(humanListener, auditPath, fixture, humanToken)
+		go serveHumanGateway(humanListener, auditPath, fixture, humanToken, listenHost)
 	}
 	if wsPort != "" || humanPort != "" {
-		status := map[string]any{"go_fed_discovery": "listening", "port": port, "transport": transport}
+		status := map[string]any{"go_fed_discovery": "listening", "listen_host": listenHost, "port": port, "public_transport": isPublicListenHost(listenHost), "transport": transport}
 		if wsPort != "" {
 			status["ws_port"] = wsPort
 		}
@@ -338,7 +339,7 @@ func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPat
 		data, _ := json.Marshal(status)
 		fmt.Println(string(data))
 	} else {
-		status := map[string]any{"go_fed_discovery": "listening", "port": port, "transport": transport}
+		status := map[string]any{"go_fed_discovery": "listening", "listen_host": listenHost, "port": port, "public_transport": isPublicListenHost(listenHost), "transport": transport}
 		data, _ := json.Marshal(status)
 		fmt.Println(string(data))
 	}
@@ -351,14 +352,14 @@ func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPat
 	}
 }
 
-func listenFederation(port, tlsCertPath, tlsKeyPath, tlsClientCAPath string) (net.Listener, string, error) {
+func listenFederation(host, port, tlsCertPath, tlsKeyPath, tlsClientCAPath string) (net.Listener, string, error) {
 	if (tlsCertPath == "") != (tlsKeyPath == "") {
 		return nil, "", errors.New("both --tls-cert and --tls-key are required")
 	}
 	if tlsClientCAPath != "" && tlsCertPath == "" {
 		return nil, "", errors.New("--tls-client-ca requires --tls-cert and --tls-key")
 	}
-	addr := "127.0.0.1:" + port
+	addr := net.JoinHostPort(host, port)
 	if tlsCertPath == "" {
 		listener, err := net.Listen("tcp", addr)
 		return listener, "fed+tcp", err
@@ -384,6 +385,17 @@ func listenFederation(port, tlsCertPath, tlsKeyPath, tlsClientCAPath string) (ne
 	}
 	listener, err := tls.Listen("tcp", addr, config)
 	return listener, transport, err
+}
+
+func isPublicListenHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return false
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return true
+	}
+	return !ip.IsLoopback()
 }
 
 func handle(conn net.Conn, fixture Fixture, trusted map[string]map[string]any) {
@@ -1013,7 +1025,7 @@ func writeWebSocketText(conn net.Conn, text string) error {
 	return err
 }
 
-func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture, humanToken string) {
+func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture, humanToken string, listenHost string) {
 	taskStateDir := taskStateDirForAudit(auditPath)
 	queueDir := queueDirForAudit(auditPath)
 	approvalDir := approvalDirForAudit(auditPath)
@@ -1146,9 +1158,9 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"listen_host":          "127.0.0.1",
+			"listen_host":          listenHost,
 			"write_token_required": humanToken != "",
-			"public_transport":     false,
+			"public_transport":     isPublicListenHost(listenHost),
 		})
 	})
 	mux.HandleFunc("/api/session", func(w http.ResponseWriter, r *http.Request) {

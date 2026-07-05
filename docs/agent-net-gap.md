@@ -1,12 +1,12 @@
 # Agent Net Gap
 
-状态：v9.22 assessment
+状态：v9.23 assessment
 
 ## 一句话
 
 当前项目是 Agent Net 的 protocol seed，不是 Agent Net 产品。
 
-它已经抓住了真正 Agent Net 的底层骨架：identity、signed task、policy、artifact、receipt、audit、federation，以及 Node/Go bidirectional task interop。
+它已经抓住了真正 Agent Net 的底层骨架：identity、signed task、policy、artifact、receipt、audit、federation、Node/Go bidirectional task interop，以及 Go federation explicit bind host primitive。
 
 它还缺产品面、运行面、部署面、多人协作面和真实工具执行面。
 
@@ -187,13 +187,14 @@
 已有：
 
 - newline JSON over local TCP。
+- Go federation TCP can bind an explicitly configured host while defaulting to `127.0.0.1`。
 - WebSocket text-frame binding。
 - authenticated session handshake。
 - local process proof。
 
 主要缺：
 
-- QUIC binding / public transport; Go federation TCP can run with mTLS client certificate verification and bind certificate URI SANs to the claimed Zone identity, but public transport is still missing。
+- QUIC binding / public transport deployment; Go federation TCP can run with mTLS client certificate verification, bind certificate URI SANs to the claimed Zone identity, and bind a configured host, but no public reachability/NAT/relay proof exists yet。
 - public gateway deployment。
 - NAT/proxy story。
 - service discovery beyond static trusted stores。

@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.22 complete; v9.23+ planned
+状态：v9.23 complete; v9.24+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -545,8 +545,31 @@
 - 不做 DHT / relay / edge gateway。
 - 不做 A2A/ARD compatibility。
 
+## v9.23: Explicit Go Federation Bind Host
+
+状态：complete
+目标：Go federation TCP listener can bind an explicitly configured host while preserving the default local-only bind.
+
+新增：
+
+- `cmd/go-fed-discovery --listen-host <host>` configures only the main federation TCP listener.
+- Default remains `127.0.0.1`.
+- Startup status and Human Gateway `/api/security` expose `listen_host` and a derived `public_transport` boolean.
+- Go package coverage proves configured loopback binding and public-host classification.
+
+不做：
+
+- 不改 WebSocket listener bind host。
+- 不改 Human Gateway listener bind host。
+- 不做 public gateway deployment。
+- 不做 NAT / proxy / relay。
+- 不做 QUIC。
+- 不做 DHT / edge gateway。
+- 不做 container namespace sandbox。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
 - real container namespace sandboxing。
-- public federation transport / QUIC binding。
+- public federation deployment / QUIC binding。
 - cross-implementation conformance fixtures。

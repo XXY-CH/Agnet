@@ -102,7 +102,7 @@ func TestAuditAppendRejectsCorruptSharedAudit(t *testing.T) {
 
 func TestFederationListenerCanUseTLS(t *testing.T) {
 	certPath, keyPath := writeTestTLSCertificate(t)
-	listener, transport, err := listenFederation("0", certPath, keyPath, "")
+	listener, transport, err := listenFederation("127.0.0.1", "0", certPath, keyPath, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,9 +137,40 @@ func TestFederationListenerCanUseTLS(t *testing.T) {
 	}
 }
 
+func TestFederationListenerCanBindConfiguredHost(t *testing.T) {
+	listener, transport, err := listenFederation("127.0.0.1", "0", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	if transport != "fed+tcp" {
+		t.Fatalf("transport = %s, want fed+tcp", transport)
+	}
+	if host, _, _ := net.SplitHostPort(listener.Addr().String()); host != "127.0.0.1" {
+		t.Fatalf("host = %s, want 127.0.0.1", host)
+	}
+}
+
+func TestPublicListenHostFlag(t *testing.T) {
+	cases := map[string]bool{
+		"127.0.0.1": false,
+		"::1":       false,
+		"localhost": false,
+		"LOCALHOST": false,
+		"0.0.0.0":   true,
+		"::":        true,
+		"fed.local": true,
+	}
+	for host, want := range cases {
+		if got := isPublicListenHost(host); got != want {
+			t.Fatalf("isPublicListenHost(%q) = %v, want %v", host, got, want)
+		}
+	}
+}
+
 func TestFederationListenerCanRequireClientCertificate(t *testing.T) {
 	serverCertPath, serverKeyPath, caPath, clientCert := writeTestMTLSCertificates(t)
-	listener, transport, err := listenFederation("0", serverCertPath, serverKeyPath, caPath)
+	listener, transport, err := listenFederation("127.0.0.1", "0", serverCertPath, serverKeyPath, caPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +364,7 @@ func acceptOneByte(listener net.Listener) chan error {
 
 func exchangeTestMTLSHello(t *testing.T, serverCertPath, serverKeyPath, caPath string, clientCert tls.Certificate, serverZone map[string]any, trusted map[string]map[string]any, claimedZone map[string]any) map[string]any {
 	t.Helper()
-	listener, _, err := listenFederation("0", serverCertPath, serverKeyPath, caPath)
+	listener, _, err := listenFederation("127.0.0.1", "0", serverCertPath, serverKeyPath, caPath)
 	if err != nil {
 		t.Fatal(err)
 	}
