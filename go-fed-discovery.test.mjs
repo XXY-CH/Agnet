@@ -1605,6 +1605,11 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     const unsupportedSandboxState = JSON.parse(await readFile("state/go-fed-discovery-audit-tasks/go_fed_task_container_claim_rejected.json", "utf8"));
     assert.equal(unsupportedSandboxState.status, "failed");
     assert.match(unsupportedSandboxState.error, /unsupported sandbox claim: container-namespace/);
+    assert.deepEqual(unsupportedSandboxState.sandbox_probe, {
+      claim: "container-namespace",
+      supported: false,
+      reason: "container namespace sandbox runtime is not implemented",
+    });
 
     const missingRetryOfFrames = await exchangeFrames(port, {
       type: "FED_TASK_RETRY",

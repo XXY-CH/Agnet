@@ -113,6 +113,15 @@ type policyError struct {
 func (e policyError) Error() string { return e.message }
 func (e policyError) Code() string  { return e.code }
 
+type sandboxClaimError struct {
+	claim string
+	probe map[string]any
+}
+
+func (e sandboxClaimError) Error() string {
+	return "unsupported sandbox claim: " + e.claim
+}
+
 func taskErrorFrame(err error) map[string]any {
 	frame := map[string]any{"type": "FED_TASK_ERROR", "error": err.Error()}
 	if coded, ok := err.(codedError); ok {
@@ -2253,7 +2262,12 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		}
 	}
 	if err := validateSandboxClaim(worker.Profile); err != nil {
-		_ = f.writeTaskState(taskID, "failed", worker, map[string]any{"error": err.Error()})
+		extra := map[string]any{"error": err.Error()}
+		var claimErr sandboxClaimError
+		if errors.As(err, &claimErr) {
+			extra["sandbox_probe"] = claimErr.probe
+		}
+		_ = f.writeTaskState(taskID, "failed", worker, extra)
 		return err
 	}
 	if err := f.sendTaskEvent(send, map[string]any{"type": "task.started", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
@@ -2539,7 +2553,10 @@ func validateSandboxClaim(profile WorkerProfile) error {
 	if profile.SandboxClaim == expectedSandboxMode(profile) {
 		return nil
 	}
-	return errors.New("unsupported sandbox claim: " + profile.SandboxClaim)
+	return sandboxClaimError{
+		claim: profile.SandboxClaim,
+		probe: sandboxRuntimeProbe(profile),
+	}
 }
 
 func expectedSandboxMode(profile WorkerProfile) string {
@@ -2548,6 +2565,23 @@ func expectedSandboxMode(profile WorkerProfile) string {
 		return "local-temp-dir"
 	default:
 		return "in-process"
+	}
+}
+
+func sandboxRuntimeProbe(profile WorkerProfile) map[string]any {
+	switch profile.SandboxClaim {
+	case "container-namespace":
+		return map[string]any{
+			"claim":     profile.SandboxClaim,
+			"supported": false,
+			"reason":    "container namespace sandbox runtime is not implemented",
+		}
+	default:
+		return map[string]any{
+			"claim":     profile.SandboxClaim,
+			"supported": false,
+			"reason":    "sandbox claim does not match worker runtime mode: " + expectedSandboxMode(profile),
+		}
 	}
 }
 

@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.10 complete; v9.11+ planned
+状态：v9.11 complete; v9.12+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -255,6 +255,31 @@
 - 不做 revocation freshness policy。
 - 不做 CRL/OCSP protocol。
 - 不做 UI。
+- 不做 A2A/ARD compatibility。
+
+## v9.11: Sandbox Runtime Probe Evidence
+
+状态：complete
+目标：unsupported container sandbox claims persist runtime probe evidence before tool execution.
+
+新增：
+
+- Sandbox claim preflight returns a structured sandbox claim error.
+- Failed task state records `sandbox_probe` for unsupported `container-namespace` claims.
+- The probe records `claim`, `supported: false`, and the reason that the container namespace runtime is not implemented.
+- Integration coverage proves the claimed container worker still does not start its marker tool.
+
+不做：
+
+- 不实现 container namespace sandbox。
+- 不做 Docker/OCI runtime。
+- 不做 Linux namespace setup。
+- 不做 seccomp/AppArmor/profile enforcement。
+- 不做 network namespace。
+- 不做 filesystem mount namespace。
+- 不做 cgroup limits。
+- 不做 remote attestation。
+- 不做 scheduler or automatic drain。
 - 不做 A2A/ARD compatibility。
 
 ## 后续方向
