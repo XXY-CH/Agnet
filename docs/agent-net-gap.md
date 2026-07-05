@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v9.3 assessment
+状态：v9.4 assessment
 
 ## 一句话
 
@@ -131,6 +131,7 @@
 - Human Gateway exposes the local requester registry as a read-only API and table。
 - Human Gateway exposes a local requester alias rebinding history API and table。
 - Direct Go tool tasks wait for explicit Human Gateway approval before execution。
+- Go approval state modifications are serialized inside one process。
 - Queued Go drains wait for explicit Human Gateway approval before tool execution。
 - Human Gateway approvals can deny or expire before tool execution。
 - Human Gateway direct approvals preserve named local `human://...` actors in signed approval grants。
@@ -156,6 +157,7 @@
 - richer MCP sessions/resources/prompts。
 - container namespace sandbox。
 - cross-process audit locking。
+- cross-process approval locking。
 - broader concurrency model。
 - encrypted browser-side private-key storage。
 - browser multi-key manager。

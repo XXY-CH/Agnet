@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v9.3 complete
-当前代码基线：`v9.3-go-audit-scanner-buffer`
+状态：v9.4 complete
+当前代码基线：`v9.4-go-approval-action-serialization`
 
 ## 一句话
 
@@ -30,7 +30,7 @@
 | `FED_TASK_CANCEL` | not yet | signed cancellation receipt evidence + durable cancelled state file + live external process interruption | `go-fed-discovery.test.mjs` | persisted running registry / multi-node cancel |
 | `FED_TASK_RETRY` | not yet | signed retry lineage evidence | `go-fed-discovery.test.mjs` | automatic retry / backoff / scheduler state |
 | Policy checks | done | network/write subset + Go canonical policy scope digest + stable deny codes | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | policy negotiation / dynamic policy service |
-| Human approval | simulated | direct Go task execution and queued drain write pending approval state; approve continues, deny/expiry stops before tools; direct approvals preserve named `human://...` actors in signed grants; approval actors pass configurable local allowlists; local bearer approval sessions can supply the approval actor; mismatched body/session actors are rejected; `/api/session` exposes local session actor/actions state; Human Gateway page displays that local session state | Node events, `go-fed-discovery.test.mjs` | roles |
+| Human approval | simulated | direct Go task execution and queued drain write pending approval state; in-process approval state writes are serialized; approve continues, deny/expiry stops before tools; direct approvals preserve named `human://...` actors in signed grants; approval actors pass configurable local allowlists; local bearer approval sessions can supply the approval actor; mismatched body/session actors are rejected; `/api/session` exposes local session actor/actions state; Human Gateway page displays that local session state | Node events, `cmd/go-fed-discovery/main_test.go`, `go-fed-discovery.test.mjs` | roles / cross-process locking |
 | Checkpoint evidence | not yet | signed protocol-native checkpoint evidence + audit-backed immediate and queued resume parent links + restored state digest evidence + receipt-linked task state file | `go-fed-discovery.test.mjs` | model KV/cache restore |
 | Transport | local TCP / local process + authenticated session handshake | local TCP + minimal WebSocket + authenticated session handshake | README commands, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | TLS, QUIC |
 | Product surface | CLI/tests only | thin Human Gateway with task table, queue table, approval table/API, task-scoped audit proof links/API with audit hash, receipt artifact links including transcript artifacts, task-scoped manifest links and HEAD proof headers, transcript stream API, transcript stream viewer, running transcript snapshot API, running transcript snapshot viewer action, live transcript polling UI, MCP stdio live transcript snapshot API, filesystem artifact mirror object index, verify links with receipt/audit proof fields, read links, signed digest headers on read responses, HEAD proof headers, receipt digest headers, and audit hash headers, local session state panel, security posture API, browser-held requester key panel with import/export/rotation proof/alias rebinding submission, requester alias rebinding proof API, multi-alias local requester registry persistence, requester registry table, local rebinding history table, optional bearer-token write gate, actor-bound scoped signed explicit local enqueue/claim/drain actions, configurable local actor policy, durable grant nonce index, local draft/sign/enqueue endpoint, and external signed draft enqueue endpoint | README, `go-fed-discovery.test.mjs` | encrypted key store, admin, deployment |
@@ -145,7 +145,7 @@ Go
 
 ## Next Boundary
 
-v9.3 hardens Go audit scanning for larger valid JSONL lines. The next natural boundary is Go approval action locking, artifact GC apply/delete over the plan, queue grant replay indexing, or another small Ultimate-aligned runtime/governance slice.
+v9.4 serializes Go approval state modifications inside one process. The next natural boundary is artifact GC apply/delete over the plan, queue grant replay indexing, state-file atomic writes, or another small Ultimate-aligned runtime/governance slice.
 
 Route detail: `docs/v9-roadmap.md`。
 

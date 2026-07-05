@@ -88,6 +88,8 @@ type TaskRuntime struct {
 	cancelled map[string]bool
 }
 
+var approvalStateMu sync.Mutex
+
 type sendFunc func(map[string]any)
 
 type Session struct {
@@ -3002,6 +3004,8 @@ func (f Fixture) readApprovalState(taskID string) (map[string]any, error) {
 }
 
 func (f Fixture) applyApprovalAction(taskID, actor, action string) (map[string]any, error) {
+	approvalStateMu.Lock()
+	defer approvalStateMu.Unlock()
 	state, err := f.readApprovalState(taskID)
 	if err != nil {
 		return nil, err
@@ -3058,9 +3062,12 @@ func (f Fixture) waitForApproval(ctx context.Context, taskID string) (map[string
 				return nil, errors.New("approval denied: " + taskID)
 			case "pending":
 				if approvalExpired(optionalString(state["expires_at"])) {
+					approvalStateMu.Lock()
 					if writeErr := f.writeApprovalState(taskID, "expired", stringsFromAny(state["reasons"]), "", nil, optionalString(state["expires_at"])); writeErr != nil {
+						approvalStateMu.Unlock()
 						return nil, writeErr
 					}
+					approvalStateMu.Unlock()
 					return nil, errors.New("approval expired: " + taskID)
 				}
 			case "expired":

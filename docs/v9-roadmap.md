@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.3 complete; v9.4+ planned
+状态：v9.4 complete; v9.5+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -104,6 +104,28 @@
 
 ## 后续方向
 
-- Go approval action locking。
+## v9.4: Go Approval Action Serialization
+
+状态：complete
+目标：Go approval state modifications are serialized inside one process.
+
+新增：
+
+- `applyApprovalAction` serializes approval read/check/write with a shared mutex.
+- The `waitForApproval` expired-state write path uses the same mutex.
+- Go package test races concurrent approve calls and verifies only one succeeds.
+
+不做：
+
+- 不做 cross-process locking。
+- 不做 lockfile。
+- 不做 channel/sync.Cond approval notification。
+- 不做 approval polling rewrite。
+- 不做 state-file atomic writes。
+- 不做 role/login model。
+- 不做 A2A/ARD compatibility。
+
+## 后续方向
+
 - artifact GC delete/apply over the plan。
 - container namespace sandboxing。
