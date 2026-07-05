@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
@@ -9,8 +10,10 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -169,6 +172,29 @@ func TestFederationListenerCanRequireClientCertificate(t *testing.T) {
 	}
 }
 
+func TestFederationMTLSClientCertificateMustMatchHelloZone(t *testing.T) {
+	clientZone, _ := testZoneDescriptor(t, "client-zone")
+	claimedZone, _ := testZoneDescriptor(t, "claimed-zone")
+	serverZone, _ := testZoneDescriptor(t, "server-zone")
+	serverCertPath, serverKeyPath, caPath, clientCert := writeTestMTLSCertificatesForClientZone(t, fmt.Sprint(clientZone["zid"]))
+	mismatched := exchangeTestMTLSHello(t, serverCertPath, serverKeyPath, caPath, clientCert, serverZone, map[string]map[string]any{
+		fmt.Sprint(claimedZone["zid"]): claimedZone,
+	}, claimedZone)
+	if mismatched["type"] != "FED_TASK_ERROR" {
+		t.Fatalf("got %v, want FED_TASK_ERROR", mismatched["type"])
+	}
+	if !strings.Contains(fmt.Sprint(mismatched["error"]), "mTLS client certificate zone mismatch") {
+		t.Fatalf("got error %q, want mTLS client certificate zone mismatch", mismatched["error"])
+	}
+
+	matched := exchangeTestMTLSHello(t, serverCertPath, serverKeyPath, caPath, clientCert, serverZone, map[string]map[string]any{
+		fmt.Sprint(clientZone["zid"]): clientZone,
+	}, clientZone)
+	if matched["type"] != "HELLO" {
+		t.Fatalf("got %v, want HELLO", matched["type"])
+	}
+}
+
 func TestApplyApprovalActionSerializesConcurrentApproves(t *testing.T) {
 	_, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -210,6 +236,10 @@ func writeTestTLSCertificate(t *testing.T) (string, string) {
 }
 
 func writeTestMTLSCertificates(t *testing.T) (string, string, string, tls.Certificate) {
+	return writeTestMTLSCertificatesForClientZone(t, "")
+}
+
+func writeTestMTLSCertificatesForClientZone(t *testing.T, clientZone string) (string, string, string, tls.Certificate) {
 	t.Helper()
 	dir := t.TempDir()
 	caKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -234,8 +264,8 @@ func writeTestMTLSCertificates(t *testing.T) (string, string, string, tls.Certif
 		t.Fatal(err)
 	}
 
-	serverCertPath, serverKeyPath := writeSignedTestCertificate(t, dir, "server", caCert, caKey, x509.ExtKeyUsageServerAuth)
-	clientCertPath, clientKeyPath := writeSignedTestCertificate(t, dir, "client", caCert, caKey, x509.ExtKeyUsageClientAuth)
+	serverCertPath, serverKeyPath := writeSignedTestCertificate(t, dir, "server", caCert, caKey, x509.ExtKeyUsageServerAuth, "")
+	clientCertPath, clientKeyPath := writeSignedTestCertificate(t, dir, "client", caCert, caKey, x509.ExtKeyUsageClientAuth, clientZone)
 	caPath := filepath.Join(dir, "ca.pem")
 	if err := os.WriteFile(caPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER}), 0o644); err != nil {
 		t.Fatal(err)
@@ -247,7 +277,7 @@ func writeTestMTLSCertificates(t *testing.T) (string, string, string, tls.Certif
 	return serverCertPath, serverKeyPath, caPath, clientCert
 }
 
-func writeSignedTestCertificate(t *testing.T, dir, name string, caCert *x509.Certificate, caKey *rsa.PrivateKey, usage x509.ExtKeyUsage) (string, string) {
+func writeSignedTestCertificate(t *testing.T, dir, name string, caCert *x509.Certificate, caKey *rsa.PrivateKey, usage x509.ExtKeyUsage, zoneURI string) (string, string) {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -260,6 +290,13 @@ func writeSignedTestCertificate(t *testing.T, dir, name string, caCert *x509.Cer
 		NotAfter:     time.Now().Add(time.Hour),
 		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
 		ExtKeyUsage:  []x509.ExtKeyUsage{usage},
+	}
+	if zoneURI != "" {
+		uri, err := url.Parse(zoneURI)
+		if err != nil {
+			t.Fatal(err)
+		}
+		template.URIs = []*url.URL{uri}
 	}
 	certDER, err := x509.CreateCertificate(rand.Reader, &template, caCert, &key.PublicKey, caKey)
 	if err != nil {
@@ -292,6 +329,47 @@ func acceptOneByte(listener net.Listener) chan error {
 		out <- err
 	}()
 	return out
+}
+
+func exchangeTestMTLSHello(t *testing.T, serverCertPath, serverKeyPath, caPath string, clientCert tls.Certificate, serverZone map[string]any, trusted map[string]map[string]any, claimedZone map[string]any) map[string]any {
+	t.Helper()
+	listener, _, err := listenFederation("0", serverCertPath, serverKeyPath, caPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	go func() {
+		conn, err := listener.Accept()
+		if err == nil {
+			handle(conn, Fixture{Authority: serverZone}, trusted)
+		}
+	}()
+	conn, err := tls.Dial("tcp", listener.Addr().String(), &tls.Config{InsecureSkipVerify: true, Certificates: []tls.Certificate{clientCert}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err := fmt.Fprintf(conn, "%s\n", mustJSON(t, map[string]any{"type": "HELLO", "origin_zone": claimedZone})); err != nil {
+		t.Fatal(err)
+	}
+	line, err := bufio.NewReader(conn).ReadBytes('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	var frame map[string]any
+	if err := json.Unmarshal(line, &frame); err != nil {
+		t.Fatal(err)
+	}
+	return frame
+}
+
+func mustJSON(t *testing.T, value any) string {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
 }
 
 func TestWriteJSONStateFileLeavesCompleteStateAndNoTempFile(t *testing.T) {

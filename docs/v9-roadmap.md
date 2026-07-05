@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.19 complete; v9.20+ planned
+状态：v9.20 complete; v9.21+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -474,8 +474,32 @@
 - 不做 DHT / relay / edge gateway。
 - 不做 A2A/ARD compatibility。
 
+## v9.20: Go Federation mTLS Zone Binding
+
+状态：complete
+目标：Go federation mTLS client certificates are bound to the claimed `HELLO.origin_zone`.
+
+新增：
+
+- TLS client certificate URI SANs are checked against `HELLO.origin_zone.zid`.
+- A CA-signed client certificate for one Zone cannot claim another trusted Zone during session setup.
+- The check lives in the shared `HELLO` path before `AUTH`, so all federation frame types share it.
+- Go package coverage proves mismatched certificate Zone claims are rejected.
+
+不做：
+
+- 不设计完整 PKI policy。
+- 不做 certificate revocation / OCSP。
+- 不替代 `HELLO` / `AUTH` signatures。
+- 不做 public bind address。
+- 不做 WebSocket TLS。
+- 不做 Human Gateway HTTPS。
+- 不做 QUIC。
+- 不做 DHT / relay / edge gateway。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
 - real container namespace sandboxing。
-- Go/Node cross-implementation interop test。
-- client certificate to Zone identity binding。
+- Go/Node cross-implementation task interop test。
+- public federation transport / QUIC binding。

@@ -96,10 +96,12 @@ var approvalStateMu sync.Mutex
 type sendFunc func(map[string]any)
 
 type Session struct {
-	ID            string
-	Challenge     string
-	PeerZID       string
-	Authenticated bool
+	ID                   string
+	Challenge            string
+	PeerZID              string
+	Authenticated        bool
+	TransportPeerCert    bool
+	TransportPeerZoneIDs map[string]bool
 }
 
 type codedError interface {
@@ -339,8 +341,16 @@ func listenFederation(port, tlsCertPath, tlsKeyPath, tlsClientCAPath string) (ne
 
 func handle(conn net.Conn, fixture Fixture, trusted map[string]map[string]any) {
 	defer conn.Close()
-	scanner := bufio.NewScanner(conn)
 	session := &Session{}
+	if tlsConn, ok := conn.(*tls.Conn); ok {
+		if err := tlsConn.Handshake(); err != nil {
+			return
+		}
+		certs := tlsConn.ConnectionState().PeerCertificates
+		session.TransportPeerCert = len(certs) > 0
+		session.TransportPeerZoneIDs = certificateZoneIDs(certs)
+	}
+	scanner := bufio.NewScanner(conn)
 	sendLine := func(frame map[string]any) { send(conn, frame) }
 	for scanner.Scan() {
 		var frame map[string]any
@@ -623,6 +633,9 @@ func handleHello(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 	if err := verifyTrustedZone(origin, trusted); err != nil {
 		return err
 	}
+	if session.TransportPeerCert && !session.TransportPeerZoneIDs[fmt.Sprint(origin["zid"])] {
+		return errors.New("mTLS client certificate zone mismatch")
+	}
 	id, err := randomB64URL(16)
 	if err != nil {
 		return err
@@ -670,6 +683,17 @@ func handleAuth(send sendFunc, frame map[string]any, fixture Fixture, trusted ma
 	session.Authenticated = true
 	send(map[string]any{"type": "AUTH_OK", "session_id": session.ID})
 	return nil
+}
+
+func certificateZoneIDs(certs []*x509.Certificate) map[string]bool {
+	zones := map[string]bool{}
+	if len(certs) == 0 {
+		return zones
+	}
+	for _, uri := range certs[0].URIs {
+		zones[uri.String()] = true
+	}
+	return zones
 }
 
 func sessionAuthBody(sessionID, challenge, peerZID, remoteZID string) map[string]any {
