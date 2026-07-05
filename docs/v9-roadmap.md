@@ -698,6 +698,31 @@
 - 不做 Node Swarm server。
 - 不做 A2A/ARD compatibility。
 
+## v9.29: Swarm Dependency Step Binding
+
+状态：complete
+目标：Swarm dependency evidence binds signed input artifacts to the declared `after` dependency steps.
+
+新增：
+
+- `--verify-audit` compares each `swarm.input_artifacts[i].step_id` with `swarm.after[i]`.
+- A downstream receipt cannot claim one dependency step while supplying a different completed step's artifact manifest and receipt digest.
+- Go package coverage proves a signed false step binding is rejected even when the substituted step's manifest and receipt digest are valid.
+- Existing clean Swarm dependency graph coverage still verifies.
+
+不做：
+
+- 不做 cross-audit dependency lookup。
+- 不做 remote audit sync。
+- 不做 scheduler。
+- 不做 dynamic decomposition。
+- 不做 parallel execution。
+- 不做 conflict resolution。
+- 不做 Swarm UI。
+- 不做 Node Swarm server。
+- 不做 container namespace sandbox。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
 - real container namespace sandboxing。

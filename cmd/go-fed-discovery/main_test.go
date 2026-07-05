@@ -274,6 +274,10 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	otherManifest, err := writeArtifact("artifact://local/swarm_other/out.md", "# other\n", "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	downstreamManifest, err := writeArtifact("artifact://local/swarm_down/out.md", "# downstream\n", "")
 	if err != nil {
 		t.Fatal(err)
@@ -282,6 +286,14 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 		"swarm": map[string]any{
 			"swarm_id":        "swarm://test",
 			"step_id":         "upstream",
+			"after":           []string{},
+			"input_artifacts": []map[string]any{},
+		},
+	})
+	otherReceipt := testSignedReceipt(t, zone, zoneKey, upstreamWorker, upstreamKey, "swarm_other", []map[string]any{otherManifest}, map[string]any{
+		"swarm": map[string]any{
+			"swarm_id":        "swarm://test",
+			"step_id":         "other",
 			"after":           []string{},
 			"input_artifacts": []map[string]any{},
 		},
@@ -326,6 +338,35 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 	err = verifyAuditFile("bad-digest-audit.log", "")
 	if err == nil || !strings.Contains(err.Error(), "swarm input receipt digest mismatch") {
 		t.Fatalf("got %v, want swarm input receipt digest mismatch", err)
+	}
+
+	downstreamStepMismatchReceipt := testSignedReceipt(t, zone, zoneKey, downstreamWorker, downstreamKey, "swarm_down_wrong_step", []map[string]any{downstreamManifest}, map[string]any{
+		"swarm": map[string]any{
+			"swarm_id": "swarm://test",
+			"step_id":  "downstream",
+			"after":    []string{"upstream"},
+			"input_artifacts": []map[string]any{{
+				"step_id":        "other",
+				"uri":            otherManifest["uri"],
+				"sha256":         otherManifest["sha256"],
+				"manifest_hash":  otherManifest["manifest_hash"],
+				"receipt_digest": digestHex(otherReceipt),
+			}},
+		},
+	})
+	stepMismatchLog := &AuditLog{Path: "step-mismatch-audit.log", Head: auditZeroHash}
+	if err := stepMismatchLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": upstreamReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	if err := stepMismatchLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": otherReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	if err := stepMismatchLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": downstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(downstreamWorker), "receipt": downstreamStepMismatchReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	err = verifyAuditFile("step-mismatch-audit.log", "")
+	if err == nil || !strings.Contains(err.Error(), "swarm input artifact step mismatch") {
+		t.Fatalf("got %v, want swarm input artifact step mismatch", err)
 	}
 
 	downstreamReceipt["swarm"].(map[string]any)["input_artifacts"].([]map[string]any)[0]["receipt_digest"] = digestHex(upstreamReceipt)

@@ -1,12 +1,12 @@
 # Agent Net Gap
 
-状态：v9.28 assessment
+状态：v9.29 assessment
 
 ## 一句话
 
 当前项目是 Agent Net 的 protocol seed，不是 Agent Net 产品。
 
-它已经抓住了真正 Agent Net 的底层骨架：identity、signed task、policy、artifact、receipt、audit、federation、Node/Go bidirectional task interop、Go federation explicit bind host primitive、shared `FED_TASK_OPEN` / `FED_RECEIPT` conformance fixtures，以及 Go 侧最小 explicit Swarm DAG seed 和同 audit Swarm dependency receipt verification。
+它已经抓住了真正 Agent Net 的底层骨架：identity、signed task、policy、artifact、receipt、audit、federation、Node/Go bidirectional task interop、Go federation explicit bind host primitive、shared `FED_TASK_OPEN` / `FED_RECEIPT` conformance fixtures，以及 Go 侧最小 explicit Swarm DAG seed 和同 audit Swarm dependency step/receipt verification。
 
 它还缺产品面、运行面、部署面、多人协作面和真实工具执行面。
 
@@ -21,7 +21,7 @@
 - Ed25519 Agent/Zone identity。
 - shared Node/Go `FED_TASK_OPEN` and `FED_RECEIPT` conformance fixtures。
 - Go `FED_SWARM_OPEN` explicit two-step DAG seed with signed artifact dependency evidence。
-- Go audit verification rejects signed Swarm dependency claims that do not match upstream step artifact manifests or receipt digests in the same audit。
+- Go audit verification rejects signed Swarm dependency claims that do not match declared dependency steps, upstream step artifact manifests, or receipt digests in the same audit。
 - `agent://` alias -> `aid:` descriptor。
 - signed task。
 - policy scope。
@@ -160,7 +160,7 @@
 - MCP stdio responses are copied into live transcript snapshots as NDJSON。
 - Filesystem artifact mirrors maintain and verify an `objects.ndjson` content-addressed object index, can produce a GC plan, and can delete orphaned mirror objects from that plan。
 - Explicit Swarm seed executes two ordered Go worker steps and signs the downstream artifact dependency into the receipt。
-- Audit verification checks Swarm dependency artifact manifest and receipt digest claims against prior completed steps in the same audit。
+- Audit verification checks Swarm dependency step ids, artifact manifest, and receipt digest claims against prior completed steps in the same audit。
 
 主要缺：
 

@@ -4440,11 +4440,15 @@ func verifySwarmReceiptDependencies(receipt map[string]any, completed map[string
 		return errors.New("swarm receipt identity missing")
 	}
 	inputs := mapsFromAny(swarm["input_artifacts"])
-	if len(inputs) != len(stringsFromAny(swarm["after"])) {
+	after := stringsFromAny(swarm["after"])
+	if len(inputs) != len(after) {
 		return errors.New("swarm input artifact count mismatch")
 	}
-	for _, input := range inputs {
+	for i, input := range inputs {
 		dependency := optionalString(input["step_id"])
+		if dependency != after[i] {
+			return errors.New("swarm input artifact step mismatch")
+		}
 		manifest, ok := completed[swarmID+"\x00"+dependency]
 		if !ok {
 			return errors.New("swarm dependency receipt missing: " + dependency)
