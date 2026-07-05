@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.6 complete; v9.7+ planned
+状态：v9.7 complete; v9.8+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -175,6 +175,31 @@
 - 不做 container namespace sandbox。
 - 不做 A2A/ARD compatibility。
 
+## v9.7: Sandbox Claim Preflight
+
+状态：complete
+目标：unsupported sandbox claims fail before external/MCP tools start.
+
+新增：
+
+- `sandbox_claim` is checked before `task.started` and before tool execution.
+- `external.stdio` and `mcp.stdio` can claim only `local-temp-dir` in the current runtime.
+- Built-in/mock tools can claim only `in-process` in the current runtime.
+- Unsupported claims persist failed task state and return `unsupported sandbox claim: <claim>`.
+- Integration test proves a `container-namespace` claimed worker does not start its marker tool.
+
+不做：
+
+- 不实现 container namespace sandbox。
+- 不做 Docker/OCI runtime。
+- 不做 seccomp/AppArmor/profile enforcement。
+- 不做 network namespace。
+- 不做 filesystem mount namespace。
+- 不做 cgroup limits。
+- 不做 remote attestation。
+- 不做 scheduler or automatic drain。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
-- container namespace sandboxing。
+- real container namespace sandboxing。

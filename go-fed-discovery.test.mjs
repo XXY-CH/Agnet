@@ -439,6 +439,16 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
       capabilities: ["slow.text"],
       policy: { allow_network: false, approval_required: ["tool"] },
     },
+    {
+      key_file: "state/go-fed-discovery-container-claimed.seed",
+      alias: "agent://zone-b/container-claimed",
+      tool: "external.stdio",
+      tool_command: [process.execPath, `${process.cwd()}/state/go-fed-container-marker-tool.mjs`],
+      sandbox_claim: "container-namespace",
+      transports: ["fed+tcp://127.0.0.1:8994"],
+      capabilities: ["container.claimed"],
+      policy: { allow_network: false, approval_required: ["tool"] },
+    },
   ];
   delete goFixture.worker_profile;
   await writeFile("state/go-fed-discovery-dynamic-worker.json", `${JSON.stringify(goFixture, null, 2)}\n`);
@@ -447,6 +457,7 @@ test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", asy
   await writeFile("state/go-fed-discovery-translator.seed", "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f\n");
   await writeFile("state/go-fed-discovery-strict-translator.seed", "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf\n");
   await writeFile("state/go-fed-discovery-slow.seed", "c0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf\n");
+  await writeFile("state/go-fed-discovery-container-claimed.seed", "d0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeef\n");
   await writeFile("state/go-fed-mcp-server.mjs", `
 import readline from "node:readline";
 const requireLocale = process.argv.includes("--require-locale");
@@ -493,6 +504,12 @@ process.stdout.write(JSON.stringify({ text: "# Slow Tool\\n\\nStarted" }));
 setTimeout(() => {
   process.stdout.write(JSON.stringify({ text: "# Slow Tool\\n\\nFinished" }));
 }, 5000);
+`);
+  await rm("state/go-fed-container-claim-ran.txt", { force: true });
+  await writeFile("state/go-fed-container-marker-tool.mjs", `
+import { writeFileSync } from "node:fs";
+writeFileSync(${JSON.stringify(`${process.cwd()}/state/go-fed-container-claim-ran.txt`)}, "ran\\n");
+process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" }));
 `);
   await rm("state/go-fed-discovery-audit.log", { force: true });
   await rm("state/go-fed-discovery-audit-tasks", { recursive: true, force: true });
@@ -1557,6 +1574,24 @@ setTimeout(() => {
     assert.equal(failedTaskState.status, "failed");
     assert.match(failedTaskState.error, /mcp tool arguments missing required field: locale/);
 
+    const unsupportedSandboxTask = {
+      ...task,
+      task_id: "go_fed_task_container_claim_rejected",
+      to: "agent://zone-b/container-claimed",
+    };
+    const unsupportedSandboxFrames = await exchangeFramesWithHumanApproval(port, humanPort, {
+      type: "FED_TASK_OPEN",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      task: { ...unsupportedSandboxTask, signature: signObject(requester.privateKey, unsupportedSandboxTask) },
+    }, unsupportedSandboxTask.task_id);
+    assert.equal(unsupportedSandboxFrames.at(-1).type, "FED_TASK_ERROR");
+    assert.match(unsupportedSandboxFrames.at(-1).error, /unsupported sandbox claim: container-namespace/);
+    await assert.rejects(readFile("state/go-fed-container-claim-ran.txt", "utf8"), /ENOENT/);
+    const unsupportedSandboxState = JSON.parse(await readFile("state/go-fed-discovery-audit-tasks/go_fed_task_container_claim_rejected.json", "utf8"));
+    assert.equal(unsupportedSandboxState.status, "failed");
+    assert.match(unsupportedSandboxState.error, /unsupported sandbox claim: container-namespace/);
+
     const missingRetryOfFrames = await exchangeFrames(port, {
       type: "FED_TASK_RETRY",
       origin_zone: zoneA.descriptor,
@@ -1834,7 +1869,7 @@ setTimeout(() => {
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 84);
+    assert.equal(auditBody.entries.length, 87);
     const auditProofResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit?task_id=${encodeURIComponent(task.task_id)}`);
     assert.equal(auditProofResponse.status, 200);
     const auditProofBody = await auditProofResponse.json();

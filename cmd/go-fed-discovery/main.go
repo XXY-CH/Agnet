@@ -2238,6 +2238,10 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 			return err
 		}
 	}
+	if err := validateSandboxClaim(worker.Profile); err != nil {
+		_ = f.writeTaskState(taskID, "failed", worker, map[string]any{"error": err.Error()})
+		return err
+	}
 	if err := f.sendTaskEvent(send, map[string]any{"type": "task.started", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
 		return err
 	}
@@ -2512,6 +2516,25 @@ func runTool(ctx context.Context, profile WorkerProfile, task, origin map[string
 
 func inProcessSandbox() map[string]any {
 	return map[string]any{"mode": "in-process"}
+}
+
+func validateSandboxClaim(profile WorkerProfile) error {
+	if profile.SandboxClaim == "" {
+		return nil
+	}
+	if profile.SandboxClaim == expectedSandboxMode(profile) {
+		return nil
+	}
+	return errors.New("unsupported sandbox claim: " + profile.SandboxClaim)
+}
+
+func expectedSandboxMode(profile WorkerProfile) string {
+	switch profile.Tool {
+	case "external.stdio", "mcp.stdio":
+		return "local-temp-dir"
+	default:
+		return "in-process"
+	}
 }
 
 func newToolSandbox(kind string, toolCommand []string) (string, map[string]any, func(), error) {

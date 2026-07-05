@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v9.6 assessment
+状态：v9.7 assessment
 
 ## 一句话
 
@@ -86,6 +86,7 @@
 - Signed `FED_TASK_CANCEL` evidence with worker cancellation receipts。
 - `FED_TASK_RETRY` lineage evidence with normal task execution。
 - Sandbox claim binding prevents overclaiming local-temp-dir as stronger isolation。
+- Unsupported sandbox claims are rejected before external/MCP tool startup。
 - External/MCP sandbox evidence records tool command, executable binary, and result transcript digests。
 - External/MCP result transcripts are persisted as local artifacts linked from signed receipts。
 - Tool output digest aligns signed receipt with artifact manifest。

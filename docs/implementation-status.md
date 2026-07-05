@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v9.6 complete
-当前代码基线：`v9.6-go-json-state-atomic-replace`
+状态：v9.7 complete
+当前代码基线：`v9.7-sandbox-claim-preflight`
 
 ## 一句话
 
@@ -16,7 +16,7 @@
 | Agent identity | done | verify/generate subset | `asp-core.mjs`, `cmd/go-fed-discovery` | Go shared library/package shape |
 | Zone identity | done | verify/generate subset | `trusted-zones.test.mjs`, Go descriptor verification | Zone lifecycle tooling |
 | Local registry | done | multi-worker profile registry | `zone-registry.test.mjs`, `go-fed-discovery.test.mjs` | worker lifecycle API |
-| Local task execution | done | built-in + external stdio + MCP stdio tools/call + MCP initialize/resources/prompts/tools metadata + selected tool/schema/argument evidence + MCP required argument gate + explicit local-process isolation evidence + sandbox-bound HOME/TMPDIR/XDG_CACHE_HOME + signed local sandbox proof + sandbox claim binding + tool command, binary, transcript digests, and transcript artifacts | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | container namespace sandbox / long-running MCP sessions |
+| Local task execution | done | built-in + external stdio + MCP stdio tools/call + MCP initialize/resources/prompts/tools metadata + selected tool/schema/argument evidence + MCP required argument gate + explicit local-process isolation evidence + sandbox-bound HOME/TMPDIR/XDG_CACHE_HOME + signed local sandbox proof + sandbox claim binding + unsupported sandbox claim preflight + tool command, binary, transcript digests, and transcript artifacts | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | container namespace sandbox / long-running MCP sessions |
 | Events | done | minimal federation events + Go checkpoint event | `agent-runtime.test.mjs`, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | richer event lifecycle |
 | Artifact write | done | deterministic local artifact + Go artifact manifest digest evidence + tool output/transcript digest alignment + local manifest sidecar/API + content-addressed local path + optional filesystem artifact mirror + mirror object index + audit verifier byte/named sidecar/digest sidecar/mirror/index checks + GC plan/apply | `mvp-demo.test.mjs`, `go-fed-discovery.test.mjs` | object-store backend / retention policy |
 | Receipt signing | done | done for minimal Go execution | `test-vectors.test.mjs`, `go-fed-discovery.test.mjs` | receipt verification CLI |
@@ -70,6 +70,7 @@ Go
   -> signed local approval grants for external/MCP tools
   -> signed local sandbox proof for external/MCP tools
   -> sandbox claim binding in receipt/proof
+  -> unsupported sandbox claims fail before external/MCP tool start
   -> explicit local-process isolation level in sandbox evidence
   -> sandbox-bound HOME, TMPDIR, and XDG_CACHE_HOME for external/MCP tools
   -> tool command, executable binary, and result transcript digests in sandbox evidence
@@ -147,7 +148,7 @@ Go
 
 ## Next Boundary
 
-v9.6 replaces Go task/approval/queue/requester JSON state files through same-directory temp files and rename. The next natural boundary is container namespace sandboxing, queue grant replay indexing, or another small Ultimate-aligned runtime/governance slice.
+v9.7 rejects unsupported sandbox claims before external/MCP tool startup. The next natural boundary is real container namespace sandboxing or another small Ultimate-aligned runtime/governance slice.
 
 Route detail: `docs/v9-roadmap.md`。
 
