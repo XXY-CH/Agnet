@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v9.8 assessment
+状态：v9.9 assessment
 
 ## 一句话
 
@@ -29,6 +29,7 @@
 - Zone federation。
 - capability credential。
 - Go discovery/trust path through v2.4。
+- Go trusted Zone store applies local Zone revocations。
 - Go minimal execution path in v3。
 - Go audit path in v3.1。
 - Go multi-worker registry in v3.2。
@@ -63,7 +64,7 @@
 
 主要缺：
 
-- credential revocation feed / renewal。
+- credential revocation feed / renewal beyond local Zone revocation。
 - richer routing beyond exact matches。
 
 ### Runtime core

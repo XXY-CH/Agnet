@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.8 complete; v9.9+ planned
+状态：v9.9 complete; v9.10+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -221,6 +221,29 @@
 - 不做 revocation feed or renewal checking。
 - 不做 remote verifier service。
 - 不做 batch receipt verification。
+- 不做 A2A/ARD compatibility。
+
+## v9.9: Go Trusted Zone Revocation Feed
+
+状态：complete
+目标：Go trusted Zone store applies a local Zone revocation feed.
+
+新增：
+
+- Trusted Zone JSON can include top-level `revocations`.
+- `loadTrustedZones` attaches revocations to the matching trusted Zone entry.
+- `verifyTrustedZone` verifies Zone revocation signatures.
+- A trusted origin Zone is rejected when a valid revocation targets its `zid`.
+- Go package test covers a trusted store that contains a self-revoked Zone.
+
+不做：
+
+- 不做 remote revocation feed sync。
+- 不做 credential renewal。
+- 不做 agent-level Go registry revocation。
+- 不做 distributed trust graph。
+- 不做 CRL/OCSP protocol。
+- 不做 UI。
 - 不做 A2A/ARD compatibility。
 
 ## 后续方向

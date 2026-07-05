@@ -103,3 +103,49 @@ func TestWriteJSONStateFileLeavesCompleteStateAndNoTempFile(t *testing.T) {
 		}
 	}
 }
+
+func TestTrustedZoneStoreRejectsRevokedZone(t *testing.T) {
+	zone, key := testZoneDescriptor(t, "zone://revoked")
+	revocation := signBodyWithKey(key, map[string]any{
+		"zone":    zone["zid"],
+		"subject": zone["zid"],
+		"reason":  "compromised",
+	}, "signature")
+	store := map[string]any{
+		"zones":       []any{zone},
+		"revocations": []any{revocation},
+	}
+	data, err := json.MarshalIndent(store, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "trusted.json")
+	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	trusted, err := loadTrustedZones(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyTrustedZone(zone, trusted); err == nil || !strings.Contains(err.Error(), "zone revoked") {
+		t.Fatalf("got %v, want zone revoked", err)
+	}
+}
+
+func testZoneDescriptor(t *testing.T, name string) (map[string]any, ed25519.PrivateKey) {
+	t.Helper()
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, der, err := publicKeySPKI(publicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := map[string]any{
+		"name":            name,
+		"zid":             zidFromSPKI(der),
+		"public_key_spki": encoded,
+	}
+	return signBodyWithKey(privateKey, body, "zone_signature"), privateKey
+}

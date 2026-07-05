@@ -73,7 +73,8 @@ type Worker struct {
 }
 
 type TrustStore struct {
-	Zones []map[string]any `json:"zones"`
+	Zones       []map[string]any `json:"zones"`
+	Revocations []map[string]any `json:"revocations,omitempty"`
 }
 
 type AuditLog struct {
@@ -4377,7 +4378,20 @@ func loadTrustedZones(path string) (map[string]map[string]any, error) {
 		if err := verifyZoneDescriptor(zone); err != nil {
 			return nil, err
 		}
-		out[fmt.Sprint(zone["zid"])] = zone
+		entry := map[string]any{}
+		for key, value := range zone {
+			entry[key] = value
+		}
+		var revocations []any
+		for _, revocation := range store.Revocations {
+			if revocation["zone"] == zone["zid"] {
+				revocations = append(revocations, revocation)
+			}
+		}
+		if len(revocations) > 0 {
+			entry["revocations"] = revocations
+		}
+		out[fmt.Sprint(zone["zid"])] = entry
 	}
 	return out, nil
 }
@@ -4389,6 +4403,33 @@ func verifyTrustedZone(zone map[string]any, trusted map[string]map[string]any) e
 	known := trusted[fmt.Sprint(zone["zid"])]
 	if known == nil || known["public_key_spki"] != zone["public_key_spki"] {
 		return errors.New("untrusted zone: " + fmt.Sprint(zone["zid"]))
+	}
+	if err := verifyZoneRevocations(known, fmt.Sprint(zone["zid"])); err != nil {
+		return err
+	}
+	return nil
+}
+
+func verifyZoneRevocations(zone map[string]any, subject string) error {
+	revocations, _ := zone["revocations"].([]any)
+	for _, item := range revocations {
+		revocation, ok := item.(map[string]any)
+		if !ok {
+			return errors.New("zone revocation invalid")
+		}
+		if revocation["zone"] != zone["zid"] {
+			return errors.New("zone revocation issuer mismatch")
+		}
+		key, _, err := publicKey(zone)
+		if err != nil {
+			return err
+		}
+		if err := verifyMapSignature(key, revocation, "signature"); err != nil {
+			return errors.New("zone revocation signature verification failed")
+		}
+		if revocation["subject"] == subject {
+			return errors.New("zone revoked: " + subject)
+		}
 	}
 	return nil
 }

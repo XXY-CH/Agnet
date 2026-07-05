@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v9.8 complete
-当前代码基线：`v9.8-receipt-verify-cli`
+状态：v9.9 complete
+当前代码基线：`v9.9-go-trusted-zone-revocation-feed`
 
 ## 一句话
 
@@ -14,7 +14,7 @@
 | Capability | Node | Go | Evidence | Missing |
 | --- | --- | --- | --- | --- |
 | Agent identity | done | verify/generate subset | `asp-core.mjs`, `cmd/go-fed-discovery` | Go shared library/package shape |
-| Zone identity | done | verify/generate subset | `trusted-zones.test.mjs`, Go descriptor verification | Zone lifecycle tooling |
+| Zone identity | done | verify/generate subset + Go trusted Zone local revocation feed | `trusted-zones.test.mjs`, `cmd/go-fed-discovery/main_test.go`, Go descriptor verification | Zone lifecycle tooling / remote revocation sync |
 | Local registry | done | multi-worker profile registry | `zone-registry.test.mjs`, `go-fed-discovery.test.mjs` | worker lifecycle API |
 | Local task execution | done | built-in + external stdio + MCP stdio tools/call + MCP initialize/resources/prompts/tools metadata + selected tool/schema/argument evidence + MCP required argument gate + explicit local-process isolation evidence + sandbox-bound HOME/TMPDIR/XDG_CACHE_HOME + signed local sandbox proof + sandbox claim binding + unsupported sandbox claim preflight + tool command, binary, transcript digests, and transcript artifacts | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | container namespace sandbox / long-running MCP sessions |
 | Events | done | minimal federation events + Go checkpoint event | `agent-runtime.test.mjs`, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | richer event lifecycle |
@@ -44,6 +44,7 @@ Node
 
 Go
   -> trusted federation discovery
+  -> Go trusted Zone store applies local Zone revocations
   -> dynamic worker descriptor, binding, credential signing
   -> key files
   -> FED_TASK_OPEN verification
@@ -149,7 +150,7 @@ Go
 
 ## Next Boundary
 
-v9.8 verifies one receipt record JSON file through the shared Go receipt verifier. The next natural boundary is real container namespace sandboxing or another small Ultimate-aligned runtime/governance slice.
+v9.9 applies local Zone revocations from the Go trusted Zone store. The next natural boundary is real container namespace sandboxing or another small Ultimate-aligned runtime/governance slice.
 
 Route detail: `docs/v9-roadmap.md`。
 
