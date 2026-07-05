@@ -3859,6 +3859,14 @@ func verifyArtifactManifests(receipt map[string]any, artifactStoreDir string) er
 	if len(refs) != len(manifests) {
 		return errors.New("receipt artifact manifest count mismatch")
 	}
+	var artifactStoreIndex []map[string]any
+	if artifactStoreDir != "" && len(manifests) > 0 {
+		index, err := readArtifactStoreIndex(filepath.Join(artifactStoreDir, "objects.ndjson"))
+		if err != nil {
+			return err
+		}
+		artifactStoreIndex = index
+	}
 	for index, manifest := range manifests {
 		if manifest["uri"] != refs[index] {
 			return errors.New("artifact manifest uri mismatch")
@@ -3924,6 +3932,9 @@ func verifyArtifactManifests(receipt map[string]any, artifactStoreDir string) er
 			if digestBytesHex(mirrorData) != manifest["sha256"] {
 				return errors.New("artifact mirror bytes digest mismatch")
 			}
+			if !artifactStoreIndexContains(artifactStoreIndex, manifest) {
+				return errors.New("artifact mirror index entry missing")
+			}
 		}
 		if float64(len(data)) != manifest["size"] {
 			return errors.New("artifact bytes size mismatch")
@@ -3945,6 +3956,50 @@ func verifyArtifactManifests(receipt map[string]any, artifactStoreDir string) er
 		return errors.New("tool output digest mismatch")
 	}
 	return nil
+}
+
+func readArtifactStoreIndex(path string) ([]map[string]any, error) {
+	file, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, errors.New("artifact mirror index missing")
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	var out []map[string]any
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		entry := map[string]any{}
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			return nil, errors.New("artifact mirror index invalid")
+		}
+		out = append(out, entry)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func artifactStoreIndexContains(index []map[string]any, manifest map[string]any) bool {
+	for _, entry := range index {
+		matches := true
+		for _, field := range []string{"uri", "sha256", "size", "media_type", "manifest_hash"} {
+			if fmt.Sprint(entry[field]) != fmt.Sprint(manifest[field]) {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return true
+		}
+	}
+	return false
 }
 
 func receiptArtifactManifest(receipt map[string]any, uri string) (map[string]any, error) {

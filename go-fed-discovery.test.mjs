@@ -1769,6 +1769,33 @@ setTimeout(() => {
       /artifact mirror bytes digest mismatch/,
     );
     await writeFile(mirrorArtifactPath, artifactText);
+    await rm("state/go-fed-artifact-store/objects.ndjson", { force: true });
+    await assert.rejects(
+      execFileAsync("go", [
+        "run",
+        "./cmd/go-fed-discovery",
+        "--verify-audit",
+        "--artifact-store",
+        "state/go-fed-artifact-store",
+        "--audit",
+        "state/go-fed-discovery-audit.log",
+      ]),
+      /artifact mirror index missing/,
+    );
+    await writeFile("state/go-fed-artifact-store/objects.ndjson", `${JSON.stringify({ ...transcriptManifest })}\n`);
+    await assert.rejects(
+      execFileAsync("go", [
+        "run",
+        "./cmd/go-fed-discovery",
+        "--verify-audit",
+        "--artifact-store",
+        "state/go-fed-artifact-store",
+        "--audit",
+        "state/go-fed-discovery-audit.log",
+      ]),
+      /artifact mirror index entry missing/,
+    );
+    await writeFile("state/go-fed-artifact-store/objects.ndjson", artifactStoreIndex.map((item) => JSON.stringify(item)).join("\n") + "\n");
 
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);

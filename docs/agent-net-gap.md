@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v8.53 assessment
+状态：v9.0 assessment
 
 ## 一句话
 
@@ -94,7 +94,7 @@
 - Audit verification rejects local artifact bytes that no longer match signed manifests。
 - Audit verification rejects named artifact sidecars that no longer match signed manifests。
 - Audit verification rejects digest-addressed artifact sidecars that no longer match signed manifests。
-- Audit verification can reject filesystem artifact mirror bytes or sidecars that no longer match signed manifests。
+- Audit verification can reject filesystem artifact mirror bytes, sidecars, or index entries that no longer match signed manifests。
 - MCP sandbox evidence records protocol/server initialize metadata。
 - MCP resources/prompts surfaces are recorded as count+digest evidence。
 - MCP tools surface is recorded as count+digest evidence。
@@ -148,7 +148,7 @@
 - Human Gateway running task rows can load live transcript snapshots into the local transcript viewer。
 - Human Gateway live transcript loading polls the running snapshot until another transcript is selected。
 - MCP stdio responses are copied into live transcript snapshots as NDJSON。
-- Filesystem artifact mirrors maintain an `objects.ndjson` content-addressed object index。
+- Filesystem artifact mirrors maintain and verify an `objects.ndjson` content-addressed object index。
 
 主要缺：
 
@@ -169,7 +169,7 @@
 - long-running MCP session reuse。
 - full MCP resource/prompt catalog storage。
 - full MCP schema verification。
-- artifact GC, remote object-store API, and retention policy beyond filesystem mirrors。
+- artifact GC, remote object-store API, and retention policy beyond the verified filesystem mirror index。
 
 ### Network layer
 
