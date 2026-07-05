@@ -2606,10 +2606,35 @@ func sandboxClaimProbe(claim string) map[string]any {
 	case "in-process", "local-temp-dir":
 		return map[string]any{"claim": claim, "supported": true, "reason": "sandbox runtime is available"}
 	case "container-namespace":
-		return map[string]any{"claim": claim, "supported": false, "reason": "container namespace sandbox runtime is not implemented"}
+		return containerNamespaceProbe(claim)
 	default:
 		return map[string]any{"claim": claim, "supported": false, "reason": "unknown sandbox claim"}
 	}
+}
+
+func containerNamespaceProbe(claim string) map[string]any {
+	probe := map[string]any{
+		"claim":              claim,
+		"supported":          false,
+		"runtime_configured": false,
+		"runtime_available":  false,
+	}
+	runtimeCommand := strings.TrimSpace(os.Getenv("AGNET_CONTAINER_RUNTIME"))
+	if runtimeCommand == "" {
+		probe["reason"] = "container namespace sandbox runtime is not configured"
+		return probe
+	}
+	probe["runtime_configured"] = true
+	probe["runtime_command"] = runtimeCommand
+	runtimePath, err := exec.LookPath(runtimeCommand)
+	if err != nil {
+		probe["reason"] = "container namespace sandbox runtime is not available"
+		return probe
+	}
+	probe["runtime_available"] = true
+	probe["runtime_path"] = runtimePath
+	probe["reason"] = "container namespace sandbox execution is not implemented"
+	return probe
 }
 
 func newToolSandbox(kind string, toolCommand []string) (string, map[string]any, func(), error) {

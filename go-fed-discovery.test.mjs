@@ -10,11 +10,26 @@ import { canonical, capabilityCredentialId, createAgent, loadOrCreateAgent, load
 const execFileAsync = promisify(execFile);
 
 test("Go sandbox probe CLI reports unsupported container namespace", async () => {
-  const { stdout } = await execFileAsync("go", ["run", "./cmd/go-fed-discovery", "--sandbox-probe", "container-namespace"]);
+  const probeEnv = { ...process.env, AGNET_CONTAINER_RUNTIME: "" };
+  const { stdout } = await execFileAsync("go", ["run", "./cmd/go-fed-discovery", "--sandbox-probe", "container-namespace"], { env: probeEnv });
   assert.deepEqual(JSON.parse(stdout), {
     claim: "container-namespace",
     supported: false,
-    reason: "container namespace sandbox runtime is not implemented",
+    runtime_configured: false,
+    runtime_available: false,
+    reason: "container namespace sandbox runtime is not configured",
+  });
+  const configured = await execFileAsync("go", ["run", "./cmd/go-fed-discovery", "--sandbox-probe", "container-namespace"], {
+    env: { ...process.env, AGNET_CONTAINER_RUNTIME: "/bin/sh" },
+  });
+  assert.deepEqual(JSON.parse(configured.stdout), {
+    claim: "container-namespace",
+    supported: false,
+    runtime_configured: true,
+    runtime_available: true,
+    runtime_command: "/bin/sh",
+    runtime_path: "/bin/sh",
+    reason: "container namespace sandbox execution is not implemented",
   });
   const local = await execFileAsync("go", ["run", "./cmd/go-fed-discovery", "--sandbox-probe", "local-temp-dir"]);
   assert.deepEqual(JSON.parse(local.stdout), {
@@ -31,7 +46,9 @@ test("Go sandbox require CLI fails closed for unsupported container namespace", 
       assert.deepEqual(JSON.parse(error.stdout), {
         claim: "container-namespace",
         supported: false,
-        reason: "container namespace sandbox runtime is not implemented",
+        runtime_configured: false,
+        runtime_available: false,
+        reason: "container namespace sandbox runtime is not configured",
       });
       return true;
     },
@@ -1645,7 +1662,9 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     assert.deepEqual(unsupportedSandboxState.sandbox_probe, {
       claim: "container-namespace",
       supported: false,
-      reason: "container namespace sandbox runtime is not implemented",
+      runtime_configured: false,
+      runtime_available: false,
+      reason: "container namespace sandbox runtime is not configured",
     });
 
     const missingRetryOfFrames = await exchangeFrames(port, {
