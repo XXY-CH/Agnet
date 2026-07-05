@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.1 complete; v9.2+ planned
+状态：v9.2 complete; v9.3+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -57,7 +57,31 @@
 
 ## 后续方向
 
+## v9.2: Node Audit Append Serialization
+
+状态：complete
+目标：Node `appendAudit` serializes concurrent audit writes.
+
+新增：
+
+- `appendAudit` uses a module-level Promise queue.
+- Concurrent Node audit writes no longer read the same `audit.head`.
+- The audit-chain test writes 32 entries concurrently and verifies the chain.
+
+不做：
+
+- 不做 lockfile。
+- 不做 database。
+- 不做 cross-process locking。
+- 不做 audit log compaction。
+- 不做 Go approval locking。
+- 不做 scanner buffer changes。
+- 不做 state-file atomic writes。
+- 不做 A2A/ARD compatibility。
+
+## 后续方向
+
+- Go audit scanner buffer hardening。
+- Go approval action locking。
 - artifact GC delete/apply over the plan。
 - container namespace sandboxing。
-- long-running MCP sessions。
-- object-store-backed artifacts。

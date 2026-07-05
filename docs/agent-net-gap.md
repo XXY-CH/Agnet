@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v9.1 assessment
+状态：v9.2 assessment
 
 ## 一句话
 
@@ -74,6 +74,7 @@
 
 - Node prototype runtime。
 - Node federation execution path。
+- Node audit appends are serialized inside one process。
 - Go discovery gateway with minimal deterministic execution。
 - Go audit verifier for execution evidence。
 - Go exact-match multi-worker routing。
@@ -154,7 +155,8 @@
 
 - richer MCP sessions/resources/prompts。
 - container namespace sandbox。
-- concurrency model。
+- cross-process audit locking。
+- broader concurrency model。
 - encrypted browser-side private-key storage。
 - browser multi-key manager。
 - Human Gateway requester selector UI。

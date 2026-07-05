@@ -199,7 +199,14 @@ export function verifyAuditEntries(entries) {
   return true;
 }
 
+let auditLock = Promise.resolve();
+
 export async function appendAudit(record) {
+  auditLock = auditLock.then(() => appendAuditUnlocked(record), () => appendAuditUnlocked(record));
+  return auditLock;
+}
+
+async function appendAuditUnlocked(record) {
   await mkdir("state", { recursive: true });
   let prevHash = AUDIT_ZERO_HASH;
   try {
