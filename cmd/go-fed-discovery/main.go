@@ -146,6 +146,7 @@ func main() {
 	verifyReceiptPath := flag.String("verify-receipt", "", "verify one receipt record JSON file and exit")
 	artifactStoreGCPlan := flag.Bool("artifact-store-gc-plan", false, "print filesystem artifact mirror GC plan and exit")
 	artifactStoreGCApply := flag.Bool("artifact-store-gc-apply", false, "delete orphaned filesystem artifact mirror objects and exit")
+	sandboxProbe := flag.String("sandbox-probe", "", "print sandbox runtime support probe for a claim and exit")
 	flag.Parse()
 
 	if *verifyAudit {
@@ -163,6 +164,13 @@ func main() {
 			os.Exit(1)
 		}
 		if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	if *sandboxProbe != "" {
+		if err := json.NewEncoder(os.Stdout).Encode(sandboxClaimProbe(*sandboxProbe)); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
@@ -2571,17 +2579,24 @@ func expectedSandboxMode(profile WorkerProfile) string {
 func sandboxRuntimeProbe(profile WorkerProfile) map[string]any {
 	switch profile.SandboxClaim {
 	case "container-namespace":
-		return map[string]any{
-			"claim":     profile.SandboxClaim,
-			"supported": false,
-			"reason":    "container namespace sandbox runtime is not implemented",
-		}
+		return sandboxClaimProbe(profile.SandboxClaim)
 	default:
 		return map[string]any{
 			"claim":     profile.SandboxClaim,
 			"supported": false,
 			"reason":    "sandbox claim does not match worker runtime mode: " + expectedSandboxMode(profile),
 		}
+	}
+}
+
+func sandboxClaimProbe(claim string) map[string]any {
+	switch claim {
+	case "in-process", "local-temp-dir":
+		return map[string]any{"claim": claim, "supported": true, "reason": "sandbox runtime is available"}
+	case "container-namespace":
+		return map[string]any{"claim": claim, "supported": false, "reason": "container namespace sandbox runtime is not implemented"}
+	default:
+		return map[string]any{"claim": claim, "supported": false, "reason": "unknown sandbox claim"}
 	}
 }
 

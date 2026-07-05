@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v9.11 assessment
+状态：v9.12 assessment
 
 ## 一句话
 
@@ -160,7 +160,7 @@
 主要缺：
 
 - richer MCP sessions/resources/prompts。
-- real container namespace sandbox; unsupported `container-namespace` claims currently persist runtime probe evidence before tool start。
+- real container namespace sandbox; unsupported `container-namespace` claims currently persist runtime probe evidence before tool start and can be checked with `--sandbox-probe`。
 - cross-process audit locking。
 - cross-process approval locking。
 - broader concurrency model。
