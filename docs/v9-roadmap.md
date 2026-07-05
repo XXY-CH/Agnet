@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.27 complete; v9.28+ planned
+状态：v9.28 complete; v9.29+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -660,6 +660,31 @@
 - `input_artifacts` must match the upstream step's first artifact manifest by `step_id`, `uri`, `sha256`, and `manifest_hash`.
 - Go package coverage proves a worker-signed false dependency digest is rejected.
 - The same coverage proves the clean Swarm dependency graph still verifies.
+
+不做：
+
+- 不做 cross-audit dependency lookup。
+- 不做 remote audit sync。
+- 不做 scheduler。
+- 不做 dynamic decomposition。
+- 不做 parallel execution。
+- 不做 conflict resolution。
+- 不做 Swarm UI。
+- 不做 Node Swarm server。
+- 不做 A2A/ARD compatibility。
+
+## v9.28: Swarm Dependency Receipt Digest Binding
+
+状态：complete
+目标：Swarm dependency evidence binds the upstream receipt digest in addition to the upstream artifact manifest.
+
+新增：
+
+- Dependent `FED_SWARM_OPEN` step receipts include `receipt_digest` in each `swarm.input_artifacts` entry.
+- The digest is computed from the completed upstream signed receipt.
+- `--verify-audit` rejects a signed downstream Swarm receipt whose input `receipt_digest` does not match the upstream step receipt in the same audit.
+- Integration coverage proves the live downstream Swarm receipt exposes the upstream receipt digest.
+- Go package coverage proves a false signed upstream receipt digest is rejected.
 
 不做：
 

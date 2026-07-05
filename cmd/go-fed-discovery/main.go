@@ -2705,10 +2705,11 @@ func (f Fixture) executeSwarm(send sendFunc, origin, frame map[string]any) error
 			}
 			manifest := manifests[0]
 			inputArtifacts = append(inputArtifacts, map[string]any{
-				"step_id":       dependency,
-				"uri":           manifest["uri"],
-				"sha256":        manifest["sha256"],
-				"manifest_hash": manifest["manifest_hash"],
+				"step_id":        dependency,
+				"uri":            manifest["uri"],
+				"sha256":         manifest["sha256"],
+				"manifest_hash":  manifest["manifest_hash"],
+				"receipt_digest": digestHex(receipt),
 			})
 		}
 		task, ok := step["task"].(map[string]any)
@@ -4457,9 +4458,17 @@ func verifySwarmReceiptDependencies(receipt map[string]any, completed map[string
 		if input["manifest_hash"] != manifest["manifest_hash"] {
 			return errors.New("swarm input artifact manifest hash mismatch")
 		}
+		if input["receipt_digest"] != manifest["receipt_digest"] {
+			return errors.New("swarm input receipt digest mismatch")
+		}
 	}
 	if manifests := mapsFromAny(receipt["artifact_manifests"]); len(manifests) > 0 {
-		completed[swarmID+"\x00"+stepID] = manifests[0]
+		manifest := map[string]any{}
+		for key, value := range manifests[0] {
+			manifest[key] = value
+		}
+		manifest["receipt_digest"] = digestHex(receipt)
+		completed[swarmID+"\x00"+stepID] = manifest
 	}
 	return nil
 }

@@ -292,10 +292,11 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 			"step_id":  "downstream",
 			"after":    []string{"upstream"},
 			"input_artifacts": []map[string]any{{
-				"step_id":       "upstream",
-				"uri":           upstreamManifest["uri"],
-				"sha256":        strings.Repeat("0", 64),
-				"manifest_hash": upstreamManifest["manifest_hash"],
+				"step_id":        "upstream",
+				"uri":            upstreamManifest["uri"],
+				"sha256":         strings.Repeat("0", 64),
+				"manifest_hash":  upstreamManifest["manifest_hash"],
+				"receipt_digest": digestHex(upstreamReceipt),
 			}},
 		},
 	})
@@ -313,6 +314,21 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 	}
 
 	downstreamReceipt["swarm"].(map[string]any)["input_artifacts"].([]map[string]any)[0]["sha256"] = upstreamManifest["sha256"]
+	downstreamReceipt["swarm"].(map[string]any)["input_artifacts"].([]map[string]any)[0]["receipt_digest"] = strings.Repeat("1", 64)
+	downstreamBadReceiptDigest := signBody(downstreamKey, receiptBodyWithoutSignature(downstreamReceipt))
+	badDigestLog := &AuditLog{Path: "bad-digest-audit.log", Head: auditZeroHash}
+	if err := badDigestLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": upstreamReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	if err := badDigestLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": downstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(downstreamWorker), "receipt": downstreamBadReceiptDigest}); err != nil {
+		t.Fatal(err)
+	}
+	err = verifyAuditFile("bad-digest-audit.log", "")
+	if err == nil || !strings.Contains(err.Error(), "swarm input receipt digest mismatch") {
+		t.Fatalf("got %v, want swarm input receipt digest mismatch", err)
+	}
+
+	downstreamReceipt["swarm"].(map[string]any)["input_artifacts"].([]map[string]any)[0]["receipt_digest"] = digestHex(upstreamReceipt)
 	downstreamRecord := signBody(downstreamKey, receiptBodyWithoutSignature(downstreamReceipt))
 	cleanLog := &AuditLog{Path: "clean-audit.log", Head: auditZeroHash}
 	if err := cleanLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": upstreamReceipt}); err != nil {

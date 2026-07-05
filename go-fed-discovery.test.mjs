@@ -742,6 +742,7 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     ]);
     const summaryReceipt = swarmFrames[5].receipt;
     const translationReceipt = swarmFrames[12].receipt;
+    const summaryReceiptDigest = createHash("sha256").update(JSON.stringify(summaryReceipt)).digest("hex");
     assert.equal(summaryReceipt.task_id, swarmSummaryTask.task_id);
     assert.equal(translationReceipt.task_id, swarmTranslateTask.task_id);
     assert.equal(summaryReceipt.swarm.swarm_id, "swarm://local/go_fed_swarm_two_step");
@@ -754,6 +755,7 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
       uri: summaryReceipt.artifact_manifests[0].uri,
       sha256: summaryReceipt.artifact_manifests[0].sha256,
       manifest_hash: summaryReceipt.artifact_manifests[0].manifest_hash,
+      receipt_digest: summaryReceiptDigest,
     }]);
 
     const unauthenticated = await exchangeUnauthenticatedFrame(port, {
