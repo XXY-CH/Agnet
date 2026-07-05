@@ -3,7 +3,14 @@ package main
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
+	"math/big"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,6 +97,43 @@ func TestAuditAppendRejectsCorruptSharedAudit(t *testing.T) {
 	}
 }
 
+func TestFederationListenerCanUseTLS(t *testing.T) {
+	certPath, keyPath := writeTestTLSCertificate(t)
+	listener, transport, err := listenFederation("0", certPath, keyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	if transport != "fed+tls" {
+		t.Fatalf("transport = %s, want fed+tls", transport)
+	}
+
+	accepted := make(chan error, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			accepted <- err
+			return
+		}
+		defer conn.Close()
+		buf := []byte{0}
+		_, err = conn.Read(buf)
+		accepted <- err
+	}()
+
+	conn, err := tls.Dial("tcp", listener.Addr().String(), &tls.Config{InsecureSkipVerify: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Write([]byte{1}); err != nil {
+		t.Fatal(err)
+	}
+	conn.Close()
+	if err := <-accepted; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestApplyApprovalActionSerializesConcurrentApproves(t *testing.T) {
 	_, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -122,6 +166,37 @@ func TestApplyApprovalActionSerializesConcurrentApproves(t *testing.T) {
 	if successes.Load() != 1 {
 		t.Fatalf("got %d successful approvals, want 1", successes.Load())
 	}
+}
+
+func writeTestTLSCertificate(t *testing.T) (string, string) {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "127.0.0.1"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	certPath := filepath.Join(dir, "cert.pem")
+	keyPath := filepath.Join(dir, "key.pem")
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	if err := os.WriteFile(certPath, certPEM, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath, keyPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return certPath, keyPath
 }
 
 func TestWriteJSONStateFileLeavesCompleteStateAndNoTempFile(t *testing.T) {

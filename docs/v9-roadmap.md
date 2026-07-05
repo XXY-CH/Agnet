@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.17 complete; v9.18+ planned
+状态：v9.18 complete; v9.19+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -429,8 +429,30 @@
 - 不做 scheduler or automatic drain。
 - 不做 A2A/ARD compatibility。
 
+## v9.18: Go Federation TLS Listener
+
+状态：complete
+目标：Go federation TCP listener can run over TLS with operator-provided certificate and key files.
+
+新增：
+
+- `--tls-cert <path>` and `--tls-key <path>` enable TLS on the main Go federation listener.
+- The listener status reports `transport: "fed+tls"` when TLS is enabled and `transport: "fed+tcp"` otherwise.
+- Partial TLS config is rejected at startup.
+- Go package coverage proves a TLS client can complete a handshake.
+
+不做：
+
+- 不做 mTLS client certificate verification。
+- 不做 public bind address。
+- 不做 WebSocket TLS。
+- 不做 Human Gateway HTTPS。
+- 不做 QUIC。
+- 不做 DHT / relay / edge gateway。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
 - real container namespace sandboxing。
 - Go/Node cross-implementation interop test。
-- TLS or mTLS transport prototype。
+- mTLS client certificate verification。

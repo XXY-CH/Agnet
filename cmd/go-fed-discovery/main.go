@@ -9,6 +9,7 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/subtle"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
@@ -137,6 +138,8 @@ func main() {
 	humanPort := flag.String("human-port", "", "optional Human Gateway HTTP port")
 	humanToken := flag.String("human-token", "", "optional Human Gateway bearer token for write actions")
 	humanActorPolicyPath := flag.String("human-actor-policy", "", "optional Human Gateway actor policy JSON file")
+	tlsCertPath := flag.String("tls-cert", "", "optional federation TCP TLS certificate file")
+	tlsKeyPath := flag.String("tls-key", "", "optional federation TCP TLS key file")
 	artifactStoreDir := flag.String("artifact-store", "", "optional filesystem artifact mirror directory")
 	fixturePath := flag.String("fixture", "test-vectors/asp-v1.5-capability-credential.json", "signed descriptor fixture")
 	trustPath := flag.String("trusted", "state/go-fed-trusted-zones.json", "trusted origin zones")
@@ -214,13 +217,13 @@ func main() {
 		return
 	}
 
-	if err := serve(*port, *wsPort, *humanPort, *humanToken, *humanActorPolicyPath, *artifactStoreDir, *fixturePath, *trustPath, *authorityKeyPath, *workerKeyPath, *auditPath); err != nil {
+	if err := serve(*port, *wsPort, *humanPort, *humanToken, *humanActorPolicyPath, *tlsCertPath, *tlsKeyPath, *artifactStoreDir, *fixturePath, *trustPath, *authorityKeyPath, *workerKeyPath, *auditPath); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, artifactStoreDir, fixturePath, trustPath, authorityKeyPath, workerKeyPath, auditPath string) error {
+func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, artifactStoreDir, fixturePath, trustPath, authorityKeyPath, workerKeyPath, auditPath string) error {
 	authorityKey, err := loadPrivateKey(authorityKeyPath, "authority")
 	if err != nil {
 		return err
@@ -255,7 +258,7 @@ func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, artifactSt
 	if err != nil {
 		return err
 	}
-	listener, err := net.Listen("tcp", "127.0.0.1:"+port)
+	listener, transport, err := listenFederation(port, tlsCertPath, tlsKeyPath)
 	if err != nil {
 		return err
 	}
@@ -275,7 +278,7 @@ func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, artifactSt
 		go serveHumanGateway(humanListener, auditPath, fixture, humanToken)
 	}
 	if wsPort != "" || humanPort != "" {
-		status := map[string]any{"go_fed_discovery": "listening", "port": port}
+		status := map[string]any{"go_fed_discovery": "listening", "port": port, "transport": transport}
 		if wsPort != "" {
 			status["ws_port"] = wsPort
 		}
@@ -285,7 +288,9 @@ func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, artifactSt
 		data, _ := json.Marshal(status)
 		fmt.Println(string(data))
 	} else {
-		fmt.Println(`{"go_fed_discovery":"listening","port":` + port + `}`)
+		status := map[string]any{"go_fed_discovery": "listening", "port": port, "transport": transport}
+		data, _ := json.Marshal(status)
+		fmt.Println(string(data))
 	}
 	for {
 		conn, err := listener.Accept()
@@ -294,6 +299,23 @@ func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, artifactSt
 		}
 		go handle(conn, fixture, trusted)
 	}
+}
+
+func listenFederation(port, tlsCertPath, tlsKeyPath string) (net.Listener, string, error) {
+	if (tlsCertPath == "") != (tlsKeyPath == "") {
+		return nil, "", errors.New("both --tls-cert and --tls-key are required")
+	}
+	addr := "127.0.0.1:" + port
+	if tlsCertPath == "" {
+		listener, err := net.Listen("tcp", addr)
+		return listener, "fed+tcp", err
+	}
+	cert, err := tls.LoadX509KeyPair(tlsCertPath, tlsKeyPath)
+	if err != nil {
+		return nil, "", err
+	}
+	listener, err := tls.Listen("tcp", addr, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12})
+	return listener, "fed+tls", err
 }
 
 func handle(conn net.Conn, fixture Fixture, trusted map[string]map[string]any) {
