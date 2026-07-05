@@ -131,6 +131,7 @@ func main() {
 	workerKeyPath := flag.String("worker-key", "state/keys/go-fed-worker.seed", "worker seed key file")
 	auditPath := flag.String("audit", "state/go-fed-audit.log", "audit JSONL file")
 	verifyAudit := flag.Bool("verify-audit", false, "verify audit JSONL file and exit")
+	artifactStoreGCPlan := flag.Bool("artifact-store-gc-plan", false, "print filesystem artifact mirror GC plan and exit")
 	flag.Parse()
 
 	if *verifyAudit {
@@ -139,6 +140,18 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Println(`{"go_audit_verify":"ok"}`)
+		return
+	}
+	if *artifactStoreGCPlan {
+		plan, err := planArtifactStoreGC(*auditPath, *artifactStoreDir)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if err := json.NewEncoder(os.Stdout).Encode(plan); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 		return
 	}
 
@@ -3692,6 +3705,41 @@ func verifyAuditFile(path, artifactStoreDir string) error {
 		prev = fmt.Sprint(entry["hash"])
 	}
 	return nil
+}
+
+func planArtifactStoreGC(auditPath, artifactStoreDir string) (map[string]any, error) {
+	if artifactStoreDir == "" {
+		return nil, errors.New("artifact-store is required for gc plan")
+	}
+	if err := verifyAuditFile(auditPath, artifactStoreDir); err != nil {
+		return nil, err
+	}
+	entries, err := readAuditEntries(auditPath)
+	if err != nil {
+		return nil, err
+	}
+	referenced := map[string]bool{}
+	for _, entry := range entries {
+		record, _ := entry["record"].(map[string]any)
+		if record["kind"] != "go_fed_receipt" {
+			continue
+		}
+		receipt, _ := record["receipt"].(map[string]any)
+		for _, manifest := range mapsFromAny(receipt["artifact_manifests"]) {
+			referenced[fmt.Sprint(manifest["sha256"])] = true
+		}
+	}
+	index, err := readArtifactStoreIndex(filepath.Join(artifactStoreDir, "objects.ndjson"))
+	if err != nil {
+		return nil, err
+	}
+	var orphans []map[string]any
+	for _, entry := range index {
+		if !referenced[fmt.Sprint(entry["sha256"])] {
+			orphans = append(orphans, entry)
+		}
+	}
+	return map[string]any{"artifact_store_gc_plan": "ok", "orphans": orphans}, nil
 }
 
 func readAuditEntries(path string) ([]map[string]any, error) {

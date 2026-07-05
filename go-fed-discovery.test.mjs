@@ -1769,6 +1769,7 @@ setTimeout(() => {
       /artifact mirror bytes digest mismatch/,
     );
     await writeFile(mirrorArtifactPath, artifactText);
+    const fullArtifactStoreIndex = (await readFile("state/go-fed-artifact-store/objects.ndjson", "utf8")).trim().split("\n").map((line) => JSON.parse(line));
     await rm("state/go-fed-artifact-store/objects.ndjson", { force: true });
     await assert.rejects(
       execFileAsync("go", [
@@ -1795,7 +1796,20 @@ setTimeout(() => {
       ]),
       /artifact mirror index entry missing/,
     );
-    await writeFile("state/go-fed-artifact-store/objects.ndjson", artifactStoreIndex.map((item) => JSON.stringify(item)).join("\n") + "\n");
+    await writeFile("state/go-fed-artifact-store/objects.ndjson", fullArtifactStoreIndex.map((item) => JSON.stringify(item)).join("\n") + "\n");
+    await writeFile("state/go-fed-artifact-store/objects.ndjson", `${JSON.stringify({ uri: "artifact://local/orphan.txt", sha256: "0".repeat(64), size: 0, media_type: "text/plain", manifest_hash: "1".repeat(64) })}\n`, { flag: "a" });
+    const gcPlan = await execFileAsync("go", [
+      "run",
+      "./cmd/go-fed-discovery",
+      "--artifact-store-gc-plan",
+      "--artifact-store",
+      "state/go-fed-artifact-store",
+      "--audit",
+      "state/go-fed-discovery-audit.log",
+    ]);
+    const gcPlanBody = JSON.parse(gcPlan.stdout);
+    assert.equal(gcPlanBody.artifact_store_gc_plan, "ok");
+    assert.deepEqual(gcPlanBody.orphans.map((item) => item.sha256), ["0".repeat(64)]);
 
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);

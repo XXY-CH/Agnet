@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v9.0 assessment
+状态：v9.1 assessment
 
 ## 一句话
 
@@ -148,7 +148,7 @@
 - Human Gateway running task rows can load live transcript snapshots into the local transcript viewer。
 - Human Gateway live transcript loading polls the running snapshot until another transcript is selected。
 - MCP stdio responses are copied into live transcript snapshots as NDJSON。
-- Filesystem artifact mirrors maintain and verify an `objects.ndjson` content-addressed object index。
+- Filesystem artifact mirrors maintain and verify an `objects.ndjson` content-addressed object index, and can produce a GC plan for unreferenced index entries。
 
 主要缺：
 
@@ -169,7 +169,7 @@
 - long-running MCP session reuse。
 - full MCP resource/prompt catalog storage。
 - full MCP schema verification。
-- artifact GC, remote object-store API, and retention policy beyond the verified filesystem mirror index。
+- artifact GC apply/delete, remote object-store API, and retention policy beyond the verified filesystem mirror index。
 
 ### Network layer
 
