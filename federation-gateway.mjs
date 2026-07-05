@@ -5,13 +5,13 @@ import {
   approvalReasons,
   b64url,
   capabilityCredential,
-  enforcePolicy,
   loadOrCreateAgent,
   loadOrCreateZone,
   loadTrustedZones,
   publicKeyFromDescriptor,
   resolveAgent,
   signObject,
+  verifyFederatedTaskOpen,
   verifyObject,
   verifyCapabilityCredential,
   verifyCredentialStatus,
@@ -36,11 +36,6 @@ function readFrames(socket, onFrame) {
       if (line.trim()) onFrame(JSON.parse(line));
     }
   });
-}
-
-function unsignedTask(task) {
-  const { signature, ...body } = task;
-  return body;
 }
 
 function verifyTrustedZone(trustedZones, descriptor) {
@@ -165,17 +160,7 @@ async function serve(port, trustedZonesFile) {
           return;
         }
         if (frame.type !== "FED_TASK_OPEN") throw new Error(`unsupported frame: ${frame.type}`);
-        const originZone = verifyTrustedZone(trustedZones, frame.origin_zone);
-        const requesterPublicKey = publicKeyFromDescriptor(frame.requester);
-        resolveAgent(new Map([[frame.requester.alias, { descriptor: frame.requester }]]), frame.requester.alias);
-
-        const task = unsignedTask(frame.task);
-        if (task.from !== frame.requester.aid) throw new Error("task sender does not match requester descriptor");
-        if (task.to !== worker.alias) throw new Error(`task target does not match worker alias: ${task.to}`);
-        if (!verifyObject(requesterPublicKey, task, frame.task.signature)) {
-          throw new Error("task signature verification failed");
-        }
-        enforcePolicy(worker.descriptor, task);
+        const { originZone, task } = verifyFederatedTaskOpen(frame, trustedZones, worker.descriptor);
 
         await sendEvent(socket, { type: "task.accepted", task_id: task.task_id, by: worker.aid, zone: zone.zid });
         const approvals = approvalReasons(worker.descriptor, task);

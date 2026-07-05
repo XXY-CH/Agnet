@@ -151,6 +151,59 @@ func TestFederationListenerCanBindConfiguredHost(t *testing.T) {
 	}
 }
 
+func TestFedTaskOpenConformanceVectorVerifiesInGo(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "test-vectors", "asp-v9.24-fed-task-open.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vector struct {
+		TrustedZones  []map[string]any `json:"trusted_zones"`
+		Worker        map[string]any   `json:"worker"`
+		Frame         map[string]any   `json:"frame"`
+		TaskCanonical string           `json:"task_canonical"`
+		Expected      map[string]any   `json:"expected"`
+	}
+	if err := json.Unmarshal(data, &vector); err != nil {
+		t.Fatal(err)
+	}
+	trusted := map[string]map[string]any{}
+	for _, zone := range vector.TrustedZones {
+		trusted[fmt.Sprint(zone["zid"])] = zone
+	}
+	origin, ok := vector.Frame["origin_zone"].(map[string]any)
+	if !ok {
+		t.Fatal("origin_zone missing")
+	}
+	if err := verifyTrustedZone(origin, trusted); err != nil {
+		t.Fatal(err)
+	}
+
+	fixture := Fixture{Workers: []Worker{{Descriptor: vector.Worker}}}
+	worker, task, err := fixture.verifyTaskOpen(vector.Frame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	taskBody := map[string]any{}
+	for key, value := range task {
+		if key != "signature" {
+			taskBody[key] = value
+		}
+	}
+	canonicalTask, err := json.Marshal(taskBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(canonicalTask) != vector.TaskCanonical {
+		t.Fatalf("canonical task = %s, want %s", canonicalTask, vector.TaskCanonical)
+	}
+	if task["task_id"] != vector.Expected["task_id"] {
+		t.Fatalf("task_id = %v, want %v", task["task_id"], vector.Expected["task_id"])
+	}
+	if worker.Descriptor["alias"] != vector.Expected["worker_alias"] {
+		t.Fatalf("worker alias = %v, want %v", worker.Descriptor["alias"], vector.Expected["worker_alias"])
+	}
+}
+
 func TestPublicListenHostFlag(t *testing.T) {
 	cases := map[string]bool{
 		"127.0.0.1": false,

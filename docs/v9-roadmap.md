@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.23 complete; v9.24+ planned
+状态：v9.24 complete; v9.25+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -568,8 +568,32 @@
 - 不做 container namespace sandbox。
 - 不做 A2A/ARD compatibility。
 
+## v9.24: FED_TASK_OPEN Conformance Fixture
+
+状态：complete
+目标：Node and Go verify the same static `FED_TASK_OPEN` conformance fixture.
+
+新增：
+
+- `test-vectors/asp-v9.24-fed-task-open.json` captures deterministic Zone/requester/worker descriptors and one signed task frame.
+- Node exports `verifyFederatedTaskOpen(...)` and the federation gateway reuses it for live task handling.
+- Go package coverage verifies the same fixture through `verifyTrustedZone` and `Fixture.verifyTaskOpen`.
+- Node vector coverage verifies the same fixture through `verifyFederatedTaskOpen`.
+
+不做：
+
+- 不做 full conformance suite。
+- 不做 fixture generator CLI。
+- 不做 scheduler-driven cross-implementation dispatch。
+- 不做 public gateway deployment。
+- 不做 NAT / proxy / relay。
+- 不做 QUIC。
+- 不做 DHT / edge gateway。
+- 不做 container namespace sandbox。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
 - real container namespace sandboxing。
 - public federation deployment / QUIC binding。
-- cross-implementation conformance fixtures。
+- more cross-implementation conformance fixtures。

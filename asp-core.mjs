@@ -252,6 +252,23 @@ export function resolveAgent(registry, alias) {
   return { descriptor, publicKey, zone: entry.zone, zoneBinding: entry.zone_binding };
 }
 
+export function verifyFederatedTaskOpen(frame, trustedZones, workerDescriptor) {
+  const originZone = verifyZoneDescriptor(frame.origin_zone).descriptor;
+  const trusted = trustedZones.get(originZone.zid);
+  if (!trusted || trusted.public_key_spki !== originZone.public_key_spki) {
+    throw new Error(`untrusted zone: ${originZone.zid}`);
+  }
+  const requester = resolveAgent(new Map([[frame.requester.alias, { descriptor: frame.requester }]]), frame.requester.alias);
+  const { signature, ...task } = frame.task;
+  if (task.from !== frame.requester.aid) throw new Error("task sender does not match requester descriptor");
+  if (task.to !== workerDescriptor.alias) throw new Error(`task target does not match worker alias: ${task.to}`);
+  if (!verifyObject(requester.publicKey, task, signature)) {
+    throw new Error("task signature verification failed");
+  }
+  enforcePolicy(workerDescriptor, task);
+  return { originZone, requester: frame.requester, worker: workerDescriptor, task };
+}
+
 export function verifyZoneBinding(entry, descriptor, alias) {
   if (!entry.zone) throw new Error(`zone descriptor missing for ${alias}`);
   if (!entry.zone_binding) throw new Error(`zone binding missing for ${alias}`);

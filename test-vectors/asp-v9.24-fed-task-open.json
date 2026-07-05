@@ -1,0 +1,95 @@
+{
+  "version": "asp-v9.24-fed-task-open",
+  "origin_zone_seed_hex": "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f",
+  "requester_seed_hex": "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+  "worker_zone_seed_hex": "c0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf",
+  "worker_seed_hex": "e0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+  "origin_zone": {
+    "name": "zone://conformance-origin",
+    "zid": "zid:ed25519:u9qeg4PY4Rd7RyZMpOQ8YxaxQP_sPV_Iju42ZUlrBF4",
+    "public_key_spki": "MCowBQYDK2VwAyEAzRSzf5VulTGU_3-3Oz2B3MVh1hp1OAlLfD4aZD7l86o",
+    "zone_signature": "MZuZkBv3b8Re3dn4jg0wLxPt6gIa-j4sBIXxkW3rjGmSxW0FvH6feTWZeauaVcblgFhVqtq5RWvdevcL_wk9Bw"
+  },
+  "trusted_zones": [
+    {
+      "name": "zone://conformance-origin",
+      "zid": "zid:ed25519:u9qeg4PY4Rd7RyZMpOQ8YxaxQP_sPV_Iju42ZUlrBF4",
+      "public_key_spki": "MCowBQYDK2VwAyEAzRSzf5VulTGU_3-3Oz2B3MVh1hp1OAlLfD4aZD7l86o",
+      "zone_signature": "MZuZkBv3b8Re3dn4jg0wLxPt6gIa-j4sBIXxkW3rjGmSxW0FvH6feTWZeauaVcblgFhVqtq5RWvdevcL_wk9Bw"
+    }
+  ],
+  "worker_zone": {
+    "name": "zone://conformance-worker-zone",
+    "zid": "zid:ed25519:kNxMZDO8Jt2xydIZ2HWD00unM7L0rufepboqzVOBQN4",
+    "public_key_spki": "MCowBQYDK2VwAyEA3eO8zsfzpmoRFfRdcg9NwTXDrnxOItyjj9se_WpJX_g",
+    "zone_signature": "Hdb64jZX0HM1CI3DUqpvE9eOArhfkpIoLURlVa03YHpFvV7Irl3NXfqeJpIWkQ0afVq1Q6mYcnO4t-WRCo1dAg"
+  },
+  "worker": {
+    "alias": "agent://conformance/summarizer",
+    "aid": "aid:ed25519:oNyAhLw0zyzQVbbKvmXbEPCWX7EMN6eIb-l8jZP5QXI",
+    "public_key_spki": "MCowBQYDK2VwAyEAE9mQinCSWZLtVGAH0n9Q2mi6chfvYqw8ynhFKf8QRxw",
+    "transports": [
+      "fed+tcp://127.0.0.1:0"
+    ],
+    "capabilities": [
+      "summarize.text"
+    ],
+    "policy": {
+      "allow_network": false,
+      "write_prefixes": [
+        "artifact://local/"
+      ]
+    },
+    "descriptor_signature": "hZg3FlSCUui3ZqyuuLOkRugm4dR15dypsua52rI_zYD5Gxpy5G6bkV6j7PK4fc8bMEMpbcwAMp_WYHRhpBMwBQ"
+  },
+  "worker_zone_binding": {
+    "zone": "zid:ed25519:kNxMZDO8Jt2xydIZ2HWD00unM7L0rufepboqzVOBQN4",
+    "alias": "agent://conformance/summarizer",
+    "aid": "aid:ed25519:oNyAhLw0zyzQVbbKvmXbEPCWX7EMN6eIb-l8jZP5QXI",
+    "signature": "tM0XzZK0xot2YGdy2pK-ks2IaaN64KfIMag3KMbxpyIKUZ9IkMtltmajZHLhyI4_7yU8m3Fe23nV3jUIip69Ag"
+  },
+  "frame": {
+    "type": "FED_TASK_OPEN",
+    "origin_zone": {
+      "name": "zone://conformance-origin",
+      "zid": "zid:ed25519:u9qeg4PY4Rd7RyZMpOQ8YxaxQP_sPV_Iju42ZUlrBF4",
+      "public_key_spki": "MCowBQYDK2VwAyEAzRSzf5VulTGU_3-3Oz2B3MVh1hp1OAlLfD4aZD7l86o",
+      "zone_signature": "MZuZkBv3b8Re3dn4jg0wLxPt6gIa-j4sBIXxkW3rjGmSxW0FvH6feTWZeauaVcblgFhVqtq5RWvdevcL_wk9Bw"
+    },
+    "requester": {
+      "alias": "agent://conformance/requester",
+      "aid": "aid:ed25519:3dfTSP_udbygatpJFIna4iNUP8Br1YVqBaTKQZGXh5c",
+      "public_key_spki": "MCowBQYDK2VwAyEAT9CZzNR9eJPf6ewkQU7LDZtUICMqrTDZHEZb4zy-ZcQ",
+      "transports": [
+        "fed+tcp://127.0.0.1:0"
+      ],
+      "capabilities": [],
+      "policy": {},
+      "descriptor_signature": "EvFfcgjScva4Ud2qy1Zqunrya78rt66Ls7F9YXWkJWASmbfzEKFE22yOlksZ8CgrXJ9PtYfm5x82zdrCmai8AQ"
+    },
+    "task": {
+      "task_id": "fed_task_conformance_001",
+      "from": "aid:ed25519:3dfTSP_udbygatpJFIna4iNUP8Br1YVqBaTKQZGXh5c",
+      "to": "agent://conformance/summarizer",
+      "intent": "Verify FED_TASK_OPEN cross-implementation fixture.",
+      "scope": {
+        "network": false,
+        "write": [
+          "artifact://local/fed_task_conformance_001/"
+        ]
+      },
+      "budget": {
+        "time_seconds": 30
+      },
+      "signature": "bCYTRt_cO4q8FAmjK627jO5AN_pZmGXBKLPhu1uob45xhCrTuHKEsTPEHC4vDIfFMDR5lqySCGBmf5gRFxQtDg"
+    }
+  },
+  "task_canonical": "{\"budget\":{\"time_seconds\":30},\"from\":\"aid:ed25519:3dfTSP_udbygatpJFIna4iNUP8Br1YVqBaTKQZGXh5c\",\"intent\":\"Verify FED_TASK_OPEN cross-implementation fixture.\",\"scope\":{\"network\":false,\"write\":[\"artifact://local/fed_task_conformance_001/\"]},\"task_id\":\"fed_task_conformance_001\",\"to\":\"agent://conformance/summarizer\"}",
+  "expected": {
+    "task_id": "fed_task_conformance_001",
+    "origin_zid": "zid:ed25519:u9qeg4PY4Rd7RyZMpOQ8YxaxQP_sPV_Iju42ZUlrBF4",
+    "requester_aid": "aid:ed25519:3dfTSP_udbygatpJFIna4iNUP8Br1YVqBaTKQZGXh5c",
+    "worker_alias": "agent://conformance/summarizer",
+    "worker_aid": "aid:ed25519:oNyAhLw0zyzQVbbKvmXbEPCWX7EMN6eIb-l8jZP5QXI"
+  }
+}
