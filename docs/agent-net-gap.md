@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v9.15 assessment
+状态：v9.16 assessment
 
 ## 一句话
 
@@ -160,7 +160,7 @@
 主要缺：
 
 - richer MCP sessions/resources/prompts。
-- real container namespace sandbox; unsupported `container-namespace` claims currently fail before approval/tool start, persist runtime probe evidence, can distinguish missing versus configured `AGNET_CONTAINER_RUNTIME` candidates, and can be checked with `--sandbox-probe` or required fail-closed with `--sandbox-require`。
+- real container namespace sandbox; unsupported `container-namespace` claims currently fail before approval/tool start, persist runtime probe evidence, can distinguish missing versus configured `AGNET_CONTAINER_RUNTIME` candidates, can fingerprint readable runtime binaries with `runtime_sha256`, and can be checked with `--sandbox-probe` or required fail-closed with `--sandbox-require`。
 - cross-process audit locking。
 - cross-process approval locking。
 - broader concurrency model。

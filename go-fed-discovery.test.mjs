@@ -10,6 +10,7 @@ import { canonical, capabilityCredentialId, createAgent, loadOrCreateAgent, load
 const execFileAsync = promisify(execFile);
 
 test("Go sandbox probe CLI reports unsupported container namespace", async () => {
+  const shellDigest = createHash("sha256").update(await readFile("/bin/sh")).digest("hex");
   const probeEnv = { ...process.env, AGNET_CONTAINER_RUNTIME: "" };
   const { stdout } = await execFileAsync("go", ["run", "./cmd/go-fed-discovery", "--sandbox-probe", "container-namespace"], { env: probeEnv });
   assert.deepEqual(JSON.parse(stdout), {
@@ -29,6 +30,7 @@ test("Go sandbox probe CLI reports unsupported container namespace", async () =>
     runtime_available: true,
     runtime_command: "/bin/sh",
     runtime_path: "/bin/sh",
+    runtime_sha256: shellDigest,
     reason: "container namespace sandbox execution is not implemented",
   });
   const local = await execFileAsync("go", ["run", "./cmd/go-fed-discovery", "--sandbox-probe", "local-temp-dir"]);

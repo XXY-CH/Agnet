@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.15 complete; v9.16+ planned
+状态：v9.16 complete; v9.17+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -369,6 +369,30 @@
 - Configured probes report `runtime_command` and `runtime_path` when the command is discoverable.
 - `container-namespace` remains `supported: false` even when a runtime candidate exists.
 - Failed unsupported container-claim task state persists the same structured probe evidence.
+
+不做：
+
+- 不实现 container namespace sandbox。
+- 不执行 Docker/OCI container tasks。
+- 不做 Linux namespace setup。
+- 不做 seccomp/AppArmor/profile enforcement。
+- 不做 network namespace。
+- 不做 filesystem mount namespace。
+- 不做 cgroup limits。
+- 不做 remote attestation。
+- 不做 scheduler or automatic drain。
+- 不做 A2A/ARD compatibility。
+
+## v9.16: Container Runtime Binary Digest Probe
+
+状态：complete
+目标：Go fingerprints configured container runtime candidates without claiming container namespace support.
+
+新增：
+
+- `--sandbox-probe container-namespace` records `runtime_sha256` when `AGNET_CONTAINER_RUNTIME` resolves to a readable command.
+- `runtime_sha256` binds the probe to the discovered runtime binary at `runtime_path`.
+- `container-namespace` remains `supported: false` even when the runtime binary is fingerprinted.
 
 不做：
 

@@ -2633,6 +2633,9 @@ func containerNamespaceProbe(claim string) map[string]any {
 	}
 	probe["runtime_available"] = true
 	probe["runtime_path"] = runtimePath
+	if data, err := os.ReadFile(runtimePath); err == nil {
+		probe["runtime_sha256"] = digestBytesHex(data)
+	}
 	probe["reason"] = "container namespace sandbox execution is not implemented"
 	return probe
 }
