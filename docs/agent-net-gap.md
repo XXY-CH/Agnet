@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v9.9 assessment
+状态：v9.10 assessment
 
 ## 一句话
 
@@ -30,6 +30,7 @@
 - capability credential。
 - Go discovery/trust path through v2.4。
 - Go trusted Zone store applies local Zone revocations。
+- Go trusted Zone store rejects tampered local Zone revocations at load time。
 - Go minimal execution path in v3。
 - Go audit path in v3.1。
 - Go multi-worker registry in v3.2。

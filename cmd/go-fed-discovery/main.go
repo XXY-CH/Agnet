@@ -4390,6 +4390,9 @@ func loadTrustedZones(path string) (map[string]map[string]any, error) {
 		}
 		if len(revocations) > 0 {
 			entry["revocations"] = revocations
+			if err := verifyZoneRevocations(entry, ""); err != nil {
+				return nil, err
+			}
 		}
 		out[fmt.Sprint(zone["zid"])] = entry
 	}

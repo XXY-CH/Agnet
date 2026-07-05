@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.9 complete; v9.10+ planned
+状态：v9.10 complete; v9.11+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -26,8 +26,6 @@
 - 不做 container namespace sandbox。
 - 不做 public deployment。
 - 不做 A2A/ARD compatibility。
-
-## 后续方向
 
 ## v9.1: Artifact Store GC Plan
 
@@ -55,8 +53,6 @@
 - 不做 public deployment。
 - 不做 A2A/ARD compatibility。
 
-## 后续方向
-
 ## v9.2: Node Audit Append Serialization
 
 状态：complete
@@ -79,8 +75,6 @@
 - 不做 state-file atomic writes。
 - 不做 A2A/ARD compatibility。
 
-## 后续方向
-
 ## v9.3: Go Audit Scanner Buffer
 
 状态：complete
@@ -102,8 +96,6 @@
 - 不做 queue grant replay index。
 - 不做 A2A/ARD compatibility。
 
-## 后续方向
-
 ## v9.4: Go Approval Action Serialization
 
 状态：complete
@@ -124,8 +116,6 @@
 - 不做 state-file atomic writes。
 - 不做 role/login model。
 - 不做 A2A/ARD compatibility。
-
-## 后续方向
 
 ## v9.5: Artifact Store GC Apply
 
@@ -242,6 +232,27 @@
 - 不做 credential renewal。
 - 不做 agent-level Go registry revocation。
 - 不做 distributed trust graph。
+- 不做 CRL/OCSP protocol。
+- 不做 UI。
+- 不做 A2A/ARD compatibility。
+
+## v9.10: Trusted Zone Revocation Load-Time Verification
+
+状态：complete
+目标：Go trusted Zone store rejects tampered local Zone revocations at load time.
+
+新增：
+
+- `loadTrustedZones` verifies matching local Zone revocations before returning the trusted store.
+- Tampered revocation signatures fail with `zone revocation signature verification failed`.
+- Go package test covers a signed revocation whose `reason` is edited after signing.
+
+不做：
+
+- 不做 remote revocation feed sync。
+- 不做 credential renewal。
+- 不做 agent-level Go registry revocation。
+- 不做 revocation freshness policy。
 - 不做 CRL/OCSP protocol。
 - 不做 UI。
 - 不做 A2A/ARD compatibility。

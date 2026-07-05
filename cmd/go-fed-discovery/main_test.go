@@ -132,6 +132,31 @@ func TestTrustedZoneStoreRejectsRevokedZone(t *testing.T) {
 	}
 }
 
+func TestTrustedZoneStoreRejectsTamperedRevocation(t *testing.T) {
+	zone, key := testZoneDescriptor(t, "zone://tampered-revocation")
+	revocation := signBodyWithKey(key, map[string]any{
+		"zone":    zone["zid"],
+		"subject": zone["zid"],
+		"reason":  "compromised",
+	}, "signature")
+	revocation["reason"] = "edited"
+	store := map[string]any{
+		"zones":       []any{zone},
+		"revocations": []any{revocation},
+	}
+	data, err := json.MarshalIndent(store, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "trusted.json")
+	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadTrustedZones(path); err == nil || !strings.Contains(err.Error(), "zone revocation signature verification failed") {
+		t.Fatalf("got %v, want zone revocation signature verification failed", err)
+	}
+}
+
 func testZoneDescriptor(t *testing.T, name string) (map[string]any, ed25519.PrivateKey) {
 	t.Helper()
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
