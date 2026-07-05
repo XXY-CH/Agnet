@@ -29,6 +29,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -3807,25 +3808,43 @@ func openAuditLog(path string) (*AuditLog, error) {
 		}
 		return nil, err
 	}
-	prev := auditZeroHash
-	for _, entry := range entries {
-		if err := verifyAuditEntry(entry, prev); err != nil {
-			return nil, err
-		}
-		prev = fmt.Sprint(entry["hash"])
+	head, err := auditHead(entries)
+	if err != nil {
+		return nil, err
 	}
-	audit.Head = prev
+	audit.Head = head
 	return audit, nil
 }
 
 func (a *AuditLog) Append(record map[string]any) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	entry, err := auditEntry(a.Head, record)
+	if err := os.MkdirAll(filepath.Dir(a.Path), 0o755); err != nil {
+		return err
+	}
+	lock, err := os.OpenFile(a.Path+".lock", os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(a.Path), 0o755); err != nil {
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	entries, err := readAuditEntries(a.Path)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	} else {
+		head, err := auditHead(entries)
+		if err != nil {
+			return err
+		}
+		a.Head = head
+	}
+	entry, err := auditEntry(a.Head, record)
+	if err != nil {
 		return err
 	}
 	file, err := os.OpenFile(a.Path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
@@ -3842,6 +3861,17 @@ func (a *AuditLog) Append(record map[string]any) error {
 	}
 	a.Head = fmt.Sprint(entry["hash"])
 	return nil
+}
+
+func auditHead(entries []map[string]any) (string, error) {
+	prev := auditZeroHash
+	for _, entry := range entries {
+		if err := verifyAuditEntry(entry, prev); err != nil {
+			return "", err
+		}
+		prev = fmt.Sprint(entry["hash"])
+	}
+	return prev, nil
 }
 
 func verifyAuditFile(path, artifactStoreDir string) error {

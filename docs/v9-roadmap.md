@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.16 complete; v9.17+ planned
+状态：v9.17 complete; v9.18+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -407,6 +407,30 @@
 - 不做 scheduler or automatic drain。
 - 不做 A2A/ARD compatibility。
 
+## v9.17: Go Audit Cross-Process Append Lock
+
+状态：complete
+目标：Go audit append serializes same-host writers and refreshes the hash-chain head under lock.
+
+新增：
+
+- `AuditLog.Append` uses an exclusive `<audit>.lock` file lock.
+- Append re-reads and verifies the existing audit log under the lock before selecting `prev_hash`.
+- Multiple Go `AuditLog` instances pointing at the same file append to the current shared head.
+- Corrupt shared audit logs are rejected before append.
+
+不做：
+
+- 不做 Node cross-process audit locking。
+- 不做 distributed audit log sync。
+- 不做 remote audit consensus。
+- 不做 multi-host locking。
+- 不做 database-backed audit store。
+- 不做 scheduler or automatic drain。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
 - real container namespace sandboxing。
+- Go/Node cross-implementation interop test。
+- TLS or mTLS transport prototype。

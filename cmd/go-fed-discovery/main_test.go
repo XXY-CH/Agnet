@@ -39,6 +39,57 @@ func TestReadAuditEntriesAcceptsLargeLines(t *testing.T) {
 	}
 }
 
+func TestAuditAppendRefreshesSharedHead(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.log")
+	first := &AuditLog{Path: path, Head: auditZeroHash}
+	second := &AuditLog{Path: path, Head: auditZeroHash}
+
+	if err := first.Append(map[string]any{"kind": "event", "index": float64(1)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.Append(map[string]any{"kind": "event", "index": float64(2)}); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := readAuditEntries(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("got %d entries, want 2", len(entries))
+	}
+	prev := auditZeroHash
+	for _, entry := range entries {
+		if err := verifyAuditEntry(entry, prev); err != nil {
+			t.Fatal(err)
+		}
+		prev = entry["hash"].(string)
+	}
+}
+
+func TestAuditAppendRejectsCorruptSharedAudit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.log")
+	first := &AuditLog{Path: path, Head: auditZeroHash}
+	second := &AuditLog{Path: path, Head: auditZeroHash}
+
+	if err := first.Append(map[string]any{"kind": "event", "index": float64(1)}); err != nil {
+		t.Fatal(err)
+	}
+	entry, err := auditEntry("bad-prev", map[string]any{"kind": "event", "index": float64(2)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.Append(map[string]any{"kind": "event", "index": float64(3)}); err == nil || !strings.Contains(err.Error(), "audit prev_hash mismatch") {
+		t.Fatalf("got %v, want audit prev_hash mismatch", err)
+	}
+}
+
 func TestApplyApprovalActionSerializesConcurrentApproves(t *testing.T) {
 	_, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
