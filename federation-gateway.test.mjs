@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
+import { writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
@@ -216,6 +217,52 @@ test("Federation Gateway hands off task from capability query result", async () 
     const result = JSON.parse(stdout);
 
     assert.equal(result.zone, zoneA.zid);
+    assert.equal(result.receipt.executing_zone, zoneB.zid);
+    assert.equal(result.events.at(-1).type, "task.completed");
+  } finally {
+    gateway.kill("SIGINT");
+  }
+});
+
+test("Go client completes a task against Node Federation Gateway", async () => {
+  const port = 8997;
+  const goAuthorityKey = "state/go-client-zone.seed";
+  const goRequesterKey = "state/go-client-requester.seed";
+  await writeFile(goAuthorityKey, "101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f\n");
+  await writeFile(goRequesterKey, "303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f\n");
+  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  const goZone = JSON.parse((await execFileAsync("go", [
+    "run",
+    "./cmd/go-fed-discovery",
+    "--print-zone",
+    "--authority-key",
+    goAuthorityKey,
+  ])).stdout);
+  await writeTrustedZones("state/go-client-trusts-node.json", [zoneB]);
+  await writeFile("state/node-trusts-go-client.json", `${JSON.stringify({ zones: [goZone] }, null, 2)}\n`);
+
+  const gateway = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/node-trusts-go-client.json"], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  try {
+    await waitForGateway(gateway);
+
+    const { stdout } = await execFileAsync("go", [
+      "run",
+      "./cmd/go-fed-discovery",
+      "--interop-request",
+      String(port),
+      "--trusted",
+      "state/go-client-trusts-node.json",
+      "--authority-key",
+      goAuthorityKey,
+      "--worker-key",
+      goRequesterKey,
+    ]);
+    const result = JSON.parse(stdout);
+    assert.equal(result.origin_zone, goZone.zid);
     assert.equal(result.receipt.executing_zone, zoneB.zid);
     assert.equal(result.events.at(-1).type, "task.completed");
   } finally {

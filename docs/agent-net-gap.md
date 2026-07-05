@@ -1,12 +1,12 @@
 # Agent Net Gap
 
-状态：v9.21 assessment
+状态：v9.22 assessment
 
 ## 一句话
 
 当前项目是 Agent Net 的 protocol seed，不是 Agent Net 产品。
 
-它已经抓住了真正 Agent Net 的底层骨架：identity、signed task、policy、artifact、receipt、audit、federation，以及 Node→Go task interop。
+它已经抓住了真正 Agent Net 的底层骨架：identity、signed task、policy、artifact、receipt、audit、federation，以及 Node/Go bidirectional task interop。
 
 它还缺产品面、运行面、部署面、多人协作面和真实工具执行面。
 

@@ -155,7 +155,54 @@ func main() {
 	artifactStoreGCApply := flag.Bool("artifact-store-gc-apply", false, "delete orphaned filesystem artifact mirror objects and exit")
 	sandboxProbe := flag.String("sandbox-probe", "", "print sandbox runtime support probe for a claim and exit")
 	sandboxRequire := flag.String("sandbox-require", "", "require sandbox runtime support for a claim and exit")
+	printZone := flag.Bool("print-zone", false, "print the authority Zone descriptor and exit")
+	interopRequestPort := flag.String("interop-request", "", "send one FED_TASK_OPEN request to a Node federation gateway port and exit")
 	flag.Parse()
+
+	if *printZone {
+		authorityKey, err := loadPrivateKey(*authorityKeyPath, "authority")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		zone, err := zoneDescriptor(authorityKey, "zone://go-client")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if err := json.NewEncoder(os.Stdout).Encode(zone); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	if *interopRequestPort != "" {
+		authorityKey, err := loadPrivateKey(*authorityKeyPath, "authority")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		requesterKey, err := loadPrivateKey(*workerKeyPath, "requester")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		trusted, err := loadTrustedZones(*trustPath)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		result, err := interopRequestNode(*interopRequestPort, trusted, authorityKey, requesterKey)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if *verifyAudit {
 		if err := verifyAuditFile(*auditPath, *artifactStoreDir); err != nil {
@@ -698,6 +745,135 @@ func certificateZoneIDs(certs []*x509.Certificate) map[string]bool {
 
 func sessionAuthBody(sessionID, challenge, peerZID, remoteZID string) map[string]any {
 	return map[string]any{"session_id": sessionID, "challenge": challenge, "peer_zid": peerZID, "remote_zid": remoteZID}
+}
+
+func interopRequestNode(port string, trusted map[string]map[string]any, zoneKey, requesterKey ed25519.PrivateKey) (map[string]any, error) {
+	origin, err := zoneDescriptor(zoneKey, "zone://go-client")
+	if err != nil {
+		return nil, err
+	}
+	requester, err := agentDescriptor(requesterKey, "agent://go-client/requester")
+	if err != nil {
+		return nil, err
+	}
+	conn, err := net.Dial("tcp", "127.0.0.1:"+port)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	decoder := json.NewDecoder(conn)
+	if err := json.NewEncoder(conn).Encode(map[string]any{"type": "HELLO", "origin_zone": origin}); err != nil {
+		return nil, err
+	}
+	events := []any{}
+	var receipt map[string]any
+	for {
+		var frame map[string]any
+		if err := decoder.Decode(&frame); err != nil {
+			return nil, err
+		}
+		switch frame["type"] {
+		case "HELLO":
+			remote, ok := frame["zone"].(map[string]any)
+			if !ok {
+				return nil, errors.New("remote zone missing")
+			}
+			if err := verifyTrustedZone(remote, trusted); err != nil {
+				return nil, err
+			}
+			body := sessionAuthBody(fmt.Sprint(frame["session_id"]), fmt.Sprint(frame["challenge"]), fmt.Sprint(origin["zid"]), fmt.Sprint(remote["zid"]))
+			if err := json.NewEncoder(conn).Encode(map[string]any{"type": "AUTH", "origin_zone": origin, "auth": signBodyWithKey(zoneKey, body, "auth_signature")}); err != nil {
+				return nil, err
+			}
+		case "AUTH_OK":
+			task := map[string]any{
+				"task_id": "go_node_interop_task",
+				"from":    requester["aid"],
+				"to":      "agent://zone-b/summarizer",
+				"intent":  "Summarize through Node from Go.",
+				"scope":   map[string]any{"network": false},
+				"budget":  map[string]any{"time_seconds": float64(30)},
+			}
+			if err := json.NewEncoder(conn).Encode(map[string]any{"type": "FED_TASK_OPEN", "origin_zone": origin, "requester": requester, "task": signBody(requesterKey, task)}); err != nil {
+				return nil, err
+			}
+		case "FED_TASK_EVENT":
+			events = append(events, frame["event"])
+		case "FED_RECEIPT":
+			if err := verifyInteropReceipt(frame, trusted); err != nil {
+				return nil, err
+			}
+			receipt, _ = frame["receipt"].(map[string]any)
+		case "FED_TASK_CLOSE":
+			if receipt == nil {
+				return nil, errors.New("remote receipt missing")
+			}
+			return map[string]any{"origin_zone": origin["zid"], "events": events, "receipt": receipt}, nil
+		case "FED_TASK_ERROR":
+			return nil, errors.New(fmt.Sprint(frame["error"]))
+		}
+	}
+}
+
+func verifyInteropReceipt(frame map[string]any, trusted map[string]map[string]any) error {
+	zone, ok := frame["zone"].(map[string]any)
+	if !ok {
+		return errors.New("receipt zone missing")
+	}
+	if err := verifyTrustedZone(zone, trusted); err != nil {
+		return err
+	}
+	worker, ok := frame["worker"].(map[string]any)
+	if !ok {
+		return errors.New("receipt worker missing")
+	}
+	if err := verifyAgentDescriptor(worker); err != nil {
+		return err
+	}
+	binding, ok := frame["zone_binding"].(map[string]any)
+	if !ok {
+		return errors.New("receipt zone binding missing")
+	}
+	if err := verifyZoneBinding(zone, binding, worker); err != nil {
+		return err
+	}
+	receipt, ok := frame["receipt"].(map[string]any)
+	if !ok {
+		return errors.New("receipt missing")
+	}
+	workerKey, _, err := publicKey(worker)
+	if err != nil {
+		return err
+	}
+	if err := verifyMapSignature(workerKey, receipt, "signature"); err != nil {
+		return errors.New("remote receipt signature verification failed")
+	}
+	return nil
+}
+
+func zoneDescriptor(key ed25519.PrivateKey, name string) (map[string]any, error) {
+	publicKey := key.Public().(ed25519.PublicKey)
+	encoded, der, err := publicKeySPKI(publicKey)
+	if err != nil {
+		return nil, err
+	}
+	return signBodyWithKey(key, map[string]any{"name": name, "zid": zidFromSPKI(der), "public_key_spki": encoded}, "zone_signature"), nil
+}
+
+func agentDescriptor(key ed25519.PrivateKey, alias string) (map[string]any, error) {
+	publicKey := key.Public().(ed25519.PublicKey)
+	encoded, der, err := publicKeySPKI(publicKey)
+	if err != nil {
+		return nil, err
+	}
+	return signBodyWithKey(key, map[string]any{
+		"alias":           alias,
+		"aid":             aidFromSPKI(der),
+		"public_key_spki": encoded,
+		"transports":      []string{"go-client://local"},
+		"capabilities":    []string{"summarize.text"},
+		"policy":          map[string]any{},
+	}, "descriptor_signature"), nil
 }
 
 func randomB64URL(size int) (string, error) {

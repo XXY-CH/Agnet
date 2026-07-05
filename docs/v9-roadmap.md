@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.21 complete; v9.22+ planned
+状态：v9.22 complete; v9.23+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -521,8 +521,32 @@
 - 不做 DHT / relay / edge gateway。
 - 不做 A2A/ARD compatibility。
 
+## v9.22: Go Client to Node Task Interop
+
+状态：complete
+目标：Go client can execute `FED_TASK_OPEN` against the Node federation gateway and verify the Node receipt.
+
+新增：
+
+- `cmd/go-fed-discovery --print-zone` prints the Go authority Zone descriptor for Node trust setup.
+- `cmd/go-fed-discovery --interop-request <port>` performs one Go client task request to a Node federation gateway.
+- The Go client performs `HELLO` / `AUTH`, verifies the Node Zone and zone binding, and verifies the Node `FED_RECEIPT` signature.
+- The Node federation test proves the Go request completes with `task.completed`.
+
+不做：
+
+- 不做 full Go client SDK。
+- 不做 full conformance suite。
+- 不做 scheduler-driven cross-implementation dispatch。
+- 不做 public bind address。
+- 不做 WebSocket TLS。
+- 不做 Human Gateway HTTPS。
+- 不做 QUIC。
+- 不做 DHT / relay / edge gateway。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
 - real container namespace sandboxing。
-- Go client to Node server task interop test。
 - public federation transport / QUIC binding。
+- cross-implementation conformance fixtures。
