@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.18 complete; v9.19+ planned
+状态：v9.19 complete; v9.20+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -451,8 +451,31 @@
 - 不做 DHT / relay / edge gateway。
 - 不做 A2A/ARD compatibility。
 
+## v9.19: Go Federation mTLS Client CA
+
+状态：complete
+目标：Go federation TLS listener can require client certificates signed by an operator-provided CA.
+
+新增：
+
+- `--tls-client-ca <path>` enables client certificate verification on the main Go federation TLS listener.
+- `--tls-client-ca` requires `--tls-cert` and `--tls-key`.
+- The listener status reports `transport: "fed+mtls"` when client certificate verification is enabled.
+- Go package coverage proves missing client certificates are rejected and CA-signed client certificates are accepted.
+
+不做：
+
+- 不把 client certificate 映射为 Zone identity。
+- 不替代 `HELLO` / `AUTH` authenticated session handshake。
+- 不做 public bind address。
+- 不做 WebSocket TLS。
+- 不做 Human Gateway HTTPS。
+- 不做 QUIC。
+- 不做 DHT / relay / edge gateway。
+- 不做 A2A/ARD compatibility。
+
 ## 后续方向
 
 - real container namespace sandboxing。
 - Go/Node cross-implementation interop test。
-- mTLS client certificate verification。
+- client certificate to Zone identity binding。

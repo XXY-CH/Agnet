@@ -140,6 +140,7 @@ func main() {
 	humanActorPolicyPath := flag.String("human-actor-policy", "", "optional Human Gateway actor policy JSON file")
 	tlsCertPath := flag.String("tls-cert", "", "optional federation TCP TLS certificate file")
 	tlsKeyPath := flag.String("tls-key", "", "optional federation TCP TLS key file")
+	tlsClientCAPath := flag.String("tls-client-ca", "", "optional federation TCP client certificate CA file")
 	artifactStoreDir := flag.String("artifact-store", "", "optional filesystem artifact mirror directory")
 	fixturePath := flag.String("fixture", "test-vectors/asp-v1.5-capability-credential.json", "signed descriptor fixture")
 	trustPath := flag.String("trusted", "state/go-fed-trusted-zones.json", "trusted origin zones")
@@ -217,13 +218,13 @@ func main() {
 		return
 	}
 
-	if err := serve(*port, *wsPort, *humanPort, *humanToken, *humanActorPolicyPath, *tlsCertPath, *tlsKeyPath, *artifactStoreDir, *fixturePath, *trustPath, *authorityKeyPath, *workerKeyPath, *auditPath); err != nil {
+	if err := serve(*port, *wsPort, *humanPort, *humanToken, *humanActorPolicyPath, *tlsCertPath, *tlsKeyPath, *tlsClientCAPath, *artifactStoreDir, *fixturePath, *trustPath, *authorityKeyPath, *workerKeyPath, *auditPath); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, artifactStoreDir, fixturePath, trustPath, authorityKeyPath, workerKeyPath, auditPath string) error {
+func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, tlsClientCAPath, artifactStoreDir, fixturePath, trustPath, authorityKeyPath, workerKeyPath, auditPath string) error {
 	authorityKey, err := loadPrivateKey(authorityKeyPath, "authority")
 	if err != nil {
 		return err
@@ -258,7 +259,7 @@ func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPat
 	if err != nil {
 		return err
 	}
-	listener, transport, err := listenFederation(port, tlsCertPath, tlsKeyPath)
+	listener, transport, err := listenFederation(port, tlsCertPath, tlsKeyPath, tlsClientCAPath)
 	if err != nil {
 		return err
 	}
@@ -301,9 +302,12 @@ func serve(port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPat
 	}
 }
 
-func listenFederation(port, tlsCertPath, tlsKeyPath string) (net.Listener, string, error) {
+func listenFederation(port, tlsCertPath, tlsKeyPath, tlsClientCAPath string) (net.Listener, string, error) {
 	if (tlsCertPath == "") != (tlsKeyPath == "") {
 		return nil, "", errors.New("both --tls-cert and --tls-key are required")
+	}
+	if tlsClientCAPath != "" && tlsCertPath == "" {
+		return nil, "", errors.New("--tls-client-ca requires --tls-cert and --tls-key")
 	}
 	addr := "127.0.0.1:" + port
 	if tlsCertPath == "" {
@@ -314,8 +318,23 @@ func listenFederation(port, tlsCertPath, tlsKeyPath string) (net.Listener, strin
 	if err != nil {
 		return nil, "", err
 	}
-	listener, err := tls.Listen("tcp", addr, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12})
-	return listener, "fed+tls", err
+	config := &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
+	transport := "fed+tls"
+	if tlsClientCAPath != "" {
+		caPEM, err := os.ReadFile(tlsClientCAPath)
+		if err != nil {
+			return nil, "", err
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(caPEM) {
+			return nil, "", errors.New("tls client CA file has no certificates")
+		}
+		config.ClientCAs = pool
+		config.ClientAuth = tls.RequireAndVerifyClientCert
+		transport = "fed+mtls"
+	}
+	listener, err := tls.Listen("tcp", addr, config)
+	return listener, transport, err
 }
 
 func handle(conn net.Conn, fixture Fixture, trusted map[string]map[string]any) {

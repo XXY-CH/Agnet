@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v9.18 assessment
+状态：v9.19 assessment
 
 ## 一句话
 
@@ -193,7 +193,7 @@
 
 主要缺：
 
-- mTLS/QUIC binding; Go federation TCP can run with server-side TLS, but client certificate verification and public transport are still missing。
+- certificate-to-Zone binding / QUIC binding; Go federation TCP can run with mTLS client certificate verification, but certificate identity is not yet bound to Zone identity and public transport is still missing。
 - public gateway deployment。
 - NAT/proxy story。
 - service discovery beyond static trusted stores。

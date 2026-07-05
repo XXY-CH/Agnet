@@ -99,7 +99,7 @@ func TestAuditAppendRejectsCorruptSharedAudit(t *testing.T) {
 
 func TestFederationListenerCanUseTLS(t *testing.T) {
 	certPath, keyPath := writeTestTLSCertificate(t)
-	listener, transport, err := listenFederation("0", certPath, keyPath)
+	listener, transport, err := listenFederation("0", certPath, keyPath, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,6 +122,41 @@ func TestFederationListenerCanUseTLS(t *testing.T) {
 	}()
 
 	conn, err := tls.Dial("tcp", listener.Addr().String(), &tls.Config{InsecureSkipVerify: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Write([]byte{1}); err != nil {
+		t.Fatal(err)
+	}
+	conn.Close()
+	if err := <-accepted; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFederationListenerCanRequireClientCertificate(t *testing.T) {
+	serverCertPath, serverKeyPath, caPath, clientCert := writeTestMTLSCertificates(t)
+	listener, transport, err := listenFederation("0", serverCertPath, serverKeyPath, caPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	if transport != "fed+mtls" {
+		t.Fatalf("transport = %s, want fed+mtls", transport)
+	}
+
+	rejected := acceptOneByte(listener)
+	conn, err := tls.Dial("tcp", listener.Addr().String(), &tls.Config{InsecureSkipVerify: true})
+	if err == nil {
+		_, _ = conn.Write([]byte{1})
+		conn.Close()
+	}
+	if err := <-rejected; err == nil {
+		t.Fatal("server accepted client without certificate")
+	}
+
+	accepted := acceptOneByte(listener)
+	conn, err = tls.Dial("tcp", listener.Addr().String(), &tls.Config{InsecureSkipVerify: true, Certificates: []tls.Certificate{clientCert}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,24 +205,68 @@ func TestApplyApprovalActionSerializesConcurrentApproves(t *testing.T) {
 
 func writeTestTLSCertificate(t *testing.T) (string, string) {
 	t.Helper()
+	certPath, keyPath, _, _ := writeTestMTLSCertificates(t)
+	return certPath, keyPath
+}
+
+func writeTestMTLSCertificates(t *testing.T) (string, string, string, tls.Certificate) {
+	t.Helper()
+	dir := t.TempDir()
+	caKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caTemplate := x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "test-ca"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign,
+	}
+	caDER, err := x509.CreateCertificate(rand.Reader, &caTemplate, &caTemplate, &caKey.PublicKey, caKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caCert, err := x509.ParseCertificate(caDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	serverCertPath, serverKeyPath := writeSignedTestCertificate(t, dir, "server", caCert, caKey, x509.ExtKeyUsageServerAuth)
+	clientCertPath, clientKeyPath := writeSignedTestCertificate(t, dir, "client", caCert, caKey, x509.ExtKeyUsageClientAuth)
+	caPath := filepath.Join(dir, "ca.pem")
+	if err := os.WriteFile(caPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER}), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	clientCert, err := tls.LoadX509KeyPair(clientCertPath, clientKeyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return serverCertPath, serverKeyPath, caPath, clientCert
+}
+
+func writeSignedTestCertificate(t *testing.T, dir, name string, caCert *x509.Certificate, caKey *rsa.PrivateKey, usage x509.ExtKeyUsage) (string, string) {
+	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
 	}
 	template := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "127.0.0.1"},
+		SerialNumber: big.NewInt(time.Now().UnixNano()),
+		Subject:      pkix.Name{CommonName: name},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().Add(time.Hour),
 		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
+		ExtKeyUsage:  []x509.ExtKeyUsage{usage},
 	}
-	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, caCert, &key.PublicKey, caKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir := t.TempDir()
-	certPath := filepath.Join(dir, "cert.pem")
-	keyPath := filepath.Join(dir, "key.pem")
+	certPath := filepath.Join(dir, name+".pem")
+	keyPath := filepath.Join(dir, name+"-key.pem")
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
 	if err := os.WriteFile(certPath, certPEM, 0o644); err != nil {
@@ -197,6 +276,22 @@ func writeTestTLSCertificate(t *testing.T) (string, string) {
 		t.Fatal(err)
 	}
 	return certPath, keyPath
+}
+
+func acceptOneByte(listener net.Listener) chan error {
+	out := make(chan error, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			out <- err
+			return
+		}
+		defer conn.Close()
+		buf := []byte{0}
+		_, err = conn.Read(buf)
+		out <- err
+	}()
+	return out
 }
 
 func TestWriteJSONStateFileLeavesCompleteStateAndNoTempFile(t *testing.T) {
