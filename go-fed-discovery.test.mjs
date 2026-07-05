@@ -448,7 +448,7 @@ function exchangeWebSocketFrames(port, frame, closeType) {
   });
 }
 
-test("Go discovery gateway serves FED_RESOLVE and FED_QUERY to Node client", async () => {
+test("Go discovery gateway serves FED_RESOLVE, FED_QUERY, and FED_TASK_OPEN to Node client", async () => {
   const [port, wsPort, humanPort] = await freePorts(3);
   humanToken = "test-human-gateway-token";
   zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
@@ -664,6 +664,20 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     assert.equal(translatedResult.matches[0].alias, "agent://zone-b/translator");
     assert.equal(translatedResult.matches[0].credentials[0].capability, "translate.text");
     assert.equal(translatedResult.matches[0].credential_statuses[0].status, "active");
+
+    const requested = await execFileAsync(process.execPath, [
+      "federation-gateway.mjs",
+      "request",
+      String(port),
+      "state/node-trusts-go-discovery.json",
+      "agent://zone-b/summarizer",
+    ]);
+    const requestedResult = JSON.parse(requested.stdout);
+    assert.equal(requestedResult.zone, zoneA.zid);
+    assert.equal(requestedResult.receipt.executing_zone, fixture.authority.zid);
+    assert.equal(requestedResult.receipt.to, fixture.worker.aid);
+    assert.equal(requestedResult.events.at(-1).type, "task.completed");
+    assert.equal(requestedResult.receipt.artifact_refs.some((uri) => uri.endsWith("/go-summary.md")), true);
 
     const unauthenticated = await exchangeUnauthenticatedFrame(port, {
       type: "FED_QUERY",
@@ -1946,7 +1960,11 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 85);
+    const requestedReceiptEntry = auditBody.entries.find(
+      (entry) => entry.record.kind === "go_fed_receipt" && entry.record.receipt.task_id === requestedResult.receipt.task_id,
+    );
+    assert.ok(requestedReceiptEntry);
+    assert.equal(requestedReceiptEntry.record.receipt.executing_zone, fixture.authority.zid);
     const auditProofResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit?task_id=${encodeURIComponent(task.task_id)}`);
     assert.equal(auditProofResponse.status, 200);
     const auditProofBody = await auditProofResponse.json();

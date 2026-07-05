@@ -237,7 +237,7 @@ async function request(port, trustedZonesFile, alias = "agent://zone-b/summarize
     from: requester.aid,
     to: alias,
     intent: "Summarize through a trusted remote Zone.",
-    scope: { network: false, write: ["artifact://local/"] },
+    scope: { network: false },
     budget: { time_seconds: 30 },
   };
   const signedTask = { ...task, signature: signObject(requester.privateKey, task) };
