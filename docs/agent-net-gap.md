@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v9.2 assessment
+状态：v9.3 assessment
 
 ## 一句话
 
@@ -76,7 +76,7 @@
 - Node federation execution path。
 - Node audit appends are serialized inside one process。
 - Go discovery gateway with minimal deterministic execution。
-- Go audit verifier for execution evidence。
+- Go audit verifier for execution evidence, including larger JSONL audit entries。
 - Go exact-match multi-worker routing。
 - Go built-in pure-text tool execution。
 - Go external stdio tool execution envelope。

@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.2 complete; v9.3+ planned
+状态：v9.3 complete; v9.4+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -81,7 +81,29 @@
 
 ## 后续方向
 
-- Go audit scanner buffer hardening。
+## v9.3: Go Audit Scanner Buffer
+
+状态：complete
+目标：Go audit readers accept larger valid JSONL audit entries.
+
+新增：
+
+- `readAuditEntries` sets a 1 MiB scanner token limit.
+- Go package test writes a valid audit entry larger than the default 64 KiB limit.
+- The test verifies the shared audit reader accepts the large line.
+
+不做：
+
+- 不做 streaming JSON decoder。
+- 不做 audit compaction。
+- 不做 audit pagination。
+- 不做 state-file atomic writes。
+- 不做 Go approval locking。
+- 不做 queue grant replay index。
+- 不做 A2A/ARD compatibility。
+
+## 后续方向
+
 - Go approval action locking。
 - artifact GC delete/apply over the plan。
 - container namespace sandboxing。

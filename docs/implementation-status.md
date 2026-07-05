@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v9.2 complete
-当前代码基线：`v9.2-node-audit-append-serialization`
+状态：v9.3 complete
+当前代码基线：`v9.3-go-audit-scanner-buffer`
 
 ## 一句话
 
@@ -20,7 +20,7 @@
 | Events | done | minimal federation events + Go checkpoint event | `agent-runtime.test.mjs`, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | richer event lifecycle |
 | Artifact write | done | deterministic local artifact + Go artifact manifest digest evidence + tool output/transcript digest alignment + local manifest sidecar/API + content-addressed local path + optional filesystem artifact mirror + mirror object index + audit verifier byte/named sidecar/digest sidecar/mirror/index checks + GC plan | `mvp-demo.test.mjs`, `go-fed-discovery.test.mjs` | object-store backend / GC apply |
 | Receipt signing | done | done for minimal Go execution | `test-vectors.test.mjs`, `go-fed-discovery.test.mjs` | receipt verification CLI |
-| Audit hash chain | done + in-process append serialization | done for Go execution, queue actions, remote receipt proof query, and Human Gateway task-scoped receipt proof query | `audit-chain.test.mjs`, `go-fed-discovery.test.mjs` | cross-process locking / full log sync / remote search |
+| Audit hash chain | done + in-process append serialization | done for Go execution, queue actions, remote receipt proof query, Human Gateway task-scoped receipt proof query, and large-line audit reads | `audit-chain.test.mjs`, `cmd/go-fed-discovery/main_test.go`, `go-fed-discovery.test.mjs` | cross-process locking / full log sync / remote search |
 | Federation resolve | done | done | `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | public transport |
 | Capability query | done | done | `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | ranking / scheduling |
 | Capability credential | done | done + Go signed status evidence | `capability-credential.test.mjs`, `go-fed-discovery.test.mjs` | revocation feed / renewal |
@@ -145,7 +145,7 @@ Go
 
 ## Next Boundary
 
-v9.2 serializes Node audit appends inside one process. The next natural boundary is Go audit scanner buffer hardening, Go approval action locking, artifact GC apply/delete over the plan, or another small Ultimate-aligned runtime/governance slice.
+v9.3 hardens Go audit scanning for larger valid JSONL lines. The next natural boundary is Go approval action locking, artifact GC apply/delete over the plan, queue grant replay indexing, or another small Ultimate-aligned runtime/governance slice.
 
 Route detail: `docs/v9-roadmap.md`。
 

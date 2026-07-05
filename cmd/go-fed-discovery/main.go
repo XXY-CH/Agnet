@@ -3750,6 +3750,7 @@ func readAuditEntries(path string) ([]map[string]any, error) {
 	defer file.Close()
 	out := []map[string]any{}
 	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
