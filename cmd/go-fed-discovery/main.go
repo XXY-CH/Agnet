@@ -4215,6 +4215,7 @@ func verifyAuditFile(path, artifactStoreDir string) error {
 		return err
 	}
 	prev := auditZeroHash
+	swarmManifests := map[string]map[string]any{}
 	for _, entry := range entries {
 		if err := verifyAuditEntry(entry, prev); err != nil {
 			return err
@@ -4225,6 +4226,10 @@ func verifyAuditFile(path, artifactStoreDir string) error {
 		}
 		if record["kind"] == "go_fed_receipt" {
 			if err := verifyReceiptRecord(record, artifactStoreDir); err != nil {
+				return err
+			}
+			receipt, _ := record["receipt"].(map[string]any)
+			if err := verifySwarmReceiptDependencies(receipt, swarmManifests); err != nil {
 				return err
 			}
 		}
@@ -4419,6 +4424,42 @@ func verifyReceiptRecord(record map[string]any, artifactStoreDir string) error {
 	}
 	if err := verifySandboxProof(zoneKey, receipt); err != nil {
 		return err
+	}
+	return nil
+}
+
+func verifySwarmReceiptDependencies(receipt map[string]any, completed map[string]map[string]any) error {
+	swarm, ok := receipt["swarm"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	swarmID := optionalString(swarm["swarm_id"])
+	stepID := optionalString(swarm["step_id"])
+	if swarmID == "" || stepID == "" {
+		return errors.New("swarm receipt identity missing")
+	}
+	inputs := mapsFromAny(swarm["input_artifacts"])
+	if len(inputs) != len(stringsFromAny(swarm["after"])) {
+		return errors.New("swarm input artifact count mismatch")
+	}
+	for _, input := range inputs {
+		dependency := optionalString(input["step_id"])
+		manifest, ok := completed[swarmID+"\x00"+dependency]
+		if !ok {
+			return errors.New("swarm dependency receipt missing: " + dependency)
+		}
+		if input["uri"] != manifest["uri"] {
+			return errors.New("swarm input artifact uri mismatch")
+		}
+		if input["sha256"] != manifest["sha256"] {
+			return errors.New("swarm input artifact digest mismatch")
+		}
+		if input["manifest_hash"] != manifest["manifest_hash"] {
+			return errors.New("swarm input artifact manifest hash mismatch")
+		}
+	}
+	if manifests := mapsFromAny(receipt["artifact_manifests"]); len(manifests) > 0 {
+		completed[swarmID+"\x00"+stepID] = manifests[0]
 	}
 	return nil
 }

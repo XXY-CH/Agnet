@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.26 complete; v9.27+ planned
+状态：v9.27 complete; v9.28+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -646,6 +646,31 @@
 - 不做 cross-Zone Swarm。
 - 不做 Node Swarm server。
 - 不做 container namespace sandbox。
+- 不做 A2A/ARD compatibility。
+
+## v9.27: Swarm Dependency Audit Verification
+
+状态：complete
+目标：Go audit verification rejects signed Swarm receipts whose declared input artifacts do not match upstream Swarm step receipts in the same audit log.
+
+新增：
+
+- `--verify-audit` records completed Swarm step artifact manifests while scanning the audit chain.
+- Dependent Swarm receipts must reference an already completed step in the same `swarm_id`.
+- `input_artifacts` must match the upstream step's first artifact manifest by `step_id`, `uri`, `sha256`, and `manifest_hash`.
+- Go package coverage proves a worker-signed false dependency digest is rejected.
+- The same coverage proves the clean Swarm dependency graph still verifies.
+
+不做：
+
+- 不做 cross-audit dependency lookup。
+- 不做 remote audit sync。
+- 不做 scheduler。
+- 不做 dynamic decomposition。
+- 不做 parallel execution。
+- 不做 conflict resolution。
+- 不做 Swarm UI。
+- 不做 Node Swarm server。
 - 不做 A2A/ARD compatibility。
 
 ## 后续方向

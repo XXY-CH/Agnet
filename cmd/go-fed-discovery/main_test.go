@@ -250,6 +250,82 @@ func TestFedReceiptConformanceVectorVerifiesInGo(t *testing.T) {
 	}
 }
 
+func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
+	t.Chdir(t.TempDir())
+	zone, zoneKey := testZoneDescriptor(t, "zone://swarm")
+	_, upstreamKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, downstreamKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstreamWorker, err := agentDescriptor(upstreamKey, "agent://zone-b/upstream")
+	if err != nil {
+		t.Fatal(err)
+	}
+	downstreamWorker, err := agentDescriptor(downstreamKey, "agent://zone-b/downstream")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := Fixture{Authority: zone, AuthorityPrivateKey: zoneKey}
+	upstreamManifest, err := writeArtifact("artifact://local/swarm_up/out.md", "# upstream\n", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	downstreamManifest, err := writeArtifact("artifact://local/swarm_down/out.md", "# downstream\n", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstreamReceipt := testSignedReceipt(t, zone, zoneKey, upstreamWorker, upstreamKey, "swarm_up", []map[string]any{upstreamManifest}, map[string]any{
+		"swarm": map[string]any{
+			"swarm_id":        "swarm://test",
+			"step_id":         "upstream",
+			"after":           []string{},
+			"input_artifacts": []map[string]any{},
+		},
+	})
+	downstreamReceipt := testSignedReceipt(t, zone, zoneKey, downstreamWorker, downstreamKey, "swarm_down", []map[string]any{downstreamManifest}, map[string]any{
+		"swarm": map[string]any{
+			"swarm_id": "swarm://test",
+			"step_id":  "downstream",
+			"after":    []string{"upstream"},
+			"input_artifacts": []map[string]any{{
+				"step_id":       "upstream",
+				"uri":           upstreamManifest["uri"],
+				"sha256":        strings.Repeat("0", 64),
+				"manifest_hash": upstreamManifest["manifest_hash"],
+			}},
+		},
+	})
+	log := &AuditLog{Path: "audit.log", Head: auditZeroHash}
+	if err := log.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": upstreamReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	if err := log.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": downstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(downstreamWorker), "receipt": downstreamReceipt}); err != nil {
+		t.Fatal(err)
+	}
+
+	err = verifyAuditFile("audit.log", "")
+	if err == nil || !strings.Contains(err.Error(), "swarm input artifact digest mismatch") {
+		t.Fatalf("got %v, want swarm input artifact digest mismatch", err)
+	}
+
+	downstreamReceipt["swarm"].(map[string]any)["input_artifacts"].([]map[string]any)[0]["sha256"] = upstreamManifest["sha256"]
+	downstreamRecord := signBody(downstreamKey, receiptBodyWithoutSignature(downstreamReceipt))
+	cleanLog := &AuditLog{Path: "clean-audit.log", Head: auditZeroHash}
+	if err := cleanLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": upstreamReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cleanLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": downstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(downstreamWorker), "receipt": downstreamRecord}); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyAuditFile("clean-audit.log", ""); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPublicListenHostFlag(t *testing.T) {
 	cases := map[string]bool{
 		"127.0.0.1": false,
@@ -265,6 +341,66 @@ func TestPublicListenHostFlag(t *testing.T) {
 			t.Fatalf("isPublicListenHost(%q) = %v, want %v", host, got, want)
 		}
 	}
+}
+
+func testSignedReceipt(t *testing.T, zone map[string]any, zoneKey ed25519.PrivateKey, worker map[string]any, workerKey ed25519.PrivateKey, taskID string, manifests []map[string]any, extra map[string]any) map[string]any {
+	t.Helper()
+	refs := make([]string, 0, len(manifests))
+	for _, manifest := range manifests {
+		refs = append(refs, fmt.Sprint(manifest["uri"]))
+	}
+	policyScope := map[string]any{
+		"network":           false,
+		"write":             []string{},
+		"tools":             []string{},
+		"data_domains":      []string{},
+		"approval_required": []string{},
+		"expires_at":        "",
+	}
+	sandbox := map[string]any{"mode": "in-process", "isolation_level": "in-process"}
+	policyDigest := digestHex(policyScope)
+	proof := signBodyWithKey(zoneKey, map[string]any{
+		"proof_type":    "local.sandbox.v1",
+		"task_id":       taskID,
+		"authority":     zone["zid"],
+		"worker":        worker["aid"],
+		"sandbox":       sandbox,
+		"policy_digest": policyDigest,
+	}, "sandbox_signature")
+	body := map[string]any{
+		"task_id":            taskID,
+		"from":               "aid:ed25519:test-requester",
+		"origin_zone":        zone["zid"],
+		"executing_zone":     zone["zid"],
+		"to":                 worker["aid"],
+		"artifact_refs":      refs,
+		"artifact_manifests": manifests,
+		"tool_output_digest": manifests[0]["sha256"],
+		"event_count":        float64(1),
+		"approvals":          []string{},
+		"approval_grants":    []map[string]any{},
+		"checkpoint_refs":    []string{},
+		"checkpoints":        []map[string]any{},
+		"policy_scope":       policyScope,
+		"policy_digest":      policyDigest,
+		"sandbox":            sandbox,
+		"sandbox_proof":      proof,
+		"tool":               "test",
+	}
+	for key, value := range extra {
+		body[key] = value
+	}
+	return signBody(workerKey, body)
+}
+
+func receiptBodyWithoutSignature(receipt map[string]any) map[string]any {
+	body := map[string]any{}
+	for key, value := range receipt {
+		if key != "signature" {
+			body[key] = value
+		}
+	}
+	return body
 }
 
 func TestFederationListenerCanRequireClientCertificate(t *testing.T) {
