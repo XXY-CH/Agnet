@@ -134,6 +134,7 @@ func main() {
 	auditPath := flag.String("audit", "state/go-fed-audit.log", "audit JSONL file")
 	verifyAudit := flag.Bool("verify-audit", false, "verify audit JSONL file and exit")
 	artifactStoreGCPlan := flag.Bool("artifact-store-gc-plan", false, "print filesystem artifact mirror GC plan and exit")
+	artifactStoreGCApply := flag.Bool("artifact-store-gc-apply", false, "delete orphaned filesystem artifact mirror objects and exit")
 	flag.Parse()
 
 	if *verifyAudit {
@@ -151,6 +152,18 @@ func main() {
 			os.Exit(1)
 		}
 		if err := json.NewEncoder(os.Stdout).Encode(plan); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	if *artifactStoreGCApply {
+		result, err := applyArtifactStoreGC(*auditPath, *artifactStoreDir)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
@@ -3749,6 +3762,30 @@ func planArtifactStoreGC(auditPath, artifactStoreDir string) (map[string]any, er
 	return map[string]any{"artifact_store_gc_plan": "ok", "orphans": orphans}, nil
 }
 
+func applyArtifactStoreGC(auditPath, artifactStoreDir string) (map[string]any, error) {
+	plan, err := planArtifactStoreGC(auditPath, artifactStoreDir)
+	if err != nil {
+		return nil, err
+	}
+	orphans := mapsFromAny(plan["orphans"])
+	var deleted []map[string]any
+	for _, orphan := range orphans {
+		sha := fmt.Sprint(orphan["sha256"])
+		if sha == "" {
+			continue
+		}
+		path := filepath.Join(artifactStoreDir, "by-sha256", sha)
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+		if err := os.Remove(path + ".manifest.json"); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+		deleted = append(deleted, orphan)
+	}
+	return map[string]any{"artifact_store_gc_apply": "ok", "deleted": deleted}, nil
+}
+
 func readAuditEntries(path string) ([]map[string]any, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -4212,6 +4249,9 @@ func copyQueueCarryFields(dst, src map[string]any) {
 }
 
 func mapsFromAny(value any) []map[string]any {
+	if typed, ok := value.([]map[string]any); ok {
+		return typed
+	}
 	items, _ := value.([]any)
 	out := []map[string]any{}
 	for _, item := range items {

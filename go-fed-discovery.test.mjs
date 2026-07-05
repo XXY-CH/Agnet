@@ -1797,7 +1797,12 @@ setTimeout(() => {
       /artifact mirror index entry missing/,
     );
     await writeFile("state/go-fed-artifact-store/objects.ndjson", fullArtifactStoreIndex.map((item) => JSON.stringify(item)).join("\n") + "\n");
-    await writeFile("state/go-fed-artifact-store/objects.ndjson", `${JSON.stringify({ uri: "artifact://local/orphan.txt", sha256: "0".repeat(64), size: 0, media_type: "text/plain", manifest_hash: "1".repeat(64) })}\n`, { flag: "a" });
+    const orphanSha = createHash("sha256").update("").digest("hex");
+    const orphanMirrorPath = `state/go-fed-artifact-store/by-sha256/${orphanSha}`;
+    const orphanManifest = { uri: "artifact://local/orphan.txt", sha256: orphanSha, size: 0, media_type: "text/plain", manifest_hash: "1".repeat(64) };
+    await writeFile(orphanMirrorPath, "");
+    await writeFile(`${orphanMirrorPath}.manifest.json`, `${JSON.stringify(orphanManifest, null, 2)}\n`);
+    await writeFile("state/go-fed-artifact-store/objects.ndjson", `${JSON.stringify(orphanManifest)}\n`, { flag: "a" });
     const gcPlan = await execFileAsync("go", [
       "run",
       "./cmd/go-fed-discovery",
@@ -1809,7 +1814,22 @@ setTimeout(() => {
     ]);
     const gcPlanBody = JSON.parse(gcPlan.stdout);
     assert.equal(gcPlanBody.artifact_store_gc_plan, "ok");
-    assert.deepEqual(gcPlanBody.orphans.map((item) => item.sha256), ["0".repeat(64)]);
+    assert.deepEqual(gcPlanBody.orphans.map((item) => item.sha256), [orphanSha]);
+    const gcApply = await execFileAsync("go", [
+      "run",
+      "./cmd/go-fed-discovery",
+      "--artifact-store-gc-apply",
+      "--artifact-store",
+      "state/go-fed-artifact-store",
+      "--audit",
+      "state/go-fed-discovery-audit.log",
+    ]);
+    const gcApplyBody = JSON.parse(gcApply.stdout);
+    assert.equal(gcApplyBody.artifact_store_gc_apply, "ok");
+    assert.deepEqual(gcApplyBody.deleted.map((item) => item.sha256), [orphanSha]);
+    await assert.rejects(readFile(orphanMirrorPath, "utf8"), /ENOENT/);
+    await assert.rejects(readFile(`${orphanMirrorPath}.manifest.json`, "utf8"), /ENOENT/);
+    assert.equal(await readFile(mirrorArtifactPath, "utf8"), artifactText);
 
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);

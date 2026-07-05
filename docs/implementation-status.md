@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v9.4 complete
-当前代码基线：`v9.4-go-approval-action-serialization`
+状态：v9.5 complete
+当前代码基线：`v9.5-artifact-store-gc-apply`
 
 ## 一句话
 
@@ -18,7 +18,7 @@
 | Local registry | done | multi-worker profile registry | `zone-registry.test.mjs`, `go-fed-discovery.test.mjs` | worker lifecycle API |
 | Local task execution | done | built-in + external stdio + MCP stdio tools/call + MCP initialize/resources/prompts/tools metadata + selected tool/schema/argument evidence + MCP required argument gate + explicit local-process isolation evidence + sandbox-bound HOME/TMPDIR/XDG_CACHE_HOME + signed local sandbox proof + sandbox claim binding + tool command, binary, transcript digests, and transcript artifacts | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | container namespace sandbox / long-running MCP sessions |
 | Events | done | minimal federation events + Go checkpoint event | `agent-runtime.test.mjs`, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | richer event lifecycle |
-| Artifact write | done | deterministic local artifact + Go artifact manifest digest evidence + tool output/transcript digest alignment + local manifest sidecar/API + content-addressed local path + optional filesystem artifact mirror + mirror object index + audit verifier byte/named sidecar/digest sidecar/mirror/index checks + GC plan | `mvp-demo.test.mjs`, `go-fed-discovery.test.mjs` | object-store backend / GC apply |
+| Artifact write | done | deterministic local artifact + Go artifact manifest digest evidence + tool output/transcript digest alignment + local manifest sidecar/API + content-addressed local path + optional filesystem artifact mirror + mirror object index + audit verifier byte/named sidecar/digest sidecar/mirror/index checks + GC plan/apply | `mvp-demo.test.mjs`, `go-fed-discovery.test.mjs` | object-store backend / retention policy |
 | Receipt signing | done | done for minimal Go execution | `test-vectors.test.mjs`, `go-fed-discovery.test.mjs` | receipt verification CLI |
 | Audit hash chain | done + in-process append serialization | done for Go execution, queue actions, remote receipt proof query, Human Gateway task-scoped receipt proof query, and large-line audit reads | `audit-chain.test.mjs`, `cmd/go-fed-discovery/main_test.go`, `go-fed-discovery.test.mjs` | cross-process locking / full log sync / remote search |
 | Federation resolve | done | done | `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | public transport |
@@ -81,6 +81,7 @@ Go
   -> MCP stdio responses are copied into the live transcript snapshot as NDJSON
   -> filesystem artifact mirrors maintain and verify an objects.ndjson content-addressed object index
   -> artifact-store GC plan lists unreferenced mirror index entries
+  -> artifact-store GC apply deletes unreferenced mirror bytes and sidecars
   -> tool output digest aligned with artifact manifest
   -> MCP initialize metadata in sandbox evidence
   -> MCP resources/prompts count+digest evidence
@@ -145,7 +146,7 @@ Go
 
 ## Next Boundary
 
-v9.4 serializes Go approval state modifications inside one process. The next natural boundary is artifact GC apply/delete over the plan, queue grant replay indexing, state-file atomic writes, or another small Ultimate-aligned runtime/governance slice.
+v9.5 applies the verified artifact-store GC plan to delete orphaned mirror bytes and sidecars. The next natural boundary is container namespace sandboxing, queue grant replay indexing, state-file atomic writes, or another small Ultimate-aligned runtime/governance slice.
 
 Route detail: `docs/v9-roadmap.md`。
 
