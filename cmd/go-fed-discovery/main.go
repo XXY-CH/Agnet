@@ -4472,7 +4472,11 @@ func verifySwarmReceiptDependencies(receipt map[string]any, completed map[string
 			manifest[key] = value
 		}
 		manifest["receipt_digest"] = digestHex(receipt)
-		completed[swarmID+"\x00"+stepID] = manifest
+		completedKey := swarmID + "\x00" + stepID
+		if _, exists := completed[completedKey]; exists {
+			return errors.New("duplicate swarm step receipt: " + stepID)
+		}
+		completed[completedKey] = manifest
 	}
 	return nil
 }

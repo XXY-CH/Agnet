@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v9.29 assessment
+状态：v9.30 assessment
 
 ## 一句话
 
@@ -21,7 +21,7 @@
 - Ed25519 Agent/Zone identity。
 - shared Node/Go `FED_TASK_OPEN` and `FED_RECEIPT` conformance fixtures。
 - Go `FED_SWARM_OPEN` explicit two-step DAG seed with signed artifact dependency evidence。
-- Go audit verification rejects signed Swarm dependency claims that do not match declared dependency steps, upstream step artifact manifests, or receipt digests in the same audit。
+- Go audit verification rejects duplicate Swarm step receipts and signed Swarm dependency claims that do not match declared dependency steps, upstream step artifact manifests, or receipt digests in the same audit。
 - `agent://` alias -> `aid:` descriptor。
 - signed task。
 - policy scope。
@@ -160,7 +160,7 @@
 - MCP stdio responses are copied into live transcript snapshots as NDJSON。
 - Filesystem artifact mirrors maintain and verify an `objects.ndjson` content-addressed object index, can produce a GC plan, and can delete orphaned mirror objects from that plan。
 - Explicit Swarm seed executes two ordered Go worker steps and signs the downstream artifact dependency into the receipt。
-- Audit verification checks Swarm dependency step ids, artifact manifest, and receipt digest claims against prior completed steps in the same audit。
+- Audit verification checks Swarm dependency step uniqueness plus dependency step ids, artifact manifest, and receipt digest claims against prior completed steps in the same audit。
 
 主要缺：
 

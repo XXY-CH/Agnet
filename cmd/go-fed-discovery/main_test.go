@@ -369,6 +369,43 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 		t.Fatalf("got %v, want swarm input artifact step mismatch", err)
 	}
 
+	duplicateStepReceipt := testSignedReceipt(t, zone, zoneKey, upstreamWorker, upstreamKey, "swarm_up_duplicate", []map[string]any{otherManifest}, map[string]any{
+		"swarm": map[string]any{
+			"swarm_id":        "swarm://test",
+			"step_id":         "upstream",
+			"after":           []string{},
+			"input_artifacts": []map[string]any{},
+		},
+	})
+	downstreamDuplicateStepReceipt := testSignedReceipt(t, zone, zoneKey, downstreamWorker, downstreamKey, "swarm_down_duplicate_step", []map[string]any{downstreamManifest}, map[string]any{
+		"swarm": map[string]any{
+			"swarm_id": "swarm://test",
+			"step_id":  "downstream",
+			"after":    []string{"upstream"},
+			"input_artifacts": []map[string]any{{
+				"step_id":        "upstream",
+				"uri":            otherManifest["uri"],
+				"sha256":         otherManifest["sha256"],
+				"manifest_hash":  otherManifest["manifest_hash"],
+				"receipt_digest": digestHex(duplicateStepReceipt),
+			}},
+		},
+	})
+	duplicateStepLog := &AuditLog{Path: "duplicate-step-audit.log", Head: auditZeroHash}
+	if err := duplicateStepLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": upstreamReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	if err := duplicateStepLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": duplicateStepReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	if err := duplicateStepLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": downstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(downstreamWorker), "receipt": downstreamDuplicateStepReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	err = verifyAuditFile("duplicate-step-audit.log", "")
+	if err == nil || !strings.Contains(err.Error(), "duplicate swarm step receipt") {
+		t.Fatalf("got %v, want duplicate swarm step receipt", err)
+	}
+
 	downstreamReceipt["swarm"].(map[string]any)["input_artifacts"].([]map[string]any)[0]["receipt_digest"] = digestHex(upstreamReceipt)
 	downstreamRecord := signBody(downstreamKey, receiptBodyWithoutSignature(downstreamReceipt))
 	cleanLog := &AuditLog{Path: "clean-audit.log", Head: auditZeroHash}

@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.28 complete; v9.29+ planned
+状态：v9.30 complete; v9.31+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -712,6 +712,33 @@
 
 不做：
 
+- 不做 cross-audit dependency lookup。
+- 不做 remote audit sync。
+- 不做 scheduler。
+- 不做 dynamic decomposition。
+- 不做 parallel execution。
+- 不做 conflict resolution。
+- 不做 Swarm UI。
+- 不做 Node Swarm server。
+- 不做 container namespace sandbox。
+- 不做 A2A/ARD compatibility。
+
+## v9.30: Swarm Duplicate Step Receipt Rejection
+
+状态：complete
+目标：Audit verification preserves one completed receipt per `swarm_id` + `step_id`.
+
+新增：
+
+- `--verify-audit` rejects duplicate completed Swarm receipts with the same `swarm_id` and `step_id`.
+- A later duplicate receipt can no longer overwrite the first completed step's artifact manifest and receipt digest in verifier state.
+- Go package coverage proves a signed duplicate step receipt is rejected even when a downstream receipt matches the duplicate receipt's evidence.
+- This aligns audit verification with live `FED_SWARM_OPEN` execution, which already rejects duplicate step ids.
+
+不做：
+
+- 不做 duplicate step merge 语义。
+- 不做 Swarm retry step semantics。
 - 不做 cross-audit dependency lookup。
 - 不做 remote audit sync。
 - 不做 scheduler。
