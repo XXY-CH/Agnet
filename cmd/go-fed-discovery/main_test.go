@@ -406,6 +406,29 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 		t.Fatalf("got %v, want duplicate swarm step receipt", err)
 	}
 
+	noArtifactReceiptBody := receiptBodyWithoutSignature(testSignedReceipt(t, zone, zoneKey, upstreamWorker, upstreamKey, "swarm_no_artifact", []map[string]any{upstreamManifest}, map[string]any{
+		"swarm": map[string]any{
+			"swarm_id":        "swarm://test",
+			"step_id":         "no-artifact",
+			"after":           []string{},
+			"input_artifacts": []map[string]any{},
+		},
+	}))
+	noArtifactReceiptBody["artifact_refs"] = []string{}
+	noArtifactReceiptBody["artifact_manifests"] = []map[string]any{}
+	noArtifactReceipt := signBody(upstreamKey, noArtifactReceiptBody)
+	duplicateNoArtifactLog := &AuditLog{Path: "duplicate-no-artifact-audit.log", Head: auditZeroHash}
+	if err := duplicateNoArtifactLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": noArtifactReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	if err := duplicateNoArtifactLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": noArtifactReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	err = verifyAuditFile("duplicate-no-artifact-audit.log", "")
+	if err == nil || !strings.Contains(err.Error(), "duplicate swarm step receipt") {
+		t.Fatalf("got %v, want duplicate swarm step receipt", err)
+	}
+
 	downstreamReceipt["swarm"].(map[string]any)["input_artifacts"].([]map[string]any)[0]["receipt_digest"] = digestHex(upstreamReceipt)
 	downstreamRecord := signBody(downstreamKey, receiptBodyWithoutSignature(downstreamReceipt))
 	cleanLog := &AuditLog{Path: "clean-audit.log", Head: auditZeroHash}

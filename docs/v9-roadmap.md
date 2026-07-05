@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.30 complete; v9.31+ planned
+状态：closed at v9.31
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -750,7 +750,50 @@
 - 不做 container namespace sandbox。
 - 不做 A2A/ARD compatibility。
 
-## 后续方向
+## v9.31: Artifactless Swarm Step Uniqueness
+
+状态：complete
+目标：Swarm step identity uniqueness is enforced before artifact manifest handling.
+
+新增：
+
+- `--verify-audit` records each completed Swarm `swarm_id` + `step_id` even when the receipt has no artifact manifests.
+- Duplicate artifactless Swarm step receipts are rejected instead of being ignored by verifier state.
+- Dependencies on artifactless completed steps now report `swarm dependency artifact missing`.
+- Go package coverage proves an exact duplicate artifactless Swarm receipt is rejected.
+
+不做：
+
+- 不做 artifactless dependency semantics。
+- 不做 duplicate step merge 语义。
+- 不做 Swarm retry step semantics。
+- 不做 cross-audit dependency lookup。
+- 不做 remote audit sync。
+- 不做 scheduler。
+- 不做 dynamic decomposition。
+- 不做 parallel execution。
+- 不做 conflict resolution。
+- 不做 Swarm UI。
+- 不做 Node Swarm server。
+- 不做 container namespace sandbox。
+- 不做 A2A/ARD compatibility。
+
+## v9 Closeout
+
+状态：closed
+
+v9 把 Human Gateway / artifact proof 面推进到了 runtime hardening 和最小 Swarm proof：
+
+- artifact mirror index、GC plan/apply、sidecar/mirror verifier。
+- Go/Node audit append hardening、state atomic replace、larger audit read。
+- TLS/mTLS、explicit federation listen host、Node/Go bidirectional interop、shared conformance fixtures。
+- sandbox claim/probe/require 边界和 fail-closed evidence。
+- explicit two-step `FED_SWARM_OPEN` seed。
+- Swarm dependency verifier binding：declared `after` step、unique step identity、artifact manifest、upstream receipt digest。
+
+v9 到此收尾。后续不再挂 `v9.32+`；下一轮应进入 v10+，围绕下面的方向选一个新边界。
+
+## v10+ 后续方向
 
 - real container namespace sandboxing。
 - public federation deployment / QUIC binding。

@@ -4453,6 +4453,9 @@ func verifySwarmReceiptDependencies(receipt map[string]any, completed map[string
 		if !ok {
 			return errors.New("swarm dependency receipt missing: " + dependency)
 		}
+		if len(manifest) == 0 {
+			return errors.New("swarm dependency artifact missing: " + dependency)
+		}
 		if input["uri"] != manifest["uri"] {
 			return errors.New("swarm input artifact uri mismatch")
 		}
@@ -4466,18 +4469,21 @@ func verifySwarmReceiptDependencies(receipt map[string]any, completed map[string
 			return errors.New("swarm input receipt digest mismatch")
 		}
 	}
-	if manifests := mapsFromAny(receipt["artifact_manifests"]); len(manifests) > 0 {
-		manifest := map[string]any{}
-		for key, value := range manifests[0] {
-			manifest[key] = value
-		}
-		manifest["receipt_digest"] = digestHex(receipt)
-		completedKey := swarmID + "\x00" + stepID
-		if _, exists := completed[completedKey]; exists {
-			return errors.New("duplicate swarm step receipt: " + stepID)
-		}
-		completed[completedKey] = manifest
+	completedKey := swarmID + "\x00" + stepID
+	if _, exists := completed[completedKey]; exists {
+		return errors.New("duplicate swarm step receipt: " + stepID)
 	}
+	manifests := mapsFromAny(receipt["artifact_manifests"])
+	if len(manifests) == 0 {
+		completed[completedKey] = map[string]any{}
+		return nil
+	}
+	manifest := map[string]any{}
+	for key, value := range manifests[0] {
+		manifest[key] = value
+	}
+	manifest["receipt_digest"] = digestHex(receipt)
+	completed[completedKey] = manifest
 	return nil
 }
 
