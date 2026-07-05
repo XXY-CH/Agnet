@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.24 complete; v9.25+ planned
+状态：v9.25 complete; v9.26+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -584,6 +584,33 @@
 
 - 不做 full conformance suite。
 - 不做 fixture generator CLI。
+- 不做 scheduler-driven cross-implementation dispatch。
+- 不做 public gateway deployment。
+- 不做 NAT / proxy / relay。
+- 不做 QUIC。
+- 不做 DHT / edge gateway。
+- 不做 container namespace sandbox。
+- 不做 A2A/ARD compatibility。
+
+## v9.25: FED_RECEIPT Conformance Fixture
+
+状态：complete
+目标：Node and Go verify the same static `FED_RECEIPT` conformance fixture.
+
+新增：
+
+- `test-vectors/asp-v9.25-fed-receipt.json` captures deterministic Zone/worker descriptors, zone binding, and one signed receipt frame.
+- Node exports `verifyFederatedReceipt(...)`.
+- Node federation client/audit receipt verification reuses the shared verifier.
+- Go package coverage verifies the same fixture through `verifyInteropReceipt`.
+- Node vector coverage verifies the same fixture through `verifyFederatedReceipt`.
+
+不做：
+
+- 不做 full conformance suite。
+- 不做 fixture generator CLI。
+- 不做 receipt store/search。
+- 不做 remote audit log sync。
 - 不做 scheduler-driven cross-implementation dispatch。
 - 不做 public gateway deployment。
 - 不做 NAT / proxy / relay。

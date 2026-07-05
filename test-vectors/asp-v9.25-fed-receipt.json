@@ -1,0 +1,66 @@
+{
+  "version": "asp-v9.25-fed-receipt",
+  "worker_zone_seed_hex": "c0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf",
+  "worker_seed_hex": "e0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+  "trusted_zones": [
+    {
+      "name": "zone://conformance-worker-zone",
+      "zid": "zid:ed25519:kNxMZDO8Jt2xydIZ2HWD00unM7L0rufepboqzVOBQN4",
+      "public_key_spki": "MCowBQYDK2VwAyEA3eO8zsfzpmoRFfRdcg9NwTXDrnxOItyjj9se_WpJX_g",
+      "zone_signature": "Hdb64jZX0HM1CI3DUqpvE9eOArhfkpIoLURlVa03YHpFvV7Irl3NXfqeJpIWkQ0afVq1Q6mYcnO4t-WRCo1dAg"
+    }
+  ],
+  "frame": {
+    "type": "FED_RECEIPT",
+    "zone": {
+      "name": "zone://conformance-worker-zone",
+      "zid": "zid:ed25519:kNxMZDO8Jt2xydIZ2HWD00unM7L0rufepboqzVOBQN4",
+      "public_key_spki": "MCowBQYDK2VwAyEA3eO8zsfzpmoRFfRdcg9NwTXDrnxOItyjj9se_WpJX_g",
+      "zone_signature": "Hdb64jZX0HM1CI3DUqpvE9eOArhfkpIoLURlVa03YHpFvV7Irl3NXfqeJpIWkQ0afVq1Q6mYcnO4t-WRCo1dAg"
+    },
+    "worker": {
+      "alias": "agent://conformance/summarizer",
+      "aid": "aid:ed25519:oNyAhLw0zyzQVbbKvmXbEPCWX7EMN6eIb-l8jZP5QXI",
+      "public_key_spki": "MCowBQYDK2VwAyEAE9mQinCSWZLtVGAH0n9Q2mi6chfvYqw8ynhFKf8QRxw",
+      "transports": [
+        "fed+tcp://127.0.0.1:0"
+      ],
+      "capabilities": [
+        "summarize.text"
+      ],
+      "policy": {
+        "allow_network": false,
+        "write_prefixes": [
+          "artifact://local/"
+        ]
+      },
+      "descriptor_signature": "hZg3FlSCUui3ZqyuuLOkRugm4dR15dypsua52rI_zYD5Gxpy5G6bkV6j7PK4fc8bMEMpbcwAMp_WYHRhpBMwBQ"
+    },
+    "zone_binding": {
+      "zone": "zid:ed25519:kNxMZDO8Jt2xydIZ2HWD00unM7L0rufepboqzVOBQN4",
+      "alias": "agent://conformance/summarizer",
+      "aid": "aid:ed25519:oNyAhLw0zyzQVbbKvmXbEPCWX7EMN6eIb-l8jZP5QXI",
+      "signature": "tM0XzZK0xot2YGdy2pK-ks2IaaN64KfIMag3KMbxpyIKUZ9IkMtltmajZHLhyI4_7yU8m3Fe23nV3jUIip69Ag"
+    },
+    "receipt": {
+      "task_id": "fed_task_conformance_001",
+      "from": "aid:ed25519:3dfTSP_udbygatpJFIna4iNUP8Br1YVqBaTKQZGXh5c",
+      "origin_zone": "zid:ed25519:u9qeg4PY4Rd7RyZMpOQ8YxaxQP_sPV_Iju42ZUlrBF4",
+      "executing_zone": "zid:ed25519:kNxMZDO8Jt2xydIZ2HWD00unM7L0rufepboqzVOBQN4",
+      "to": "aid:ed25519:oNyAhLw0zyzQVbbKvmXbEPCWX7EMN6eIb-l8jZP5QXI",
+      "artifact_refs": [
+        "artifact://local/fed_task_conformance_001/federated-summary.md"
+      ],
+      "event_count": 5,
+      "approvals": [],
+      "signature": "vSSuMZAeXQDvuVviVTpDbbSl6msmpTrwyLxwH0lx3lNRCrbzjsNJ-V1NVaO7bvfocS8Qwu_dtENO1-QPdYVAAg"
+    }
+  },
+  "receipt_canonical": "{\"approvals\":[],\"artifact_refs\":[\"artifact://local/fed_task_conformance_001/federated-summary.md\"],\"event_count\":5,\"executing_zone\":\"zid:ed25519:kNxMZDO8Jt2xydIZ2HWD00unM7L0rufepboqzVOBQN4\",\"from\":\"aid:ed25519:3dfTSP_udbygatpJFIna4iNUP8Br1YVqBaTKQZGXh5c\",\"origin_zone\":\"zid:ed25519:u9qeg4PY4Rd7RyZMpOQ8YxaxQP_sPV_Iju42ZUlrBF4\",\"task_id\":\"fed_task_conformance_001\",\"to\":\"aid:ed25519:oNyAhLw0zyzQVbbKvmXbEPCWX7EMN6eIb-l8jZP5QXI\"}",
+  "expected": {
+    "task_id": "fed_task_conformance_001",
+    "worker_zid": "zid:ed25519:kNxMZDO8Jt2xydIZ2HWD00unM7L0rufepboqzVOBQN4",
+    "worker_aid": "aid:ed25519:oNyAhLw0zyzQVbbKvmXbEPCWX7EMN6eIb-l8jZP5QXI",
+    "origin_zid": "zid:ed25519:u9qeg4PY4Rd7RyZMpOQ8YxaxQP_sPV_Iju42ZUlrBF4"
+  }
+}

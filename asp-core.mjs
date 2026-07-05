@@ -269,6 +269,25 @@ export function verifyFederatedTaskOpen(frame, trustedZones, workerDescriptor) {
   return { originZone, requester: frame.requester, worker: workerDescriptor, task };
 }
 
+export function verifyFederatedReceipt(frame, trustedZones) {
+  const zone = verifyZoneDescriptor(frame.zone).descriptor;
+  const trusted = trustedZones.get(zone.zid);
+  if (!trusted || trusted.public_key_spki !== zone.public_key_spki) {
+    throw new Error(`untrusted zone: ${zone.zid}`);
+  }
+  const resolved = resolveAgent(
+    new Map([[frame.worker.alias, { descriptor: frame.worker, zone: frame.zone, zone_binding: frame.zone_binding }]]),
+    frame.worker.alias,
+  );
+  const { signature, ...receipt } = frame.receipt;
+  if (receipt.executing_zone !== zone.zid) throw new Error("receipt executing_zone mismatch");
+  if (receipt.to !== frame.worker.aid) throw new Error("receipt worker mismatch");
+  if (!verifyObject(resolved.publicKey, receipt, signature)) {
+    throw new Error("remote receipt signature verification failed");
+  }
+  return { zone, worker: resolved.descriptor, receipt, signedReceipt: frame.receipt };
+}
+
 export function verifyZoneBinding(entry, descriptor, alias) {
   if (!entry.zone) throw new Error(`zone descriptor missing for ${alias}`);
   if (!entry.zone_binding) throw new Error(`zone binding missing for ${alias}`);

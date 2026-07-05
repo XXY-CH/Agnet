@@ -204,6 +204,52 @@ func TestFedTaskOpenConformanceVectorVerifiesInGo(t *testing.T) {
 	}
 }
 
+func TestFedReceiptConformanceVectorVerifiesInGo(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "test-vectors", "asp-v9.25-fed-receipt.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vector struct {
+		TrustedZones     []map[string]any `json:"trusted_zones"`
+		Frame            map[string]any   `json:"frame"`
+		ReceiptCanonical string           `json:"receipt_canonical"`
+		Expected         map[string]any   `json:"expected"`
+	}
+	if err := json.Unmarshal(data, &vector); err != nil {
+		t.Fatal(err)
+	}
+	trusted := map[string]map[string]any{}
+	for _, zone := range vector.TrustedZones {
+		trusted[fmt.Sprint(zone["zid"])] = zone
+	}
+	if err := verifyInteropReceipt(vector.Frame, trusted); err != nil {
+		t.Fatal(err)
+	}
+	receipt, ok := vector.Frame["receipt"].(map[string]any)
+	if !ok {
+		t.Fatal("receipt missing")
+	}
+	receiptBody := map[string]any{}
+	for key, value := range receipt {
+		if key != "signature" {
+			receiptBody[key] = value
+		}
+	}
+	canonicalReceipt, err := json.Marshal(receiptBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(canonicalReceipt) != vector.ReceiptCanonical {
+		t.Fatalf("canonical receipt = %s, want %s", canonicalReceipt, vector.ReceiptCanonical)
+	}
+	if receipt["task_id"] != vector.Expected["task_id"] {
+		t.Fatalf("task_id = %v, want %v", receipt["task_id"], vector.Expected["task_id"])
+	}
+	if receipt["to"] != vector.Expected["worker_aid"] {
+		t.Fatalf("receipt worker = %v, want %v", receipt["to"], vector.Expected["worker_aid"])
+	}
+}
+
 func TestPublicListenHostFlag(t *testing.T) {
 	cases := map[string]bool{
 		"127.0.0.1": false,

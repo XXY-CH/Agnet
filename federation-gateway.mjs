@@ -11,6 +11,7 @@ import {
   publicKeyFromDescriptor,
   resolveAgent,
   signObject,
+  verifyFederatedReceipt,
   verifyFederatedTaskOpen,
   verifyObject,
   verifyCapabilityCredential,
@@ -239,17 +240,7 @@ async function request(port, trustedZonesFile, alias = "agent://zone-b/summarize
       if (session(frame)) return;
       if (frame.type === "FED_TASK_EVENT") events.push(frame.event);
       if (frame.type === "FED_RECEIPT") {
-        verifyTrustedZone(trustedZones, frame.zone);
-        const resolved = resolveAgent(
-          new Map([[frame.worker.alias, { descriptor: frame.worker, zone: frame.zone, zone_binding: frame.zone_binding }]]),
-          frame.worker.alias,
-        );
-        const body = { ...frame.receipt };
-        delete body.signature;
-        if (!verifyObject(resolved.publicKey, body, frame.receipt.signature)) {
-          throw new Error("remote receipt signature verification failed");
-        }
-        receipt = frame.receipt;
+        receipt = verifyFederatedReceipt(frame, trustedZones).signedReceipt;
       }
       if (frame.type === "FED_TASK_ERROR") reject(new Error(frame.error));
       if (frame.type === "FED_TASK_CLOSE") resolve();
@@ -370,22 +361,13 @@ async function auditRemote(port, trustedZonesFile, taskId) {
     readFrames(socket, (frame) => {
       if (session(frame)) return;
       if (frame.type === "FED_AUDIT_RESULT") {
-        const remoteZone = verifyTrustedZone(trustedZones, frame.zone);
-        const resolved = resolveAgent(
-          new Map([[frame.worker.alias, { descriptor: frame.worker, zone: frame.zone, zone_binding: frame.zone_binding }]]),
-          frame.worker.alias,
-        );
-        const body = { ...frame.receipt };
-        delete body.signature;
-        if (frame.receipt.task_id !== taskId) throw new Error("audit receipt task mismatch");
-        if (!verifyObject(resolved.publicKey, body, frame.receipt.signature)) {
-          throw new Error("audit receipt signature verification failed");
-        }
+        const verified = verifyFederatedReceipt(frame, trustedZones);
+        if (verified.receipt.task_id !== taskId) throw new Error("audit receipt task mismatch");
         result = {
-          zone: remoteZone.zid,
+          zone: verified.zone.zid,
           task_id: taskId,
-          worker: resolved.descriptor,
-          receipt: frame.receipt,
+          worker: verified.worker,
+          receipt: verified.signedReceipt,
         };
       }
       if (frame.type === "FED_TASK_ERROR") reject(new Error(frame.error));

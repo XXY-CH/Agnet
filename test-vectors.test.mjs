@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createPrivateKey, createPublicKey } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import { canonical, computeAid, signObject, verifyFederatedTaskOpen, verifyObject } from "./asp-core.mjs";
+import { canonical, computeAid, signObject, verifyFederatedReceipt, verifyFederatedTaskOpen, verifyObject } from "./asp-core.mjs";
 
 function privateKeyFromSeed(seedHex) {
   const der = Buffer.concat([
@@ -38,4 +38,15 @@ test("FED_TASK_OPEN conformance vector verifies in Node", async () => {
   assert.equal(verified.originZone.zid, vector.expected.origin_zid);
   assert.equal(verified.requester.aid, vector.expected.requester_aid);
   assert.equal(verified.worker.alias, vector.expected.worker_alias);
+});
+
+test("FED_RECEIPT conformance vector verifies in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  const verified = verifyFederatedReceipt(vector.frame, trustedZones);
+
+  assert.equal(canonical(verified.receipt), vector.receipt_canonical);
+  assert.equal(verified.zone.zid, vector.expected.worker_zid);
+  assert.equal(verified.worker.aid, vector.expected.worker_aid);
+  assert.equal(verified.receipt.origin_zone, vector.expected.origin_zid);
 });

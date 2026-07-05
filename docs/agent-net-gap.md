@@ -1,12 +1,12 @@
 # Agent Net Gap
 
-状态：v9.24 assessment
+状态：v9.25 assessment
 
 ## 一句话
 
 当前项目是 Agent Net 的 protocol seed，不是 Agent Net 产品。
 
-它已经抓住了真正 Agent Net 的底层骨架：identity、signed task、policy、artifact、receipt、audit、federation、Node/Go bidirectional task interop、Go federation explicit bind host primitive，以及第一条 shared `FED_TASK_OPEN` conformance fixture。
+它已经抓住了真正 Agent Net 的底层骨架：identity、signed task、policy、artifact、receipt、audit、federation、Node/Go bidirectional task interop、Go federation explicit bind host primitive，以及 shared `FED_TASK_OPEN` / `FED_RECEIPT` conformance fixtures。
 
 它还缺产品面、运行面、部署面、多人协作面和真实工具执行面。
 
@@ -19,7 +19,7 @@
 已有：
 
 - Ed25519 Agent/Zone identity。
-- shared Node/Go `FED_TASK_OPEN` conformance fixture。
+- shared Node/Go `FED_TASK_OPEN` and `FED_RECEIPT` conformance fixtures。
 - `agent://` alias -> `aid:` descriptor。
 - signed task。
 - policy scope。
