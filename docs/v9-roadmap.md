@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.7 complete; v9.8+ planned
+状态：v9.8 complete; v9.9+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -198,6 +198,29 @@
 - 不做 cgroup limits。
 - 不做 remote attestation。
 - 不做 scheduler or automatic drain。
+- 不做 A2A/ARD compatibility。
+
+## v9.8: Receipt Verify CLI
+
+状态：complete
+目标：one Go receipt record can be verified directly from a JSON file.
+
+新增：
+
+- `--verify-receipt <file>` verifies a single receipt record and exits.
+- The command reuses the same `verifyReceiptRecord` path used by audit verification.
+- It checks Zone descriptor, worker descriptor, Zone binding, receipt signature, approval grants, checkpoints, artifact manifests, policy scope, and sandbox proof.
+- Success output includes `go_receipt_verify: ok` and the verified `task_id`.
+- Integration test writes the live `FED_RECEIPT` record to a JSON file and verifies it through the CLI.
+
+不做：
+
+- 不做 receipt store。
+- 不做 receipt search。
+- 不做 new receipt export format。
+- 不做 revocation feed or renewal checking。
+- 不做 remote verifier service。
+- 不做 batch receipt verification。
 - 不做 A2A/ARD compatibility。
 
 ## 后续方向

@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v9.7 assessment
+状态：v9.8 assessment
 
 ## 一句话
 
@@ -90,6 +90,7 @@
 - External/MCP sandbox evidence records tool command, executable binary, and result transcript digests。
 - External/MCP result transcripts are persisted as local artifacts linked from signed receipts。
 - Tool output digest aligns signed receipt with artifact manifest。
+- A single Go receipt record can be verified directly from a JSON file。
 - Artifact manifests persist as local sidecars and are retrievable through a read-only Human Gateway API。
 - Artifacts are also written under a local content-addressed SHA-256 path。
 - Artifacts can also mirror bytes and manifest sidecars to a configured filesystem artifact store。

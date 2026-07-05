@@ -133,6 +133,7 @@ func main() {
 	workerKeyPath := flag.String("worker-key", "state/keys/go-fed-worker.seed", "worker seed key file")
 	auditPath := flag.String("audit", "state/go-fed-audit.log", "audit JSONL file")
 	verifyAudit := flag.Bool("verify-audit", false, "verify audit JSONL file and exit")
+	verifyReceiptPath := flag.String("verify-receipt", "", "verify one receipt record JSON file and exit")
 	artifactStoreGCPlan := flag.Bool("artifact-store-gc-plan", false, "print filesystem artifact mirror GC plan and exit")
 	artifactStoreGCApply := flag.Bool("artifact-store-gc-apply", false, "delete orphaned filesystem artifact mirror objects and exit")
 	flag.Parse()
@@ -143,6 +144,18 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Println(`{"go_audit_verify":"ok"}`)
+		return
+	}
+	if *verifyReceiptPath != "" {
+		result, err := verifyReceiptFile(*verifyReceiptPath, *artifactStoreDir)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 		return
 	}
 	if *artifactStoreGCPlan {
@@ -3763,6 +3776,22 @@ func verifyAuditFile(path, artifactStoreDir string) error {
 		prev = fmt.Sprint(entry["hash"])
 	}
 	return nil
+}
+
+func verifyReceiptFile(path, artifactStoreDir string) (map[string]any, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var record map[string]any
+	if err := json.Unmarshal(data, &record); err != nil {
+		return nil, err
+	}
+	if err := verifyReceiptRecord(record, artifactStoreDir); err != nil {
+		return nil, err
+	}
+	receipt, _ := record["receipt"].(map[string]any)
+	return map[string]any{"go_receipt_verify": "ok", "task_id": receipt["task_id"]}, nil
 }
 
 func planArtifactStoreGC(auditPath, artifactStoreDir string) (map[string]any, error) {

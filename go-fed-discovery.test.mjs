@@ -1274,6 +1274,20 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     assert.equal(receiptFrame.receipt.executing_zone, fixture.authority.zid);
     assert.equal(receiptFrame.worker.alias, "agent://zone-b/translator");
     assert.equal(receiptFrame.receipt.to, receiptFrame.worker.aid);
+    const receiptRecordPath = "state/go-fed-receipt-record.json";
+    await writeFile(receiptRecordPath, `${JSON.stringify({
+      zone: receiptFrame.zone,
+      worker: receiptFrame.worker,
+      zone_binding: receiptFrame.zone_binding,
+      receipt: receiptFrame.receipt,
+    }, null, 2)}\n`);
+    const receiptVerify = await execFileAsync("go", [
+      "run",
+      "./cmd/go-fed-discovery",
+      "--verify-receipt",
+      receiptRecordPath,
+    ]);
+    assert.deepEqual(JSON.parse(receiptVerify.stdout), { go_receipt_verify: "ok", task_id: task.task_id });
     const transcriptRef = "artifact://local/go_fed_task_verified/tool-transcript.json";
     assert.deepEqual(receiptFrame.receipt.artifact_refs, ["artifact://local/go_fed_task_verified/go-summary.md", transcriptRef]);
     assert.deepEqual(receiptFrame.receipt.artifact_manifests[0], artifactEvent.manifest);

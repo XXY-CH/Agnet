@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v9.7 complete
-当前代码基线：`v9.7-sandbox-claim-preflight`
+状态：v9.8 complete
+当前代码基线：`v9.8-receipt-verify-cli`
 
 ## 一句话
 
@@ -19,7 +19,7 @@
 | Local task execution | done | built-in + external stdio + MCP stdio tools/call + MCP initialize/resources/prompts/tools metadata + selected tool/schema/argument evidence + MCP required argument gate + explicit local-process isolation evidence + sandbox-bound HOME/TMPDIR/XDG_CACHE_HOME + signed local sandbox proof + sandbox claim binding + unsupported sandbox claim preflight + tool command, binary, transcript digests, and transcript artifacts | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | container namespace sandbox / long-running MCP sessions |
 | Events | done | minimal federation events + Go checkpoint event | `agent-runtime.test.mjs`, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | richer event lifecycle |
 | Artifact write | done | deterministic local artifact + Go artifact manifest digest evidence + tool output/transcript digest alignment + local manifest sidecar/API + content-addressed local path + optional filesystem artifact mirror + mirror object index + audit verifier byte/named sidecar/digest sidecar/mirror/index checks + GC plan/apply | `mvp-demo.test.mjs`, `go-fed-discovery.test.mjs` | object-store backend / retention policy |
-| Receipt signing | done | done for minimal Go execution | `test-vectors.test.mjs`, `go-fed-discovery.test.mjs` | receipt verification CLI |
+| Receipt signing | done | done for minimal Go execution + single receipt record verification CLI | `test-vectors.test.mjs`, `go-fed-discovery.test.mjs` | receipt store/search |
 | Audit hash chain | done + in-process append serialization | done for Go execution, queue actions, remote receipt proof query, Human Gateway task-scoped receipt proof query, and large-line audit reads | `audit-chain.test.mjs`, `cmd/go-fed-discovery/main_test.go`, `go-fed-discovery.test.mjs` | cross-process locking / full log sync / remote search |
 | Federation resolve | done | done | `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | public transport |
 | Capability query | done | done | `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | ranking / scheduling |
@@ -54,6 +54,7 @@ Go
   -> Go JSON state files for task/approval/queue/requester registry/history are replaced through temp-file + rename
   -> minimal task events, artifact, signed receipt
   -> audit JSONL hash chain and verifier
+  -> single receipt record verification CLI
   -> multi-worker profile registry
   -> WebSocket transport binding
   -> thin Human Gateway
@@ -148,7 +149,7 @@ Go
 
 ## Next Boundary
 
-v9.7 rejects unsupported sandbox claims before external/MCP tool startup. The next natural boundary is real container namespace sandboxing or another small Ultimate-aligned runtime/governance slice.
+v9.8 verifies one receipt record JSON file through the shared Go receipt verifier. The next natural boundary is real container namespace sandboxing or another small Ultimate-aligned runtime/governance slice.
 
 Route detail: `docs/v9-roadmap.md`。
 
