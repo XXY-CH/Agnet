@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.13 complete; v9.14+ planned
+状态：v9.14 complete; v9.15+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -318,6 +318,31 @@
 - Unsupported `container-namespace` claims no longer emit `approval.required`.
 - Unsupported sandbox claims no longer create Human Gateway approval state.
 - Failed task state still records `sandbox_probe`.
+
+不做：
+
+- 不实现 container namespace sandbox。
+- 不做 Docker/OCI runtime。
+- 不做 Linux namespace setup。
+- 不做 seccomp/AppArmor/profile enforcement。
+- 不做 network namespace。
+- 不做 filesystem mount namespace。
+- 不做 cgroup limits。
+- 不做 remote attestation。
+- 不做 scheduler or automatic drain。
+- 不做 A2A/ARD compatibility。
+
+## v9.14: Sandbox Require CLI
+
+状态：complete
+目标：Go exposes a fail-closed sandbox requirement preflight CLI.
+
+新增：
+
+- `--sandbox-require <claim>` prints the same JSON probe as `--sandbox-probe`.
+- Supported claims exit 0.
+- Unsupported claims exit non-zero after printing the probe JSON.
+- Integration coverage proves `container-namespace` fails closed and `local-temp-dir` succeeds.
 
 不做：
 

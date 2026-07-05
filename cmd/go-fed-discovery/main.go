@@ -147,6 +147,7 @@ func main() {
 	artifactStoreGCPlan := flag.Bool("artifact-store-gc-plan", false, "print filesystem artifact mirror GC plan and exit")
 	artifactStoreGCApply := flag.Bool("artifact-store-gc-apply", false, "delete orphaned filesystem artifact mirror objects and exit")
 	sandboxProbe := flag.String("sandbox-probe", "", "print sandbox runtime support probe for a claim and exit")
+	sandboxRequire := flag.String("sandbox-require", "", "require sandbox runtime support for a claim and exit")
 	flag.Parse()
 
 	if *verifyAudit {
@@ -172,6 +173,17 @@ func main() {
 	if *sandboxProbe != "" {
 		if err := json.NewEncoder(os.Stdout).Encode(sandboxClaimProbe(*sandboxProbe)); err != nil {
 			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	if *sandboxRequire != "" {
+		probe := sandboxClaimProbe(*sandboxRequire)
+		if err := json.NewEncoder(os.Stdout).Encode(probe); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if probe["supported"] != true {
 			os.Exit(1)
 		}
 		return

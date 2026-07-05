@@ -24,6 +24,26 @@ test("Go sandbox probe CLI reports unsupported container namespace", async () =>
   });
 });
 
+test("Go sandbox require CLI fails closed for unsupported container namespace", async () => {
+  await assert.rejects(
+    execFileAsync("go", ["run", "./cmd/go-fed-discovery", "--sandbox-require", "container-namespace"]),
+    (error) => {
+      assert.deepEqual(JSON.parse(error.stdout), {
+        claim: "container-namespace",
+        supported: false,
+        reason: "container namespace sandbox runtime is not implemented",
+      });
+      return true;
+    },
+  );
+  const { stdout } = await execFileAsync("go", ["run", "./cmd/go-fed-discovery", "--sandbox-require", "local-temp-dir"]);
+  assert.deepEqual(JSON.parse(stdout), {
+    claim: "local-temp-dir",
+    supported: true,
+    reason: "sandbox runtime is available",
+  });
+});
+
 function waitForGoGateway(child, port) {
   return new Promise((resolve, reject) => {
     let stderr = "";
