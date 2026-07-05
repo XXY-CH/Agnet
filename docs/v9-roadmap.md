@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.12 complete; v9.13+ planned
+状态：v9.13 complete; v9.14+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -293,6 +293,31 @@
 - `container-namespace` returns `supported: false` with the same reason used in failed task state.
 - Existing `in-process` and `local-temp-dir` claims report available local runtime modes.
 - Integration coverage runs the CLI directly through `go run ./cmd/go-fed-discovery`.
+
+不做：
+
+- 不实现 container namespace sandbox。
+- 不做 Docker/OCI runtime。
+- 不做 Linux namespace setup。
+- 不做 seccomp/AppArmor/profile enforcement。
+- 不做 network namespace。
+- 不做 filesystem mount namespace。
+- 不做 cgroup limits。
+- 不做 remote attestation。
+- 不做 scheduler or automatic drain。
+- 不做 A2A/ARD compatibility。
+
+## v9.13: Sandbox Claim Pre-Approval Gate
+
+状态：complete
+目标：unsupported sandbox claims fail before Human Gateway approval.
+
+新增：
+
+- `executeTask` validates `sandbox_claim` immediately after `task.accepted`.
+- Unsupported `container-namespace` claims no longer emit `approval.required`.
+- Unsupported sandbox claims no longer create Human Gateway approval state.
+- Failed task state still records `sandbox_probe`.
 
 不做：
 

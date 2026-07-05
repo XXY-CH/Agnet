@@ -1616,6 +1616,8 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     }, unsupportedSandboxTask.task_id);
     assert.equal(unsupportedSandboxFrames.at(-1).type, "FED_TASK_ERROR");
     assert.match(unsupportedSandboxFrames.at(-1).error, /unsupported sandbox claim: container-namespace/);
+    assert.equal(unsupportedSandboxFrames.some((frame) => frame.type === "FED_TASK_EVENT" && frame.event.type === "approval.required"), false);
+    assert.equal(await approvalState(humanPort, unsupportedSandboxTask.task_id), undefined);
     await assert.rejects(readFile("state/go-fed-container-claim-ran.txt", "utf8"), /ENOENT/);
     const unsupportedSandboxState = JSON.parse(await readFile("state/go-fed-discovery-audit-tasks/go_fed_task_container_claim_rejected.json", "utf8"));
     assert.equal(unsupportedSandboxState.status, "failed");
@@ -1903,7 +1905,7 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     const auditResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit`);
     assert.equal(auditResponse.status, 200);
     const auditBody = await auditResponse.json();
-    assert.equal(auditBody.entries.length, 87);
+    assert.equal(auditBody.entries.length, 85);
     const auditProofResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit?task_id=${encodeURIComponent(task.task_id)}`);
     assert.equal(auditProofResponse.status, 200);
     const auditProofBody = await auditProofResponse.json();

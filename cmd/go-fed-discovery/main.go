@@ -2245,6 +2245,15 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	if err := f.sendTaskEvent(send, map[string]any{"type": "task.accepted", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
 		return err
 	}
+	if err := validateSandboxClaim(worker.Profile); err != nil {
+		extra := map[string]any{"error": err.Error()}
+		var claimErr sandboxClaimError
+		if errors.As(err, &claimErr) {
+			extra["sandbox_probe"] = claimErr.probe
+		}
+		_ = f.writeTaskState(taskID, "failed", worker, extra)
+		return err
+	}
 	approvals := toolApprovalReasons(worker.Profile)
 	approvalGrants := []map[string]any{}
 	if len(approvals) > 0 {
@@ -2268,15 +2277,6 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		if err := f.sendTaskEvent(send, map[string]any{"type": "approval.granted", "task_id": taskID, "by": grant["by"], "reasons": approvals, "grant": grant}); err != nil {
 			return err
 		}
-	}
-	if err := validateSandboxClaim(worker.Profile); err != nil {
-		extra := map[string]any{"error": err.Error()}
-		var claimErr sandboxClaimError
-		if errors.As(err, &claimErr) {
-			extra["sandbox_probe"] = claimErr.probe
-		}
-		_ = f.writeTaskState(taskID, "failed", worker, extra)
-		return err
 	}
 	if err := f.sendTaskEvent(send, map[string]any{"type": "task.started", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
 		return err
