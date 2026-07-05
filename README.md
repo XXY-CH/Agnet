@@ -1,167 +1,181 @@
-# Agent Space MVP
+# Agnet
 
-Current status: `v9.31` (v9 closed).
+Agnet is an accountability layer for agent work.
 
-Start here:
+MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-- Current implementation matrix: [docs/implementation-status.md](docs/implementation-status.md)
-- Gap to Agent Net and Octo: [docs/agent-net-gap.md](docs/agent-net-gap.md)
-- Latest boundary: [docs/v9.31-boundary.md](docs/v9.31-boundary.md)
-- v5 roadmap: [docs/v5-roadmap.md](docs/v5-roadmap.md)
-- v6 roadmap: [docs/v6-roadmap.md](docs/v6-roadmap.md)
-- v7 roadmap: [docs/v7-roadmap.md](docs/v7-roadmap.md)
-- v8 roadmap: [docs/v8-roadmap.md](docs/v8-roadmap.md)
-- v9 roadmap: [docs/v9-roadmap.md](docs/v9-roadmap.md)
+Status: research prototype, local-first, v9 closed at `v9.31-protocol`.
 
-Current boundary: [docs/v0-boundary.md](docs/v0-boundary.md), [docs/v0.1-boundary.md](docs/v0.1-boundary.md), [docs/v0.2-boundary.md](docs/v0.2-boundary.md), [docs/v0.3-boundary.md](docs/v0.3-boundary.md), [docs/v0.4-boundary.md](docs/v0.4-boundary.md), [docs/v0.5-boundary.md](docs/v0.5-boundary.md), [docs/v0.6-boundary.md](docs/v0.6-boundary.md), [docs/v0.7-boundary.md](docs/v0.7-boundary.md), [docs/v0.8-boundary.md](docs/v0.8-boundary.md), [docs/v0.9-boundary.md](docs/v0.9-boundary.md), [docs/v1-boundary.md](docs/v1-boundary.md), [docs/v1.1-boundary.md](docs/v1.1-boundary.md), [docs/v1.2-boundary.md](docs/v1.2-boundary.md), [docs/v1.3-boundary.md](docs/v1.3-boundary.md), [docs/v1.4-boundary.md](docs/v1.4-boundary.md), [docs/v1.5-boundary.md](docs/v1.5-boundary.md), [docs/v1.6-boundary.md](docs/v1.6-boundary.md), [docs/v2-boundary.md](docs/v2-boundary.md), [docs/v2.1-boundary.md](docs/v2.1-boundary.md), [docs/v2.2-boundary.md](docs/v2.2-boundary.md), [docs/v2.3-boundary.md](docs/v2.3-boundary.md), [docs/v2.4-boundary.md](docs/v2.4-boundary.md), [docs/v3-boundary.md](docs/v3-boundary.md), [docs/v3.1-boundary.md](docs/v3.1-boundary.md), [docs/v3.2-boundary.md](docs/v3.2-boundary.md), [docs/v3.3-boundary.md](docs/v3.3-boundary.md), [docs/v3.4-boundary.md](docs/v3.4-boundary.md), [docs/v3.5-boundary.md](docs/v3.5-boundary.md), [docs/v3.6-boundary.md](docs/v3.6-boundary.md), [docs/v3.7-boundary.md](docs/v3.7-boundary.md), [docs/v3.8-boundary.md](docs/v3.8-boundary.md), [docs/v3.9-boundary.md](docs/v3.9-boundary.md), [docs/v4-boundary.md](docs/v4-boundary.md), [docs/v4.1-boundary.md](docs/v4.1-boundary.md), [docs/v4.2-boundary.md](docs/v4.2-boundary.md), [docs/v4.3-boundary.md](docs/v4.3-boundary.md), [docs/v4.4-boundary.md](docs/v4.4-boundary.md), [docs/v4.5-boundary.md](docs/v4.5-boundary.md), [docs/v5.0-boundary.md](docs/v5.0-boundary.md), [docs/v5.1-boundary.md](docs/v5.1-boundary.md), [docs/v5.2-boundary.md](docs/v5.2-boundary.md), [docs/v5.3-boundary.md](docs/v5.3-boundary.md), [docs/v5.4-boundary.md](docs/v5.4-boundary.md), [docs/v5.5-boundary.md](docs/v5.5-boundary.md), [docs/v5.6-boundary.md](docs/v5.6-boundary.md), [docs/v5.7-boundary.md](docs/v5.7-boundary.md), [docs/v5.8-boundary.md](docs/v5.8-boundary.md), [docs/v5.9-boundary.md](docs/v5.9-boundary.md), [docs/v5.10-boundary.md](docs/v5.10-boundary.md), [docs/v5.11-boundary.md](docs/v5.11-boundary.md), [docs/v5.12-boundary.md](docs/v5.12-boundary.md), [docs/v5.13-boundary.md](docs/v5.13-boundary.md), [docs/v5.14-boundary.md](docs/v5.14-boundary.md), [docs/v6.0-boundary.md](docs/v6.0-boundary.md), [docs/v6.1-boundary.md](docs/v6.1-boundary.md), [docs/v6.2-boundary.md](docs/v6.2-boundary.md), [docs/v6.3-boundary.md](docs/v6.3-boundary.md), [docs/v6.4-boundary.md](docs/v6.4-boundary.md), [docs/v6.5-boundary.md](docs/v6.5-boundary.md), [docs/v7.0-boundary.md](docs/v7.0-boundary.md), [docs/v7.1-boundary.md](docs/v7.1-boundary.md), [docs/v7.2-boundary.md](docs/v7.2-boundary.md), [docs/v7.3-boundary.md](docs/v7.3-boundary.md), [docs/v7.4-boundary.md](docs/v7.4-boundary.md), [docs/v7.5-boundary.md](docs/v7.5-boundary.md), [docs/v7.6-boundary.md](docs/v7.6-boundary.md), [docs/v7.7-boundary.md](docs/v7.7-boundary.md), [docs/v7.8-boundary.md](docs/v7.8-boundary.md), [docs/v7.9-boundary.md](docs/v7.9-boundary.md), [docs/v7.10-boundary.md](docs/v7.10-boundary.md), [docs/v7.11-boundary.md](docs/v7.11-boundary.md), [docs/v7.12-boundary.md](docs/v7.12-boundary.md), [docs/v7.13-boundary.md](docs/v7.13-boundary.md), [docs/v7.14-boundary.md](docs/v7.14-boundary.md), [docs/v7.15-boundary.md](docs/v7.15-boundary.md), [docs/v7.16-boundary.md](docs/v7.16-boundary.md), [docs/v8.0-boundary.md](docs/v8.0-boundary.md), [docs/v8.1-boundary.md](docs/v8.1-boundary.md), [docs/v8.2-boundary.md](docs/v8.2-boundary.md), [docs/v8.3-boundary.md](docs/v8.3-boundary.md), [docs/v8.4-boundary.md](docs/v8.4-boundary.md), [docs/v8.5-boundary.md](docs/v8.5-boundary.md), [docs/v8.6-boundary.md](docs/v8.6-boundary.md), [docs/v8.7-boundary.md](docs/v8.7-boundary.md), [docs/v8.8-boundary.md](docs/v8.8-boundary.md), [docs/v8.9-boundary.md](docs/v8.9-boundary.md), [docs/v8.10-boundary.md](docs/v8.10-boundary.md), [docs/v8.11-boundary.md](docs/v8.11-boundary.md), [docs/v8.12-boundary.md](docs/v8.12-boundary.md), [docs/v8.13-boundary.md](docs/v8.13-boundary.md), [docs/v8.14-boundary.md](docs/v8.14-boundary.md), [docs/v8.15-boundary.md](docs/v8.15-boundary.md), [docs/v8.16-boundary.md](docs/v8.16-boundary.md), [docs/v8.17-boundary.md](docs/v8.17-boundary.md), [docs/v8.18-boundary.md](docs/v8.18-boundary.md), [docs/v8.19-boundary.md](docs/v8.19-boundary.md), [docs/v8.20-boundary.md](docs/v8.20-boundary.md), [docs/v8.21-boundary.md](docs/v8.21-boundary.md), [docs/v8.22-boundary.md](docs/v8.22-boundary.md), [docs/v8.23-boundary.md](docs/v8.23-boundary.md), [docs/v8.24-boundary.md](docs/v8.24-boundary.md), [docs/v8.25-boundary.md](docs/v8.25-boundary.md), [docs/v8.26-boundary.md](docs/v8.26-boundary.md), [docs/v8.27-boundary.md](docs/v8.27-boundary.md), [docs/v8.28-boundary.md](docs/v8.28-boundary.md), [docs/v8.29-boundary.md](docs/v8.29-boundary.md), [docs/v8.30-boundary.md](docs/v8.30-boundary.md), [docs/v8.31-boundary.md](docs/v8.31-boundary.md), [docs/v8.32-boundary.md](docs/v8.32-boundary.md), [docs/v8.33-boundary.md](docs/v8.33-boundary.md), [docs/v8.34-boundary.md](docs/v8.34-boundary.md), [docs/v8.35-boundary.md](docs/v8.35-boundary.md), [docs/v8.36-boundary.md](docs/v8.36-boundary.md), [docs/v8.37-boundary.md](docs/v8.37-boundary.md), [docs/v8.38-boundary.md](docs/v8.38-boundary.md), [docs/v8.39-boundary.md](docs/v8.39-boundary.md), [docs/v8.40-boundary.md](docs/v8.40-boundary.md), [docs/v8.41-boundary.md](docs/v8.41-boundary.md), [docs/v8.42-boundary.md](docs/v8.42-boundary.md), [docs/v8.43-boundary.md](docs/v8.43-boundary.md), [docs/v8.44-boundary.md](docs/v8.44-boundary.md), [docs/v8.45-boundary.md](docs/v8.45-boundary.md), [docs/v8.46-boundary.md](docs/v8.46-boundary.md), [docs/v8.47-boundary.md](docs/v8.47-boundary.md), [docs/v8.48-boundary.md](docs/v8.48-boundary.md), [docs/v8.49-boundary.md](docs/v8.49-boundary.md), [docs/v8.50-boundary.md](docs/v8.50-boundary.md), [docs/v8.51-boundary.md](docs/v8.51-boundary.md), [docs/v8.52-boundary.md](docs/v8.52-boundary.md), [docs/v8.53-boundary.md](docs/v8.53-boundary.md), [docs/v9.0-boundary.md](docs/v9.0-boundary.md), [docs/v9.1-boundary.md](docs/v9.1-boundary.md), [docs/v9.2-boundary.md](docs/v9.2-boundary.md), [docs/v9.3-boundary.md](docs/v9.3-boundary.md), [docs/v9.4-boundary.md](docs/v9.4-boundary.md), [docs/v9.5-boundary.md](docs/v9.5-boundary.md), [docs/v9.6-boundary.md](docs/v9.6-boundary.md), [docs/v9.7-boundary.md](docs/v9.7-boundary.md), [docs/v9.8-boundary.md](docs/v9.8-boundary.md), [docs/v9.9-boundary.md](docs/v9.9-boundary.md), [docs/v9.10-boundary.md](docs/v9.10-boundary.md), [docs/v9.11-boundary.md](docs/v9.11-boundary.md), [docs/v9.12-boundary.md](docs/v9.12-boundary.md), [docs/v9.13-boundary.md](docs/v9.13-boundary.md), [docs/v9.14-boundary.md](docs/v9.14-boundary.md), [docs/v9.15-boundary.md](docs/v9.15-boundary.md), [docs/v9.16-boundary.md](docs/v9.16-boundary.md), [docs/v9.17-boundary.md](docs/v9.17-boundary.md), [docs/v9.18-boundary.md](docs/v9.18-boundary.md), [docs/v9.19-boundary.md](docs/v9.19-boundary.md), [docs/v9.20-boundary.md](docs/v9.20-boundary.md), [docs/v9.21-boundary.md](docs/v9.21-boundary.md), [docs/v9.22-boundary.md](docs/v9.22-boundary.md), [docs/v9.23-boundary.md](docs/v9.23-boundary.md), [docs/v9.24-boundary.md](docs/v9.24-boundary.md), [docs/v9.25-boundary.md](docs/v9.25-boundary.md), [docs/v9.26-boundary.md](docs/v9.26-boundary.md), [docs/v9.27-boundary.md](docs/v9.27-boundary.md), [docs/v9.28-boundary.md](docs/v9.28-boundary.md), [docs/v9.29-boundary.md](docs/v9.29-boundary.md), [docs/v9.30-boundary.md](docs/v9.30-boundary.md), [docs/v9.31-boundary.md](docs/v9.31-boundary.md)
+## Why This Exists
 
-Run the smallest proof:
+Agent systems are starting to coordinate across tools, runtimes, and organizations. Coordination is not enough. The hard question is accountability:
+
+- Which identity signed the task?
+- Which worker executed it?
+- Which policy and approval evidence allowed it?
+- Which artifact bytes were produced?
+- Which sandbox claim was made, and was it honestly supported?
+- Can the receipt be verified without trusting the original server?
+- Can the audit history detect tampering?
+
+Agnet is the narrow proof layer for those questions.
+
+## Current Shape
+
+Agnet currently includes two implementations:
+
+- Node prototype runtime and federation gateway.
+- Go gateway with Human Gateway UI, task execution, receipts, artifact verification, queue actions, sandbox evidence, TLS/mTLS, and audit verification.
+
+The current prototype proves:
+
+- Ed25519 `aid:` agent identity and Zone identity.
+- Signed tasks, events, artifacts, checkpoints, and receipts.
+- Hash-chained JSONL audit logs.
+- Receipt verification through the Go CLI.
+- Filesystem artifact manifests, sidecars, content-addressed mirrors, and GC plan/apply.
+- Human approval evidence for direct and queued execution.
+- Explicit queue claim, lease expiry, reclaim, retry, resume, and drain flows.
+- Sandbox claim binding and fail-closed unsupported sandbox probes.
+- Node to Go and Go to Node `FED_TASK_OPEN` interoperability.
+- Shared `FED_TASK_OPEN` and `FED_RECEIPT` conformance fixtures.
+- Minimal two-step `FED_SWARM_OPEN` with signed dependency evidence.
+- Swarm audit verification for declared dependency steps, unique step identity, artifact manifests, and upstream receipt digests.
+
+It is not yet a production Agent Net, public federation network, DID-based identity layer, scheduler, economic layer, or container-isolated runtime.
+
+## Where Agnet Fits
+
+| Layer | Examples | Agnet position |
+| --- | --- | --- |
+| Tool calling | MCP | Complements it by recording verifiable tool execution evidence. |
+| Coordination | A2A, AGNTCY-style coordination | Complements it by signing task outcomes and receipts. |
+| Identity and routing | ANP, DID ecosystems | Can bridge later; current core uses `aid:` Ed25519 identities. |
+| Economy | Fetch.ai, Autonolas, on-chain markets | Out of scope for now; receipts could become settlement inputs later. |
+| Accountability | Receipts, artifacts, audit, sandbox claims | Agnet's current focus. |
+
+The intended strategy is not to replace MCP, A2A, ANP, or AGNTCY. The useful path is to make Agnet receipts small enough to attach to those systems.
+
+## Quick Start
+
+Prerequisites:
+
+- Node.js with the built-in `node:test` runner.
+- Go matching `go.mod`.
+
+Run the smallest Node proof:
 
 ```bash
 node mvp-demo.mjs
 ```
 
-Run the check:
+Run the full local verification suite:
 
 ```bash
-node --test --test-concurrency=1 *.test.mjs
 go test ./...
+node --test --test-concurrency=1 go-fed-discovery.test.mjs
+node --test --test-concurrency=1 *.test.mjs
 ```
 
-Run two local Agent processes:
+Run the minimal local Node runtime:
 
 ```bash
 node agent-runtime.mjs worker
 node agent-runtime.mjs request agent://local/summarizer
 ```
 
-Run a minimal two-Zone federation:
+Run the Go sandbox probe:
 
 ```bash
-node federation-gateway.mjs serve 8990 state/zone-b-trust.json
-node federation-gateway.mjs resolve 8990 state/zone-a-trust.json agent://zone-b/summarizer
-node federation-gateway.mjs query 8990 state/zone-a-trust.json summarize.text
-node federation-gateway.mjs audit 8990 state/zone-a-trust.json go_fed_task_verified
-node federation-gateway.mjs request-capability 8990 state/zone-a-trust.json summarize.text
-node federation-gateway.mjs request 8990 state/zone-a-trust.json
+go run ./cmd/go-fed-discovery --sandbox-probe container-namespace
 ```
 
-It proves:
+The probe is expected to report unsupported container isolation unless a future container runtime slice implements it. The point is honest evidence, not overclaiming.
 
-- `aid:` is derived from an Ed25519 public key.
-- Runtime identities persist private keys under `state/keys/`.
-- `agent://` is only a local alias.
-- `state/registry.json` resolves `agent://` to `aid:` and public key material.
-- The local Zone signs `agent://` alias to `aid:` bindings.
-- Trusted Zone stores verify remote `zid:` descriptors before federation.
-- Go verifies the signed capability credential vector.
-- A task is signed by the requester.
-- The worker rejects a network-enabled task by policy.
-- A write task produces approval events before execution.
-- Go direct tool tasks wait for explicit Human Gateway approval before execution.
-- Go queued drain waits for explicit Human Gateway approval before tool execution.
-- Human Gateway approvals can be approved, denied, or expired before tool execution.
-- Go tool approval grants are signed by the Zone authority and visible in the Human Gateway receipt view.
-- Go external/MCP tools run from a local temporary sandbox directory with restricted environment and explicit local-process isolation evidence in the receipt.
-- Go external/MCP tool environments bind `HOME`, `TMPDIR`, and `XDG_CACHE_HOME` to the local sandbox directory.
-- Go signs sandbox proof evidence and includes it in receipts.
-- Go emits signed protocol-native checkpoint evidence and records checkpoint refs in receipts.
-- Go accepts `FED_TASK_RESUME` only when the parent checkpoint exists in audit, then records resumed receipts linked to that parent checkpoint and its state digest.
-- Go accepts `FED_QUEUE_RESUME` only when the parent checkpoint exists in audit, then preserves the resume binding and restored state digest through queued drain.
-- Go accepts signed `FED_TASK_CANCEL` and records worker-signed cancellation receipts.
-- Go accepts `FED_TASK_RETRY` and records retry lineage in receipts.
-- Go persists completed/cancelled task state files linked to receipt digests.
-- Go persists failed task state with error evidence when execution fails before receipt.
-- Go interrupts a running external tool when a signed `FED_TASK_CANCEL` arrives.
-- Go persists running task state before external/MCP execution completes.
-- Human Gateway exposes durable task state through `/api/tasks` and a read-only Tasks table.
-- Human Gateway exposes approval state through `/api/approvals` and explicit local approve actions.
-- Human Gateway direct approvals preserve named `human://...` actors in signed approval evidence.
-- Human Gateway direct approval actors can pass a configurable local `approval_actions` allowlist.
-- Human Gateway direct approvals can derive a local actor from configured bearer approval sessions.
-- Human Gateway approval sessions reject body actors that mismatch the bearer session actor.
-- Human Gateway exposes read-only local approval session state through `/api/session`.
-- Human Gateway page displays local approval session state from `/api/session`.
-- Human Gateway writes can require `Authorization: Bearer <token>` when started with `--human-token`.
-- Human Gateway exposes local deployment security posture through `/api/security`.
-- Go accepts signed tasks into a durable local queue through `FED_TASK_ENQUEUE`.
-- Go accepts an explicit two-step `FED_SWARM_OPEN` DAG and binds the downstream receipt to the upstream artifact manifest.
-- Go audit verification rejects signed Swarm dependency claims that do not match declared dependency steps, unique step identity, upstream step artifact manifests, or receipt digests.
-- Go claims queued work with `FED_QUEUE_CLAIM` before lease-gated drain.
-- Go rejects expired queue leases and allows explicit `FED_QUEUE_RECLAIM` ownership transfer.
-- Go accepts `FED_QUEUE_RETRY` for failed queue items and records retry/backoff state.
-- Human Gateway exposes `/api/queue` and explicit local enqueue/claim/drain queue actions.
-- Human Gateway can draft and locally sign queued tasks through `/api/queue/drafts`.
-- Human Gateway can accept externally signed requester tasks through `/api/queue/drafts` without holding the requester private key.
-- Human Gateway page can generate, export, import, rotate, bind the alias for, and use a browser-held requester key to submit signed queue drafts.
-- Human Gateway can issue a Zone-signed requester alias rebinding proof after verifying browser requester rotation proof.
-- Human Gateway persists rebound requester aliases in a multi-alias local registry JSON file.
-- Human Gateway exposes the local requester registry through `/api/requester/registry` and a read-only table.
-- Human Gateway exposes local requester alias rebinding history through `/api/requester/rebindings` and a read-only table.
-- Human Gateway queue actions create `go_queue_action` audit evidence with actor evidence and local actor policy results when the policy gate is reached.
-- Human Gateway queue actions require signed action grants with actor binding, configurable local actor policy, action scope, expiry, and durable nonce-backed replay rejection.
-- Go drains a queued task through `FED_QUEUE_DRAIN` only after explicit approval and records completed queue state.
-- Go binds declared sandbox claims into receipts and signed sandbox proofs.
-- Go records sandbox isolation level evidence without claiming container isolation.
-- Go records external/MCP tool command, executable binary, and result transcript digests in sandbox evidence.
-- Go persists external/MCP result transcripts as local artifacts whose bytes match `tool_transcript_digest`.
-- Human Gateway receipt table links persisted transcript artifacts.
-- Human Gateway receipt table links artifacts to their manifest API.
-- Human Gateway receipt table links artifacts to receipt-scoped verify API.
-- Human Gateway receipt table links artifacts to receipt-scoped read API.
-- Human Gateway receipt-scoped artifact reads expose signed digest headers.
-- Human Gateway receipt-scoped artifact reads support HEAD proof headers.
-- Human Gateway receipt-scoped artifact reads expose the signed receipt digest.
-- Human Gateway receipt-scoped artifact reads expose the audit hash-chain entry hash.
-- Go records tool output digest alignment with artifact manifests.
-- Go persists artifact manifest sidecars and exposes them through a read-only Human Gateway API.
-- Go writes local artifacts under a content-addressed `artifacts/by-sha256/<digest>` path.
-- Go can mirror artifact bytes and sidecars to a configured filesystem artifact store.
-- Go audit verification checks local artifact bytes against signed artifact manifests.
-- Go audit verification checks named artifact manifest sidecars against signed receipt manifests.
-- Go audit verification checks digest-addressed artifact manifest sidecars against signed receipt manifests.
-- Go audit verification can check filesystem artifact mirror bytes and sidecars when `--artifact-store` is configured.
-- Go records MCP initialize session metadata in sandbox evidence.
-- Go records MCP resources/prompts count and digest evidence.
-- Go records MCP tool list count and digest evidence.
-- Go binds selected MCP tool to `tools/list` evidence.
-- Go records selected MCP tool schema digest evidence.
-- Go records MCP `tools/call` argument digest evidence.
-- Go rejects MCP `tools/call` arguments missing selected schema required fields.
-- Go records artifact manifest digest evidence in artifact events and receipts.
-- Go records canonical policy scope evidence and stable policy deny codes.
-- Go query results include Zone-signed credential status evidence.
-- Federation can query remote signed audit receipt proof by task id.
-- Human Gateway can query task-scoped audit receipt proof by task id.
-- Human Gateway task-scoped audit receipt proof returns the receipt audit hash.
-- Human Gateway can verify a receipt-scoped artifact by task id and artifact URI.
-- Human Gateway receipt-scoped artifact verify responses expose receipt digest and audit hash proof fields.
-- Human Gateway can fetch a receipt-scoped artifact manifest proof by task id and artifact URI.
-- Human Gateway artifact manifest HEAD responses expose signed proof headers without bytes.
-- Human Gateway can stream a task-scoped tool transcript as signed NDJSON proof.
-- Human Gateway receipt rows can load the task-scoped transcript stream into a local transcript viewer.
-- Human Gateway can read a running external tool stdout snapshot as NDJSON.
-- Human Gateway running task rows can load live transcript snapshots into the local transcript viewer.
-- Human Gateway live transcript loading polls the running snapshot until another transcript is selected.
-- MCP stdio responses are copied into the live transcript snapshot as NDJSON.
-- Filesystem artifact mirrors maintain an `objects.ndjson` content-addressed object index.
-- Audit verification checks the filesystem artifact mirror `objects.ndjson` index.
-- Artifact store can produce a GC plan from the verified mirror index.
-- Node audit appends are serialized inside one process.
-- Go audit readers accept larger valid JSONL audit entries.
-- Go approval state modifications are serialized inside one process.
-- Artifact store can apply the verified GC plan to delete orphaned mirror objects.
-- Go JSON task/approval/queue/requester state files are replaced through temp-file + rename.
-- Unsupported sandbox claims fail before Human Gateway approval and external/MCP tool startup.
-- Go can verify one receipt record JSON file with `--verify-receipt`.
-- Go trusted Zone store applies local Zone revocations.
-- Go trusted Zone store rejects tampered local Zone revocations at load time.
-- Human Gateway can read receipt-scoped artifact bytes by task id and artifact URI.
-- Human Gateway artifact read responses expose signed artifact digest headers.
-- Human Gateway artifact read HEAD responses expose signed proof headers without bytes.
-- Human Gateway artifact read responses expose the signed receipt digest.
-- Human Gateway artifact read responses expose the audit hash-chain entry hash.
-- A worker emits events, writes an artifact, and signs a receipt.
-- `state/audit.log` records hash-chained events and receipts as JSON lines.
+## Important Commands
 
-Skipped: TLS, QUIC, DHT, DID, token economy. Add them after this local loop is boring.
+Verify one receipt JSON record:
+
+```bash
+go run ./cmd/go-fed-discovery --verify-receipt path/to/receipt.json
+```
+
+Verify an audit log:
+
+```bash
+go run ./cmd/go-fed-discovery --verify-audit --audit state/go-fed-audit.log
+```
+
+Start the Go federation gateway:
+
+```bash
+go run ./cmd/go-fed-discovery \
+  --port 9090 \
+  --ws-port 9091 \
+  --human-port 8080
+```
+
+Optional hardening flags include:
+
+- `--listen-host`
+- `--tls-cert`
+- `--tls-key`
+- `--tls-client-ca`
+- `--human-token`
+- `--human-actor-policy`
+- `--artifact-store`
+
+## Repository Map
+
+- `cmd/go-fed-discovery/main.go` - Go gateway, verifier, Human Gateway, queue, Swarm seed.
+- `*.mjs` - Node prototype runtime, federation gateway, tests, and demos.
+- `test-vectors/` - shared protocol vectors.
+- `docs/implementation-status.md` - current capability matrix.
+- `docs/agent-space-ultimate-vision.md` - long-range vision.
+- `docs/agent-space-architecture.md` - architecture overview.
+- `docs/v9-roadmap.md` - closed v9 roadmap and v10+ direction.
+- `docs/v9.31-boundary.md` - latest closed boundary.
+
+## Roadmap
+
+v9 is closed. The next line should start as v10+ instead of adding more v9 slices.
+
+Highest-value next directions:
+
+1. Publish an English ASP Core draft for the narrow proof layer.
+2. Extract receipt verification into a small Go package and npm package.
+3. Add `did:key` export/import as an identity bridge without replacing `aid:`.
+4. Provide a first public node or Docker-based demo.
+5. Align Node artifact manifests with the Go evidence model.
+6. Continue Swarm proof work without building a broad scheduler too early.
+
+## Current Boundaries
+
+Agnet is deliberately not claiming:
+
+- Production security.
+- Public network deployment.
+- Real container namespace isolation.
+- DID-native identity.
+- A2A, ANP, or AGNTCY compatibility.
+- Token economy or settlement.
+- Dynamic Swarm decomposition or scheduler-owned DAG execution.
+
+Those may become v10+ work, but they are not current capabilities.
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md). The short version:
+
+- Keep changes boundary-first.
+- Add a failing test before changing behavior.
+- Prefer verifier evidence over broader framework code.
+- Do not claim a capability until a test or command proves it.
+
+## Security
+
+This is a research prototype. Do not use it as a production security boundary. See [SECURITY.md](SECURITY.md).
+
+## License
+
+No open-source license has been selected yet. Until a license is added, the default copyright rules apply. Contributors should not assume reuse rights beyond repository access.
