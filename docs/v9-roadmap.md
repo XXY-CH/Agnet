@@ -1,6 +1,6 @@
 # Agent Space v9 Roadmap
 
-状态：v9.5 complete; v9.6+ planned
+状态：v9.6 complete; v9.7+ planned
 目标：把 v8 形成的 Human Gateway / artifact proof 面继续推进到更真实的 runtime hardening，不扩大到产品化平台。
 
 ## v9.0: Artifact Store Index Verification
@@ -148,6 +148,30 @@
 - 不做 S3/MinIO backend。
 - 不做 artifact browser。
 - 不做 auth model for mirrored artifacts。
+- 不做 container namespace sandbox。
+- 不做 A2A/ARD compatibility。
+
+## v9.6: Go JSON State Atomic Replace
+
+状态：complete
+目标：Go task/approval/queue/requester JSON state files are replaced through same-directory temp files and rename.
+
+新增：
+
+- `writeJSONStateFile` marshals JSON state and delegates to an atomic file replacement helper.
+- `atomicWriteFile` writes in the target directory, syncs the temp file, renames over the final path, and best-effort syncs the directory.
+- Task state, approval state, queue state, requester registry, and requester rebinding history writes use the shared helper.
+- Go package test verifies repeated replacement leaves complete JSON and no `.tmp-` file.
+
+不做：
+
+- 不做 cross-process locking。
+- 不做 database。
+- 不做 lockfile protocol。
+- 不做 audit append atomic rewrite。
+- 不做 artifact byte atomic write。
+- 不做 artifact-store `objects.ndjson` compaction or atomic rewrite。
+- 不做 queue scheduler or automatic drain。
 - 不做 container namespace sandbox。
 - 不做 A2A/ARD compatibility。
 

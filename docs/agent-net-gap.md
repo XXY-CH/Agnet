@@ -1,6 +1,6 @@
 # Agent Net Gap
 
-状态：v9.5 assessment
+状态：v9.6 assessment
 
 ## 一句话
 
@@ -106,6 +106,7 @@
 - External/MCP sandbox evidence records explicit `local-process` isolation level。
 - External/MCP tool environments bind `HOME`, `TMPDIR`, and `XDG_CACHE_HOME` to the local sandbox directory。
 - Completed/cancelled Go tasks persist minimal state files linked to receipt digests。
+- Go task, approval, queue, requester registry, and requester rebinding JSON state files are replaced through same-directory temp files and rename。
 - Failed Go task execution persists error state before a receipt exists。
 - Signed task cancellation interrupts a running external tool through the in-memory runtime registry。
 - Running Go tasks persist state before external/MCP execution completes。

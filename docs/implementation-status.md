@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v9.5 complete
-当前代码基线：`v9.5-artifact-store-gc-apply`
+状态：v9.6 complete
+当前代码基线：`v9.6-go-json-state-atomic-replace`
 
 ## 一句话
 
@@ -51,6 +51,7 @@ Go
   -> live external task cancellation through in-memory runtime registry
   -> FED_TASK_RETRY retry lineage evidence
   -> durable running/completed/cancelled/failed task state files
+  -> Go JSON state files for task/approval/queue/requester registry/history are replaced through temp-file + rename
   -> minimal task events, artifact, signed receipt
   -> audit JSONL hash chain and verifier
   -> multi-worker profile registry
@@ -146,7 +147,7 @@ Go
 
 ## Next Boundary
 
-v9.5 applies the verified artifact-store GC plan to delete orphaned mirror bytes and sidecars. The next natural boundary is container namespace sandboxing, queue grant replay indexing, state-file atomic writes, or another small Ultimate-aligned runtime/governance slice.
+v9.6 replaces Go task/approval/queue/requester JSON state files through same-directory temp files and rename. The next natural boundary is container namespace sandboxing, queue grant replay indexing, or another small Ultimate-aligned runtime/governance slice.
 
 Route detail: `docs/v9-roadmap.md`。
 

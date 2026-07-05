@@ -72,3 +72,34 @@ func TestApplyApprovalActionSerializesConcurrentApproves(t *testing.T) {
 		t.Fatalf("got %d successful approvals, want 1", successes.Load())
 	}
 }
+
+func TestWriteJSONStateFileLeavesCompleteStateAndNoTempFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "task.json")
+	if err := writeJSONStateFile(path, map[string]any{"task_id": "task_1", "status": "running"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeJSONStateFile(path, map[string]any{"task_id": "task_1", "status": "completed", "receipt_digest": "abc"}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state map[string]any
+	if err := json.Unmarshal(data, &state); err != nil {
+		t.Fatal(err)
+	}
+	if state["status"] != "completed" {
+		t.Fatalf("status = %v, want completed", state["status"])
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.Contains(entry.Name(), ".tmp-") {
+			t.Fatalf("temporary state file was not cleaned up: %s", entry.Name())
+		}
+	}
+}

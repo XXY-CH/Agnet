@@ -2018,14 +2018,7 @@ func (f Fixture) writeRequesterRegistry(descriptor map[string]any) error {
 		agents = append(agents, next)
 	}
 	registry["agents"] = agents
-	if err := os.MkdirAll(filepath.Dir(requesterRegistryPath), 0755); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(registry, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(requesterRegistryPath, append(data, '\n'), 0644)
+	return writeJSONStateFile(requesterRegistryPath, registry)
 }
 
 func readRequesterRegistry() (map[string]any, error) {
@@ -2082,14 +2075,7 @@ func (f Fixture) appendRequesterRebindingHistory(proof map[string]any) error {
 		"proof_digest":          digestHex(proof),
 		"alias_rebinding_proof": proof,
 	})
-	if err := os.MkdirAll(filepath.Dir(requesterRebindingHistoryPath), 0755); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(rebindings, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(requesterRebindingHistoryPath, append(data, '\n'), 0644)
+	return writeJSONStateFile(requesterRebindingHistoryPath, rebindings)
 }
 
 func (f Fixture) workersByCapability(capability string) []Worker {
@@ -2943,6 +2929,56 @@ func (f Fixture) appendAudit(record map[string]any) error {
 	return f.Audit.Append(record)
 }
 
+func writeJSONStateFile(path string, body any) error {
+	data, err := json.MarshalIndent(body, "", "  ")
+	if err != nil {
+		return err
+	}
+	return atomicWriteFile(path, append(data, '\n'), 0o644)
+}
+
+func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	file, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-")
+	if err != nil {
+		return err
+	}
+	tempPath := file.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tempPath)
+		}
+	}()
+	if _, err := file.Write(data); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Chmod(perm); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tempPath, path); err != nil {
+		return err
+	}
+	if dirFile, err := os.Open(dir); err == nil {
+		_ = dirFile.Sync()
+		_ = dirFile.Close()
+	}
+	cleanup = false
+	return nil
+}
+
 func (f Fixture) writeTaskState(taskID, status string, worker *Worker, extra map[string]any) error {
 	if f.TaskStateDir == "" {
 		return nil
@@ -2955,15 +2991,8 @@ func (f Fixture) writeTaskState(taskID, status string, worker *Worker, extra map
 	for key, value := range extra {
 		body[key] = value
 	}
-	if err := os.MkdirAll(f.TaskStateDir, 0o755); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(body, "", "  ")
-	if err != nil {
-		return err
-	}
 	// ponytail: one JSON file per task; replace with an indexed store when scheduling needs queries.
-	return os.WriteFile(filepath.Join(f.TaskStateDir, url.PathEscape(taskID)+".json"), append(data, '\n'), 0o644)
+	return writeJSONStateFile(filepath.Join(f.TaskStateDir, url.PathEscape(taskID)+".json"), body)
 }
 
 func approvalExpiresAt(task map[string]any) string {
@@ -2991,14 +3020,7 @@ func (f Fixture) writeApprovalState(taskID, status string, reasons []string, by 
 	if approval != nil {
 		body["approval"] = approval
 	}
-	if err := os.MkdirAll(f.ApprovalDir, 0o755); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(body, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(f.ApprovalDir, url.PathEscape(taskID)+".json"), append(data, '\n'), 0o644)
+	return writeJSONStateFile(filepath.Join(f.ApprovalDir, url.PathEscape(taskID)+".json"), body)
 }
 
 func (f Fixture) readApprovalState(taskID string) (map[string]any, error) {
@@ -3110,15 +3132,8 @@ func (f Fixture) writeQueueItem(origin map[string]any, worker *Worker, task map[
 	for key, value := range extra {
 		body[key] = value
 	}
-	if err := os.MkdirAll(f.QueueDir, 0o755); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(body, "", "  ")
-	if err != nil {
-		return err
-	}
 	// ponytail: one queue file per task; replace with leases when multiple workers can drain it.
-	return os.WriteFile(filepath.Join(f.QueueDir, url.PathEscape(taskID)+".json"), append(data, '\n'), 0o644)
+	return writeJSONStateFile(filepath.Join(f.QueueDir, url.PathEscape(taskID)+".json"), body)
 }
 
 func (f Fixture) readQueueItem(taskID string) (map[string]any, error) {
