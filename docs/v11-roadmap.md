@@ -678,6 +678,29 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.31: Node Zone Descriptor Object Presence
+
+状态：complete
+目标：Make Node Zone descriptor verification reject missing or non-object descriptors before descriptor field reads.
+
+新增：
+
+- Node `verifyZoneDescriptor` rejects missing, array, or otherwise non-object Zone descriptor values with `zone descriptor missing`.
+- `loadTrustedZones` inherits the same fail-closed behavior because it verifies every stored Zone descriptor through `verifyZoneDescriptor`.
+- The trusted Zone test proves malformed trusted-Zone entries no longer leak JavaScript `TypeError` failures.
+
+不做：
+
+- 不实现 generic Zone schema validation。
+- 不改变 Zone descriptor shape。
+- 不改变 trust-store file shape。
+- 不改变 Go verifier behavior。
+- 不新增 per-caller guards。
+- 不实现 registry ownership changes。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

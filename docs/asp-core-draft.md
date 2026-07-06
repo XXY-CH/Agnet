@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v11.30-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v11.31-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -18,6 +18,8 @@ ASP Core covers:
 - Receipt verification.
 - Local artifact byte verification.
 - Audit hash chain evidence.
+
+The implementation-backed verifier checks Zone descriptor object presence before reading descriptor fields. This is a fail-closed trust-boundary guard, not a generic schema validation layer.
 
 ASP Core does not cover:
 

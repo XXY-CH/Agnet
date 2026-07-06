@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import {
   createZone,
@@ -27,4 +28,16 @@ test("trusted Zone store rejects tampered Zone descriptors", async () => {
     () => loadTrustedZones("state/trusted-zones-tamper-test.json"),
     /zone signature verification failed/,
   );
+});
+
+test("trusted Zone store rejects missing Zone descriptor objects", async () => {
+  await writeFile("state/trusted-zones-missing-descriptor-test.json", '{"zones":[null]}\n');
+
+  await assert.rejects(
+    () => loadTrustedZones("state/trusted-zones-missing-descriptor-test.json"),
+    /zone descriptor missing/,
+  );
+
+  assert.throws(() => verifyZoneDescriptor(null), /zone descriptor missing/);
+  assert.throws(() => verifyZoneDescriptor([]), /zone descriptor missing/);
 });

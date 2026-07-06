@@ -175,6 +175,9 @@ export function zoneFromPrivateKey(name, privateKey) {
 }
 
 export function verifyZoneDescriptor(zoneDescriptor) {
+  if (!zoneDescriptor || typeof zoneDescriptor !== "object" || Array.isArray(zoneDescriptor)) {
+    throw new Error("zone descriptor missing");
+  }
   const zonePublicKey = publicKeyFromDescriptor({ public_key_spki: zoneDescriptor.public_key_spki });
   const zid = computeZid(zonePublicKey);
   if (zid !== zoneDescriptor.zid) throw new Error(`zone id mismatch: ${zoneDescriptor.name ?? zoneDescriptor.zid}`);
