@@ -1,12 +1,12 @@
 # Agent Net Gap
 
-状态：v10.17 assessment
+状态：v10.18 assessment
 
 ## 一句话
 
 当前项目是 Agent Net 的 protocol seed，不是 Agent Net 产品。
 
-它已经抓住了真正 Agent Net 的底层骨架：identity with a narrow Ed25519 `did:key` bridge、Node/Go artifact manifest evidence and local verification CLI、Node/Go receipt verification CLIs、one-receipt local artifact closure verification、implementation-backed ASP Core draft、reusable Go `FED_RECEIPT` verifier package、one-command local proof demo with verifier-ready receipt/trust files、Docker proof demo contract、signed task、policy、artifact、receipt、audit、federation、Node/Go bidirectional task interop、Go federation explicit bind host primitive、shared `FED_TASK_OPEN` / `FED_RECEIPT` conformance fixtures，以及 Go 侧最小 explicit Swarm DAG seed、single ordered complete audit-backed Zone-signed Swarm close proof tied to same-audit receipts 和同 audit Swarm dependency step/receipt verification。
+它已经抓住了真正 Agent Net 的底层骨架：identity with a narrow Ed25519 `did:key` bridge、Node/Go artifact manifest evidence and local verification CLI、Node/Go receipt verification CLIs、one-receipt local artifact closure verification、implementation-backed ASP Core draft、reusable Go `FED_RECEIPT` verifier package、one-command local proof demo with verifier-ready receipt/trust files、Docker proof demo contract、signed task、policy、artifact、receipt、audit、federation、Node/Go bidirectional task interop、Go federation explicit bind host primitive、shared `FED_TASK_OPEN` / `FED_RECEIPT` conformance fixtures，以及 Go 侧最小 explicit Swarm DAG seed、single ordered complete audit-backed Zone-signed Swarm close proof tied to same-audit receipts、delimiter-safe Swarm ids 和同 audit Swarm dependency step/receipt verification。
 
 它还缺产品面、运行面、部署面、多人协作面和真实工具执行面。
 
@@ -33,7 +33,7 @@
 - shared Node/Go `FED_TASK_OPEN` and `FED_RECEIPT` conformance fixtures。
 - Go `FED_SWARM_OPEN` explicit two-step DAG seed with signed artifact dependency evidence。
 - Go `FED_SWARM_CLOSE` carries one ordered complete audit-backed Zone-signed close proof over ordered same-audit step receipt digests。
-- Go audit verification rejects duplicate Swarm step receipts, including artifactless duplicates, and signed Swarm dependency claims that do not match declared dependency steps, upstream step artifact manifests, or receipt digests in the same audit。
+- Go audit verification rejects duplicate Swarm step receipts, including artifactless duplicates, NUL-bearing Swarm ids, and signed Swarm dependency claims that do not match declared dependency steps, upstream step artifact manifests, or receipt digests in the same audit。
 - `agent://` alias -> `aid:` descriptor。
 - signed task。
 - policy scope。
@@ -172,7 +172,7 @@
 - Human Gateway live transcript loading polls the running snapshot until another transcript is selected。
 - MCP stdio responses are copied into live transcript snapshots as NDJSON。
 - Filesystem artifact mirrors maintain and verify an `objects.ndjson` content-addressed object index, can produce a GC plan, and can delete orphaned mirror objects from that plan。
-- Explicit Swarm seed executes two ordered Go worker steps, signs the downstream artifact dependency into the receipt, appends one close proof to audit, and verifies complete close proof step order and digests against same-audit receipts; empty close proofs for audit-absent Swarms are rejected。
+- Explicit Swarm seed executes two ordered Go worker steps with NUL-delimited id hardening, signs the downstream artifact dependency into the receipt, appends one close proof to audit, and verifies complete close proof step order and digests against same-audit receipts; empty close proofs for audit-absent Swarms are rejected。
 - Audit verification checks Swarm dependency step uniqueness even without artifacts, plus dependency step ids, artifact manifest, and receipt digest claims against prior completed steps in the same audit。
 
 主要缺：

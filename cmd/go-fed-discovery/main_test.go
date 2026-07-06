@@ -321,6 +321,38 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 			"input_artifacts": []map[string]any{},
 		},
 	})
+	nulSwarmReceipt := testSignedReceipt(t, zone, zoneKey, upstreamWorker, upstreamKey, "swarm_nul_swarm", []map[string]any{upstreamManifest}, map[string]any{
+		"swarm": map[string]any{
+			"swarm_id":        "swarm://test\x00shadow",
+			"step_id":         "upstream",
+			"after":           []string{},
+			"input_artifacts": []map[string]any{},
+		},
+	})
+	nulSwarmLog := &AuditLog{Path: "nul-swarm-id-audit.log", Head: auditZeroHash}
+	if err := nulSwarmLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": nulSwarmReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	err = verifyAuditFile("nul-swarm-id-audit.log", "")
+	if err == nil || !strings.Contains(err.Error(), "swarm identity contains NUL") {
+		t.Fatalf("got %v, want swarm identity contains NUL", err)
+	}
+	nulStepReceipt := testSignedReceipt(t, zone, zoneKey, upstreamWorker, upstreamKey, "swarm_nul_step", []map[string]any{upstreamManifest}, map[string]any{
+		"swarm": map[string]any{
+			"swarm_id":        "swarm://test",
+			"step_id":         "upstream\x00shadow",
+			"after":           []string{},
+			"input_artifacts": []map[string]any{},
+		},
+	})
+	nulStepLog := &AuditLog{Path: "nul-step-id-audit.log", Head: auditZeroHash}
+	if err := nulStepLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": nulStepReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	err = verifyAuditFile("nul-step-id-audit.log", "")
+	if err == nil || !strings.Contains(err.Error(), "swarm identity contains NUL") {
+		t.Fatalf("got %v, want swarm identity contains NUL", err)
+	}
 	otherReceipt := testSignedReceipt(t, zone, zoneKey, upstreamWorker, upstreamKey, "swarm_other", []map[string]any{otherManifest}, map[string]any{
 		"swarm": map[string]any{
 			"swarm_id":        "swarm://test",

@@ -2652,6 +2652,9 @@ func (f Fixture) executeSwarm(send sendFunc, origin, frame map[string]any) error
 	if swarmID == "" {
 		return errors.New("swarm_id missing")
 	}
+	if hasSwarmDelimiter(swarmID) {
+		return errors.New("swarm identity contains NUL")
+	}
 	steps, ok := swarm["steps"].([]any)
 	if !ok || len(steps) == 0 {
 		return errors.New("swarm steps missing")
@@ -2667,12 +2670,18 @@ func (f Fixture) executeSwarm(send sendFunc, origin, frame map[string]any) error
 		if stepID == "" {
 			return errors.New("swarm step_id missing")
 		}
+		if hasSwarmDelimiter(stepID) {
+			return errors.New("swarm identity contains NUL")
+		}
 		if _, exists := completed[stepID]; exists {
 			return errors.New("duplicate swarm step: " + stepID)
 		}
 		after := stringsFromAny(step["after"])
 		inputArtifacts := []map[string]any{}
 		for _, dependency := range after {
+			if hasSwarmDelimiter(dependency) {
+				return errors.New("swarm identity contains NUL")
+			}
 			receipt, ok := completed[dependency]
 			if !ok {
 				return errors.New("swarm dependency not completed: " + dependency)
@@ -4429,6 +4438,9 @@ func verifySwarmReceiptDependencies(receipt map[string]any, completed map[string
 	if swarmID == "" || stepID == "" {
 		return errors.New("swarm receipt identity missing")
 	}
+	if hasSwarmDelimiter(swarmID) || hasSwarmDelimiter(stepID) {
+		return errors.New("swarm identity contains NUL")
+	}
 	inputs := mapsFromAny(swarm["input_artifacts"])
 	after := stringsFromAny(swarm["after"])
 	if len(inputs) != len(after) {
@@ -4436,6 +4448,9 @@ func verifySwarmReceiptDependencies(receipt map[string]any, completed map[string
 	}
 	for i, input := range inputs {
 		dependency := optionalString(input["step_id"])
+		if hasSwarmDelimiter(dependency) || hasSwarmDelimiter(after[i]) {
+			return errors.New("swarm identity contains NUL")
+		}
 		if dependency != after[i] {
 			return errors.New("swarm input artifact step mismatch")
 		}
@@ -4500,6 +4515,12 @@ func verifySwarmCloseProof(record map[string]any, completed map[string]map[strin
 		return errors.New("swarm close signature verification failed")
 	}
 	swarmID := optionalString(closeProof["swarm_id"])
+	if swarmID == "" {
+		return errors.New("swarm close identity missing")
+	}
+	if hasSwarmDelimiter(swarmID) {
+		return errors.New("swarm identity contains NUL")
+	}
 	if closed[swarmID] {
 		return errors.New("duplicate swarm close proof: " + swarmID)
 	}
@@ -4516,6 +4537,12 @@ func verifySwarmCloseProof(record map[string]any, completed map[string]map[strin
 	seen := map[string]bool{}
 	for _, step := range steps {
 		stepID := optionalString(step["step_id"])
+		if stepID == "" {
+			return errors.New("swarm close step identity missing")
+		}
+		if hasSwarmDelimiter(stepID) {
+			return errors.New("swarm identity contains NUL")
+		}
 		if seen[stepID] {
 			return errors.New("duplicate swarm close step receipt: " + stepID)
 		}
@@ -4542,6 +4569,10 @@ func verifySwarmCloseProof(record map[string]any, completed map[string]map[strin
 	}
 	closed[swarmID] = true
 	return nil
+}
+
+func hasSwarmDelimiter(value string) bool {
+	return strings.Contains(value, "\x00")
 }
 
 func verifyApprovalGrants(zoneKey ed25519.PublicKey, receipt map[string]any) error {
