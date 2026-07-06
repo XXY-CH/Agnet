@@ -66,6 +66,16 @@ test("FED_TASK_OPEN verification rejects non-task-open frame types in Node", asy
   );
 });
 
+test("FED_TASK_OPEN verification rejects missing frame objects in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.24-fed-task-open.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+
+  assert.throws(
+    () => verifyFederatedTaskOpen(null, trustedZones, vector.worker),
+    /expected FED_TASK_OPEN frame/,
+  );
+});
+
 test("FED_TASK_OPEN verification rejects unbound requesters in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v9.24-fed-task-open.json", "utf8"));
   const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
@@ -106,6 +116,13 @@ test("FED_RECEIPT verification rejects non-receipt frame types in Node", async (
 
   assert.throws(
     () => verifyFederatedReceipt({ ...vector.frame, type: "FED_TASK_OPEN" }, trustedZones),
+    /expected FED_RECEIPT frame/,
+  );
+});
+
+test("FED_RECEIPT verification rejects missing frame objects in Node", async () => {
+  assert.throws(
+    () => verifyFederatedReceipt(null, new Map()),
     /expected FED_RECEIPT frame/,
   );
 });

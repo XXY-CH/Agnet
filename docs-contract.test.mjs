@@ -197,8 +197,8 @@ test("v11 public docs include FED_RECEIPT frame type validation", async () => {
 
   assert.match(readme, /`docs\/v11\.10-boundary\.md` - FED_RECEIPT frame type validation boundary\./);
   assert.match(roadmap, /## v11\.10: FED_RECEIPT Frame Type Validation/);
-  assert.match(draft, /`frame\.type` is `FED_RECEIPT`/);
-  assert.match(status, /FED_RECEIPT verifier requires frame\.type FED_RECEIPT/);
+  assert.match(draft, /frame is an object whose `frame\.type` is `FED_RECEIPT`/);
+  assert.match(status, /FED_RECEIPT verifier requires frame object\/type FED_RECEIPT/);
   assert.match(boundary, /wrong protocol type/);
 });
 
@@ -212,10 +212,10 @@ test("v11 public docs include FED_TASK_OPEN frame type validation", async () => 
   ]);
 
   assert.match(readme, /`docs\/v11\.11-boundary\.md` - FED_TASK_OPEN frame type validation boundary\./);
-  assert.match(readme, /task and receipt verifiers require the correct `FED_TASK_OPEN` \/ `FED_RECEIPT` frame types/);
+  assert.match(readme, /task and receipt verifiers require valid `FED_TASK_OPEN` \/ `FED_RECEIPT` frame objects and correct frame types/);
   assert.match(roadmap, /## v11\.11: FED_TASK_OPEN Frame Type Validation/);
-  assert.match(draft, /`frame\.type` is `FED_TASK_OPEN`/);
-  assert.match(status, /FED_TASK_OPEN` and `FED_RECEIPT` frame type validation/);
+  assert.match(draft, /frame is an object whose `frame\.type` is `FED_TASK_OPEN`/);
+  assert.match(status, /Node `FED_TASK_OPEN` and `FED_RECEIPT` frame object\/type validation/);
   assert.match(boundary, /wrong protocol type/);
 });
 
@@ -352,11 +352,29 @@ test("v11 public docs include FED_SWARM_CLOSE frame object presence", async () =
     readFile("docs/v11.20-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.20-protocol`/);
+  assert.match(readme, /`docs\/v11\.20-boundary\.md` - FED_SWARM_CLOSE frame object presence boundary\./);
   assert.match(readme, /missing-frame, missing-zone, missing-proof, missing-signature, missing-identity, malformed-step, unsafe-task-id, NUL-bearing, structurally empty, or duplicate-step close proofs/);
   assert.match(roadmap, /## v11\.20: FED_SWARM_CLOSE Frame Object Presence/);
   assert.match(draft, /checks the close frame object and type/);
-  assert.match(status, /状态：v11\.20 active/);
   assert.match(status, /structural close-frame\/close-zone\/close-proof\/close-signature\/step-receipt object\/identity\/task-id\/uniqueness\/NUL checks/);
+  assert.match(boundary, /missing frame objects/);
+});
+
+test("v11 public docs include task and receipt frame object presence", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v11.21-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v11 active at `v11\.21-protocol`/);
+  assert.match(readme, /task and receipt verifiers require valid `FED_TASK_OPEN` \/ `FED_RECEIPT` frame objects and correct frame types/);
+  assert.match(roadmap, /## v11\.21: FED_TASK_OPEN and FED_RECEIPT Frame Object Presence/);
+  assert.match(draft, /frame is an object whose `frame\.type` is `FED_TASK_OPEN`/);
+  assert.match(draft, /frame is an object whose `frame\.type` is `FED_RECEIPT`/);
+  assert.match(status, /状态：v11\.21 active/);
+  assert.match(status, /Node `FED_TASK_OPEN` and `FED_RECEIPT` frame object\/type validation/);
   assert.match(boundary, /missing frame objects/);
 });
