@@ -1514,6 +1514,27 @@
 - 不实现 generic receipt schema validation。
 - 不实现 A2A/ARD compatibility。
 
+## v11.67: Go Runtime Checkpoint Lookup List Shape Boundary
+
+状态：complete
+目标：Make Go runtime checkpoint lookup reject malformed receipt checkpoint evidence lists before accepting a receipt-carried checkpoint for resume.
+
+新增：
+
+- Go `checkpointByID` rejects non-string entries in receipt `checkpoint_refs` lists with `checkpoint ref invalid`.
+- Go `checkpointByID` rejects non-object entries in receipt `checkpoints` lists with `checkpoint invalid`.
+- Existing direct checkpoint-event lookup and resume semantics stay unchanged.
+- The fix reuses the strict receipt checkpoint parsers added in v11.66; it does not add generic audit/schema validation.
+
+不做：
+
+- 不实现 model KV/cache restore。
+- 不实现 task migration。
+- 不实现 scheduler-owned checkpoint routing。
+- 不改变 resume semantics。
+- 不实现 generic audit/schema validation。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

@@ -1163,6 +1163,78 @@ func TestVerifyCheckpointsRejectsMalformedLists(t *testing.T) {
 	}
 }
 
+func TestCheckpointByIDRejectsMalformedReceiptCheckpointLists(t *testing.T) {
+	zone, zoneKey := testZoneDescriptor(t, "zone://checkpoint-lookup-shape")
+	_, workerKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := workerDescriptor(WorkerProfile{
+		Alias:        "agent://checkpoint-lookup-shape/worker",
+		Transports:   []string{"go-test"},
+		Capabilities: []string{"test"},
+		Policy:       map[string]any{"network": false},
+	}, workerKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := map[string]any{
+		"uri":           "artifact://local/checkpoint_lookup_shape/out.txt",
+		"sha256":        strings.Repeat("1", 64),
+		"size":          float64(1),
+		"media_type":    "text/plain",
+		"afp":           "afp:sha256:" + strings.Repeat("1", 64),
+		"manifest_hash": "",
+	}
+	manifestBody := map[string]any{}
+	for key, value := range manifest {
+		if key != "manifest_hash" {
+			manifestBody[key] = value
+		}
+	}
+	manifest["manifest_hash"] = digestHex(manifestBody)
+	checkpoint := signBodyWithKey(workerKey, map[string]any{
+		"task_id":           "checkpoint_lookup_shape",
+		"checkpoint_id":     "checkpoint://ok",
+		"parent_checkpoint": nil,
+	}, "checkpoint_signature")
+	cases := []struct {
+		name    string
+		extra   map[string]any
+		wantErr string
+	}{
+		{
+			name: "bad refs",
+			extra: map[string]any{
+				"checkpoint_refs": []any{"checkpoint://ok", map[string]any{"checkpoint_id": "ghost"}},
+				"checkpoints":     []map[string]any{checkpoint},
+			},
+			wantErr: "checkpoint ref invalid",
+		},
+		{
+			name: "bad checkpoints",
+			extra: map[string]any{
+				"checkpoint_refs": []string{"checkpoint://ok"},
+				"checkpoints":     []any{checkpoint, "bad-checkpoint"},
+			},
+			wantErr: "checkpoint invalid",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			audit := &AuditLog{Path: filepath.Join(t.TempDir(), "audit.log"), Head: auditZeroHash}
+			receipt := testSignedReceipt(t, zone, zoneKey, worker, workerKey, "checkpoint_lookup_shape", []map[string]any{manifest}, tc.extra)
+			if err := audit.Append(map[string]any{"kind": "go_fed_receipt", "receipt": receipt}); err != nil {
+				t.Fatal(err)
+			}
+			_, err = (Fixture{Audit: audit}).checkpointByID("checkpoint://ok")
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("got %v, want %s", err, tc.wantErr)
+			}
+		})
+	}
+}
+
 func testSignedReceipt(t *testing.T, zone map[string]any, zoneKey ed25519.PrivateKey, worker map[string]any, workerKey ed25519.PrivateKey, taskID string, manifests []map[string]any, extra map[string]any) map[string]any {
 	t.Helper()
 	refs := make([]string, 0, len(manifests))

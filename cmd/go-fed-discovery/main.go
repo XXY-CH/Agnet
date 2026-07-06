@@ -748,7 +748,14 @@ func (f Fixture) checkpointByID(checkpointID string) (map[string]any, error) {
 			return checkpoint, nil
 		}
 		receipt, _ := record["receipt"].(map[string]any)
-		for _, checkpoint := range mapsFromAny(receipt["checkpoints"]) {
+		if _, err := receiptCheckpointRefs(receipt["checkpoint_refs"]); err != nil {
+			return nil, err
+		}
+		checkpoints, err := receiptCheckpoints(receipt["checkpoints"])
+		if err != nil {
+			return nil, err
+		}
+		for _, checkpoint := range checkpoints {
 			if checkpoint["checkpoint_id"] == checkpointID {
 				return checkpoint, nil
 			}
