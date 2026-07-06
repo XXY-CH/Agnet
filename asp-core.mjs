@@ -4,6 +4,9 @@ import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sig
 
 const AGENT_DOMAIN = Buffer.from("asp-agent-id-v1\0");
 const ZONE_DOMAIN = Buffer.from("asp-zone-id-v1\0");
+const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
+const ED25519_MULTIKEY_PREFIX = Buffer.from([0xed, 0x01]);
+const BASE58BTC = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
 export function b64url(bytes) {
   return Buffer.from(bytes).toString("base64url");
@@ -29,6 +32,64 @@ export function privateKeyDer(privateKey) {
 export function computeAid(publicKey) {
   const digest = createHash("sha256").update(AGENT_DOMAIN).update(publicKeyDer(publicKey)).digest();
   return `aid:ed25519:${b64url(digest)}`;
+}
+
+function base58btc(bytes) {
+  let n = 0n;
+  for (const byte of bytes) n = (n << 8n) + BigInt(byte);
+  let out = "";
+  while (n > 0n) {
+    out = BASE58BTC[Number(n % 58n)] + out;
+    n /= 58n;
+  }
+  for (const byte of bytes) {
+    if (byte !== 0) break;
+    out = `1${out}`;
+  }
+  return out || "1";
+}
+
+function base58btcDecode(value) {
+  let n = 0n;
+  for (const char of value) {
+    const index = BASE58BTC.indexOf(char);
+    if (index < 0) throw new Error("invalid base58btc character");
+    n = n * 58n + BigInt(index);
+  }
+  let hex = n.toString(16);
+  if (hex.length % 2) hex = `0${hex}`;
+  const body = n === 0n ? Buffer.alloc(0) : Buffer.from(hex, "hex");
+  let zeros = 0;
+  for (const char of value) {
+    if (char !== "1") break;
+    zeros++;
+  }
+  return Buffer.concat([Buffer.alloc(zeros), body]);
+}
+
+export function didKeyFromPublicKey(publicKey) {
+  return didKeyFromPublicKeySPKI(b64url(publicKeyDer(publicKey)));
+}
+
+export function didKeyFromPublicKeySPKI(publicKeySPKI) {
+  const der = Buffer.from(publicKeySPKI, "base64url");
+  if (der.length !== ED25519_SPKI_PREFIX.length + 32 || !der.subarray(0, ED25519_SPKI_PREFIX.length).equals(ED25519_SPKI_PREFIX)) {
+    throw new Error("expected ed25519 public_key_spki");
+  }
+  return `did:key:z${base58btc(Buffer.concat([ED25519_MULTIKEY_PREFIX, der.subarray(ED25519_SPKI_PREFIX.length)]))}`;
+}
+
+export function didKeyFromDescriptor(descriptor) {
+  return didKeyFromPublicKeySPKI(descriptor.public_key_spki);
+}
+
+export function publicKeySPKIFromDidKey(didKey) {
+  if (!didKey.startsWith("did:key:z")) throw new Error("expected did:key z-base58btc value");
+  const bytes = base58btcDecode(didKey.slice("did:key:z".length));
+  if (bytes.length !== 34 || !bytes.subarray(0, 2).equals(ED25519_MULTIKEY_PREFIX)) {
+    throw new Error("expected ed25519 did:key");
+  }
+  return b64url(Buffer.concat([ED25519_SPKI_PREFIX, bytes.subarray(2)]));
 }
 
 export function computeZid(publicKey) {
@@ -73,6 +134,7 @@ export function agentFromPrivateKey(alias, privateKey, policy = {}, transports =
   const descriptor = {
     alias,
     aid,
+    did_key: didKeyFromPublicKey(publicKey),
     public_key_spki: b64url(publicKeyDer(publicKey)),
     transports,
     capabilities,
@@ -243,6 +305,9 @@ export function resolveAgent(registry, alias) {
   const publicKey = publicKeyFromDescriptor(descriptor);
   const computedAid = computeAid(publicKey);
   if (computedAid !== descriptor.aid) throw new Error(`descriptor aid mismatch for ${alias}`);
+  if (descriptor.did_key && descriptor.did_key !== didKeyFromDescriptor(descriptor)) {
+    throw new Error(`descriptor did:key mismatch for ${alias}`);
+  }
   if (!descriptor.descriptor_signature) throw new Error(`descriptor signature missing for ${alias}`);
   if (!verifyObject(publicKey, descriptorBody(descriptor), descriptor.descriptor_signature)) {
     throw new Error(`descriptor signature verification failed for ${alias}`);

@@ -49,6 +49,37 @@ func TestReadAuditEntriesAcceptsLargeLines(t *testing.T) {
 	}
 }
 
+func TestDidKeyBridgeMatchesVector(t *testing.T) {
+	spki := "MCowBQYDK2VwAyEAA6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+	did := "did:key:z6MkehRgf7yJbgaGfYsdoAsKdBPE3dj2CYhowQdcjqSJgvVd"
+
+	got, err := didKeyFromPublicKeySPKI(spki)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != did {
+		t.Fatalf("did = %s, want %s", got, did)
+	}
+	roundTrip, err := publicKeySPKIFromDidKey(did)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if roundTrip != spki {
+		t.Fatalf("spki = %s, want %s", roundTrip, spki)
+	}
+	_, key, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	descriptor, err := agentDescriptor(key, "agent://local/did-key-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if descriptor["did_key"] == "" {
+		t.Fatal("descriptor did_key missing")
+	}
+}
+
 func TestAuditAppendRefreshesSharedHead(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
 	first := &AuditLog{Path: path, Head: auditZeroHash}

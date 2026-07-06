@@ -1,12 +1,12 @@
 # Agent Net Gap
 
-状态：v9.31 assessment
+状态：v10.0 assessment
 
 ## 一句话
 
 当前项目是 Agent Net 的 protocol seed，不是 Agent Net 产品。
 
-它已经抓住了真正 Agent Net 的底层骨架：identity、signed task、policy、artifact、receipt、audit、federation、Node/Go bidirectional task interop、Go federation explicit bind host primitive、shared `FED_TASK_OPEN` / `FED_RECEIPT` conformance fixtures，以及 Go 侧最小 explicit Swarm DAG seed 和同 audit Swarm dependency step/receipt verification。
+它已经抓住了真正 Agent Net 的底层骨架：identity with a narrow Ed25519 `did:key` bridge、signed task、policy、artifact、receipt、audit、federation、Node/Go bidirectional task interop、Go federation explicit bind host primitive、shared `FED_TASK_OPEN` / `FED_RECEIPT` conformance fixtures，以及 Go 侧最小 explicit Swarm DAG seed 和同 audit Swarm dependency step/receipt verification。
 
 它还缺产品面、运行面、部署面、多人协作面和真实工具执行面。
 
@@ -19,6 +19,7 @@
 已有：
 
 - Ed25519 Agent/Zone identity。
+- Ed25519 Agent descriptor `did:key` bridge in Node and Go, while `aid:` remains canonical。
 - shared Node/Go `FED_TASK_OPEN` and `FED_RECEIPT` conformance fixtures。
 - Go `FED_SWARM_OPEN` explicit two-step DAG seed with signed artifact dependency evidence。
 - Go audit verification rejects duplicate Swarm step receipts, including artifactless duplicates, and signed Swarm dependency claims that do not match declared dependency steps, upstream step artifact manifests, or receipt digests in the same audit。
@@ -70,6 +71,7 @@
 
 - credential revocation feed / renewal beyond local Zone revocation。
 - richer routing beyond exact matches。
+- DID-native document/resolver/service endpoint semantics。
 
 ### Runtime core
 

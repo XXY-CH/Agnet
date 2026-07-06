@@ -229,12 +229,13 @@ MVP 不解决私钥被复制后的物理区分问题。
 
 DNS 可以作为 bootstrap，但不能作为 Agent 身份。
 
-DID 可以后续兼容，但 MVP 不需要完整 DID method、DID document 和 resolver 生态。
+DID 可以后续兼容，但 MVP 不需要完整 DID method、DID document 和 resolver 生态。v10.0 增加了一个窄桥：Ed25519 descriptor 可以包含由同一个 `public_key_spki` 派生出的 `did:key`。这个字段方便外部 DID 生态识别同一把公钥，但不替代 canonical `aid:`。
 
 最小方案是：
 
 ```text
 公钥 -> aid
+公钥 -> did:key bridge
 签名 -> 验证控制权
 registry -> alias 和 transport
 ```

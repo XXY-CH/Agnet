@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"net/url"
@@ -55,6 +56,9 @@ type Fixture struct {
 
 const requesterRegistryPath = "state/go-fed-discovery-requester-registry.json"
 const requesterRebindingHistoryPath = "state/go-fed-discovery-requester-rebindings.json"
+const base58BTCAlphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+
+var ed25519MultikeyPrefix = []byte{0xed, 0x01}
 
 type WorkerProfile struct {
 	KeyFile      string         `json:"key_file,omitempty"`
@@ -886,6 +890,7 @@ func agentDescriptor(key ed25519.PrivateKey, alias string) (map[string]any, erro
 	return signBodyWithKey(key, map[string]any{
 		"alias":           alias,
 		"aid":             aidFromSPKI(der),
+		"did_key":         didKeyFromPublicKey(publicKey),
 		"public_key_spki": encoded,
 		"transports":      []string{"go-client://local"},
 		"capabilities":    []string{"summarize.text"},
@@ -2240,6 +2245,7 @@ func workerDescriptor(profile WorkerProfile, key ed25519.PrivateKey) (map[string
 	body := map[string]any{
 		"alias":           profile.Alias,
 		"aid":             aidFromSPKI(der),
+		"did_key":         didKeyFromPublicKey(publicKey),
 		"public_key_spki": encoded,
 		"transports":      profile.Transports,
 		"capabilities":    profile.Capabilities,
@@ -2266,6 +2272,7 @@ func (f Fixture) humanGatewayRequester() (map[string]any, error) {
 	body := map[string]any{
 		"alias":           "agent://human-gateway/local",
 		"aid":             aidFromSPKI(der),
+		"did_key":         didKeyFromPublicKey(publicKey),
 		"public_key_spki": encoded,
 		"transports":      []string{"human-gateway.local"},
 		"capabilities":    []string{"queue.draft"},
@@ -4974,6 +4981,15 @@ func verifyAgentDescriptor(agent map[string]any) error {
 	if aidFromSPKI(der) != agent["aid"] {
 		return errors.New("agent id mismatch")
 	}
+	if didKey := optionalString(agent["did_key"]); didKey != "" {
+		expected, err := didKeyFromPublicKeySPKI(optionalString(agent["public_key_spki"]))
+		if err != nil {
+			return err
+		}
+		if didKey != expected {
+			return errors.New("agent did:key mismatch")
+		}
+	}
 	return verifyMapSignature(key, agent, "descriptor_signature")
 }
 
@@ -5041,6 +5057,84 @@ func publicKeySPKI(key ed25519.PublicKey) (string, []byte, error) {
 		return "", nil, err
 	}
 	return base64.RawURLEncoding.EncodeToString(der), der, nil
+}
+
+func didKeyFromPublicKey(key ed25519.PublicKey) string {
+	return "did:key:z" + base58BTCEncode(append(append([]byte{}, ed25519MultikeyPrefix...), key...))
+}
+
+func didKeyFromPublicKeySPKI(encoded string) (string, error) {
+	der, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		return "", err
+	}
+	parsed, err := x509.ParsePKIXPublicKey(der)
+	if err != nil {
+		return "", err
+	}
+	key, ok := parsed.(ed25519.PublicKey)
+	if !ok {
+		return "", errors.New("expected ed25519 public key")
+	}
+	return didKeyFromPublicKey(key), nil
+}
+
+func publicKeySPKIFromDidKey(didKey string) (string, error) {
+	if !strings.HasPrefix(didKey, "did:key:z") {
+		return "", errors.New("expected did:key z-base58btc value")
+	}
+	decoded, err := base58BTCDecode(strings.TrimPrefix(didKey, "did:key:z"))
+	if err != nil {
+		return "", err
+	}
+	if len(decoded) != 34 || !bytes.Equal(decoded[:2], ed25519MultikeyPrefix) {
+		return "", errors.New("expected ed25519 did:key")
+	}
+	encoded, _, err := publicKeySPKI(ed25519.PublicKey(decoded[2:]))
+	return encoded, err
+}
+
+func base58BTCEncode(bytesValue []byte) string {
+	n := new(big.Int).SetBytes(bytesValue)
+	base := big.NewInt(58)
+	zero := big.NewInt(0)
+	mod := new(big.Int)
+	out := []byte{}
+	for n.Cmp(zero) > 0 {
+		n.DivMod(n, base, mod)
+		out = append([]byte{base58BTCAlphabet[mod.Int64()]}, out...)
+	}
+	for _, b := range bytesValue {
+		if b != 0 {
+			break
+		}
+		out = append([]byte{'1'}, out...)
+	}
+	if len(out) == 0 {
+		return "1"
+	}
+	return string(out)
+}
+
+func base58BTCDecode(value string) ([]byte, error) {
+	n := big.NewInt(0)
+	base := big.NewInt(58)
+	for _, char := range value {
+		index := strings.IndexRune(base58BTCAlphabet, char)
+		if index < 0 {
+			return nil, errors.New("invalid base58btc character")
+		}
+		n.Mul(n, base)
+		n.Add(n, big.NewInt(int64(index)))
+	}
+	out := n.Bytes()
+	for _, char := range value {
+		if char != '1' {
+			break
+		}
+		out = append([]byte{0}, out...)
+	}
+	return out, nil
 }
 
 func aidFromSPKI(der []byte) string {

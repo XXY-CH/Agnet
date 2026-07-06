@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v9 closed at `v9.31-protocol`.
+Status: research prototype, local-first, v10 started with `v10.0-protocol`.
 
 ## Why This Exists
 
@@ -30,6 +30,7 @@ Agnet currently includes two implementations:
 The current prototype proves:
 
 - Ed25519 `aid:` agent identity and Zone identity.
+- Ed25519 `did:key` bridge fields for descriptors, without replacing `aid:`.
 - Signed tasks, events, artifacts, checkpoints, and receipts.
 - Hash-chained JSONL audit logs.
 - Receipt verification through the Go CLI.
@@ -42,7 +43,7 @@ The current prototype proves:
 - Minimal two-step `FED_SWARM_OPEN` with signed dependency evidence.
 - Swarm audit verification for declared dependency steps, unique step identity, artifact manifests, and upstream receipt digests.
 
-It is not yet a production Agent Net, public federation network, DID-based identity layer, scheduler, economic layer, or container-isolated runtime.
+It is not yet a production Agent Net, public federation network, DID-native identity layer, scheduler, economic layer, or container-isolated runtime.
 
 ## Where Agnet Fits
 
@@ -50,7 +51,7 @@ It is not yet a production Agent Net, public federation network, DID-based ident
 | --- | --- | --- |
 | Tool calling | MCP | Complements it by recording verifiable tool execution evidence. |
 | Coordination | A2A, AGNTCY-style coordination | Complements it by signing task outcomes and receipts. |
-| Identity and routing | ANP, DID ecosystems | Can bridge later; current core uses `aid:` Ed25519 identities. |
+| Identity and routing | ANP, DID ecosystems | Current core uses `aid:` Ed25519 identities and exposes a narrow `did:key` bridge. |
 | Economy | Fetch.ai, Autonolas, on-chain markets | Out of scope for now; receipts could become settlement inputs later. |
 | Accountability | Receipts, artifacts, audit, sandbox claims | Agnet's current focus. |
 
@@ -133,21 +134,21 @@ Optional hardening flags include:
 - `docs/implementation-status.md` - current capability matrix.
 - `docs/agent-space-ultimate-vision.md` - long-range vision.
 - `docs/agent-space-architecture.md` - architecture overview.
-- `docs/v9-roadmap.md` - closed v9 roadmap and v10+ direction.
-- `docs/v9.31-boundary.md` - latest closed boundary.
+- `docs/v10-roadmap.md` - active v10 roadmap.
+- `docs/v10.0-boundary.md` - latest closed boundary.
+- `docs/v9-roadmap.md` - closed v9 roadmap.
 
 ## Roadmap
 
-v9 is closed. The next line should start as v10+ instead of adding more v9 slices.
+v9 is closed. v10 has started with an identity bridge that makes descriptors easier to compare with DID ecosystems while keeping `aid:` canonical.
 
 Highest-value next directions:
 
 1. Publish an English ASP Core draft for the narrow proof layer.
 2. Extract receipt verification into a small Go package and npm package.
-3. Add `did:key` export/import as an identity bridge without replacing `aid:`.
-4. Provide a first public node or Docker-based demo.
-5. Align Node artifact manifests with the Go evidence model.
-6. Continue Swarm proof work without building a broad scheduler too early.
+3. Provide a first public node or Docker-based demo.
+4. Align Node artifact manifests with the Go evidence model.
+5. Continue Swarm proof work without building a broad scheduler too early.
 
 ## Current Boundaries
 
@@ -156,7 +157,7 @@ Agnet is deliberately not claiming:
 - Production security.
 - Public network deployment.
 - Real container namespace isolation.
-- DID-native identity.
+- DID-native identity, DID document resolution, or DID service routing.
 - A2A, ANP, or AGNTCY compatibility.
 - Token economy or settlement.
 - Dynamic Swarm decomposition or scheduler-owned DAG execution.
