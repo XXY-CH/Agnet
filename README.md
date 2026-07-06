@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v11 active at `v11.51-protocol`.
+Status: research prototype, local-first, v11 active at `v11.52-protocol`.
 
 ## Why This Exists
 
@@ -47,11 +47,11 @@ The current prototype proves:
 - Node Zone binding verifiers reject missing binding context/descriptor objects before field reads.
 - Node Zone revocation verifiers reject missing revocation context/descriptor/list objects before field reads.
 - Node capability credential and credential status helpers reject missing proof objects and malformed authority/subject descriptor inputs before field reads or crypto parsing.
-- Node and Go receipt verifiers require `task_digest` as a compact anchor to the signed task object, reject malformed artifact manifest SHA-256 values, non-integer or negative manifest sizes, malformed Go manifest media types or manifest hashes, malformed Go artifact list entries, and type-coerced Go mirror index entries, and Node receipt/artifact CLIs, the Go receipt CLI, and bidirectional Node/Go interop checks can compare task digests against supplied or in-memory signed task evidence.
+- Node and Go receipt verifiers require `task_digest` as a compact anchor to the signed task object, reject malformed artifact manifest SHA-256 values, non-integer or negative manifest sizes, malformed Go manifest media types or manifest hashes, malformed Go artifact list entries, type-coerced Go mirror index entries, and null Go mirror index entries, and Node receipt/artifact CLIs, the Go receipt CLI, and bidirectional Node/Go interop checks can compare task digests against supplied or in-memory signed task evidence.
 - Minimal npm-facing package contract for the existing Node verifier CLI and `asp-core.mjs` exports.
 - One-command proof demo, Docker proof demo, and Docker public-listen proof that emit verifier-ready receipt/trust files, expose receipt digests, verified artifact counts, verified artifact URIs, verified artifact byte digests, and verified artifact manifest hashes, verify local artifact closure, and support base-image override env vars for restricted Docker environments.
 - Public-listen proof script that starts the Go federation gateway on `0.0.0.0`, proves `public_transport: true`, completes authenticated `FED_RESOLVE`, `FED_QUERY`, `FED_TASK_OPEN`, `FED_AUDIT_QUERY`, `FED_ARTIFACT_READ`, and `FED_SWARM_OPEN` round trips, verifies fetched artifact bytes, proves out-of-receipt and post-receipt-tampered artifact reads are rejected, and writes a two-step Swarm close proof frame plus trusted Zone file with a reproducible close digest and summary `swarm_close_verify` result from the Node CLI.
-- Node artifact manifests, AFP strings, sidecars, local URI/path validation, local byte verification, CLI verification, object presence validation, and manifest metadata verification; Go filesystem artifact manifests, AFP strings, strict artifact ref/manifest list entries, exact mirror index field matching, SHA-256, size, media type, and manifest hash field validation before digest-addressed path or byte checks, content-addressed mirrors, and GC plan/apply.
+- Node artifact manifests, AFP strings, sidecars, local URI/path validation, local byte verification, CLI verification, object presence validation, and manifest metadata verification; Go filesystem artifact manifests, AFP strings, strict artifact ref/manifest list entries, mirror index object-entry validation, exact mirror index field matching, SHA-256, size, media type, and manifest hash field validation before digest-addressed path or byte checks, content-addressed mirrors, and GC plan/apply.
 - Human approval evidence for direct and queued execution.
 - Explicit queue claim, lease expiry, reclaim, retry, resume, and drain flows.
 - Sandbox claim binding and fail-closed unsupported sandbox probes.
@@ -227,7 +227,8 @@ Optional hardening flags include:
 - `docs/agent-space-architecture.md` - architecture overview.
 - `docs/asp-core-draft.md` - narrow English draft for the implemented proof layer.
 - `docs/v11-roadmap.md` - active v11 roadmap.
-- `docs/v11.51-boundary.md` - latest closed boundary.
+- `docs/v11.52-boundary.md` - latest closed boundary.
+- `docs/v11.51-boundary.md` - Go artifact mirror index shape boundary.
 - `docs/v11.50-boundary.md` - Go artifact list shape boundary.
 - `docs/v11.49-boundary.md` - Go artifact manifest hash shape boundary.
 - `docs/v11.48-boundary.md` - Go artifact media type shape boundary.

@@ -1175,6 +1175,29 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.52: Go Artifact Mirror Index Entry Boundary
+
+状态：complete
+目标：Make Go filesystem artifact mirror index readers reject non-object `objects.ndjson` entries instead of preserving malformed rows.
+
+新增：
+
+- Go `readArtifactStoreIndex` rejects `null` index rows with `artifact mirror index invalid`.
+- Focused Go test proves `objects.ndjson` containing `null` no longer reads as a valid nil map entry.
+- The fix is scoped to index row object presence; exact field matching remains owned by v11.51.
+
+不做：
+
+- 不改变 artifact manifest metadata schema。
+- 不实现 generic JSON Schema validation。
+- 不改变 receipt artifact manifest comparison semantics。
+- 不实现 remote artifact fetch。
+- 不实现 object-store artifact backend。
+- 不实现 artifact retention policy。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
