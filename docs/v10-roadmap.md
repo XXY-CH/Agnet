@@ -721,8 +721,35 @@
 - 不做 supply-chain attestation。
 - 不做 container namespace sandbox。
 
+## v10.31: npm-facing Verifier Package Contract
+
+状态：complete
+目标：Expose the existing Node verifier through a minimal npm-facing package contract without publishing a package.
+
+新增：
+
+- `package.json` exposes `bin.asp-verify` as `./asp-verify.mjs`.
+- `package.json` exposes `asp-core.mjs` as the package root export.
+- `package.json` uses `license: "UNLICENSED"` to preserve the current no-open-source-license boundary.
+- `asp-verify.mjs` has a Node shebang and executable bit for package-bin execution.
+- `package-contract.test.mjs` proves package metadata points at existing verifier files.
+- `package-contract.test.mjs` proves `npm exec --package . -- asp-verify fed-receipt <frame> <trusted-zones>` runs the existing verifier CLI.
+
+不做：
+
+- 不发布 npm package。
+- 不选择开源许可证。
+- 不加 npm dependencies。
+- 不做 package signing。
+- 不做 SBOM。
+- 不做 batch verifier。
+- 不做 HTTP verifier service。
+- 不做 receipt store/search。
+- 不做 remote artifact fetch。
+- 不做新的 verifier 逻辑。
+
 ## Next Candidates
 
 1. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.
-2. Add an npm-facing verifier only when the existing Node exports are not enough.
-3. Add public reachability proof only after the Docker proof contract stays stable.
+2. Add public reachability proof only after the Docker proof contract stays stable.
+3. Add package signing or SBOM only after package publication becomes real.

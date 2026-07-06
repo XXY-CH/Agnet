@@ -1,0 +1,17 @@
+{
+  "name": "agnet",
+  "version": "0.0.0",
+  "type": "module",
+  "license": "UNLICENSED",
+  "bin": {
+    "asp-verify": "./asp-verify.mjs"
+  },
+  "exports": {
+    ".": "./asp-core.mjs"
+  },
+  "files": [
+    "asp-core.mjs",
+    "asp-verify.mjs",
+    "README.md"
+  ]
+}
