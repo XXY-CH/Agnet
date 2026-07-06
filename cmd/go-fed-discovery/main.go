@@ -2652,6 +2652,7 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 
 	receipt := map[string]any{
 		"task_id":            taskID,
+		"task_digest":        digestHex(task),
 		"from":               task["from"],
 		"origin_zone":        origin["zid"],
 		"executing_zone":     f.Authority["zid"],
@@ -2837,6 +2838,7 @@ func (f Fixture) cancelTask(send sendFunc, origin map[string]any, worker *Worker
 	sandbox := map[string]any{"mode": "not-started"}
 	receipt := map[string]any{
 		"task_id":            taskID,
+		"task_digest":        digestHex(cancel),
 		"from":               requester["aid"],
 		"origin_zone":        origin["zid"],
 		"executing_zone":     f.Authority["zid"],
@@ -4491,6 +4493,9 @@ func verifyReceiptRecord(record map[string]any, artifactStoreDir string) error {
 	if receipt["executing_zone"] != zone["zid"] {
 		return errors.New("receipt executing_zone mismatch")
 	}
+	if !isHexDigest(optionalString(receipt["task_digest"])) {
+		return errors.New("receipt task_digest missing")
+	}
 	if receipt["to"] != worker["aid"] {
 		return errors.New("receipt worker mismatch")
 	}
@@ -4664,6 +4669,19 @@ func verifySwarmCloseProof(record map[string]any, completed map[string]map[strin
 
 func hasSwarmDelimiter(value string) bool {
 	return strings.Contains(value, "\x00")
+}
+
+func isHexDigest(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, r := range value {
+		if (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func verifyApprovalGrants(zoneKey ed25519.PublicKey, receipt map[string]any) error {

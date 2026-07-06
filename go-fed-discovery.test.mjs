@@ -1377,11 +1377,12 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     const expiredApprovalState = await approvalState(humanPort, expiredApprovalTask.task_id);
     assert.equal(expiredApprovalState.status, "expired");
 
+    const signedExecutionTask = { ...task, signature: signObject(requester.privateKey, task) };
     const execution = exchangeFramesUntil(port, {
       type: "FED_TASK_OPEN",
       origin_zone: zoneA.descriptor,
       requester: requester.descriptor,
-      task: { ...task, signature: signObject(requester.privateKey, task) },
+      task: signedExecutionTask,
     }, (item) => item.type === "FED_TASK_EVENT" && item.event.type === "approval.required");
     const approvalRequiredFrames = await execution.checkpoint;
     assert.deepEqual(
@@ -1461,6 +1462,7 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     delete receiptBody.signature;
     assert.equal(verifyObject(resolvedWorker.publicKey, receiptBody, receiptFrame.receipt.signature), true);
     assert.equal(receiptFrame.receipt.task_id, task.task_id);
+    assert.equal(receiptFrame.receipt.task_digest, createHash("sha256").update(canonical(signedExecutionTask)).digest("hex"));
     assert.equal(receiptFrame.receipt.origin_zone, zoneA.zid);
     assert.equal(receiptFrame.receipt.executing_zone, fixture.authority.zid);
     assert.equal(receiptFrame.worker.alias, "agent://zone-b/translator");

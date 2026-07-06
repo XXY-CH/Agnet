@@ -79,10 +79,27 @@ test("v11 public docs include task id token validation", async () => {
     readFile("docs/v11.3-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.3-protocol`/);
+  assert.match(readme, /`docs\/v11\.3-boundary\.md` - task id token validation boundary\./);
   assert.match(readme, /task ids now fail closed unless they are safe protocol tokens/);
   assert.match(roadmap, /## v11\.3: Task ID Token Validation/);
   assert.match(draft, /task_id` is currently constrained/);
-  assert.match(status, /状态：v11\.3 active/);
+  assert.match(status, /`task_id` token validation/);
   assert.match(boundary, /task identifiers fail closed/);
+});
+
+test("v11 public docs include receipt task digest binding", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v11.4-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v11 active at `v11\.4-protocol`/);
+  assert.match(readme, /receipts now carry `task_digest`/);
+  assert.match(roadmap, /## v11\.4: Receipt Task Digest Binding/);
+  assert.match(draft, /`task_digest` is the SHA-256 digest/);
+  assert.match(status, /状态：v11\.4 active/);
+  assert.match(boundary, /Bind signed receipts to the signed task object/);
 });

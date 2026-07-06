@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto";
 import {
   appendAudit,
   approvalReasons,
+  canonical,
   createAgent,
   createZone,
   enforcePolicy,
@@ -12,6 +14,10 @@ import {
   zoneBinding,
   writeRegistry,
 } from "./asp-core.mjs";
+
+function digestHex(value) {
+  return createHash("sha256").update(canonical(value)).digest("hex");
+}
 
 async function run() {
   const requester = createAgent("agent://local/requester");
@@ -69,6 +75,7 @@ async function run() {
 
   const receipt = {
     task_id: task.task_id,
+    task_digest: digestHex(signedTask),
     from: requester.aid,
     origin_zone: zone.zid,
     executing_zone: zone.zid,

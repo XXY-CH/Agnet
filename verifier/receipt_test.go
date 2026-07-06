@@ -38,6 +38,21 @@ func TestVerifyFederatedReceiptVector(t *testing.T) {
 		t.Fatalf("got %v, want untrusted receipt origin zone", err)
 	}
 
+	withoutTaskDigestReceipt := map[string]any{}
+	for key, value := range receipt {
+		if key != "task_digest" {
+			withoutTaskDigestReceipt[key] = value
+		}
+	}
+	withoutTaskDigestFrame := map[string]any{}
+	for key, value := range vector.Frame {
+		withoutTaskDigestFrame[key] = value
+	}
+	withoutTaskDigestFrame["receipt"] = withoutTaskDigestReceipt
+	if err := VerifyFederatedReceipt(withoutTaskDigestFrame, trusted); err == nil || !strings.Contains(err.Error(), "receipt task_digest missing") {
+		t.Fatalf("got %v, want receipt task_digest missing", err)
+	}
+
 	receipt["executing_zone"] = "zid:ed25519:bad"
 	if err := VerifyFederatedReceipt(vector.Frame, trusted); err == nil || !strings.Contains(err.Error(), "receipt executing_zone mismatch") {
 		t.Fatalf("got %v, want receipt executing_zone mismatch", err)

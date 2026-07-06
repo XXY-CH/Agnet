@@ -54,17 +54,19 @@
       "origin_zone": "zid:ed25519:u9qeg4PY4Rd7RyZMpOQ8YxaxQP_sPV_Iju42ZUlrBF4",
       "executing_zone": "zid:ed25519:kNxMZDO8Jt2xydIZ2HWD00unM7L0rufepboqzVOBQN4",
       "to": "aid:ed25519:oNyAhLw0zyzQVbbKvmXbEPCWX7EMN6eIb-l8jZP5QXI",
+      "task_digest": "5555555555555555555555555555555555555555555555555555555555555555",
       "artifact_refs": [
         "artifact://local/fed_task_conformance_001/federated-summary.md"
       ],
       "event_count": 5,
       "approvals": [],
-      "signature": "vSSuMZAeXQDvuVviVTpDbbSl6msmpTrwyLxwH0lx3lNRCrbzjsNJ-V1NVaO7bvfocS8Qwu_dtENO1-QPdYVAAg"
+      "signature": "DFZMuZigvIFMwehSCjJq1LOo6JDj2T-uK_C51INa4fCFFmQ2rWf_rhFoyMIQtlctGkKE4qImzEFADuQhlJw0Cg"
     }
   },
-  "receipt_canonical": "{\"approvals\":[],\"artifact_refs\":[\"artifact://local/fed_task_conformance_001/federated-summary.md\"],\"event_count\":5,\"executing_zone\":\"zid:ed25519:kNxMZDO8Jt2xydIZ2HWD00unM7L0rufepboqzVOBQN4\",\"from\":\"aid:ed25519:3dfTSP_udbygatpJFIna4iNUP8Br1YVqBaTKQZGXh5c\",\"origin_zone\":\"zid:ed25519:u9qeg4PY4Rd7RyZMpOQ8YxaxQP_sPV_Iju42ZUlrBF4\",\"task_id\":\"fed_task_conformance_001\",\"to\":\"aid:ed25519:oNyAhLw0zyzQVbbKvmXbEPCWX7EMN6eIb-l8jZP5QXI\"}",
+  "receipt_canonical": "{\"approvals\":[],\"artifact_refs\":[\"artifact://local/fed_task_conformance_001/federated-summary.md\"],\"event_count\":5,\"executing_zone\":\"zid:ed25519:kNxMZDO8Jt2xydIZ2HWD00unM7L0rufepboqzVOBQN4\",\"from\":\"aid:ed25519:3dfTSP_udbygatpJFIna4iNUP8Br1YVqBaTKQZGXh5c\",\"origin_zone\":\"zid:ed25519:u9qeg4PY4Rd7RyZMpOQ8YxaxQP_sPV_Iju42ZUlrBF4\",\"task_digest\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"task_id\":\"fed_task_conformance_001\",\"to\":\"aid:ed25519:oNyAhLw0zyzQVbbKvmXbEPCWX7EMN6eIb-l8jZP5QXI\"}",
   "expected": {
     "task_id": "fed_task_conformance_001",
+    "task_digest": "5555555555555555555555555555555555555555555555555555555555555555",
     "worker_zid": "zid:ed25519:kNxMZDO8Jt2xydIZ2HWD00unM7L0rufepboqzVOBQN4",
     "worker_aid": "aid:ed25519:oNyAhLw0zyzQVbbKvmXbEPCWX7EMN6eIb-l8jZP5QXI",
     "origin_zid": "zid:ed25519:u9qeg4PY4Rd7RyZMpOQ8YxaxQP_sPV_Iju42ZUlrBF4"

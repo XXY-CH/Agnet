@@ -1,7 +1,9 @@
 import net from "node:net";
+import { createHash } from "node:crypto";
 import {
   appendAudit,
   approvalReasons,
+  canonical,
   enforcePolicy,
   loadOrCreateAgent,
   loadOrCreateZone,
@@ -35,6 +37,10 @@ function readFrames(socket, onFrame) {
 function unsignedTask(task) {
   const { signature, ...body } = task;
   return body;
+}
+
+function digestHex(value) {
+  return createHash("sha256").update(canonical(value)).digest("hex");
 }
 
 async function sendEvent(socket, event) {
@@ -89,6 +95,7 @@ async function runWorker(port = 8787) {
 
         const receipt = {
           task_id: task.task_id,
+          task_digest: digestHex(frame.task),
           from: task.from,
           to: worker.aid,
           artifact_refs: [artifactUri],

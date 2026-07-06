@@ -95,6 +95,30 @@
 - 不实现 public reachability proof。
 - 不实现 A2A/ARD compatibility。
 
+## v11.4: Receipt Task Digest Binding
+
+状态：complete
+目标：Make `FED_RECEIPT` fail closed unless the receipt names the digest of the signed task object it claims to complete.
+
+新增：
+
+- Node local runtime and federation receipts carry `task_digest`.
+- Go execution and cancellation receipts carry `task_digest`.
+- Node `verifyFederatedReceipt` rejects missing or malformed `task_digest`.
+- Go CLI receipt verification and `agnet/verifier.VerifyFederatedReceipt` reject missing or malformed `task_digest`.
+- The shared `FED_RECEIPT` conformance vector includes `task_digest`.
+- Node and Go tests prove a signed receipt without `task_digest` is rejected.
+
+不做：
+
+- 不存 raw task in every receipt。
+- 不实现 receipt store/search。
+- 不实现 external task-store lookup against `task_digest`。
+- 不验证 `task_digest` against a separately supplied task frame。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

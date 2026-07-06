@@ -101,6 +101,17 @@ test("FED_RECEIPT verification rejects untrusted signed origin zones in Node", a
   );
 });
 
+test("FED_RECEIPT verification rejects missing task digests in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  const { task_digest, ...receiptWithoutDigest } = vector.frame.receipt;
+
+  assert.throws(
+    () => verifyFederatedReceipt({ ...vector.frame, receipt: receiptWithoutDigest }, trustedZones),
+    /receipt task_digest missing/,
+  );
+});
+
 test("FED_RECEIPT verification rejects signed artifact manifest hash mismatch in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
   const workerPrivateKey = privateKeyFromSeed(vector.worker_seed_hex);

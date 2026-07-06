@@ -1,9 +1,10 @@
 import net from "node:net";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   appendAudit,
   approvalReasons,
   b64url,
+  canonical,
   capabilityCredential,
   loadOrCreateAgent,
   loadOrCreateZone,
@@ -23,6 +24,10 @@ import {
 
 function send(socket, frame) {
   socket.write(`${JSON.stringify(frame)}\n`);
+}
+
+function digestHex(value) {
+  return createHash("sha256").update(canonical(value)).digest("hex");
 }
 
 function readFrames(socket, onFrame) {
@@ -184,6 +189,7 @@ async function serve(port, trustedZonesFile) {
 
         const receipt = {
           task_id: task.task_id,
+          task_digest: digestHex(frame.task),
           from: task.from,
           origin_zone: originZone.zid,
           executing_zone: zone.zid,

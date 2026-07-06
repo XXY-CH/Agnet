@@ -48,6 +48,9 @@ func VerifyFederatedReceipt(frame map[string]any, trusted map[string]map[string]
 	if trusted[fmt.Sprint(receipt["origin_zone"])] == nil {
 		return errors.New("untrusted receipt origin zone: " + fmt.Sprint(receipt["origin_zone"]))
 	}
+	if !isHexDigest(optionalString(receipt["task_digest"])) {
+		return errors.New("receipt task_digest missing")
+	}
 	if receipt["to"] != worker["aid"] {
 		return errors.New("receipt worker mismatch")
 	}
@@ -115,6 +118,19 @@ func verifyZoneBinding(zone, binding, worker map[string]any) error {
 		return errors.New("zone binding signature verification failed")
 	}
 	return nil
+}
+
+func isHexDigest(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, r := range value {
+		if (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func verifyReceiptArtifactManifests(receipt map[string]any) error {

@@ -722,6 +722,7 @@ func testSignedReceipt(t *testing.T, zone map[string]any, zoneKey ed25519.Privat
 	}, "sandbox_signature")
 	body := map[string]any{
 		"task_id":            taskID,
+		"task_digest":        digestHex(map[string]any{"task_id": taskID}),
 		"from":               "aid:ed25519:test-requester",
 		"origin_zone":        zone["zid"],
 		"executing_zone":     zone["zid"],
