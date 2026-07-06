@@ -176,7 +176,10 @@ An artifact manifest binds:
 - `sha256`
 - `size`
 - `media_type`
+- `afp`
 - `manifest_hash`
+
+`afp` is currently the interoperable artifact fingerprint string `afp:sha256:<sha256>`.
 
 `manifest_hash` is the SHA-256 digest of the canonical manifest body without `manifest_hash`.
 
@@ -185,6 +188,7 @@ Verifiers MUST reject:
 - Missing required manifest fields.
 - Manifest URI mismatch.
 - Manifest count mismatch.
+- AFP mismatch when `afp` is present.
 - Manifest hash mismatch.
 - Local sidecar mismatch.
 - Local byte size mismatch.

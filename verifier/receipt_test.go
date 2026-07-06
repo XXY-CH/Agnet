@@ -34,3 +34,21 @@ func TestVerifyFederatedReceiptVector(t *testing.T) {
 		t.Fatalf("got %v, want receipt executing_zone mismatch", err)
 	}
 }
+
+func TestArtifactManifestAFPMatchesSHA256(t *testing.T) {
+	manifest := map[string]any{
+		"uri":        "artifact://local/afp-test/out.md",
+		"sha256":     strings.Repeat("1", 64),
+		"size":       float64(1),
+		"media_type": "text/markdown; charset=utf-8",
+		"afp":        "afp:sha256:" + strings.Repeat("0", 64),
+	}
+	manifest["manifest_hash"] = digestHex(manifest)
+	err := verifyReceiptArtifactManifests(map[string]any{
+		"artifact_refs":      []any{manifest["uri"]},
+		"artifact_manifests": []any{manifest},
+	})
+	if err == nil || !strings.Contains(err.Error(), "artifact manifest afp mismatch") {
+		t.Fatalf("got %v, want artifact manifest afp mismatch", err)
+	}
+}

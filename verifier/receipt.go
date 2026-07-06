@@ -133,6 +133,9 @@ func verifyReceiptArtifactManifests(receipt map[string]any) error {
 				return errors.New("artifact manifest " + field + " missing")
 			}
 		}
+		if afp, ok := manifest["afp"]; ok && fmt.Sprint(afp) != "afp:sha256:"+fmt.Sprint(manifest["sha256"]) {
+			return errors.New("artifact manifest afp mismatch")
+		}
 		if _, ok := manifest["size"].(float64); !ok {
 			return errors.New("artifact manifest size missing")
 		}

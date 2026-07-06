@@ -431,8 +431,28 @@
 - 不做 receipt store/search。
 - 不做 A2A/ANP/AGNTCY compatibility。
 
+## v10.19: Minimal AFP Artifact Manifests
+
+状态：complete
+目标：Add minimal AFP hash interoperability where it clarifies artifact proof.
+
+新增：
+
+- Node and Go artifact manifests include `afp: "afp:sha256:<sha256>"`.
+- Node receipt/local artifact verification rejects mismatched `afp` when present.
+- Go audit verification and the reusable Go receipt verifier reject mismatched `afp` when present.
+- ASP Core draft documents the narrow `afp:sha256:<sha256>` manifest field.
+
+不做：
+
+- 不做 AFP full spec。
+- 不做 multihash/multicodec。
+- 不做 remote artifact fetch。
+- 不做 public node。
+- 不做 receipt store/search。
+
 ## Next Candidates
 
 1. Run and publish Docker proof output once a Docker daemon is available.
-2. Add AFP hash interoperability where it clarifies artifact proof.
-3. Prepare a public-node proof path.
+2. Prepare a public-node proof path.
+3. Add an npm-facing verifier only when the existing Node exports are not enough.

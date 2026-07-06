@@ -367,6 +367,9 @@ export function verifyReceiptArtifactManifests(receipt) {
     for (const field of ["sha256", "media_type", "manifest_hash"]) {
       if (typeof manifest[field] !== "string" || manifest[field] === "") throw new Error(`artifact manifest ${field} missing`);
     }
+    if (manifest.afp !== undefined && manifest.afp !== `afp:sha256:${manifest.sha256}`) {
+      throw new Error("artifact manifest afp mismatch");
+    }
     if (typeof manifest.size !== "number") throw new Error("artifact manifest size missing");
     const { manifest_hash, ...body } = manifest;
     if (manifest_hash !== createHash("sha256").update(canonical(body)).digest("hex")) {
@@ -576,6 +579,7 @@ export async function writeArtifact(uri, text) {
     size: data.length,
     media_type: "text/markdown; charset=utf-8",
   };
+  manifest.afp = `afp:sha256:${manifest.sha256}`;
   manifest.manifest_hash = createHash("sha256").update(canonical(manifest)).digest("hex");
   await writeFile(`${file}.manifest.json`, `${JSON.stringify(manifest, null, 2)}\n`);
   return { path: file, manifest };

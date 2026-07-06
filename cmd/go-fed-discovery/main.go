@@ -4052,6 +4052,7 @@ func writeArtifactBytes(uri string, data []byte, mediaType, artifactStoreDir str
 		"size":       float64(len(data)),
 		"media_type": mediaType,
 	}
+	body["afp"] = "afp:sha256:" + sha
 	body["manifest_hash"] = digestHex(body)
 	sidecar, err := json.MarshalIndent(body, "", "  ")
 	if err != nil {
@@ -4102,6 +4103,7 @@ func appendArtifactStoreIndex(root string, manifest map[string]any) error {
 		"sha256":        manifest["sha256"],
 		"size":          manifest["size"],
 		"media_type":    manifest["media_type"],
+		"afp":           manifest["afp"],
 		"manifest_hash": manifest["manifest_hash"],
 	})
 }
@@ -4643,6 +4645,9 @@ func verifyArtifactManifests(receipt map[string]any, artifactStoreDir string) er
 				return errors.New("artifact manifest " + field + " missing")
 			}
 		}
+		if afp, ok := manifest["afp"]; ok && fmt.Sprint(afp) != "afp:sha256:"+fmt.Sprint(manifest["sha256"]) {
+			return errors.New("artifact manifest afp mismatch")
+		}
 		if _, ok := manifest["size"].(float64); !ok {
 			return errors.New("artifact manifest size missing")
 		}
@@ -4756,7 +4761,7 @@ func readArtifactStoreIndex(path string) ([]map[string]any, error) {
 func artifactStoreIndexContains(index []map[string]any, manifest map[string]any) bool {
 	for _, entry := range index {
 		matches := true
-		for _, field := range []string{"uri", "sha256", "size", "media_type", "manifest_hash"} {
+		for _, field := range []string{"uri", "sha256", "size", "media_type", "afp", "manifest_hash"} {
 			if fmt.Sprint(entry[field]) != fmt.Sprint(manifest[field]) {
 				matches = false
 				break

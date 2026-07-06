@@ -1,12 +1,12 @@
 # Agent Net Gap
 
-状态：v10.18 assessment
+状态：v10.19 assessment
 
 ## 一句话
 
 当前项目是 Agent Net 的 protocol seed，不是 Agent Net 产品。
 
-它已经抓住了真正 Agent Net 的底层骨架：identity with a narrow Ed25519 `did:key` bridge、Node/Go artifact manifest evidence and local verification CLI、Node/Go receipt verification CLIs、one-receipt local artifact closure verification、implementation-backed ASP Core draft、reusable Go `FED_RECEIPT` verifier package、one-command local proof demo with verifier-ready receipt/trust files、Docker proof demo contract、signed task、policy、artifact、receipt、audit、federation、Node/Go bidirectional task interop、Go federation explicit bind host primitive、shared `FED_TASK_OPEN` / `FED_RECEIPT` conformance fixtures，以及 Go 侧最小 explicit Swarm DAG seed、single ordered complete audit-backed Zone-signed Swarm close proof tied to same-audit receipts、delimiter-safe Swarm ids 和同 audit Swarm dependency step/receipt verification。
+它已经抓住了真正 Agent Net 的底层骨架：identity with a narrow Ed25519 `did:key` bridge、Node/Go artifact manifest evidence and local verification CLI、minimal AFP `afp:sha256:<sha256>` strings、Node/Go receipt verification CLIs、one-receipt local artifact closure verification、implementation-backed ASP Core draft、reusable Go `FED_RECEIPT` verifier package、one-command local proof demo with verifier-ready receipt/trust files、Docker proof demo contract、signed task、policy、artifact、receipt、audit、federation、Node/Go bidirectional task interop、Go federation explicit bind host primitive、shared `FED_TASK_OPEN` / `FED_RECEIPT` conformance fixtures，以及 Go 侧最小 explicit Swarm DAG seed、single ordered complete audit-backed Zone-signed Swarm close proof tied to same-audit receipts、delimiter-safe Swarm ids 和同 audit Swarm dependency step/receipt verification。
 
 它还缺产品面、运行面、部署面、多人协作面和真实工具执行面。
 
@@ -21,8 +21,9 @@
 - Ed25519 Agent/Zone identity。
 - Ed25519 Agent descriptor `did:key` bridge in Node and Go, while `aid:` remains canonical。
 - Node and Go receipts can bind artifact manifests, not only artifact refs。
+- Node and Go artifact manifests include minimal AFP strings in the `afp:sha256:<sha256>` shape。
 - Node `FED_RECEIPT` verification rejects signed artifact manifest metadata with a bad manifest hash。
-- Node can verify local artifact bytes and sidecars against the receipt manifest。
+- Node can verify local artifact bytes, AFP strings, and sidecars against the receipt manifest。
 - Node exposes local artifact verification through `asp-verify.mjs artifact <manifest.json>`。
 - Node exposes single `FED_RECEIPT` frame verification through `asp-verify.mjs fed-receipt <frame.json> <trusted-zones.json>`。
 - Node exposes single `FED_RECEIPT` frame plus local artifact byte verification through `asp-verify.mjs fed-receipt-artifacts <frame.json> <trusted-zones.json>`。

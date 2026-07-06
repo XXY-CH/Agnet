@@ -1451,9 +1451,11 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     assert.equal(transcriptManifest.uri, transcriptRef);
     assert.equal(transcriptManifest.media_type, "application/json; charset=utf-8");
     assert.equal(transcriptManifest.sha256, receiptFrame.receipt.sandbox.tool_transcript_digest);
+    assert.equal(transcriptManifest.afp, `afp:sha256:${transcriptManifest.sha256}`);
     assert.match(transcriptManifest.manifest_hash, /^[0-9a-f]{64}$/);
     assert.equal(artifactEvent.manifest.uri, receiptFrame.receipt.artifact_refs[0]);
     assert.match(artifactEvent.manifest.sha256, /^[0-9a-f]{64}$/);
+    assert.equal(artifactEvent.manifest.afp, `afp:sha256:${artifactEvent.manifest.sha256}`);
     assert.equal(receiptFrame.receipt.tool_output_digest, artifactEvent.manifest.sha256);
     assert.equal(artifactEvent.manifest.media_type, "text/markdown; charset=utf-8");
     assert.match(artifactEvent.manifest.manifest_hash, /^[0-9a-f]{64}$/);

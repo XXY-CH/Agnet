@@ -27,6 +27,7 @@ test("MVP demo produces registry, artifact, and signed receipt", async () => {
   await access(result.artifactPath);
   const manifest = result.receipt.artifact_manifests[0];
   const manifestPath = `${result.artifactPath}.manifest.json`;
+  assert.equal(manifest.afp, `afp:sha256:${manifest.sha256}`);
   assert.deepEqual(JSON.parse((await execFileAsync("node", ["asp-verify.mjs", "artifact", manifestPath])).stdout), {
     artifact_verify: "ok",
     uri: manifest.uri,

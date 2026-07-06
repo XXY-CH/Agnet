@@ -80,6 +80,48 @@ func TestDidKeyBridgeMatchesVector(t *testing.T) {
 	}
 }
 
+func TestArtifactManifestAFPMatchesSHA256(t *testing.T) {
+	manifest, err := writeArtifact("artifact://local/afp-test/out.md", "# AFP\n", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha := fmt.Sprint(manifest["sha256"])
+	if manifest["afp"] != "afp:sha256:"+sha {
+		t.Fatalf("afp = %v, want afp:sha256:%s", manifest["afp"], sha)
+	}
+
+	bad := map[string]any{
+		"uri":        manifest["uri"],
+		"sha256":     manifest["sha256"],
+		"size":       manifest["size"],
+		"media_type": manifest["media_type"],
+		"afp":        "afp:sha256:" + strings.Repeat("0", 64),
+	}
+	bad["manifest_hash"] = digestHex(bad)
+	sidecar, err := json.MarshalIndent(bad, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sidecar = append(sidecar, '\n')
+	path, err := localArtifactPath(fmt.Sprint(manifest["uri"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path+".manifest.json", sidecar, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join("artifacts", "by-sha256", sha)+".manifest.json", sidecar, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err = verifyArtifactManifests(map[string]any{
+		"artifact_refs":      []any{manifest["uri"]},
+		"artifact_manifests": []any{bad},
+	}, "")
+	if err == nil || !strings.Contains(err.Error(), "artifact manifest afp mismatch") {
+		t.Fatalf("got %v, want artifact manifest afp mismatch", err)
+	}
+}
+
 func TestAuditAppendRefreshesSharedHead(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
 	first := &AuditLog{Path: path, Head: auditZeroHash}
