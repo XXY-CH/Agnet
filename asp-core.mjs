@@ -436,6 +436,7 @@ export function verifySwarmClose(frame, trustedZones) {
 }
 
 export function verifyReceiptArtifactManifests(receipt) {
+  if (!receipt || typeof receipt !== "object" || Array.isArray(receipt)) throw new Error("receipt artifact manifest count mismatch");
   if (receipt.artifact_manifests === undefined) return;
   if (!Array.isArray(receipt.artifact_refs) || !Array.isArray(receipt.artifact_manifests)) {
     throw new Error("receipt artifact manifest count mismatch");
@@ -444,6 +445,7 @@ export function verifyReceiptArtifactManifests(receipt) {
     throw new Error("receipt artifact manifest count mismatch");
   }
   for (const [index, manifest] of receipt.artifact_manifests.entries()) {
+    if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) throw new Error("artifact manifest missing");
     if (manifest.uri !== receipt.artifact_refs[index]) throw new Error("artifact manifest uri mismatch");
     for (const field of ["sha256", "media_type", "manifest_hash"]) {
       if (typeof manifest[field] !== "string" || manifest[field] === "") throw new Error(`artifact manifest ${field} missing`);
@@ -667,6 +669,7 @@ export async function writeArtifact(uri, text) {
 }
 
 export async function verifyLocalArtifact(manifest) {
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) throw new Error("artifact manifest missing");
   const file = manifest.uri.replace("artifact://local/", "artifacts/");
   verifyReceiptArtifactManifests({ artifact_refs: [manifest.uri], artifact_manifests: [manifest] });
   const sidecar = JSON.parse(await readFile(`${file}.manifest.json`, "utf8"));

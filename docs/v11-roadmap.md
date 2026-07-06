@@ -725,6 +725,30 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.33: Node Artifact Manifest Object Presence
+
+状态：complete
+目标：Make Node artifact manifest verification reject missing receipt or manifest objects before field reads.
+
+新增：
+
+- Node `verifyReceiptArtifactManifests` rejects missing or non-object receipt wrappers before reading `artifact_manifests`.
+- Node `verifyReceiptArtifactManifests` rejects missing, array, or otherwise non-object manifest entries with `artifact manifest missing`.
+- Node `verifyLocalArtifact` rejects missing, array, or otherwise non-object manifest inputs before reading `uri`.
+- The focused tests prove malformed artifact manifest inputs no longer leak JavaScript `TypeError` failures.
+
+不做：
+
+- 不改变 artifact manifest schema。
+- 不实现 generic artifact schema validation。
+- 不改变 receipt frame shape。
+- 不改变 Go verifier behavior。
+- 不实现 object-store artifact backend。
+- 不实现 retention policy。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

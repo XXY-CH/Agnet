@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v11 active at `v11.32-protocol`.
+Status: research prototype, local-first, v11 active at `v11.33-protocol`.
 
 ## Why This Exists
 
@@ -44,7 +44,7 @@ The current prototype proves:
 - Minimal npm-facing package contract for the existing Node verifier CLI and `asp-core.mjs` exports.
 - One-command proof demo, Docker proof demo, and Docker public-listen proof that emit verifier-ready receipt/trust files, expose receipt digests, verified artifact counts, verified artifact URIs, verified artifact byte digests, and verified artifact manifest hashes, verify local artifact closure, and support base-image override env vars for restricted Docker environments.
 - Public-listen proof script that starts the Go federation gateway on `0.0.0.0`, proves `public_transport: true`, completes authenticated `FED_RESOLVE`, `FED_QUERY`, `FED_TASK_OPEN`, `FED_AUDIT_QUERY`, `FED_ARTIFACT_READ`, and `FED_SWARM_OPEN` round trips, verifies fetched artifact bytes, proves out-of-receipt and post-receipt-tampered artifact reads are rejected, and writes a two-step Swarm close proof frame plus trusted Zone file with a reproducible close digest and summary `swarm_close_verify` result from the Node CLI.
-- Node artifact manifests, AFP strings, sidecars, local byte verification, CLI verification, and manifest metadata verification; Go filesystem artifact manifests, AFP strings, content-addressed mirrors, and GC plan/apply.
+- Node artifact manifests, AFP strings, sidecars, local byte verification, CLI verification, object presence validation, and manifest metadata verification; Go filesystem artifact manifests, AFP strings, content-addressed mirrors, and GC plan/apply.
 - Human approval evidence for direct and queued execution.
 - Explicit queue claim, lease expiry, reclaim, retry, resume, and drain flows.
 - Sandbox claim binding and fail-closed unsupported sandbox probes.
@@ -220,7 +220,8 @@ Optional hardening flags include:
 - `docs/agent-space-architecture.md` - architecture overview.
 - `docs/asp-core-draft.md` - narrow English draft for the implemented proof layer.
 - `docs/v11-roadmap.md` - active v11 roadmap.
-- `docs/v11.32-boundary.md` - latest closed boundary.
+- `docs/v11.33-boundary.md` - latest closed boundary.
+- `docs/v11.32-boundary.md` - Node did:key input presence boundary.
 - `docs/v11.31-boundary.md` - Node Zone descriptor object presence boundary.
 - `docs/v11.30-boundary.md` - Node shared object signature fail-closed boundary.
 - `docs/v11.29-boundary.md` - Node descriptor public key presence boundary.
@@ -259,7 +260,7 @@ Optional hardening flags include:
 
 ## Roadmap
 
-v9 and v10 are closed. v11 is tightening the proof layer where the Ultimate trust model depends on it: task and receipt verifiers require valid `FED_TASK_OPEN` / `FED_RECEIPT` frame objects, correct frame types, required Zone descriptor objects, required payload objects, and a trusted Zone store; Node `did:key` bridge helpers now reject missing inputs before descriptor or string field reads; Node Zone descriptor loading now rejects missing or non-object descriptor values before reading descriptor fields; Node descriptor public keys and shared object signatures now fail closed before crypto parsing; Node task/receipt verification also requires local verifier context, signed task/receipt signatures before crypto verification, and valid local worker descriptor identity, signed receipt `origin_zone` values must name a trusted Zone, `FED_TASK_OPEN` requires a requester Zone binding, Node `FED_SWARM_CLOSE` rejects missing-frame, missing-zone, missing-proof, missing-signature, missing-identity, malformed-step, unsafe-task-id, NUL-bearing, structurally empty, or duplicate-step close proofs, task ids now fail closed unless they are safe protocol tokens, receipts now carry `task_digest` to anchor the signed task body, and Node/Go verifier paths can reject supplied or in-memory task evidence whose digest does not match.
+v9 and v10 are closed. v11 is tightening the proof layer where the Ultimate trust model depends on it: task and receipt verifiers require valid `FED_TASK_OPEN` / `FED_RECEIPT` frame objects, correct frame types, required Zone descriptor objects, required payload objects, and a trusted Zone store; Node artifact manifest helpers and local artifact verification now reject missing manifest objects before field reads; Node `did:key` bridge helpers now reject missing inputs before descriptor or string field reads; Node Zone descriptor loading now rejects missing or non-object descriptor values before reading descriptor fields; Node descriptor public keys and shared object signatures now fail closed before crypto parsing; Node task/receipt verification also requires local verifier context, signed task/receipt signatures before crypto verification, and valid local worker descriptor identity, signed receipt `origin_zone` values must name a trusted Zone, `FED_TASK_OPEN` requires a requester Zone binding, Node `FED_SWARM_CLOSE` rejects missing-frame, missing-zone, missing-proof, missing-signature, missing-identity, malformed-step, unsafe-task-id, NUL-bearing, structurally empty, or duplicate-step close proofs, task ids now fail closed unless they are safe protocol tokens, receipts now carry `task_digest` to anchor the signed task body, and Node/Go verifier paths can reject supplied or in-memory task evidence whose digest does not match.
 
 Highest-value next directions:
 

@@ -4,7 +4,7 @@ import { createHash, createPrivateKey, createPublicKey } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { canonical, computeAid, createAgent, createZone, didKeyFromDescriptor, didKeyFromPublicKeySPKI, publicKeyFromDescriptor, publicKeySPKIFromDidKey, signObject, verifyFederatedReceipt, verifyFederatedTaskOpen, verifyObject, verifySwarmClose, writeArtifact } from "./asp-core.mjs";
+import { canonical, computeAid, createAgent, createZone, didKeyFromDescriptor, didKeyFromPublicKeySPKI, publicKeyFromDescriptor, publicKeySPKIFromDidKey, signObject, verifyFederatedReceipt, verifyFederatedTaskOpen, verifyObject, verifyReceiptArtifactManifests, verifySwarmClose, writeArtifact } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -346,6 +346,17 @@ test("FED_RECEIPT verification rejects signed artifact manifest hash mismatch in
   assert.throws(
     () => verifyFederatedReceipt({ ...vector.frame, receipt: { ...badReceipt, signature: signObject(workerPrivateKey, badReceipt) } }, trustedZones),
     /artifact manifest hash mismatch/,
+  );
+});
+
+test("receipt artifact manifest verification rejects missing objects in Node", () => {
+  assert.throws(
+    () => verifyReceiptArtifactManifests(null),
+    /receipt artifact manifest count mismatch/,
+  );
+  assert.throws(
+    () => verifyReceiptArtifactManifests({ artifact_refs: ["artifact://local/missing"], artifact_manifests: [null] }),
+    /artifact manifest missing/,
   );
 });
 
