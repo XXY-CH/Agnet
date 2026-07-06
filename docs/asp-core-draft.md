@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v11.28-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v11.29-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -48,6 +48,8 @@ An Agent Descriptor binds:
 - `signature`
 
 The descriptor signature is made by the Agent key over the descriptor body.
+
+Verifiers reject descriptors whose `public_key_spki` is missing before handing the descriptor to Node crypto parsing.
 
 did:key is an Ed25519 bridge field, not canonical identity.
 

@@ -4,7 +4,7 @@ import { createHash, createPrivateKey, createPublicKey } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { canonical, computeAid, createAgent, createZone, didKeyFromDescriptor, didKeyFromPublicKeySPKI, publicKeySPKIFromDidKey, signObject, verifyFederatedReceipt, verifyFederatedTaskOpen, verifyObject, verifySwarmClose, writeArtifact } from "./asp-core.mjs";
+import { canonical, computeAid, createAgent, createZone, didKeyFromDescriptor, didKeyFromPublicKeySPKI, publicKeyFromDescriptor, publicKeySPKIFromDidKey, signObject, verifyFederatedReceipt, verifyFederatedTaskOpen, verifyObject, verifySwarmClose, writeArtifact } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -43,6 +43,16 @@ test("Ed25519 descriptors export stable did:key bridges in Node", async () => {
 
   const generated = createAgent("agent://local/did-key-test");
   assert.equal(generated.descriptor.did_key, didKeyFromDescriptor(generated.descriptor));
+});
+
+test("descriptor public key parsing rejects missing public keys in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v0.json", "utf8"));
+  const { public_key_spki, ...descriptorWithoutPublicKey } = vector.agents.requester;
+
+  assert.throws(
+    () => publicKeyFromDescriptor(descriptorWithoutPublicKey),
+    /descriptor public key missing/,
+  );
 });
 
 test("FED_TASK_OPEN conformance vector verifies in Node", async () => {

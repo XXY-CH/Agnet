@@ -635,6 +635,27 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.29: Node Descriptor Public Key Presence
+
+状态：complete
+目标：Make Node descriptor public key parsing reject missing `public_key_spki` before Node crypto parsing.
+
+新增：
+
+- Node `publicKeyFromDescriptor` rejects missing, empty, or non-string `public_key_spki` with `descriptor public key missing`.
+- The shared descriptor parser test proves missing descriptor public keys no longer leak JavaScript `TypeError` failures.
+- Because task-open, receipt, Zone, and Swarm verification route through the same helper, malformed descriptor public keys now fail closed at the shared root.
+
+不做：
+
+- 不实现 generic descriptor schema validation。
+- 不改变 descriptor shape。
+- 不改变 Go verifier behavior。
+- 不实现 registry ownership changes。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

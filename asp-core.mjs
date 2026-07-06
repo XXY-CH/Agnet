@@ -99,6 +99,7 @@ export function computeZid(publicKey) {
 }
 
 export function publicKeyFromDescriptor(descriptor) {
+  if (typeof descriptor?.public_key_spki !== "string" || descriptor.public_key_spki === "") throw new Error("descriptor public key missing");
   return createPublicKey({
     key: Buffer.from(descriptor.public_key_spki, "base64url"),
     type: "spki",
