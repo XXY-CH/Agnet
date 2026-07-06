@@ -451,8 +451,27 @@
 - 不做 public node。
 - 不做 receipt store/search。
 
+## v10.20: Docker Proof Output
+
+状态：complete
+目标：Publish verified Docker proof demo output.
+
+新增：
+
+- Verified `bash scripts/docker-proof-demo.sh` on Docker Server `29.0.1`.
+- The Docker proof run produced `proof_demo: "ok"`, `artifact_verify: "ok"`, and `fed_receipt_artifacts_verify: "ok"`.
+- `docs/v10.20-boundary.md` records the proof output.
+
+不做：
+
+- 不做 public node。
+- 不做 hosted demo。
+- 不做 image publishing。
+- 不做 supply-chain attestation。
+- 不做 container namespace sandbox。
+
 ## Next Candidates
 
-1. Run and publish Docker proof output once a Docker daemon is available.
-2. Prepare a public-node proof path.
-3. Add an npm-facing verifier only when the existing Node exports are not enough.
+1. Prepare a public-node proof path.
+2. Add an npm-facing verifier only when the existing Node exports are not enough.
+3. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.
