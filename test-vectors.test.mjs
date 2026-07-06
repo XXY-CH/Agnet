@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { createPrivateKey, createPublicKey } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { test } from "node:test";
+import { promisify } from "node:util";
 import { canonical, computeAid, createAgent, didKeyFromDescriptor, didKeyFromPublicKeySPKI, publicKeySPKIFromDidKey, signObject, verifyFederatedReceipt, verifyFederatedTaskOpen, verifyObject } from "./asp-core.mjs";
+
+const execFileAsync = promisify(execFile);
 
 function privateKeyFromSeed(seedHex) {
   const der = Buffer.concat([
@@ -83,5 +87,24 @@ test("FED_RECEIPT verification rejects signed artifact manifest hash mismatch in
   assert.throws(
     () => verifyFederatedReceipt({ ...vector.frame, receipt: { ...badReceipt, signature: signObject(workerPrivateKey, badReceipt) } }, trustedZones),
     /artifact manifest hash mismatch/,
+  );
+});
+
+test("FED_RECEIPT CLI verifies one frame in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
+  const framePath = "state/node-fed-receipt-frame.json";
+  const trustedPath = "state/node-fed-receipt-trusted.json";
+  await writeFile(framePath, `${JSON.stringify(vector.frame, null, 2)}\n`);
+  await writeFile(trustedPath, `${JSON.stringify({ zones: vector.trusted_zones }, null, 2)}\n`);
+
+  assert.deepEqual(JSON.parse((await execFileAsync("node", ["asp-verify.mjs", "fed-receipt", framePath, trustedPath])).stdout), {
+    fed_receipt_verify: "ok",
+    task_id: vector.expected.task_id,
+  });
+
+  await writeFile(framePath, `${JSON.stringify({ ...vector.frame, receipt: { ...vector.frame.receipt, executing_zone: "zid:ed25519:bad" } }, null, 2)}\n`);
+  await assert.rejects(
+    () => execFileAsync("node", ["asp-verify.mjs", "fed-receipt", framePath, trustedPath]),
+    (error) => error.stderr.includes("receipt executing_zone mismatch"),
   );
 });

@@ -106,6 +106,26 @@
 - 不做 batch verification。
 - 不做 remote artifact fetch。
 
+## v10.5: Node FED_RECEIPT Verify CLI
+
+状态：complete
+目标：Expose Node `FED_RECEIPT` verification through the existing minimal CLI.
+
+新增：
+
+- `node asp-verify.mjs fed-receipt <frame.json> <trusted-zones.json>` verifies one frame.
+- The command reuses `verifyFederatedReceipt`.
+- The command prints JSON on success.
+- The command exits non-zero and prints the verifier error on failure.
+
+不做：
+
+- 不做 npm package。
+- 不做 batch verification。
+- 不做 receipt store/search。
+- 不做 audit-log scan。
+- 不做 HTTP verifier service。
+
 ## Next Candidates
 
 1. Extract receipt verification into a small Go package and/or npm-facing verifier.
