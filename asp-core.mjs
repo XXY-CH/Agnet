@@ -293,17 +293,27 @@ async function appendAuditUnlocked(record) {
 
 export async function loadRegistry(file) {
   const registry = JSON.parse(await readFile(file, "utf8"));
-  if (Array.isArray(registry)) return new Map(registry.map((descriptor) => [descriptor.alias, { descriptor }]));
+  if (Array.isArray(registry)) {
+    return new Map(registry.map((descriptor) => {
+      if (!descriptor || typeof descriptor !== "object" || Array.isArray(descriptor)) throw new Error("registry descriptor missing");
+      return [descriptor.alias, { descriptor }];
+    }));
+  }
+  if (!Array.isArray(registry.agents)) throw new Error("registry agents missing");
   return new Map(
-    registry.agents.map((entry) => [
-      entry.descriptor.alias,
-      {
-        descriptor: entry.descriptor,
-        zone: registry.zone,
-        zone_binding: entry.zone_binding,
-        revocations: registry.revocations ?? [],
-      },
-    ]),
+    registry.agents.map((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw new Error("registry entry missing");
+      if (!entry.descriptor || typeof entry.descriptor !== "object" || Array.isArray(entry.descriptor)) throw new Error("registry descriptor missing");
+      return [
+        entry.descriptor.alias,
+        {
+          descriptor: entry.descriptor,
+          zone: registry.zone,
+          zone_binding: entry.zone_binding,
+          revocations: registry.revocations ?? [],
+        },
+      ];
+    }),
   );
 }
 

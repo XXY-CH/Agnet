@@ -866,6 +866,29 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.39: Node Registry File Shape
+
+状态：complete
+目标：Make Node registry file loading reject missing agent lists, entries, and descriptors before registry field reads.
+
+新增：
+
+- Node `loadRegistry` rejects missing non-array `agents` lists with `registry agents missing`.
+- Node `loadRegistry` rejects missing, array, or otherwise non-object registry entries with `registry entry missing`.
+- Node `loadRegistry` rejects missing, array, or otherwise non-object descriptors in both object-shaped and raw-array registries with `registry descriptor missing`.
+- The focused registry tests prove malformed registry files no longer leak JavaScript `TypeError` failures.
+
+不做：
+
+- 不实现 generic registry schema validation。
+- 不改变 registry ownership behavior。
+- 不实现 registry lifecycle APIs。
+- 不改变 alias resolution semantics。
+- 不改变 Go verifier behavior。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
