@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import {
+  createAgent,
   createZone,
   loadTrustedZones,
   verifyZoneDescriptor,
+  verifyZoneBinding,
   writeTrustedZones,
+  zoneBinding,
 } from "./asp-core.mjs";
 
 test("trusted Zone store loads verified Zone descriptors", async () => {
@@ -40,4 +43,19 @@ test("trusted Zone store rejects missing Zone descriptor objects", async () => {
 
   assert.throws(() => verifyZoneDescriptor(null), /zone descriptor missing/);
   assert.throws(() => verifyZoneDescriptor([]), /zone descriptor missing/);
+});
+
+test("zone binding verification rejects missing context objects", () => {
+  const zone = createZone("zone://local");
+  const agent = createAgent("agent://local/summarizer");
+  const entry = {
+    descriptor: agent.descriptor,
+    zone: zone.descriptor,
+    zone_binding: zoneBinding(zone, agent.descriptor),
+  };
+
+  assert.throws(() => verifyZoneBinding(null, agent.descriptor, agent.alias), /zone binding context missing/);
+  assert.throws(() => verifyZoneBinding([], agent.descriptor, agent.alias), /zone binding context missing/);
+  assert.throws(() => verifyZoneBinding(entry, null, agent.alias), /zone binding descriptor missing/);
+  assert.throws(() => verifyZoneBinding(entry, [], agent.alias), /zone binding descriptor missing/);
 });

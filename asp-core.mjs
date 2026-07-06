@@ -462,6 +462,8 @@ export function verifyReceiptArtifactManifests(receipt) {
 }
 
 export function verifyZoneBinding(entry, descriptor, alias) {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw new Error("zone binding context missing");
+  if (!descriptor || typeof descriptor !== "object" || Array.isArray(descriptor)) throw new Error("zone binding descriptor missing");
   if (!entry.zone) throw new Error(`zone descriptor missing for ${alias}`);
   if (!entry.zone_binding) throw new Error(`zone binding missing for ${alias}`);
   const { publicKey: zonePublicKey } = verifyZoneDescriptor(entry.zone);

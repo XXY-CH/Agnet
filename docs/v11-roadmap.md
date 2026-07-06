@@ -796,6 +796,29 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.36: Node Zone Binding Object Presence
+
+状态：complete
+目标：Make Node Zone binding verification reject missing binding context and descriptor objects before field reads.
+
+新增：
+
+- Node `verifyZoneBinding` rejects missing, array, or otherwise non-object entry/context inputs with `zone binding context missing`.
+- Node `verifyZoneBinding` rejects missing, array, or otherwise non-object descriptor inputs with `zone binding descriptor missing`.
+- The focused Zone tests prove malformed binding context inputs no longer leak JavaScript `TypeError` failures.
+
+不做：
+
+- 不改变 Zone binding schema。
+- 不改变 registry ownership behavior。
+- 不改变 revocation verification semantics。
+- 不实现 generic registry schema validation。
+- 不改变 Go verifier behavior。
+- 不实现 Zone lifecycle API。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
