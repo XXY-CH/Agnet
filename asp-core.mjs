@@ -373,6 +373,7 @@ export function verifySwarmClose(frame, trustedZones) {
   if (!trusted || trusted.public_key_spki !== zone.public_key_spki) {
     throw new Error(`untrusted zone: ${zone.zid}`);
   }
+  if (!frame.close || typeof frame.close !== "object" || Array.isArray(frame.close)) throw new Error("swarm close proof missing");
   const { close_signature, ...closeBody } = frame.close;
   if (typeof close_signature !== "string" || close_signature === "") throw new Error("swarm close signature missing");
   if (typeof closeBody.swarm_id !== "string" || closeBody.swarm_id === "") throw new Error("swarm close identity missing");

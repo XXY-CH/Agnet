@@ -259,6 +259,21 @@ test("FED_SWARM_CLOSE verification rejects missing close signatures in Node", as
   );
 });
 
+test("FED_SWARM_CLOSE verification rejects missing close proofs in Node", async () => {
+  const zone = createZone("zone://swarm-close-missing-proof-test");
+  const frame = {
+    type: "FED_SWARM_CLOSE",
+    swarm_id: "swarm://node-test/missing-proof",
+    zone: zone.descriptor,
+  };
+  const trustedZones = new Map([[zone.descriptor.zid, zone.descriptor]]);
+
+  assert.throws(
+    () => verifySwarmClose(frame, trustedZones),
+    /swarm close proof missing/,
+  );
+});
+
 test("FED_SWARM_CLOSE verification rejects empty close proofs in Node", async () => {
   const zone = createZone("zone://swarm-close-empty-test");
   const closeBody = {
