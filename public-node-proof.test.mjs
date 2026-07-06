@@ -32,6 +32,7 @@ test("public node proof starts a public-listen gateway", async () => {
   assert.equal(result.artifact_file, "artifacts/public_node_probe_task/go-summary.md");
   assert.equal(result.fed_receipt_artifacts_verify, "ok");
   assert.equal(result.artifact_count, 1);
+  assert.deepEqual(result.artifact_uris, ["artifact://local/public_node_probe_task/go-summary.md"]);
   assert.equal(result.artifact_reject, true);
   assert.match(result.artifact_reject_error, /receipt artifact not found/);
   assert.equal(result.artifact_tamper_reject, true);
@@ -71,7 +72,7 @@ test("public node proof starts a public-listen gateway", async () => {
   const verified = await execFileAsync(process.execPath, ["asp-verify.mjs", "fed-receipt", result.receipt_frame, result.trusted_zones]);
   assert.deepEqual(JSON.parse(verified.stdout), { fed_receipt_verify: "ok", task_id: "public_node_probe_task", receipt_digest: receiptDigest });
   const verifiedArtifacts = await execFileAsync(process.execPath, ["asp-verify.mjs", "fed-receipt-artifacts", result.receipt_frame, result.trusted_zones]);
-  assert.deepEqual(JSON.parse(verifiedArtifacts.stdout), { fed_receipt_artifacts_verify: "ok", task_id: "public_node_probe_task", artifact_count: 1, receipt_digest: receiptDigest });
+  assert.deepEqual(JSON.parse(verifiedArtifacts.stdout), { fed_receipt_artifacts_verify: "ok", task_id: "public_node_probe_task", artifact_count: 1, artifact_uris: result.artifact_uris, receipt_digest: receiptDigest });
   const verifiedSwarmClose = await execFileAsync(process.execPath, ["asp-verify.mjs", "swarm-close", result.swarm_close_frame, result.swarm_close_trusted_zones]);
   assert.deepEqual(JSON.parse(verifiedSwarmClose.stdout), { swarm_close_verify: "ok", swarm_id: result.swarm_id, swarm_close_digest: result.swarm_close_digest });
 });

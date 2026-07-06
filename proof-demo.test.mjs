@@ -24,6 +24,7 @@ test("proof demo emits verifier-ready receipt closure files", async () => {
 
   assert.equal(result.fed_receipt_artifacts_verify, "ok");
   assert.equal(result.artifact_count, 1);
+  assert.deepEqual(result.artifact_uris, [result.artifact_uri]);
   assert.match(result.receipt_frame, /^state\/proof-demo-fed-receipt\.json$/);
   assert.match(result.trusted_zones, /^state\/proof-demo-trusted-zones\.json$/);
   await access(result.receipt_frame);
@@ -45,6 +46,7 @@ test("proof demo emits verifier-ready receipt closure files", async () => {
     fed_receipt_artifacts_verify: "ok",
     task_id: "task_001",
     artifact_count: 1,
+    artifact_uris: [result.artifact_uri],
     receipt_digest: receiptDigest,
   });
 });

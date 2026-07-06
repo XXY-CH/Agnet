@@ -96,6 +96,7 @@ for await (const chunk of child.stdout) {
     artifact_file: artifact.file,
     fed_receipt_artifacts_verify: artifactProof.fed_receipt_artifacts_verify,
     artifact_count: artifactProof.artifact_count,
+    artifact_uris: artifactProof.artifact_uris,
     receipt_digest: artifactProof.receipt_digest,
     artifact_reject: artifactReject.rejected,
     artifact_reject_error: artifactReject.error,
