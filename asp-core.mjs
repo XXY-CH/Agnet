@@ -562,47 +562,50 @@ export function verifyRotationProof(proof, previousDescriptor, nextDescriptor) {
   if (!proof || typeof proof !== "object" || Array.isArray(proof)) return false;
   if (!previousDescriptor || typeof previousDescriptor !== "object" || Array.isArray(previousDescriptor)) return false;
   if (!nextDescriptor || typeof nextDescriptor !== "object" || Array.isArray(nextDescriptor)) return false;
-  const previousPublicKey = publicKeyFromDescriptor(previousDescriptor);
-  const nextPublicKey = publicKeyFromDescriptor(nextDescriptor);
-  if (computeAid(previousPublicKey) !== previousDescriptor.aid) return false;
-  if (computeAid(nextPublicKey) !== nextDescriptor.aid) return false;
-  if (!verifyObject(previousPublicKey, descriptorBody(previousDescriptor), previousDescriptor.descriptor_signature)) {
+  try {
+    const previousPublicKey = publicKeyFromDescriptor(previousDescriptor);
+    const nextPublicKey = publicKeyFromDescriptor(nextDescriptor);
+    if (computeAid(previousPublicKey) !== previousDescriptor.aid) return false;
+    if (computeAid(nextPublicKey) !== nextDescriptor.aid) return false;
+    if (!verifyObject(previousPublicKey, descriptorBody(previousDescriptor), previousDescriptor.descriptor_signature)) {
+      return false;
+    }
+    if (!verifyObject(nextPublicKey, descriptorBody(nextDescriptor), nextDescriptor.descriptor_signature)) {
+      return false;
+    }
+    const body = rotationBody(previousDescriptor, nextDescriptor);
+    if (proof.previous_aid !== body.previous_aid || proof.next_aid !== body.next_aid) return false;
+    return (
+      verifyObject(previousPublicKey, body, proof.previous_signature) &&
+      verifyObject(nextPublicKey, body, proof.next_signature)
+    );
+  } catch {
     return false;
   }
-  if (!verifyObject(nextPublicKey, descriptorBody(nextDescriptor), nextDescriptor.descriptor_signature)) {
-    return false;
-  }
-  const body = rotationBody(previousDescriptor, nextDescriptor);
-  if (proof.previous_aid !== body.previous_aid || proof.next_aid !== body.next_aid) return false;
-  return (
-    verifyObject(previousPublicKey, body, proof.previous_signature) &&
-    verifyObject(nextPublicKey, body, proof.next_signature)
-  );
 }
 
 export function verifyAliasRebindingProof(proof, zoneDescriptor, previousDescriptor, nextDescriptor) {
   if (!proof || typeof proof !== "object" || Array.isArray(proof)) return false;
   if (!previousDescriptor || typeof previousDescriptor !== "object" || Array.isArray(previousDescriptor)) return false;
   if (!nextDescriptor || typeof nextDescriptor !== "object" || Array.isArray(nextDescriptor)) return false;
-  let zonePublicKey;
   try {
-    ({ publicKey: zonePublicKey } = verifyZoneDescriptor(zoneDescriptor));
+    const { publicKey: zonePublicKey } = verifyZoneDescriptor(zoneDescriptor);
+    const body = aliasRebindingBody(zoneDescriptor, previousDescriptor, nextDescriptor);
+    if (
+      proof.zone !== body.zone ||
+      proof.alias !== body.alias ||
+      proof.previous_aid !== body.previous_aid ||
+      proof.next_aid !== body.next_aid
+    ) {
+      return false;
+    }
+    return (
+      verifyRotationProof(proof.agent_rotation_proof, previousDescriptor, nextDescriptor) &&
+      verifyObject(zonePublicKey, body, proof.zone_signature)
+    );
   } catch {
     return false;
   }
-  const body = aliasRebindingBody(zoneDescriptor, previousDescriptor, nextDescriptor);
-  if (
-    proof.zone !== body.zone ||
-    proof.alias !== body.alias ||
-    proof.previous_aid !== body.previous_aid ||
-    proof.next_aid !== body.next_aid
-  ) {
-    return false;
-  }
-  return (
-    verifyRotationProof(proof.agent_rotation_proof, previousDescriptor, nextDescriptor) &&
-    verifyObject(zonePublicKey, body, proof.zone_signature)
-  );
 }
 
 export function capabilityCredential(authorityZone, subjectDescriptor, capability, claims = {}) {
@@ -617,22 +620,26 @@ export function capabilityCredential(authorityZone, subjectDescriptor, capabilit
 
 export function verifyCapabilityCredential(credential, authorityDescriptor, subjectDescriptor) {
   if (!credential || typeof credential !== "object" || Array.isArray(credential)) return false;
-  const { publicKey: authorityPublicKey } = verifyZoneDescriptor(authorityDescriptor);
-  const subjectPublicKey = publicKeyFromDescriptor(subjectDescriptor);
-  if (computeAid(subjectPublicKey) !== subjectDescriptor.aid) return false;
-  if (!verifyObject(subjectPublicKey, descriptorBody(subjectDescriptor), subjectDescriptor.descriptor_signature)) return false;
-  if (!subjectDescriptor.capabilities.includes(credential.capability)) return false;
-  const body = {
-    issuer: credential.issuer,
-    subject: credential.subject,
-    capability: credential.capability,
-    claims: credential.claims,
-  };
-  return (
-    credential.issuer === authorityDescriptor.zid &&
-    credential.subject === subjectDescriptor.aid &&
-    verifyObject(authorityPublicKey, body, credential.signature)
-  );
+  try {
+    const { publicKey: authorityPublicKey } = verifyZoneDescriptor(authorityDescriptor);
+    const subjectPublicKey = publicKeyFromDescriptor(subjectDescriptor);
+    if (computeAid(subjectPublicKey) !== subjectDescriptor.aid) return false;
+    if (!verifyObject(subjectPublicKey, descriptorBody(subjectDescriptor), subjectDescriptor.descriptor_signature)) return false;
+    if (!subjectDescriptor.capabilities.includes(credential.capability)) return false;
+    const body = {
+      issuer: credential.issuer,
+      subject: credential.subject,
+      capability: credential.capability,
+      claims: credential.claims,
+    };
+    return (
+      credential.issuer === authorityDescriptor.zid &&
+      credential.subject === subjectDescriptor.aid &&
+      verifyObject(authorityPublicKey, body, credential.signature)
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function capabilityCredentialId(credential) {
@@ -649,19 +656,23 @@ export function capabilityCredentialId(credential) {
 export function verifyCredentialStatus(status, credential, authorityDescriptor) {
   if (!status || typeof status !== "object" || Array.isArray(status)) return false;
   if (!credential || typeof credential !== "object" || Array.isArray(credential)) return false;
-  const { publicKey: authorityPublicKey } = verifyZoneDescriptor(authorityDescriptor);
-  const body = {
-    issuer: status.issuer,
-    credential_id: status.credential_id,
-    subject: status.subject,
-    status: status.status,
-  };
-  return (
-    status.issuer === authorityDescriptor.zid &&
-    status.credential_id === capabilityCredentialId(credential) &&
-    status.subject === credential.subject &&
-    verifyObject(authorityPublicKey, body, status.status_signature)
-  );
+  try {
+    const { publicKey: authorityPublicKey } = verifyZoneDescriptor(authorityDescriptor);
+    const body = {
+      issuer: status.issuer,
+      credential_id: status.credential_id,
+      subject: status.subject,
+      status: status.status,
+    };
+    return (
+      status.issuer === authorityDescriptor.zid &&
+      status.credential_id === capabilityCredentialId(credential) &&
+      status.subject === credential.subject &&
+      verifyObject(authorityPublicKey, body, status.status_signature)
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function enforcePolicy(descriptor, task) {

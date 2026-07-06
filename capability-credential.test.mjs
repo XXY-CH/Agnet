@@ -32,7 +32,11 @@ test("capability credential helpers reject missing objects", () => {
   const status = { ...statusBody, signature: signObject(authority.privateKey, statusBody) };
 
   assert.equal(verifyCapabilityCredential(null, authority.descriptor, agent.descriptor), false);
+  assert.equal(verifyCapabilityCredential(credential, null, agent.descriptor), false);
+  assert.equal(verifyCapabilityCredential(credential, authority.descriptor, null), false);
+  assert.equal(verifyCapabilityCredential(credential, authority.descriptor, {}), false);
   assert.throws(() => capabilityCredentialId(null), /credential missing/);
   assert.equal(verifyCredentialStatus(null, credential, authority.descriptor), false);
   assert.equal(verifyCredentialStatus(status, null, authority.descriptor), false);
+  assert.equal(verifyCredentialStatus(status, credential, null), false);
 });

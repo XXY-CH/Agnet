@@ -935,6 +935,33 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.42: Node Proof Verifier Malformed Descriptor Fail-Closed
+
+状态：complete
+目标：Make Node boolean proof verifiers return false for malformed descriptor inputs instead of leaking parser errors.
+
+新增：
+
+- Node `verifyRotationProof` returns `false` when previous or next descriptor objects are malformed enough to fail public-key parsing or descriptor-body checks.
+- Node `verifyAliasRebindingProof` returns `false` when previous or next descriptor objects cannot form a valid alias rebinding body.
+- Node `verifyCapabilityCredential` returns `false` for malformed authority or subject descriptor inputs.
+- Node `verifyCredentialStatus` returns `false` for malformed authority descriptor inputs.
+- Focused proof tests prove these boolean verifiers fail closed instead of throwing `descriptor public key missing`, `zone descriptor missing`, or alias-body parser errors.
+
+不做：
+
+- 不实现 generic descriptor schema validation。
+- 不改变 descriptor signature semantics。
+- 不改变 Zone descriptor signature semantics。
+- 不改变 rotation, alias rebinding, credential, or credential-status proof schemas。
+- 不改变 identity resolution semantics。
+- 不改变 registry ownership behavior。
+- 不实现 registry lifecycle APIs。
+- 不改变 Go verifier behavior。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
