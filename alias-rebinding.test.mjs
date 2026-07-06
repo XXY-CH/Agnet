@@ -25,4 +25,7 @@ test("zone can approve alias rebinding after agent key rotation", () => {
     ),
     false,
   );
+  assert.equal(verifyAliasRebindingProof(null, zone.descriptor, previous.descriptor, next.descriptor), false);
+  assert.equal(verifyAliasRebindingProof(rebinding, zone.descriptor, null, next.descriptor), false);
+  assert.equal(verifyAliasRebindingProof(rebinding, zone.descriptor, previous.descriptor, null), false);
 });

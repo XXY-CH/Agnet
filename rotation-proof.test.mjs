@@ -13,4 +13,7 @@ test("key rotation proof links previous and next agent identities", () => {
     verifyRotationProof({ ...proof, next_aid: previous.aid }, previous.descriptor, next.descriptor),
     false,
   );
+  assert.equal(verifyRotationProof(null, previous.descriptor, next.descriptor), false);
+  assert.equal(verifyRotationProof(proof, null, next.descriptor), false);
+  assert.equal(verifyRotationProof(proof, previous.descriptor, null), false);
 });

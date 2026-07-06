@@ -773,6 +773,29 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.35: Node Rotation Proof Object Presence
+
+状态：complete
+目标：Make Node rotation and alias rebinding proof verifiers reject missing proof and descriptor objects before field reads.
+
+新增：
+
+- Node `verifyRotationProof` returns `false` for missing, array, or otherwise non-object proof, previous descriptor, or next descriptor inputs.
+- Node `verifyAliasRebindingProof` returns `false` for missing, array, or otherwise non-object proof, previous descriptor, or next descriptor inputs.
+- The focused identity proof tests prove malformed rotation/rebinding inputs no longer leak JavaScript `TypeError` failures.
+
+不做：
+
+- 不改变 rotation proof schema。
+- 不改变 alias rebinding proof schema。
+- 不实现 generic identity proof schema validation。
+- 不改变 Go verifier behavior。
+- 不实现 registry ownership changes。
+- 不实现 alias lifecycle API。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

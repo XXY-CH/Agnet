@@ -538,6 +538,9 @@ export function rotationProof(previousAgent, nextAgent) {
 }
 
 export function verifyRotationProof(proof, previousDescriptor, nextDescriptor) {
+  if (!proof || typeof proof !== "object" || Array.isArray(proof)) return false;
+  if (!previousDescriptor || typeof previousDescriptor !== "object" || Array.isArray(previousDescriptor)) return false;
+  if (!nextDescriptor || typeof nextDescriptor !== "object" || Array.isArray(nextDescriptor)) return false;
   const previousPublicKey = publicKeyFromDescriptor(previousDescriptor);
   const nextPublicKey = publicKeyFromDescriptor(nextDescriptor);
   if (computeAid(previousPublicKey) !== previousDescriptor.aid) return false;
@@ -557,6 +560,9 @@ export function verifyRotationProof(proof, previousDescriptor, nextDescriptor) {
 }
 
 export function verifyAliasRebindingProof(proof, zoneDescriptor, previousDescriptor, nextDescriptor) {
+  if (!proof || typeof proof !== "object" || Array.isArray(proof)) return false;
+  if (!previousDescriptor || typeof previousDescriptor !== "object" || Array.isArray(previousDescriptor)) return false;
+  if (!nextDescriptor || typeof nextDescriptor !== "object" || Array.isArray(nextDescriptor)) return false;
   let zonePublicKey;
   try {
     ({ publicKey: zonePublicKey } = verifyZoneDescriptor(zoneDescriptor));
