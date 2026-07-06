@@ -163,3 +163,21 @@ func TestArtifactManifestRejectsMalformedManifestHash(t *testing.T) {
 		t.Fatalf("got %v, want artifact manifest manifest_hash invalid", err)
 	}
 }
+
+func TestArtifactManifestRejectsMalformedListEntries(t *testing.T) {
+	manifest := map[string]any{
+		"uri":        "artifact://local/list-shape-test/out.md",
+		"sha256":     strings.Repeat("5", 64),
+		"size":       float64(1),
+		"media_type": "text/plain",
+		"afp":        "afp:sha256:" + strings.Repeat("5", 64),
+	}
+	manifest["manifest_hash"] = digestHex(manifest)
+	err := verifyReceiptArtifactManifests(map[string]any{
+		"artifact_refs":      []any{manifest["uri"], map[string]any{"uri": manifest["uri"]}},
+		"artifact_manifests": []any{manifest},
+	})
+	if err == nil || !strings.Contains(err.Error(), "artifact refs invalid") {
+		t.Fatalf("got %v, want artifact refs invalid", err)
+	}
+}

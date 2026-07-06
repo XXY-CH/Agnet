@@ -145,8 +145,14 @@ func verifyReceiptArtifactManifests(receipt map[string]any) error {
 	if !ok {
 		return nil
 	}
-	refs := stringsFromAny(receipt["artifact_refs"])
-	manifests := mapsFromAny(raw)
+	refs, err := artifactRefsFromAny(receipt["artifact_refs"])
+	if err != nil {
+		return err
+	}
+	manifests, err := artifactManifestsFromAny(raw)
+	if err != nil {
+		return err
+	}
 	if len(refs) != len(manifests) {
 		return errors.New("receipt artifact manifest count mismatch")
 	}
@@ -189,6 +195,50 @@ func verifyReceiptArtifactManifests(receipt map[string]any) error {
 		}
 	}
 	return nil
+}
+
+func artifactRefsFromAny(value any) ([]string, error) {
+	if value == nil {
+		return nil, nil
+	}
+	if typed, ok := value.([]string); ok {
+		return typed, nil
+	}
+	items, ok := value.([]any)
+	if !ok {
+		return nil, errors.New("receipt artifact manifest count mismatch")
+	}
+	out := []string{}
+	for _, item := range items {
+		text, ok := item.(string)
+		if !ok {
+			return nil, errors.New("artifact refs invalid")
+		}
+		out = append(out, text)
+	}
+	return out, nil
+}
+
+func artifactManifestsFromAny(value any) ([]map[string]any, error) {
+	if value == nil {
+		return nil, nil
+	}
+	if typed, ok := value.([]map[string]any); ok {
+		return typed, nil
+	}
+	items, ok := value.([]any)
+	if !ok {
+		return nil, errors.New("receipt artifact manifest count mismatch")
+	}
+	out := []map[string]any{}
+	for _, item := range items {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			return nil, errors.New("artifact manifest missing")
+		}
+		out = append(out, entry)
+	}
+	return out, nil
 }
 
 func publicKey(value map[string]any) (ed25519.PublicKey, []byte, error) {

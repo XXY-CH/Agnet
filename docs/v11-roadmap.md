@@ -1128,6 +1128,30 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.50: Go Artifact List Shape Boundary
+
+状态：complete
+目标：Make Go receipt/audit artifact verifiers reject malformed artifact ref and manifest list entries instead of filtering them.
+
+新增：
+
+- Go reusable receipt verification rejects non-string `artifact_refs` entries with `artifact refs invalid`.
+- Go audit artifact verification rejects non-object `artifact_manifests` entries with `artifact manifest missing`.
+- Focused Go tests prove malformed extra list entries are no longer silently filtered out before artifact manifest verification.
+- The fix is scoped to artifact verifier parsing; broad `stringsFromAny` / `mapsFromAny` helper behavior remains unchanged for UI and policy read paths.
+
+不做：
+
+- 不改变 artifact manifest metadata schema。
+- 不实现 generic JSON Schema validation。
+- 不改变 receipt artifact manifest comparison semantics。
+- 不实现 remote artifact fetch。
+- 不实现 object-store artifact backend。
+- 不实现 artifact retention policy。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

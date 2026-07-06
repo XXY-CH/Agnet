@@ -256,6 +256,20 @@ func TestArtifactManifestRejectsMalformedManifestHashBeforeByteChecks(t *testing
 	}
 }
 
+func TestArtifactManifestRejectsMalformedListEntriesBeforeByteChecks(t *testing.T) {
+	manifest, err := writeArtifact("artifact://local/list-shape-boundary-test/out.md", "# List\n", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = verifyArtifactManifests(map[string]any{
+		"artifact_refs":      []any{manifest["uri"]},
+		"artifact_manifests": []any{manifest, nil},
+	}, "")
+	if err == nil || !strings.Contains(err.Error(), "artifact manifest missing") {
+		t.Fatalf("got %v, want artifact manifest missing", err)
+	}
+}
+
 func TestAuditAppendRefreshesSharedHead(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
 	first := &AuditLog{Path: path, Head: auditZeroHash}
