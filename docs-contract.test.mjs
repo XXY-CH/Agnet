@@ -59,18 +59,30 @@ test("v11 public docs include requester Zone binding for FED_TASK_OPEN", async (
 });
 
 test("v11 public docs include Swarm close structural validation", async () => {
+  const [roadmap, draft, boundary] = await Promise.all([
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/v11.2-boundary.md", "utf8"),
+  ]);
+
+  assert.match(roadmap, /## v11\.2: FED_SWARM_CLOSE Structural Close Proof Validation/);
+  assert.match(draft, /requires at least one step receipt/);
+  assert.match(boundary, /structurally empty close proofs/);
+});
+
+test("v11 public docs include task id token validation", async () => {
   const [readme, roadmap, draft, status, boundary] = await Promise.all([
     readFile("README.md", "utf8"),
     readFile("docs/v11-roadmap.md", "utf8"),
     readFile("docs/asp-core-draft.md", "utf8"),
     readFile("docs/implementation-status.md", "utf8"),
-    readFile("docs/v11.2-boundary.md", "utf8"),
+    readFile("docs/v11.3-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.2-protocol`/);
-  assert.match(readme, /fail-closed checks for empty Swarm close proofs/);
-  assert.match(roadmap, /## v11\.2: FED_SWARM_CLOSE Structural Close Proof Validation/);
-  assert.match(draft, /requires at least one step receipt/);
-  assert.match(status, /状态：v11\.2 active/);
-  assert.match(boundary, /structurally empty close proofs/);
+  assert.match(readme, /v11 active at `v11\.3-protocol`/);
+  assert.match(readme, /task ids now fail closed unless they are safe protocol tokens/);
+  assert.match(roadmap, /## v11\.3: Task ID Token Validation/);
+  assert.match(draft, /task_id` is currently constrained/);
+  assert.match(status, /状态：v11\.3 active/);
+  assert.match(boundary, /task identifiers fail closed/);
 });

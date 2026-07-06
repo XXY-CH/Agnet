@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v11.2-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v11.3-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -93,8 +93,11 @@ Minimum implemented fields:
 
 The requester signs the task body without `signature`.
 
+`task_id` is currently constrained to the implemented token format `^[A-Za-z0-9._:-]{1,128}$`.
+
 Verifiers MUST check:
 
+- `task_id` matches the implemented token format.
 - `from` matches the requester Agent ID.
 - The requester signature is valid.
 - The target worker descriptor resolves from `to`.

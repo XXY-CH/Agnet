@@ -326,6 +326,7 @@ export function verifyFederatedTaskOpen(frame, trustedZones, workerDescriptor) {
   if (!frame.requester_zone_binding) throw new Error("requester zone binding missing");
   const requester = resolveAgent(new Map([[frame.requester.alias, { descriptor: frame.requester, zone: frame.origin_zone, zone_binding: frame.requester_zone_binding }]]), frame.requester.alias);
   const { signature, ...task } = frame.task;
+  validateTaskId(task.task_id);
   if (task.from !== frame.requester.aid) throw new Error("task sender does not match requester descriptor");
   if (task.to !== workerDescriptor.alias) throw new Error(`task target does not match worker alias: ${task.to}`);
   if (!verifyObject(requester.publicKey, task, signature)) {
@@ -333,6 +334,10 @@ export function verifyFederatedTaskOpen(frame, trustedZones, workerDescriptor) {
   }
   enforcePolicy(workerDescriptor, task);
   return { originZone, requester: frame.requester, worker: workerDescriptor, task };
+}
+
+export function validateTaskId(taskId) {
+  if (typeof taskId !== "string" || !/^[A-Za-z0-9._:-]{1,128}$/.test(taskId)) throw new Error("task_id invalid");
 }
 
 export function verifyFederatedReceipt(frame, trustedZones) {

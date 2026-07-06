@@ -567,6 +567,10 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(errors.New("queue claim task_id and owner required")))
 			return false
 		}
+		if err := validateTaskID(taskID); err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
 		leaseID, err := fixture.claimQueueItem(taskID, owner, frameSeconds(frame, "lease_seconds", 60))
 		if err != nil {
 			send(taskErrorFrame(err))
@@ -581,6 +585,10 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(errors.New("queue reclaim task_id and owner required")))
 			return false
 		}
+		if err := validateTaskID(taskID); err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
 		leaseID, err := fixture.reclaimQueueItem(taskID, owner, frameSeconds(frame, "lease_seconds", 60))
 		if err != nil {
 			send(taskErrorFrame(err))
@@ -592,6 +600,10 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 		taskID := fmt.Sprint(frame["task_id"])
 		if taskID == "" || taskID == "<nil>" {
 			send(taskErrorFrame(errors.New("queue drain task_id missing")))
+			return false
+		}
+		if err := validateTaskID(taskID); err != nil {
+			send(taskErrorFrame(err))
 			return false
 		}
 		if err := fixture.drainQueueItem(send, taskID, fmt.Sprint(frame["lease_id"])); err != nil {
@@ -2490,6 +2502,9 @@ func (f Fixture) verifyTaskOpen(frame map[string]any) (*Worker, map[string]any, 
 	if !ok {
 		return nil, nil, errors.New("missing task")
 	}
+	if err := validateTaskID(optionalString(task["task_id"])); err != nil {
+		return nil, nil, err
+	}
 	if task["from"] != requester["aid"] {
 		return nil, nil, errors.New("task sender does not match requester descriptor")
 	}
@@ -2531,6 +2546,9 @@ func (f Fixture) verifyTaskCancel(frame map[string]any) (*Worker, map[string]any
 	}
 	if fmt.Sprint(cancel["task_id"]) == "" {
 		return nil, nil, nil, errors.New("cancel task_id missing")
+	}
+	if err := validateTaskID(optionalString(cancel["task_id"])); err != nil {
+		return nil, nil, nil, err
 	}
 	requesterKey, _, err := publicKey(requester)
 	if err != nil {
@@ -3763,6 +3781,9 @@ func (f Fixture) applyQueueAction(action map[string]any) (map[string]any, error)
 		if taskID == "" || taskID == "<nil>" {
 			return nil, errors.New("queue action task_id missing")
 		}
+		if err := validateTaskID(taskID); err != nil {
+			return nil, err
+		}
 		owner := fmt.Sprint(action["owner"])
 		if owner == "" || owner == "<nil>" {
 			return nil, errors.New("queue action owner missing")
@@ -3776,6 +3797,9 @@ func (f Fixture) applyQueueAction(action map[string]any) (map[string]any, error)
 		taskID := fmt.Sprint(action["task_id"])
 		if taskID == "" || taskID == "<nil>" {
 			return nil, errors.New("queue action task_id missing")
+		}
+		if err := validateTaskID(taskID); err != nil {
+			return nil, err
 		}
 		leaseID := fmt.Sprint(action["lease_id"])
 		if leaseID == "" || leaseID == "<nil>" {
@@ -4957,6 +4981,19 @@ func stringsAny(items []string) []any {
 func optionalString(value any) string {
 	text, _ := value.(string)
 	return text
+}
+
+func validateTaskID(taskID string) error {
+	if taskID == "" || len(taskID) > 128 {
+		return errors.New("task_id invalid")
+	}
+	for _, r := range taskID {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == ':' || r == '-' {
+			continue
+		}
+		return errors.New("task_id invalid")
+	}
+	return nil
 }
 
 func frameSeconds(frame map[string]any, key string, fallback int) int {

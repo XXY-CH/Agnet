@@ -74,8 +74,30 @@
 - 不实现 public reachability proof。
 - 不实现 A2A/ARD compatibility。
 
+## v11.3: Task ID Token Validation
+
+状态：complete
+目标：Make unsafe task ids fail closed before execution, queue state, artifact paths, or audit lookups.
+
+新增：
+
+- Node `verifyFederatedTaskOpen` rejects task ids outside `^[A-Za-z0-9._:-]{1,128}$`.
+- Go `Fixture.verifyTaskOpen` rejects the same unsafe task ids before execution and queue enqueue/resume/retry/Swarm step execution.
+- Go queue claim/reclaim/drain paths reject unsafe task ids before reading or writing queue state.
+- Node and Go tests prove path-like task ids such as `../bad/task` are rejected.
+
+不做：
+
+- 不实现 global task-id registry。
+- 不实现 UUID migration。
+- 不改变 existing valid task ids。
+- 不实现 scheduler-owned task namespace。
+- 不实现 public reachability proof。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
-2. Continue Swarm proof work only where it adds verifiable accountability without dynamic decomposition, scheduler ownership, parallel execution, cross-Zone Swarm, or a Node audit verifier.
-3. Keep compatibility work parked until the proof layer has an externally consumable release surface.
+2. Continue Phase A trust-boundary bug closure only where the current code still contradicts verified claims.
+3. Continue Swarm proof work only where it adds verifiable accountability without dynamic decomposition, scheduler ownership, parallel execution, cross-Zone Swarm, or a Node audit verifier.
+4. Keep compatibility work parked until the proof layer has an externally consumable release surface.

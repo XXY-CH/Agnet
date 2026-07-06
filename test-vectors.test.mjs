@@ -67,6 +67,18 @@ test("FED_TASK_OPEN verification rejects unbound requesters in Node", async () =
   );
 });
 
+test("FED_TASK_OPEN verification rejects unsafe task ids in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.24-fed-task-open.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  const { signature, ...taskBody } = vector.frame.task;
+  const task = { ...taskBody, task_id: "../bad/task" };
+
+  assert.throws(
+    () => verifyFederatedTaskOpen({ ...vector.frame, task: { ...task, signature: signObject(privateKeyFromSeed(vector.requester_seed_hex), task) } }, trustedZones, vector.worker),
+    /task_id invalid/,
+  );
+});
+
 test("FED_RECEIPT conformance vector verifies in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
   const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));

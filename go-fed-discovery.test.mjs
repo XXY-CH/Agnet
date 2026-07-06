@@ -838,6 +838,20 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
       task_id: "go_fed_task_queued",
       intent: "Queue before scheduler execution.",
     };
+    const unsafeTaskIDTask = {
+      ...task,
+      task_id: "../go_bad_task",
+      intent: "Unsafe task ids must fail before execution.",
+    };
+    const unsafeTaskIDFrames = await exchangeFrames(port, {
+      type: "FED_TASK_OPEN",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      task: { ...unsafeTaskIDTask, signature: signObject(requester.privateKey, unsafeTaskIDTask) },
+    });
+    assert.equal(unsafeTaskIDFrames[0].type, "FED_TASK_ERROR");
+    assert.match(unsafeTaskIDFrames[0].error, /task_id invalid/);
+
     const queuedFrames = await exchangeFrames(port, {
       type: "FED_TASK_ENQUEUE",
       origin_zone: zoneA.descriptor,
