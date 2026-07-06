@@ -118,11 +118,13 @@ export function verifyObject(publicKey, payload, signature) {
 }
 
 export function descriptorBody(descriptor) {
+  if (!descriptor || typeof descriptor !== "object" || Array.isArray(descriptor)) throw new Error("descriptor missing");
   const { descriptor_signature, ...body } = descriptor;
   return body;
 }
 
 export function zoneDescriptorBody(descriptor) {
+  if (!descriptor || typeof descriptor !== "object" || Array.isArray(descriptor)) throw new Error("zone descriptor missing");
   const { zone_signature, ...body } = descriptor;
   return body;
 }

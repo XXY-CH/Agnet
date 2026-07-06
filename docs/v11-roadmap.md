@@ -911,6 +911,30 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.41: Node Descriptor Body Object Presence
+
+状态：complete
+目标：Make Node descriptor body helpers reject missing descriptor objects before removing signature fields.
+
+新增：
+
+- Node `descriptorBody` rejects missing, array, or otherwise non-object descriptors with `descriptor missing`.
+- Node `zoneDescriptorBody` rejects missing, array, or otherwise non-object Zone descriptors with `zone descriptor missing`.
+- The focused descriptor tests prove missing descriptor body inputs no longer leak JavaScript `TypeError` failures or silently canonicalize arrays as empty objects.
+
+不做：
+
+- 不实现 generic descriptor schema validation。
+- 不改变 descriptor signature semantics。
+- 不改变 Zone descriptor signature semantics。
+- 不改变 identity resolution semantics。
+- 不改变 registry ownership behavior。
+- 不实现 registry lifecycle APIs。
+- 不改变 Go verifier behavior。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

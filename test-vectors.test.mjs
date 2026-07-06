@@ -4,7 +4,7 @@ import { createHash, createPrivateKey, createPublicKey } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { canonical, computeAid, createAgent, createZone, didKeyFromDescriptor, didKeyFromPublicKeySPKI, publicKeyFromDescriptor, publicKeySPKIFromDidKey, signObject, verifyFederatedReceipt, verifyFederatedTaskOpen, verifyObject, verifyReceiptArtifactManifests, verifySwarmClose, writeArtifact } from "./asp-core.mjs";
+import { canonical, computeAid, createAgent, createZone, descriptorBody, didKeyFromDescriptor, didKeyFromPublicKeySPKI, publicKeyFromDescriptor, publicKeySPKIFromDidKey, signObject, verifyFederatedReceipt, verifyFederatedTaskOpen, verifyObject, verifyReceiptArtifactManifests, verifySwarmClose, writeArtifact, zoneDescriptorBody } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -63,6 +63,16 @@ test("descriptor public key parsing rejects missing public keys in Node", async 
     () => publicKeyFromDescriptor(descriptorWithoutPublicKey),
     /descriptor public key missing/,
   );
+});
+
+test("descriptor body helpers reject missing descriptor objects in Node", () => {
+  for (const descriptor of [null, [], "descriptor"]) {
+    assert.throws(() => descriptorBody(descriptor), /descriptor missing/);
+  }
+
+  for (const descriptor of [null, [], "zone"]) {
+    assert.throws(() => zoneDescriptorBody(descriptor), /zone descriptor missing/);
+  }
 });
 
 test("object signature verification fails closed on missing signatures in Node", async () => {
