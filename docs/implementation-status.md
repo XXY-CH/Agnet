@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v11.74 active
-当前代码基线：`v11.74-go-receipt-policy-scope-list-shape-boundary`
+状态：v11.75 active
+当前代码基线：`v11.75-go-receipt-policy-scope-scalar-shape-boundary`
 
 ## 一句话
 
@@ -33,7 +33,7 @@
 | `FED_TASK_ENQUEUE` | not yet | durable local queue file + claim/lease expiry + reclaim + retry/backoff state + explicit drain path | `go-fed-discovery.test.mjs` | automatic drain |
 | `FED_TASK_CANCEL` | not yet | signed cancellation receipt evidence + durable cancelled state file + live external process interruption | `go-fed-discovery.test.mjs` | persisted running registry / multi-node cancel |
 | `FED_TASK_RETRY` | not yet | signed retry lineage evidence | `go-fed-discovery.test.mjs` | automatic retry / backoff / scheduler state |
-| Policy checks | done | network/write subset + Go signed task write/data-domain list shape validation + Go receipt policy scope list shape validation + Go canonical policy scope digest + stable deny codes | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs`, `cmd/go-fed-discovery/main_test.go` | policy negotiation / dynamic policy service |
+| Policy checks | done | network/write subset + Go signed task write/data-domain list shape validation + Go receipt policy scope list shape validation and scalar shape validation + Go canonical policy scope digest + stable deny codes | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs`, `cmd/go-fed-discovery/main_test.go` | policy negotiation / dynamic policy service |
 | Human approval | simulated | direct Go task execution and queued drain write pending approval state; in-process approval state writes are serialized; approve continues, deny/expiry stops before tools; worker policy approval-required list shape validation; direct approvals preserve named `human://...` actors in signed grants; approval actors pass configurable local allowlists; local bearer approval sessions can supply the approval actor; mismatched body/session actors are rejected; `/api/session` exposes local session actor/actions state; Human Gateway page displays that local session state | Node events, `cmd/go-fed-discovery/main_test.go`, `go-fed-discovery.test.mjs` | roles / cross-process locking |
 | Checkpoint evidence | not yet | signed protocol-native checkpoint evidence + audit-backed immediate and queued resume parent links + restored state digest evidence + receipt-linked task state file | `go-fed-discovery.test.mjs` | model KV/cache restore |
 | Transport | local TCP / local process + authenticated session handshake | local TCP + configurable main federation listen host + verifier-ready local public-listen authenticated resolve/query/task/audit/artifact/swarm proof with out-of-receipt and post-receipt-tamper rejection evidence + optional TLS/mTLS federation listener with certificate-to-Zone binding + minimal WebSocket + authenticated session handshake | README commands, `public-node-proof.test.mjs`, `cmd/go-fed-discovery/main_test.go`, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | public reachability / deployment / QUIC |
@@ -160,7 +160,7 @@ Go
   -> audit verifier checks named artifact manifest sidecars against manifests
   -> audit verifier checks digest-addressed artifact manifest sidecars against manifests
   -> audit verifier checks optional filesystem artifact mirror bytes, sidecars, required safe SHA-256 index paths, present URI index validation, present media-type index validation, present size index validation, present AFP index alignment, present manifest-hash index digests, object-shaped index entries, and exact-type object index matches when --artifact-store is configured
-  -> canonical policy scope digest, receipt policy scope list shape validation, and stable deny codes
+  -> canonical policy scope digest, receipt policy scope list shape validation and scalar shape validation, and stable deny codes
   -> Zone-signed credential status evidence
   -> authenticated session handshake
   -> optional TLS on the main Go federation TCP listener with --tls-cert/--tls-key
@@ -211,7 +211,7 @@ Go
 
 ## Next Boundary
 
-v11.74 makes Go receipt verification reject malformed `policy_scope` list evidence before accepting a signed policy digest. This keeps the proof boundary narrow: it does not add generic receipt schema validation, dynamic policy service, scheduler ownership, automatic drain, or A2A/ARD compatibility. The next natural boundary should keep moving toward Ultimate without widening the claim surface: close remaining Phase A trust-boundary bugs only when still present in live code, add real public reachability proof only with external network evidence, or continue proof/accountability work only where it adds verifiable enforcement without scheduler breadth.
+v11.75 makes Go receipt verification reject malformed `policy_scope.network` and `policy_scope.expires_at` scalar evidence before accepting a signed policy digest. This keeps the proof boundary narrow: it does not add generic receipt schema validation, dynamic policy service, scheduler ownership, automatic drain, or A2A/ARD compatibility. The next natural boundary should keep moving toward Ultimate without widening the claim surface: close remaining Phase A trust-boundary bugs only when still present in live code, add real public reachability proof only with external network evidence, or continue proof/accountability work only where it adds verifiable enforcement without scheduler breadth.
 
 Route detail: `docs/v11-roadmap.md`。
 

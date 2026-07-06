@@ -5269,6 +5269,12 @@ func verifyPolicyScope(receipt map[string]any) error {
 			return err
 		}
 	}
+	if _, ok := scope["network"].(bool); !ok {
+		return errors.New("policy scope network invalid")
+	}
+	if _, ok := scope["expires_at"].(string); !ok {
+		return errors.New("policy scope expires_at invalid")
+	}
 	if fmt.Sprint(receipt["policy_digest"]) == "" {
 		return errors.New("receipt policy digest missing")
 	}

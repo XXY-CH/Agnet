@@ -1214,6 +1214,37 @@ func TestVerifyPolicyScopeRejectsMalformedLists(t *testing.T) {
 	}
 }
 
+func TestVerifyPolicyScopeRejectsMalformedScalars(t *testing.T) {
+	cases := []struct {
+		field string
+		value any
+	}{
+		{field: "network", value: "false"},
+		{field: "expires_at", value: map[string]any{"at": "2026-07-07T00:00:00Z"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.field, func(t *testing.T) {
+			scope := map[string]any{
+				"network":           false,
+				"write":             []string{},
+				"tools":             []string{},
+				"data_domains":      []string{},
+				"approval_required": []string{},
+				"expires_at":        "",
+			}
+			scope[tc.field] = tc.value
+			err := verifyPolicyScope(map[string]any{
+				"policy_scope":  scope,
+				"policy_digest": digestHex(scope),
+			})
+			want := "policy scope " + tc.field + " invalid"
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("got %v, want %s", err, want)
+			}
+		})
+	}
+}
+
 func TestCheckpointByIDRejectsMalformedReceiptCheckpointLists(t *testing.T) {
 	zone, zoneKey := testZoneDescriptor(t, "zone://checkpoint-lookup-shape")
 	_, workerKey, err := ed25519.GenerateKey(rand.Reader)
