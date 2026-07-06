@@ -197,8 +197,30 @@
 - 不做 local artifact byte verification in the package。
 - 不做 public node。
 
+## v10.9: One-command Local Proof Demo
+
+状态：complete
+目标：Provide a one-command local proof demo using existing prototype and verifier paths.
+
+新增：
+
+- `scripts/proof-demo.sh` runs `node mvp-demo.mjs`.
+- The script verifies the generated local artifact manifest with `node asp-verify.mjs artifact`.
+- The script prints one JSON result with `proof_demo`, `task_id`, `receipt_signature`, `artifact_verify`, and `artifact_uri`.
+- `proof-demo.test.mjs` proves the script runs and returns the expected proof summary.
+
+不做：
+
+- 不做 Docker image。
+- 不做 public node。
+- 不做 HTTP verifier service。
+- 不做 long-running daemon。
+- 不做 package release。
+- 不做 remote artifact fetch。
+- 不做 receipt store/search。
+
 ## Next Candidates
 
-1. Provide a first public-node or Docker demo that proves the existing local-first flow is reproducible.
+1. Provide a first Docker demo that proves the existing local-first flow is reproducible in a clean environment.
 2. Add an npm-facing verifier only when the existing Node exports are not enough.
 3. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.
