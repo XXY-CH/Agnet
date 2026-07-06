@@ -122,6 +122,39 @@ func TestArtifactManifestAFPMatchesSHA256(t *testing.T) {
 	}
 }
 
+func TestArtifactManifestRejectsUnsafeSHA256BeforeDigestPath(t *testing.T) {
+	manifest, err := writeArtifact("artifact://local/sha-boundary-test/out.md", "# SHA\n", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := map[string]any{
+		"uri":        manifest["uri"],
+		"sha256":     "../evil",
+		"size":       manifest["size"],
+		"media_type": manifest["media_type"],
+		"afp":        "afp:sha256:../evil",
+	}
+	bad["manifest_hash"] = digestHex(bad)
+	sidecar, err := json.MarshalIndent(bad, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := localArtifactPath(fmt.Sprint(manifest["uri"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path+".manifest.json", append(sidecar, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err = verifyArtifactManifests(map[string]any{
+		"artifact_refs":      []any{manifest["uri"]},
+		"artifact_manifests": []any{bad},
+	}, "")
+	if err == nil || !strings.Contains(err.Error(), "artifact manifest sha256 invalid") {
+		t.Fatalf("got %v, want artifact manifest sha256 invalid", err)
+	}
+}
+
 func TestAuditAppendRefreshesSharedHead(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
 	first := &AuditLog{Path: path, Head: auditZeroHash}

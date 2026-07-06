@@ -1008,6 +1008,30 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.45: Go Artifact Digest Path Boundary
+
+状态：complete
+目标：Make Go audit artifact verification reject malformed manifest SHA-256 values before constructing digest-addressed sidecar or mirror paths.
+
+新增：
+
+- Go `verifyArtifactManifests` rejects non-64-hex manifest `sha256` values with `artifact manifest sha256 invalid`.
+- The check runs before reading `artifacts/by-sha256/<sha>.manifest.json` or optional mirror paths under `--artifact-store`.
+- The focused Go test proves `sha256: "../evil"` no longer reaches a digest-addressed filesystem path.
+
+不做：
+
+- 不改变 artifact manifest metadata schema。
+- 不改变 receipt artifact manifest comparison semantics。
+- 不实现 remote artifact fetch。
+- 不实现 object-store artifact backend。
+- 不实现 artifact retention policy。
+- 不改变 Node verifier behavior。
+- 不改变 Go reusable receipt verifier package behavior。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
