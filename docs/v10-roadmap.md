@@ -242,8 +242,33 @@
 - 不做 receipt store/search。
 - 不声称本机已经运行过 Docker image；当前验证环境 Docker daemon 不可用。
 
+## v10.11: Local Proof Receipt Closure Files
+
+状态：complete
+目标：Make the one-command local proof demo emit verifier-ready receipt closure files.
+
+新增：
+
+- `mvp-demo.mjs` includes `origin_zone` and `executing_zone` in its signed local receipt.
+- `mvp-demo.mjs` emits a local `FED_RECEIPT` frame and trusted Zone set for the same demo receipt.
+- `scripts/proof-demo.sh` writes `state/proof-demo-fed-receipt.json` and `state/proof-demo-trusted-zones.json`.
+- `scripts/proof-demo.sh` verifies those files with `node asp-verify.mjs fed-receipt-artifacts`.
+- `proof-demo.test.mjs` proves the emitted files can be re-verified by the existing CLI.
+
+不做：
+
+- 不做 Docker image 实跑声明。
+- 不做 npm package。
+- 不做 HTTP verifier service。
+- 不做 public node。
+- 不做 batch verification。
+- 不做 receipt store/search。
+- 不做 remote artifact fetch。
+- 不做 Swarm scheduler。
+- 不做 A2A/ANP/AGNTCY compatibility。
+
 ## Next Candidates
 
 1. Run and publish Docker proof output once a Docker daemon is available.
-2. Add an npm-facing verifier only when the existing Node exports are not enough.
-3. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.
+2. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.
+3. Add an npm-facing verifier only when the existing Node exports are not enough.

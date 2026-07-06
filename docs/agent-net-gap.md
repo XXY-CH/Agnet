@@ -1,12 +1,12 @@
 # Agent Net Gap
 
-状态：v10.10 assessment
+状态：v10.11 assessment
 
 ## 一句话
 
 当前项目是 Agent Net 的 protocol seed，不是 Agent Net 产品。
 
-它已经抓住了真正 Agent Net 的底层骨架：identity with a narrow Ed25519 `did:key` bridge、Node/Go artifact manifest evidence and local verification CLI、Node/Go receipt verification CLIs、one-receipt local artifact closure verification、implementation-backed ASP Core draft、reusable Go `FED_RECEIPT` verifier package、one-command local proof demo、Docker proof demo contract、signed task、policy、artifact、receipt、audit、federation、Node/Go bidirectional task interop、Go federation explicit bind host primitive、shared `FED_TASK_OPEN` / `FED_RECEIPT` conformance fixtures，以及 Go 侧最小 explicit Swarm DAG seed 和同 audit Swarm dependency step/receipt verification。
+它已经抓住了真正 Agent Net 的底层骨架：identity with a narrow Ed25519 `did:key` bridge、Node/Go artifact manifest evidence and local verification CLI、Node/Go receipt verification CLIs、one-receipt local artifact closure verification、implementation-backed ASP Core draft、reusable Go `FED_RECEIPT` verifier package、one-command local proof demo with verifier-ready receipt/trust files、Docker proof demo contract、signed task、policy、artifact、receipt、audit、federation、Node/Go bidirectional task interop、Go federation explicit bind host primitive、shared `FED_TASK_OPEN` / `FED_RECEIPT` conformance fixtures，以及 Go 侧最小 explicit Swarm DAG seed 和同 audit Swarm dependency step/receipt verification。
 
 它还缺产品面、运行面、部署面、多人协作面和真实工具执行面。
 
@@ -28,7 +28,7 @@
 - Node exposes single `FED_RECEIPT` frame plus local artifact byte verification through `asp-verify.mjs fed-receipt-artifacts <frame.json> <trusted-zones.json>`。
 - `docs/asp-core-draft.md` captures the narrow implemented proof layer in English。
 - Go exposes reusable `agnet/verifier.VerifyFederatedReceipt` for one `FED_RECEIPT` frame。
-- `scripts/proof-demo.sh` runs the local MVP and verifies its generated artifact manifest。
+- `scripts/proof-demo.sh` runs the local MVP, emits verifier-ready receipt/trust files, and verifies the generated artifact manifest plus local receipt closure。
 - `Dockerfile` and `scripts/docker-proof-demo.sh` define a Docker proof demo contract; local Docker daemon verification is still pending。
 - shared Node/Go `FED_TASK_OPEN` and `FED_RECEIPT` conformance fixtures。
 - Go `FED_SWARM_OPEN` explicit two-step DAG seed with signed artifact dependency evidence。

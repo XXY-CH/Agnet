@@ -9,6 +9,7 @@ import {
   signObject,
   verifyObject,
   writeArtifact,
+  zoneBinding,
   writeRegistry,
 } from "./asp-core.mjs";
 
@@ -69,6 +70,8 @@ async function run() {
   const receipt = {
     task_id: task.task_id,
     from: requester.aid,
+    origin_zone: zone.zid,
+    executing_zone: zone.zid,
     to: worker.aid,
     artifact_refs: [artifactUri],
     artifact_manifests: [artifact.manifest],
@@ -82,6 +85,14 @@ async function run() {
     throw new Error("receipt signature verification failed");
   }
 
+  const receiptFrame = {
+    type: "FED_RECEIPT",
+    zone: zone.descriptor,
+    worker: worker.descriptor,
+    zone_binding: zoneBinding(zone, worker.descriptor),
+    receipt: signedReceipt,
+  };
+
   console.log(JSON.stringify({
     registry: "state/registry.json",
     requester: requester.aid,
@@ -91,6 +102,8 @@ async function run() {
     artifactPath: artifact.path,
     auditLog: "state/audit.log",
     receipt: signedReceipt,
+    receiptFrame,
+    trustedZones: { zones: [zone.descriptor] },
   }, null, 2));
 }
 
