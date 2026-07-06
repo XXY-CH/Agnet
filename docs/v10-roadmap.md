@@ -774,8 +774,35 @@
 - 不做 hosted public node。
 - 不做新的 Swarm verifier 逻辑。
 
+## v10.33: Docker Proof Base Image Overrides
+
+状态：complete
+目标：Make Docker proof demo base images overrideable without adding registry, publishing, or deployment machinery.
+
+新增：
+
+- `Dockerfile` declares `AGNET_NODE_BASE_IMAGE` with default `node:22-bookworm-slim`.
+- `Dockerfile.public-node-proof` declares `AGNET_GO_BASE_IMAGE` with default `golang:1.26.1-bookworm`.
+- `Dockerfile.public-node-proof` declares `AGNET_NODE_BASE_IMAGE` with default `node:22-bookworm-slim`.
+- `scripts/docker-proof-demo.sh` passes `AGNET_NODE_BASE_IMAGE` as a build argument.
+- `scripts/docker-public-node-proof.sh` passes `AGNET_GO_BASE_IMAGE` and `AGNET_NODE_BASE_IMAGE` as build arguments.
+- `docker-demo.test.mjs` guards both override contracts.
+
+不做：
+
+- 不做 Docker registry mirror 配置。
+- 不做 Docker image publishing。
+- 不做 Docker Compose。
+- 不做 hosted public node。
+- 不做公网可达性证明。
+- 不做 package signing。
+- 不做 SBOM。
+- 不做 supply-chain attestation。
+- 不做 container namespace sandbox。
+- 不改变 proof demo 输出语义。
+
 ## Next Candidates
 
-1. Add public reachability proof only after the Docker proof contract stays stable.
+1. Add public reachability proof only after the Docker proof contract stays stable on the target network.
 2. Add package signing or SBOM only after package publication becomes real.
 3. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.
