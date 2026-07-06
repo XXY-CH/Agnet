@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v10 active at `v10.13-protocol`.
+Status: research prototype, local-first, v10 active at `v10.14-protocol`.
 
 ## Why This Exists
 
@@ -42,7 +42,7 @@ The current prototype proves:
 - Node to Go and Go to Node `FED_TASK_OPEN` interoperability.
 - Shared `FED_TASK_OPEN` and `FED_RECEIPT` conformance fixtures.
 - Minimal two-step `FED_SWARM_OPEN` with signed dependency evidence.
-- Swarm audit verification for declared dependency steps, unique step identity, artifact manifests, upstream receipt digests, and audit-backed Zone-signed close proofs.
+- Swarm audit verification for declared dependency steps, unique step identity, artifact manifests, upstream receipt digests, and complete audit-backed Zone-signed close proofs.
 
 It is not yet a production Agent Net, public federation network, DID-native identity layer, scheduler, economic layer, or container-isolated runtime.
 
@@ -172,12 +172,12 @@ Optional hardening flags include:
 - `docs/agent-space-architecture.md` - architecture overview.
 - `docs/asp-core-draft.md` - narrow English draft for the implemented proof layer.
 - `docs/v10-roadmap.md` - active v10 roadmap.
-- `docs/v10.13-boundary.md` - latest closed boundary.
+- `docs/v10.14-boundary.md` - latest closed boundary.
 - `docs/v9-roadmap.md` - closed v9 roadmap.
 
 ## Roadmap
 
-v9 is closed. v10 is making the proof layer easier to verify externally: identity bridge first, then Node artifact manifest parity, receipt-side manifest metadata checks, local artifact byte checks, minimal verifier CLIs, one-receipt local artifact closure verification, a narrow ASP Core draft, a reusable Go receipt-frame verifier package, a one-command local proof demo, a minimal Docker proof demo contract, verifier-ready local proof receipt closure files, and audit-backed Zone-signed Swarm close proofs.
+v9 is closed. v10 is making the proof layer easier to verify externally: identity bridge first, then Node artifact manifest parity, receipt-side manifest metadata checks, local artifact byte checks, minimal verifier CLIs, one-receipt local artifact closure verification, a narrow ASP Core draft, a reusable Go receipt-frame verifier package, a one-command local proof demo, a minimal Docker proof demo contract, verifier-ready local proof receipt closure files, and complete audit-backed Zone-signed Swarm close proofs.
 
 Highest-value next directions:
 

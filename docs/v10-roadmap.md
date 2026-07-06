@@ -314,6 +314,29 @@
 - 不做 receipt store/search。
 - 不做 A2A/ANP/AGNTCY compatibility。
 
+## v10.14: Complete Swarm Close Summary Verification
+
+状态：complete
+目标：Make Swarm close proof complete, not just individually valid.
+
+新增：
+
+- `--verify-audit` rejects `go_swarm_close` records that omit completed same-audit Swarm steps.
+- `--verify-audit` rejects duplicate `close.step_receipts` entries for the same step id.
+- Existing close proof signature, task id, and receipt digest checks still apply.
+- `cmd/go-fed-discovery/main_test.go` proves incomplete and duplicate close summaries are rejected.
+
+不做：
+
+- 不做 dynamic Swarm decomposition。
+- 不做 scheduler-owned DAG execution。
+- 不做 parallel Swarm execution。
+- 不做 conflict/merge receipts。
+- 不做 cross-Zone Swarm。
+- 不做 Swarm UI。
+- 不做 receipt store/search。
+- 不做 A2A/ANP/AGNTCY compatibility。
+
 ## Next Candidates
 
 1. Run and publish Docker proof output once a Docker daemon is available.

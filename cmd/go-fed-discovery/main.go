@@ -4496,7 +4496,25 @@ func verifySwarmCloseProof(record map[string]any, completed map[string]map[strin
 		return errors.New("swarm close signature verification failed")
 	}
 	swarmID := optionalString(closeProof["swarm_id"])
-	for _, step := range mapsFromAny(closeProof["step_receipts"]) {
+	expected := 0
+	for key := range completed {
+		if strings.HasPrefix(key, swarmID+"\x00") {
+			expected++
+		}
+	}
+	steps := mapsFromAny(closeProof["step_receipts"])
+	seen := map[string]bool{}
+	for _, step := range steps {
+		stepID := optionalString(step["step_id"])
+		if seen[stepID] {
+			return errors.New("duplicate swarm close step receipt: " + stepID)
+		}
+		seen[stepID] = true
+	}
+	if len(steps) != expected {
+		return errors.New("swarm close step count mismatch")
+	}
+	for _, step := range steps {
 		stepID := optionalString(step["step_id"])
 		completedStep, ok := completed[swarmID+"\x00"+stepID]
 		if !ok {

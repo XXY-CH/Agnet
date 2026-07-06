@@ -483,6 +483,46 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	incompleteClose := signBodyWithKey(zoneKey, map[string]any{
+		"swarm_id": "swarm://test",
+		"step_receipts": []map[string]any{
+			{"step_id": "upstream", "task_id": "swarm_up", "receipt_digest": digestHex(upstreamReceipt)},
+		},
+	}, "close_signature")
+	incompleteCloseLog := &AuditLog{Path: "incomplete-close-audit.log", Head: auditZeroHash}
+	if err := incompleteCloseLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": upstreamReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	if err := incompleteCloseLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": downstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(downstreamWorker), "receipt": downstreamRecord}); err != nil {
+		t.Fatal(err)
+	}
+	if err := incompleteCloseLog.Append(map[string]any{"kind": "go_swarm_close", "zone": zone, "close": incompleteClose}); err != nil {
+		t.Fatal(err)
+	}
+	err = verifyAuditFile("incomplete-close-audit.log", "")
+	if err == nil || !strings.Contains(err.Error(), "swarm close step count mismatch") {
+		t.Fatalf("got %v, want swarm close step count mismatch", err)
+	}
+
+	duplicateClose := signBodyWithKey(zoneKey, map[string]any{
+		"swarm_id": "swarm://test",
+		"step_receipts": []map[string]any{
+			{"step_id": "upstream", "task_id": "swarm_up", "receipt_digest": digestHex(upstreamReceipt)},
+			{"step_id": "upstream", "task_id": "swarm_up", "receipt_digest": digestHex(upstreamReceipt)},
+		},
+	}, "close_signature")
+	duplicateCloseLog := &AuditLog{Path: "duplicate-close-audit.log", Head: auditZeroHash}
+	if err := duplicateCloseLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": upstreamReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	if err := duplicateCloseLog.Append(map[string]any{"kind": "go_swarm_close", "zone": zone, "close": duplicateClose}); err != nil {
+		t.Fatal(err)
+	}
+	err = verifyAuditFile("duplicate-close-audit.log", "")
+	if err == nil || !strings.Contains(err.Error(), "duplicate swarm close step receipt") {
+		t.Fatalf("got %v, want duplicate swarm close step receipt", err)
+	}
+
 	badClose := signBodyWithKey(zoneKey, map[string]any{
 		"swarm_id": "swarm://test",
 		"step_receipts": []map[string]any{
