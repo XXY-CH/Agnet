@@ -571,6 +571,28 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.26: FED_TASK_OPEN and FED_RECEIPT Signature Presence
+
+状态：complete
+目标：Make Node task and receipt verification reject missing signed task/receipt signatures with protocol-shaped errors.
+
+新增：
+
+- Node `verifyFederatedTaskOpen` rejects missing, empty, or non-string task signatures before calling crypto verification.
+- Node `verifyFederatedReceipt` rejects missing, empty, or non-string receipt signatures before calling crypto verification.
+- The Node tests prove missing signed task/receipt signatures fail with `task signature missing` or `receipt signature missing`, not JavaScript `TypeError`.
+
+不做：
+
+- 不实现 generic task or receipt schema validation。
+- 不改变 `FED_TASK_OPEN` frame shape。
+- 不改变 `FED_RECEIPT` frame shape。
+- 不改变 Go verifier behavior。
+- 不实现 task or receipt store/search。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

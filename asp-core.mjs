@@ -340,6 +340,7 @@ export function verifyFederatedTaskOpen(frame, trustedZones, workerDescriptor) {
   validateTaskId(task.task_id);
   if (task.from !== frame.requester.aid) throw new Error("task sender does not match requester descriptor");
   if (task.to !== workerDescriptor.alias) throw new Error(`task target does not match worker alias: ${task.to}`);
+  if (typeof signature !== "string" || signature === "") throw new Error("task signature missing");
   if (!verifyObject(requester.publicKey, task, signature)) {
     throw new Error("task signature verification failed");
   }
@@ -372,6 +373,7 @@ export function verifyFederatedReceipt(frame, trustedZones, signedTask) {
   if (typeof receipt.task_digest !== "string" || !/^[0-9a-f]{64}$/.test(receipt.task_digest)) throw new Error("receipt task_digest missing");
   if (signedTask !== undefined && createHash("sha256").update(canonical(signedTask)).digest("hex") !== receipt.task_digest) throw new Error("receipt task_digest mismatch");
   if (receipt.to !== frame.worker.aid) throw new Error("receipt worker mismatch");
+  if (typeof signature !== "string" || signature === "") throw new Error("receipt signature missing");
   if (!verifyObject(resolved.publicKey, receipt, signature)) {
     throw new Error("remote receipt signature verification failed");
   }

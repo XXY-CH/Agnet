@@ -130,6 +130,19 @@ test("FED_TASK_OPEN verification rejects missing tasks in Node", async () => {
   );
 });
 
+test("FED_TASK_OPEN verification rejects missing task signatures in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.24-fed-task-open.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  const { signature, ...taskWithoutSignature } = vector.frame.task;
+
+  for (const task of [taskWithoutSignature, { ...taskWithoutSignature, signature: "" }, { ...taskWithoutSignature, signature: null }, { ...taskWithoutSignature, signature: [] }]) {
+    assert.throws(
+      () => verifyFederatedTaskOpen({ ...vector.frame, task }, trustedZones, vector.worker),
+      /task signature missing/,
+    );
+  }
+});
+
 test("FED_TASK_OPEN verification rejects unbound requesters in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v9.24-fed-task-open.json", "utf8"));
   const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
@@ -221,6 +234,19 @@ test("FED_RECEIPT verification rejects missing receipt bodies in Node", async ()
     () => verifyFederatedReceipt(frameWithoutReceipt, trustedZones),
     /receipt body missing/,
   );
+});
+
+test("FED_RECEIPT verification rejects missing receipt signatures in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  const { signature, ...receiptWithoutSignature } = vector.frame.receipt;
+
+  for (const receipt of [receiptWithoutSignature, { ...receiptWithoutSignature, signature: "" }, { ...receiptWithoutSignature, signature: null }, { ...receiptWithoutSignature, signature: [] }]) {
+    assert.throws(
+      () => verifyFederatedReceipt({ ...vector.frame, receipt }, trustedZones),
+      /receipt signature missing/,
+    );
+  }
 });
 
 test("FED_RECEIPT verification rejects untrusted signed origin zones in Node", async () => {
