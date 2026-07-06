@@ -4973,8 +4973,14 @@ func readArtifactStoreIndex(path string) ([]map[string]any, error) {
 				return nil, errors.New("artifact mirror index invalid")
 			}
 		}
-		if afp, ok := entry["afp"]; ok && fmt.Sprint(afp) != "afp:sha256:"+fmt.Sprint(entry["sha256"]) {
-			return nil, errors.New("artifact mirror index invalid")
+		if afp, ok := entry["afp"]; ok {
+			afpText, ok := afp.(string)
+			if !ok {
+				return nil, errors.New("artifact mirror index afp invalid")
+			}
+			if afpText != "afp:sha256:"+fmt.Sprint(entry["sha256"]) {
+				return nil, errors.New("artifact mirror index invalid")
+			}
 		}
 		if sizeValue, ok := entry["size"]; ok {
 			size, ok := sizeValue.(float64)
