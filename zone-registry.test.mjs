@@ -35,6 +35,11 @@ test("zone binding tampering is rejected", async () => {
   );
 });
 
+test("agent resolution rejects missing registry context", () => {
+  assert.throws(() => resolveAgent(null, "agent://local/summarizer"), /registry missing/);
+  assert.throws(() => resolveAgent({}, "agent://local/summarizer"), /registry missing/);
+});
+
 test("registry loading rejects missing agent entries", async () => {
   const zone = createZone("zone://local");
 

@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v11.39-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v11.40-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -36,6 +36,8 @@ The implementation-backed verifier checks Zone descriptor object presence before
 Trusted Zone files MUST contain a Zone descriptor list, either as `{ "zones": [...] }` or as a raw descriptor array. Missing lists fail before entry iteration.
 
 Registry files MUST contain agent descriptor entries, either as an `agents` list of entries with descriptors or as a raw descriptor array. Missing lists, entries, or descriptors fail before registry field reads.
+
+Agent resolution requires registry context with a lookup surface before reading registry entries.
 
 ASP Core does not cover:
 

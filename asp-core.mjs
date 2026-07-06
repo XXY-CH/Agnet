@@ -318,6 +318,7 @@ export async function loadRegistry(file) {
 }
 
 export function resolveAgent(registry, alias) {
+  if (!registry || typeof registry.get !== "function") throw new Error("registry missing");
   const entry = registry.get(alias);
   if (!entry) throw new Error(`agent alias not found: ${alias}`);
   const descriptor = entry.descriptor ?? entry;

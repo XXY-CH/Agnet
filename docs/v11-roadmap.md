@@ -889,6 +889,28 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.40: Node resolveAgent Registry Context
+
+状态：complete
+目标：Make Node agent resolution reject missing registry context before entry lookup.
+
+新增：
+
+- Node `resolveAgent` rejects missing or non-Map-like registry contexts with `registry missing`.
+- The focused registry tests prove missing registry context no longer leaks JavaScript `TypeError` failures.
+
+不做：
+
+- 不改变 alias resolution semantics。
+- 不改变 registry file shape。
+- 不实现 registry ownership behavior。
+- 不实现 registry lifecycle APIs。
+- 不实现 generic registry schema validation。
+- 不改变 Go verifier behavior。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
