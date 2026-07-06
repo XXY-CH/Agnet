@@ -16,8 +16,10 @@ await writeFile("state/public-node-proof-worker.seed", `${fixture.worker_seed_he
 const receiptFramePath = "state/public-node-proof-fed-receipt.json";
 const receiptTrustedPath = "state/public-node-proof-trusted-zones.json";
 const swarmCloseFramePath = "state/public-node-proof-swarm-close.json";
+const swarmCloseTrustedPath = "state/public-node-proof-swarm-close-trusted-zones.json";
 await rm("state/public-node-proof-audit.log", { force: true });
 await rm(swarmCloseFramePath, { force: true });
+await rm(swarmCloseTrustedPath, { force: true });
 await rm("artifacts/public_node_probe_task", { force: true, recursive: true });
 
 const binary = process.argv[2] ?? "state/public-node-proof-go";
@@ -66,6 +68,7 @@ for await (const chunk of child.stdout) {
   await writeFile(artifact.file, artifact.bytes);
   const swarm = await openSwarm(status.port, originZone);
   await writeFile(swarmCloseFramePath, `${JSON.stringify(swarm.closeFrame, null, 2)}\n`);
+  await writeFile(swarmCloseTrustedPath, `${JSON.stringify({ zones: [swarm.closeFrame.zone] }, null, 2)}\n`);
   clearTimeout(timer);
   child.kill("SIGTERM");
   console.log(JSON.stringify({
@@ -100,6 +103,7 @@ for await (const chunk of child.stdout) {
     swarm_close_receipts: swarm.closeReceipts,
     swarm_close_digest: swarm.closeDigest,
     swarm_close_frame: swarmCloseFramePath,
+    swarm_close_trusted_zones: swarmCloseTrustedPath,
   }));
   process.exit(0);
 }
@@ -245,7 +249,7 @@ function openSwarm(port, zone) {
         closeSignature: verifyObject(authorityKey, body, close_signature),
         closeReceipts: sameStepReceipts(close.step_receipts, expected),
         closeDigest: digestJson(body),
-        closeFrame: frame,
+        closeFrame: { ...frame, zone: fixture.authority },
       };
     },
   );
