@@ -528,6 +528,29 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.24: Node Trusted Zone Store Presence
+
+状态：complete
+目标：Make Node task, receipt, and Swarm close verifiers reject missing trusted Zone stores with protocol-shaped errors.
+
+新增：
+
+- Node `verifyFederatedTaskOpen` rejects missing or non-Map-like trusted Zone stores before reading origin trust entries.
+- Node `verifyFederatedReceipt` rejects missing or non-Map-like trusted Zone stores before reading signing or origin trust entries.
+- Node `verifySwarmClose` rejects missing or non-Map-like trusted Zone stores before reading signing trust entries.
+- The Node tests prove missing trusted Zone stores fail with `trusted zones missing`, not JavaScript `TypeError`.
+
+不做：
+
+- 不实现 generic trust-store schema validation。
+- 不实现 remote trust-store sync。
+- 不改变 trusted Zone file format。
+- 不改变 Go verifier behavior。
+- 不实现 DID document/resolver。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

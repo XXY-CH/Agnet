@@ -212,7 +212,7 @@ test("v11 public docs include FED_TASK_OPEN frame type validation", async () => 
   ]);
 
   assert.match(readme, /`docs\/v11\.11-boundary\.md` - FED_TASK_OPEN frame type validation boundary\./);
-  assert.match(readme, /task and receipt verifiers require valid `FED_TASK_OPEN` \/ `FED_RECEIPT` frame objects, correct frame types, required Zone descriptor objects, and required payload objects/);
+  assert.match(readme, /task and receipt verifiers require valid `FED_TASK_OPEN` \/ `FED_RECEIPT` frame objects, correct frame types, required Zone descriptor objects, required payload objects, and a trusted Zone store/);
   assert.match(roadmap, /## v11\.11: FED_TASK_OPEN Frame Type Validation/);
   assert.match(draft, /frame is an object whose `frame\.type` is `FED_TASK_OPEN`/);
   assert.match(status, /Node `FED_TASK_OPEN` and `FED_RECEIPT` frame object\/type.*validation/);
@@ -246,7 +246,7 @@ test("v11 public docs include FED_SWARM_CLOSE Swarm identity presence", async ()
 
   assert.match(readme, /`docs\/v11\.13-boundary\.md` - FED_SWARM_CLOSE Swarm identity presence boundary\./);
   assert.match(roadmap, /## v11\.13: FED_SWARM_CLOSE Swarm Identity Presence/);
-  assert.match(draft, /checks the close frame object and type, signing Zone object and descriptor, close proof object, close signature presence and verification/);
+  assert.match(draft, /checks the close frame object and type, .*signing Zone object and descriptor, close proof object, close signature presence and verification/);
   assert.match(status, /structural close-frame\/close-zone\/close-proof\/close-signature\/step-receipt object\/identity\/task-id\/uniqueness\/NUL checks/);
   assert.match(boundary, /without a signed Swarm id/);
 });
@@ -307,7 +307,7 @@ test("v11 public docs include FED_SWARM_CLOSE close proof presence", async () =>
 
   assert.match(readme, /`docs\/v11\.17-boundary\.md` - FED_SWARM_CLOSE close proof presence boundary\./);
   assert.match(roadmap, /## v11\.17: FED_SWARM_CLOSE Close Proof Presence/);
-  assert.match(draft, /checks the close frame object and type, signing Zone object and descriptor, close proof object, close signature presence and verification/);
+  assert.match(draft, /checks the close frame object and type, .*signing Zone object and descriptor, close proof object, close signature presence and verification/);
   assert.match(boundary, /missing close proof objects/);
 });
 
@@ -370,7 +370,7 @@ test("v11 public docs include task and receipt frame object presence", async () 
   ]);
 
   assert.match(readme, /`docs\/v11\.21-boundary\.md` - FED_TASK_OPEN and FED_RECEIPT frame object presence boundary\./);
-  assert.match(readme, /task and receipt verifiers require valid `FED_TASK_OPEN` \/ `FED_RECEIPT` frame objects, correct frame types, required Zone descriptor objects, and required payload objects/);
+  assert.match(readme, /task and receipt verifiers require valid `FED_TASK_OPEN` \/ `FED_RECEIPT` frame objects, correct frame types, required Zone descriptor objects, required payload objects, and a trusted Zone store/);
   assert.match(roadmap, /## v11\.21: FED_TASK_OPEN and FED_RECEIPT Frame Object Presence/);
   assert.match(draft, /frame is an object whose `frame\.type` is `FED_TASK_OPEN`/);
   assert.match(draft, /frame is an object whose `frame\.type` is `FED_RECEIPT`/);
@@ -388,7 +388,7 @@ test("v11 public docs include task and receipt Zone descriptor presence", async 
   ]);
 
   assert.match(readme, /`docs\/v11\.22-boundary\.md` - FED_TASK_OPEN and FED_RECEIPT Zone descriptor presence boundary\./);
-  assert.match(readme, /task and receipt verifiers require valid `FED_TASK_OPEN` \/ `FED_RECEIPT` frame objects, correct frame types, required Zone descriptor objects, and required payload objects/);
+  assert.match(readme, /task and receipt verifiers require valid `FED_TASK_OPEN` \/ `FED_RECEIPT` frame objects, correct frame types, required Zone descriptor objects, required payload objects, and a trusted Zone store/);
   assert.match(roadmap, /## v11\.22: FED_TASK_OPEN and FED_RECEIPT Zone Descriptor Presence/);
   assert.match(draft, /origin Zone descriptor is present as an object and verifies/);
   assert.match(draft, /signing Zone descriptor is present as an object and trusted/);
@@ -405,14 +405,33 @@ test("v11 public docs include task and receipt payload object presence", async (
     readFile("docs/v11.23-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.23-protocol`/);
-  assert.match(readme, /task and receipt verifiers require valid `FED_TASK_OPEN` \/ `FED_RECEIPT` frame objects, correct frame types, required Zone descriptor objects, and required payload objects/);
+  assert.match(readme, /`docs\/v11\.23-boundary\.md` - FED_TASK_OPEN and FED_RECEIPT payload object presence boundary\./);
+  assert.match(readme, /task and receipt verifiers require valid `FED_TASK_OPEN` \/ `FED_RECEIPT` frame objects, correct frame types, required Zone descriptor objects, required payload objects, and a trusted Zone store/);
   assert.match(roadmap, /## v11\.23: FED_TASK_OPEN and FED_RECEIPT Payload Object Presence/);
   assert.match(draft, /requester descriptor is present as an object/);
   assert.match(draft, /signed task object is present as an object/);
   assert.match(draft, /worker descriptor is present as an object/);
   assert.match(draft, /receipt body is present as an object/);
-  assert.match(status, /状态：v11\.23 active/);
-  assert.match(status, /Node `FED_TASK_OPEN` and `FED_RECEIPT` frame object\/type, Zone descriptor presence, and payload object presence validation/);
+  assert.match(status, /Node `FED_TASK_OPEN` and `FED_RECEIPT` frame object\/type, Zone descriptor presence, payload object presence, and trusted Zone store presence validation/);
   assert.match(boundary, /missing payload objects/);
+});
+
+test("v11 public docs include Node trusted Zone store presence", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v11.24-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v11 active at `v11\.24-protocol`/);
+  assert.match(readme, /Node task, receipt, and Swarm close verifiers reject missing trusted Zone stores/);
+  assert.match(roadmap, /## v11\.24: Node Trusted Zone Store Presence/);
+  assert.match(draft, /trusted Zone store is present for origin Zone lookup/);
+  assert.match(draft, /trusted Zone store is present for signing and origin Zone lookup/);
+  assert.match(draft, /trusted Zone store presence, signing Zone object and descriptor/);
+  assert.match(status, /状态：v11\.24 active/);
+  assert.match(status, /trusted Zone store presence validation/);
+  assert.match(boundary, /missing trusted Zone stores/);
 });

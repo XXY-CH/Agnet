@@ -76,6 +76,15 @@ test("FED_TASK_OPEN verification rejects missing frame objects in Node", async (
   );
 });
 
+test("FED_TASK_OPEN verification rejects missing trusted Zone stores in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.24-fed-task-open.json", "utf8"));
+
+  assert.throws(
+    () => verifyFederatedTaskOpen(vector.frame, undefined, vector.worker),
+    /trusted zones missing/,
+  );
+});
+
 test("FED_TASK_OPEN verification rejects missing origin Zones in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v9.24-fed-task-open.json", "utf8"));
   const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
@@ -157,6 +166,15 @@ test("FED_RECEIPT verification rejects missing frame objects in Node", async () 
   assert.throws(
     () => verifyFederatedReceipt(null, new Map()),
     /expected FED_RECEIPT frame/,
+  );
+});
+
+test("FED_RECEIPT verification rejects missing trusted Zone stores in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
+
+  assert.throws(
+    () => verifyFederatedReceipt(vector.frame),
+    /trusted zones missing/,
   );
 });
 
@@ -326,6 +344,25 @@ test("FED_SWARM_CLOSE verification rejects missing frame objects in Node", async
   assert.throws(
     () => verifySwarmClose(null, new Map()),
     /expected FED_SWARM_CLOSE frame/,
+  );
+});
+
+test("FED_SWARM_CLOSE verification rejects missing trusted Zone stores in Node", async () => {
+  const zone = createZone("zone://swarm-close-missing-trust-store-test");
+  const closeBody = {
+    swarm_id: "swarm://node-test/missing-trust-store",
+    step_receipts: [{ step_id: "summary", task_id: "task_1", receipt_digest: "0".repeat(64) }],
+  };
+  const frame = {
+    type: "FED_SWARM_CLOSE",
+    swarm_id: closeBody.swarm_id,
+    zone: zone.descriptor,
+    close: { ...closeBody, close_signature: signObject(zone.privateKey, closeBody) },
+  };
+
+  assert.throws(
+    () => verifySwarmClose(frame),
+    /trusted zones missing/,
   );
 });
 

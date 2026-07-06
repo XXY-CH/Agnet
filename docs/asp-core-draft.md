@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v11.23-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v11.24-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -123,6 +123,7 @@ Receivers MUST verify:
 
 - The frame is an object whose `frame.type` is `FED_TASK_OPEN`.
 - The origin Zone descriptor is present as an object and verifies.
+- A trusted Zone store is present for origin Zone lookup.
 - The requester descriptor is present as an object.
 - The signed task object is present as an object.
 - `requester_zone_binding` binds `requester.alias` and `requester.aid` to `origin_zone`.
@@ -167,6 +168,7 @@ Verifiers MUST check:
 
 - The frame is an object whose `frame.type` is `FED_RECEIPT`.
 - The signing Zone descriptor is present as an object and trusted.
+- A trusted Zone store is present for signing and origin Zone lookup.
 - The worker descriptor is present as an object.
 - The receipt body is present as an object.
 - The Zone binding resolves the worker alias and Agent ID.
@@ -220,7 +222,7 @@ The audit hash chain is accountability evidence, not a global consensus layer.
 
 `FED_SWARM_CLOSE` binds a Swarm id to a signed list of completed step receipts.
 
-The implemented Node verifier checks the close frame object and type, signing Zone object and descriptor, close proof object, close signature presence and verification, the signed Swarm id, the frame/body Swarm id match, and the structure of `step_receipts`. It requires at least one step receipt, requires each step receipt to be an object with `step_id`, a safe `task_id` token, and a 64-hex `receipt_digest`, and rejects duplicate or NUL-bearing Swarm identities.
+The implemented Node verifier checks the close frame object and type, trusted Zone store presence, signing Zone object and descriptor, close proof object, close signature presence and verification, the signed Swarm id, the frame/body Swarm id match, and the structure of `step_receipts`. It requires at least one step receipt, requires each step receipt to be an object with `step_id`, a safe `task_id` token, and a 64-hex `receipt_digest`, and rejects duplicate or NUL-bearing Swarm identities.
 
 This Node verifier is not an audit-backed completeness verifier. The audit-backed same-log Swarm completeness checks are implemented on the Go verifier path.
 

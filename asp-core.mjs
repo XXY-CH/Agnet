@@ -318,12 +318,17 @@ export function resolveAgent(registry, alias) {
   return { descriptor, publicKey, zone: entry.zone, zoneBinding: entry.zone_binding };
 }
 
+function assertTrustedZones(trustedZones) {
+  if (!trustedZones || typeof trustedZones.get !== "function" || typeof trustedZones.has !== "function") throw new Error("trusted zones missing");
+}
+
 export function verifyFederatedTaskOpen(frame, trustedZones, workerDescriptor) {
   if (!frame || typeof frame !== "object" || Array.isArray(frame) || frame.type !== "FED_TASK_OPEN") throw new Error("expected FED_TASK_OPEN frame");
   if (!frame.origin_zone || typeof frame.origin_zone !== "object" || Array.isArray(frame.origin_zone)) throw new Error("task open origin zone missing");
   if (!frame.requester || typeof frame.requester !== "object" || Array.isArray(frame.requester)) throw new Error("task open requester missing");
   if (!frame.task || typeof frame.task !== "object" || Array.isArray(frame.task)) throw new Error("task open task missing");
   const originZone = verifyZoneDescriptor(frame.origin_zone).descriptor;
+  assertTrustedZones(trustedZones);
   const trusted = trustedZones.get(originZone.zid);
   if (!trusted || trusted.public_key_spki !== originZone.public_key_spki) {
     throw new Error(`untrusted zone: ${originZone.zid}`);
@@ -351,6 +356,7 @@ export function verifyFederatedReceipt(frame, trustedZones, signedTask) {
   if (!frame.worker || typeof frame.worker !== "object" || Array.isArray(frame.worker)) throw new Error("receipt worker missing");
   if (!frame.receipt || typeof frame.receipt !== "object" || Array.isArray(frame.receipt)) throw new Error("receipt body missing");
   const zone = verifyZoneDescriptor(frame.zone).descriptor;
+  assertTrustedZones(trustedZones);
   const trusted = trustedZones.get(zone.zid);
   if (!trusted || trusted.public_key_spki !== zone.public_key_spki) {
     throw new Error(`untrusted zone: ${zone.zid}`);
@@ -376,6 +382,7 @@ export function verifySwarmClose(frame, trustedZones) {
   if (!frame || typeof frame !== "object" || Array.isArray(frame) || frame.type !== "FED_SWARM_CLOSE") throw new Error("expected FED_SWARM_CLOSE frame");
   if (!frame.zone || typeof frame.zone !== "object" || Array.isArray(frame.zone)) throw new Error("swarm close zone missing");
   const zone = verifyZoneDescriptor(frame.zone).descriptor;
+  assertTrustedZones(trustedZones);
   const trusted = trustedZones.get(zone.zid);
   if (!trusted || trusted.public_key_spki !== zone.public_key_spki) {
     throw new Error(`untrusted zone: ${zone.zid}`);
