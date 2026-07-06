@@ -1,0 +1,63 @@
+{
+  "version": "asp-v10.38-fed-swarm-close",
+  "worker_zone_seed_hex": "c0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf",
+  "trusted_zones": [
+    {
+      "name": "zone://conformance-worker-zone",
+      "zid": "zid:ed25519:kNxMZDO8Jt2xydIZ2HWD00unM7L0rufepboqzVOBQN4",
+      "public_key_spki": "MCowBQYDK2VwAyEA3eO8zsfzpmoRFfRdcg9NwTXDrnxOItyjj9se_WpJX_g",
+      "zone_signature": "Hdb64jZX0HM1CI3DUqpvE9eOArhfkpIoLURlVa03YHpFvV7Irl3NXfqeJpIWkQ0afVq1Q6mYcnO4t-WRCo1dAg"
+    }
+  ],
+  "close_body": {
+    "swarm_id": "swarm://conformance/two-step",
+    "step_receipts": [
+      {
+        "step_id": "summary",
+        "task_id": "fed_swarm_conformance_summary",
+        "receipt_digest": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      {
+        "step_id": "dependent",
+        "task_id": "fed_swarm_conformance_dependent",
+        "receipt_digest": "2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    ]
+  },
+  "close_canonical": "{\"step_receipts\":[{\"receipt_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"step_id\":\"summary\",\"task_id\":\"fed_swarm_conformance_summary\"},{\"receipt_digest\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"step_id\":\"dependent\",\"task_id\":\"fed_swarm_conformance_dependent\"}],\"swarm_id\":\"swarm://conformance/two-step\"}",
+  "frame": {
+    "type": "FED_SWARM_CLOSE",
+    "swarm_id": "swarm://conformance/two-step",
+    "zone": {
+      "name": "zone://conformance-worker-zone",
+      "zid": "zid:ed25519:kNxMZDO8Jt2xydIZ2HWD00unM7L0rufepboqzVOBQN4",
+      "public_key_spki": "MCowBQYDK2VwAyEA3eO8zsfzpmoRFfRdcg9NwTXDrnxOItyjj9se_WpJX_g",
+      "zone_signature": "Hdb64jZX0HM1CI3DUqpvE9eOArhfkpIoLURlVa03YHpFvV7Irl3NXfqeJpIWkQ0afVq1Q6mYcnO4t-WRCo1dAg"
+    },
+    "close": {
+      "swarm_id": "swarm://conformance/two-step",
+      "step_receipts": [
+        {
+          "step_id": "summary",
+          "task_id": "fed_swarm_conformance_summary",
+          "receipt_digest": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        {
+          "step_id": "dependent",
+          "task_id": "fed_swarm_conformance_dependent",
+          "receipt_digest": "2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      ],
+      "close_signature": "7dYVANVNFcc3S_o-l2-vYtU_-gMfKxmm7x-YSGjG0t5GgKj3E8lBNeh5b0xlZnApvPtiZ3-mBMJnovzF5SKlCw"
+    }
+  },
+  "expected": {
+    "swarm_id": "swarm://conformance/two-step",
+    "worker_zid": "zid:ed25519:kNxMZDO8Jt2xydIZ2HWD00unM7L0rufepboqzVOBQN4",
+    "step_ids": [
+      "summary",
+      "dependent"
+    ],
+    "swarm_close_digest": "2dc1dc100ae7412c16a3a13fdf5b8a9138c75311a447d437bc5ee9a0b7d0363e"
+  }
+}

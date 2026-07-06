@@ -897,6 +897,32 @@
 - 不做公网可达性证明。
 - 不做 hosted public node。
 
+## v10.38: Swarm Close Conformance Vector
+
+状态：complete
+目标：Publish a stable `FED_SWARM_CLOSE` conformance vector for the narrow Node verifier.
+
+新增：
+
+- `test-vectors/asp-v10.38-fed-swarm-close.json` captures one portable two-step close frame.
+- The vector includes trusted Zone material, the close body, canonical close JSON, expected step ids, and expected `swarm_close_digest`.
+- `test-vectors.test.mjs` verifies the vector through `verifySwarmClose`.
+
+不做：
+
+- 不做 full Swarm audit verifier CLI。
+- 不做 Node close proof completeness/order/dependency verification。
+- 不做 Swarm receipt store/search。
+- 不做 batch verification。
+- 不做 HTTP verifier service。
+- 不做新的 Swarm frame schema。
+- 不做 dynamic Swarm decomposition。
+- 不做 scheduler-owned DAG execution。
+- 不做 parallel Swarm execution。
+- 不做 cross-Zone Swarm。
+- 不做公网可达性证明。
+- 不做 hosted public node。
+
 ## Next Candidates
 
 1. Add public reachability proof only after the Docker proof contract stays stable on the target network.

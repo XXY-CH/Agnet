@@ -156,3 +156,14 @@ test("FED_SWARM_CLOSE verification rejects tampered close signatures in Node", a
     /swarm close signature verification failed/,
   );
 });
+
+test("FED_SWARM_CLOSE conformance vector verifies in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v10.38-fed-swarm-close.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  const verified = verifySwarmClose(vector.frame, trustedZones);
+
+  assert.equal(verified.closeDigest, vector.expected.swarm_close_digest);
+  assert.equal(canonical(vector.close_body), vector.close_canonical);
+  assert.equal(verified.close.swarm_id, vector.expected.swarm_id);
+  assert.deepEqual(verified.close.step_receipts.map((step) => step.step_id), vector.expected.step_ids);
+});
