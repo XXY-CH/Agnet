@@ -4857,8 +4857,14 @@ func receiptApprovalGrants(value any) ([]map[string]any, error) {
 }
 
 func verifyCheckpoints(workerKey ed25519.PublicKey, receipt map[string]any) error {
-	refs := stringsFromAny(receipt["checkpoint_refs"])
-	checkpoints := mapsFromAny(receipt["checkpoints"])
+	refs, err := receiptCheckpointRefs(receipt["checkpoint_refs"])
+	if err != nil {
+		return err
+	}
+	checkpoints, err := receiptCheckpoints(receipt["checkpoints"])
+	if err != nil {
+		return err
+	}
 	if len(refs) != len(checkpoints) {
 		return errors.New("receipt checkpoint ref count mismatch")
 	}
@@ -4882,6 +4888,50 @@ func verifyCheckpoints(workerKey ed25519.PublicKey, receipt map[string]any) erro
 		parent = checkpoint["checkpoint_id"]
 	}
 	return nil
+}
+
+func receiptCheckpointRefs(value any) ([]string, error) {
+	if value == nil {
+		return nil, nil
+	}
+	if typed, ok := value.([]string); ok {
+		return typed, nil
+	}
+	items, ok := value.([]any)
+	if !ok {
+		return nil, errors.New("checkpoint ref invalid")
+	}
+	out := []string{}
+	for _, item := range items {
+		text, ok := item.(string)
+		if !ok {
+			return nil, errors.New("checkpoint ref invalid")
+		}
+		out = append(out, text)
+	}
+	return out, nil
+}
+
+func receiptCheckpoints(value any) ([]map[string]any, error) {
+	if value == nil {
+		return nil, nil
+	}
+	if typed, ok := value.([]map[string]any); ok {
+		return typed, nil
+	}
+	items, ok := value.([]any)
+	if !ok {
+		return nil, errors.New("checkpoint invalid")
+	}
+	out := []map[string]any{}
+	for _, item := range items {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			return nil, errors.New("checkpoint invalid")
+		}
+		out = append(out, entry)
+	}
+	return out, nil
 }
 
 func verifyArtifactManifests(receipt map[string]any, artifactStoreDir string) error {

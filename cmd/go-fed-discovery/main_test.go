@@ -1132,6 +1132,37 @@ func TestVerifyApprovalGrantsRejectsMalformedLists(t *testing.T) {
 	}
 }
 
+func TestVerifyCheckpointsRejectsMalformedLists(t *testing.T) {
+	workerPub, workerKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint := signBodyWithKey(workerKey, map[string]any{
+		"task_id":           "checkpoint_shape",
+		"checkpoint_id":     "checkpoint://ok",
+		"parent_checkpoint": nil,
+	}, "checkpoint_signature")
+	err = verifyCheckpoints(workerPub, map[string]any{
+		"task_id":         "checkpoint_shape",
+		"checkpoint_refs": []any{"checkpoint://ok", map[string]any{"checkpoint_id": "ghost"}},
+		"checkpoints":     []map[string]any{checkpoint},
+	})
+	if err == nil || !strings.Contains(err.Error(), "checkpoint ref invalid") {
+		t.Fatalf("got %v, want checkpoint ref invalid", err)
+	}
+	err = verifyCheckpoints(workerPub, map[string]any{
+		"task_id":         "checkpoint_shape",
+		"checkpoint_refs": []string{"checkpoint://ok"},
+		"checkpoints": []any{
+			checkpoint,
+			"bad-checkpoint",
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "checkpoint invalid") {
+		t.Fatalf("got %v, want checkpoint invalid", err)
+	}
+}
+
 func testSignedReceipt(t *testing.T, zone map[string]any, zoneKey ed25519.PrivateKey, worker map[string]any, workerKey ed25519.PrivateKey, taskID string, manifests []map[string]any, extra map[string]any) map[string]any {
 	t.Helper()
 	refs := make([]string, 0, len(manifests))

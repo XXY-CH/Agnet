@@ -1493,6 +1493,27 @@
 - 不实现 generic receipt schema validation。
 - 不实现 A2A/ARD compatibility。
 
+## v11.66: Go Receipt Checkpoint List Shape Boundary
+
+状态：complete
+目标：Make Go receipt checkpoint verification reject malformed checkpoint evidence list entries instead of silently filtering them.
+
+新增：
+
+- Go `verifyCheckpoints` rejects non-string entries in signed receipt `checkpoint_refs` lists with `checkpoint ref invalid`.
+- Go `verifyCheckpoints` rejects non-object entries in signed receipt `checkpoints` lists with `checkpoint invalid`.
+- Existing checkpoint count, task binding, parent chain, and worker signature checks stay unchanged.
+- The fix is scoped to signed receipt checkpoint evidence list shape before count, parent, and signature checks; it does not add generic receipt schema validation.
+
+不做：
+
+- 不实现 model KV/cache restore。
+- 不实现 task migration。
+- 不实现 scheduler-owned checkpoint routing。
+- 不改变 resume semantics。
+- 不实现 generic receipt schema validation。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
