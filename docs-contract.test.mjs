@@ -211,10 +211,27 @@ test("v11 public docs include FED_TASK_OPEN frame type validation", async () => 
     readFile("docs/v11.11-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.11-protocol`/);
+  assert.match(readme, /`docs\/v11\.11-boundary\.md` - FED_TASK_OPEN frame type validation boundary\./);
   assert.match(readme, /task and receipt verifiers require the correct `FED_TASK_OPEN` \/ `FED_RECEIPT` frame types/);
   assert.match(roadmap, /## v11\.11: FED_TASK_OPEN Frame Type Validation/);
   assert.match(draft, /`frame\.type` is `FED_TASK_OPEN`/);
-  assert.match(status, /状态：v11\.11 active/);
+  assert.match(status, /FED_TASK_OPEN` and `FED_RECEIPT` frame type validation/);
   assert.match(boundary, /wrong protocol type/);
+});
+
+test("v11 public docs include FED_SWARM_CLOSE duplicate step validation", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v11.12-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v11 active at `v11\.12-protocol`/);
+  assert.match(readme, /duplicate-step Swarm close proofs/);
+  assert.match(roadmap, /## v11\.12: FED_SWARM_CLOSE Duplicate Step Validation/);
+  assert.match(draft, /rejects duplicate `step_id` values/);
+  assert.match(status, /状态：v11\.12 active/);
+  assert.match(boundary, /duplicate step receipts/);
 });

@@ -377,8 +377,11 @@ export function verifySwarmClose(frame, trustedZones) {
   if (!Array.isArray(closeBody.step_receipts) || closeBody.step_receipts.length === 0) {
     throw new Error("swarm close step receipts missing");
   }
+  const stepIds = new Set();
   for (const step of closeBody.step_receipts) {
     if (typeof step.step_id !== "string" || step.step_id === "") throw new Error("swarm close step identity missing");
+    if (stepIds.has(step.step_id)) throw new Error("swarm close duplicate step receipt");
+    stepIds.add(step.step_id);
     if (typeof step.task_id !== "string" || step.task_id === "") throw new Error("swarm close task missing");
     if (typeof step.receipt_digest !== "string" || !/^[0-9a-f]{64}$/.test(step.receipt_digest)) {
       throw new Error("swarm close receipt digest invalid");
