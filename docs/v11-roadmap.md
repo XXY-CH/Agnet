@@ -749,6 +749,30 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.34: Node Credential Object Presence
+
+状态：complete
+目标：Make Node capability credential and credential status helpers reject missing proof objects before field reads.
+
+新增：
+
+- Node `verifyCapabilityCredential` returns `false` for missing, array, or otherwise non-object credential inputs before reading `capability`.
+- Node `capabilityCredentialId` rejects missing, array, or otherwise non-object credential inputs with `credential missing`.
+- Node `verifyCredentialStatus` returns `false` for missing, array, or otherwise non-object status or credential inputs before reading proof fields.
+- The focused credential tests prove malformed credential/status inputs no longer leak JavaScript `TypeError` failures.
+
+不做：
+
+- 不改变 capability credential schema。
+- 不实现 generic credential schema validation。
+- 不改变 credential status shape。
+- 不改变 Go verifier behavior。
+- 不实现 revocation feed sync。
+- 不实现 credential renewal。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

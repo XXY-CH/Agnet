@@ -589,6 +589,7 @@ export function capabilityCredential(authorityZone, subjectDescriptor, capabilit
 }
 
 export function verifyCapabilityCredential(credential, authorityDescriptor, subjectDescriptor) {
+  if (!credential || typeof credential !== "object" || Array.isArray(credential)) return false;
   const { publicKey: authorityPublicKey } = verifyZoneDescriptor(authorityDescriptor);
   const subjectPublicKey = publicKeyFromDescriptor(subjectDescriptor);
   if (computeAid(subjectPublicKey) !== subjectDescriptor.aid) return false;
@@ -608,6 +609,7 @@ export function verifyCapabilityCredential(credential, authorityDescriptor, subj
 }
 
 export function capabilityCredentialId(credential) {
+  if (!credential || typeof credential !== "object" || Array.isArray(credential)) throw new Error("credential missing");
   const body = {
     issuer: credential.issuer,
     subject: credential.subject,
@@ -618,6 +620,8 @@ export function capabilityCredentialId(credential) {
 }
 
 export function verifyCredentialStatus(status, credential, authorityDescriptor) {
+  if (!status || typeof status !== "object" || Array.isArray(status)) return false;
+  if (!credential || typeof credential !== "object" || Array.isArray(credential)) return false;
   const { publicKey: authorityPublicKey } = verifyZoneDescriptor(authorityDescriptor);
   const body = {
     issuer: status.issuer,
