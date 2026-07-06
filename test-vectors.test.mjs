@@ -56,6 +56,17 @@ test("FED_TASK_OPEN conformance vector verifies in Node", async () => {
   assert.equal(verified.worker.alias, vector.expected.worker_alias);
 });
 
+test("FED_TASK_OPEN verification rejects unbound requesters in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.24-fed-task-open.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  const { requester_zone_binding, ...unboundFrame } = vector.frame;
+
+  assert.throws(
+    () => verifyFederatedTaskOpen(unboundFrame, trustedZones, vector.worker),
+    /requester zone binding missing/,
+  );
+});
+
 test("FED_RECEIPT conformance vector verifies in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
   const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));

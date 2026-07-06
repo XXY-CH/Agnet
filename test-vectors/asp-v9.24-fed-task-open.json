@@ -82,6 +82,12 @@
         "time_seconds": 30
       },
       "signature": "bCYTRt_cO4q8FAmjK627jO5AN_pZmGXBKLPhu1uob45xhCrTuHKEsTPEHC4vDIfFMDR5lqySCGBmf5gRFxQtDg"
+    },
+    "requester_zone_binding": {
+      "zone": "zid:ed25519:u9qeg4PY4Rd7RyZMpOQ8YxaxQP_sPV_Iju42ZUlrBF4",
+      "alias": "agent://conformance/requester",
+      "aid": "aid:ed25519:3dfTSP_udbygatpJFIna4iNUP8Br1YVqBaTKQZGXh5c",
+      "signature": "4hVA85EEharwbd1WDyMipi_xrZc1s2phDRLISODt8CvGXRiVs1Xd9X4tGDkm2w0IFXfiG1pGL-8v0eSHvgnLAw"
     }
   },
   "task_canonical": "{\"budget\":{\"time_seconds\":30},\"from\":\"aid:ed25519:3dfTSP_udbygatpJFIna4iNUP8Br1YVqBaTKQZGXh5c\",\"intent\":\"Verify FED_TASK_OPEN cross-implementation fixture.\",\"scope\":{\"network\":false,\"write\":[\"artifact://local/fed_task_conformance_001/\"]},\"task_id\":\"fed_task_conformance_001\",\"to\":\"agent://conformance/summarizer\"}",

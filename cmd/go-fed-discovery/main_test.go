@@ -252,6 +252,16 @@ func TestFedTaskOpenConformanceVectorVerifiesInGo(t *testing.T) {
 	}
 
 	fixture := Fixture{Workers: []Worker{{Descriptor: vector.Worker}}}
+	unboundFrame := map[string]any{}
+	for key, value := range vector.Frame {
+		if key != "requester_zone_binding" {
+			unboundFrame[key] = value
+		}
+	}
+	if _, _, err := fixture.verifyTaskOpen(unboundFrame); err == nil || !strings.Contains(err.Error(), "requester zone binding missing") {
+		t.Fatalf("got %v, want requester zone binding missing", err)
+	}
+
 	worker, task, err := fixture.verifyTaskOpen(vector.Frame)
 	if err != nil {
 		t.Fatal(err)

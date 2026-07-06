@@ -111,6 +111,7 @@ Implemented frame shape:
   "type": "FED_TASK_OPEN",
   "origin_zone": {},
   "requester": {},
+  "requester_zone_binding": {},
   "task": {}
 }
 ```
@@ -119,6 +120,7 @@ Receivers MUST verify:
 
 - The origin Zone descriptor.
 - The requester descriptor.
+- `requester_zone_binding` binds `requester.alias` and `requester.aid` to `origin_zone`.
 - The requester task signature.
 - The worker selected by `task.to`.
 - The worker policy.

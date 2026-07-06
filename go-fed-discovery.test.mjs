@@ -5,7 +5,7 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { canonical, capabilityCredentialId, createAgent, loadOrCreateAgent, loadOrCreateZone, loadRegistry, publicKeyFromDescriptor, resolveAgent, rotationProof, signObject, verifyAliasRebindingProof, verifyCredentialStatus, verifyObject, writeTrustedZones } from "./asp-core.mjs";
+import { canonical, capabilityCredentialId, createAgent, loadOrCreateAgent, loadOrCreateZone, loadRegistry, publicKeyFromDescriptor, resolveAgent, rotationProof, signObject, verifyAliasRebindingProof, verifyCredentialStatus, verifyObject, writeTrustedZones, zoneBinding } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -109,6 +109,7 @@ function waitForGoGateway(child, port) {
 }
 
 function exchangeFrames(port, frame, closeType = "FED_TASK_CLOSE") {
+  frame = bindRequester(frame);
   return new Promise((resolve, reject) => {
     const socket = net.createConnection(port, "127.0.0.1");
     const frames = [];
@@ -152,6 +153,7 @@ function exchangeFrames(port, frame, closeType = "FED_TASK_CLOSE") {
 }
 
 function exchangeFramesUntil(port, frame, predicate, closeType = "FED_TASK_CLOSE") {
+  frame = bindRequester(frame);
   const frames = [];
   let checkpointResolved = false;
   let resolveCheckpoint;
@@ -217,6 +219,11 @@ function exchangeFramesUntil(port, frame, predicate, closeType = "FED_TASK_CLOSE
     }
   });
   return { checkpoint, done };
+}
+
+function bindRequester(frame) {
+  if (!frame.origin_zone || !frame.requester || frame.requester_zone_binding) return frame;
+  return { ...frame, requester_zone_binding: zoneBinding(zoneA, frame.requester) };
 }
 
 let zoneA;
@@ -1127,6 +1134,7 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
         action: "enqueue",
         origin_zone: zoneA.descriptor,
         requester: requester.descriptor,
+        requester_zone_binding: zoneBinding(zoneA, requester.descriptor),
         task: signedGuestCreatedQueuedTask,
         actor: "human://guest",
         action_grant: queueActionGrant("enqueue", guestCreatedQueuedTask.task_id, signedGuestCreatedQueuedTask, { actor: "human://guest" }),
@@ -1197,6 +1205,7 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
         action: "enqueue",
         origin_zone: zoneA.descriptor,
         requester: requester.descriptor,
+        requester_zone_binding: zoneBinding(zoneA, requester.descriptor),
         task: signedHumanCreatedQueuedTask,
         actor: "human://local",
         action_grant: queueActionGrant("enqueue", humanCreatedQueuedTask.task_id, signedHumanCreatedQueuedTask),

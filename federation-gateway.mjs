@@ -235,7 +235,7 @@ async function request(port, trustedZonesFile, alias = "agent://zone-b/summarize
   const done = new Promise((resolve, reject) => {
     socket.on("error", reject);
     const session = clientSessionHandler(socket, trustedZones, zone, () => {
-      send(socket, { type: "FED_TASK_OPEN", origin_zone: zone.descriptor, requester: requester.descriptor, task: signedTask });
+      send(socket, { type: "FED_TASK_OPEN", origin_zone: zone.descriptor, requester: requester.descriptor, requester_zone_binding: zoneBinding(zone, requester.descriptor), task: signedTask });
     });
     readFrames(socket, (frame) => {
       if (session(frame)) return;

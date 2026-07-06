@@ -864,7 +864,7 @@ func interopRequestNode(port string, trusted map[string]map[string]any, zoneKey,
 				"scope":   map[string]any{"network": false},
 				"budget":  map[string]any{"time_seconds": float64(30)},
 			}
-			if err := json.NewEncoder(conn).Encode(map[string]any{"type": "FED_TASK_OPEN", "origin_zone": origin, "requester": requester, "task": signBody(requesterKey, task)}); err != nil {
+			if err := json.NewEncoder(conn).Encode(map[string]any{"type": "FED_TASK_OPEN", "origin_zone": origin, "requester": requester, "requester_zone_binding": signBodyWithKey(zoneKey, map[string]any{"zone": origin["zid"], "alias": requester["alias"], "aid": requester["aid"]}, "signature"), "task": signBody(requesterKey, task)}); err != nil {
 				return nil, err
 			}
 		case "FED_TASK_EVENT":
@@ -1320,12 +1320,13 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 				return
 			}
 			action := map[string]any{
-				"action":       "enqueue",
-				"origin_zone":  fixture.Authority,
-				"requester":    requester,
-				"task":         signedTask,
-				"actor":        "human://local",
-				"action_grant": fixture.queueActionGrant("enqueue", taskID, signedTask),
+				"action":                 "enqueue",
+				"origin_zone":            fixture.Authority,
+				"requester":              requester,
+				"requester_zone_binding": fixture.zoneBindingForDescriptor(requester),
+				"task":                   signedTask,
+				"actor":                  "human://local",
+				"action_grant":           fixture.queueActionGrant("enqueue", taskID, signedTask),
 			}
 			result, status, err := runQueueAction(action)
 			if err != nil {
@@ -1358,12 +1359,13 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 		}
 		signedTask := signBody(fixture.AuthorityPrivateKey, task)
 		action := map[string]any{
-			"action":       "enqueue",
-			"origin_zone":  fixture.Authority,
-			"requester":    requester,
-			"task":         signedTask,
-			"actor":        "human://local",
-			"action_grant": fixture.queueActionGrant("enqueue", taskID, signedTask),
+			"action":                 "enqueue",
+			"origin_zone":            fixture.Authority,
+			"requester":              requester,
+			"requester_zone_binding": fixture.zoneBindingForDescriptor(requester),
+			"task":                   signedTask,
+			"actor":                  "human://local",
+			"action_grant":           fixture.queueActionGrant("enqueue", taskID, signedTask),
 		}
 		result, status, err := runQueueAction(action)
 		if err != nil {
@@ -2475,6 +2477,15 @@ func (f Fixture) verifyTaskOpen(frame map[string]any) (*Worker, map[string]any, 
 	if err := verifyAgentDescriptor(requester); err != nil {
 		return nil, nil, err
 	}
+	if origin, ok := frame["origin_zone"].(map[string]any); ok {
+		binding, ok := frame["requester_zone_binding"].(map[string]any)
+		if !ok {
+			return nil, nil, errors.New("requester zone binding missing")
+		}
+		if err := verifyZoneBinding(origin, binding, requester); err != nil {
+			return nil, nil, err
+		}
+	}
 	task, ok := frame["task"].(map[string]any)
 	if !ok {
 		return nil, nil, errors.New("missing task")
@@ -2690,6 +2701,13 @@ func (f Fixture) executeSwarm(send sendFunc, origin, frame map[string]any) error
 	requester, ok := frame["requester"].(map[string]any)
 	if !ok {
 		return errors.New("swarm requester missing")
+	}
+	binding, ok := frame["requester_zone_binding"].(map[string]any)
+	if !ok {
+		return errors.New("requester zone binding missing")
+	}
+	if err := verifyZoneBinding(origin, binding, requester); err != nil {
+		return err
 	}
 	swarm, ok := frame["swarm"].(map[string]any)
 	if !ok {
@@ -3674,7 +3692,7 @@ func (f Fixture) enqueueQueueItemWithExtra(origin map[string]any, frame map[stri
 		return "", nil, err
 	}
 	requester, _ := frame["requester"].(map[string]any)
-	body := map[string]any{"origin_zone_descriptor": origin, "requester": requester, "task": task}
+	body := map[string]any{"origin_zone_descriptor": origin, "requester": requester, "requester_zone_binding": frame["requester_zone_binding"], "task": task}
 	for key, value := range extra {
 		body[key] = value
 	}
@@ -4015,7 +4033,7 @@ func (f Fixture) writeClaimedQueueItem(taskID, owner string, leaseSeconds int, i
 	origin, _ := item["origin_zone_descriptor"].(map[string]any)
 	requester, _ := item["requester"].(map[string]any)
 	task, _ := item["task"].(map[string]any)
-	worker, task, err := f.verifyTaskOpen(map[string]any{"requester": requester, "task": task})
+	worker, task, err := f.verifyTaskOpen(map[string]any{"origin_zone": origin, "requester": requester, "requester_zone_binding": item["requester_zone_binding"], "task": task})
 	if err != nil {
 		return "", err
 	}
@@ -4046,7 +4064,7 @@ func (f Fixture) drainQueueItem(send sendFunc, taskID, leaseID string) error {
 	origin, _ := item["origin_zone_descriptor"].(map[string]any)
 	requester, _ := item["requester"].(map[string]any)
 	task, _ := item["task"].(map[string]any)
-	worker, task, err := f.verifyTaskOpen(map[string]any{"requester": requester, "task": task})
+	worker, task, err := f.verifyTaskOpen(map[string]any{"origin_zone": origin, "requester": requester, "requester_zone_binding": item["requester_zone_binding"], "task": task})
 	if err != nil {
 		return err
 	}
@@ -4967,7 +4985,7 @@ func queueLeaseExpired(item map[string]any) bool {
 }
 
 func copyQueueCarryFields(dst, src map[string]any) {
-	for _, key := range []string{"retry_of", "retry_attempt", "retry_after_at", "resume_checkpoint"} {
+	for _, key := range []string{"requester_zone_binding", "retry_of", "retry_attempt", "retry_after_at", "resume_checkpoint"} {
 		if value, ok := src[key]; ok {
 			dst[key] = value
 		}

@@ -37,16 +37,29 @@ test("v10 public docs agree that the proof milestone is closed", async () => {
 });
 
 test("v11 public docs start with receipt origin-zone trust validation", async () => {
-  const [readme, roadmap, status, boundary] = await Promise.all([
+  const [readme, roadmap, boundary] = await Promise.all([
     readFile("README.md", "utf8"),
     readFile("docs/v11-roadmap.md", "utf8"),
-    readFile("docs/implementation-status.md", "utf8"),
     readFile("docs/v11.0-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /Status: research prototype, local-first, v11 active at `v11\.0-protocol`\./);
   assert.match(readme, /`docs\/v11-roadmap\.md` - active v11 roadmap\./);
   assert.match(roadmap, /## v11\.0: Receipt Origin Zone Trust Validation/);
-  assert.match(status, /状态：v11\.0 active/);
   assert.match(boundary, /untrusted signed receipt `origin_zone`/);
+});
+
+test("v11 public docs include requester Zone binding for FED_TASK_OPEN", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v11.1-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v11 active at `v11\.1-protocol`/);
+  assert.match(roadmap, /## v11\.1: FED_TASK_OPEN Requester Zone Binding/);
+  assert.match(draft, /requester_zone_binding/);
+  assert.match(status, /状态：v11\.1 active/);
+  assert.match(boundary, /requester Zone binding/);
 });

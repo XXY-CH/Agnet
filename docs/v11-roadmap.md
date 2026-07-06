@@ -29,8 +29,32 @@
 - 不实现 HTTP verifier service。
 - 不实现 A2A/ARD compatibility。
 
+## v11.1: FED_TASK_OPEN Requester Zone Binding
+
+状态：complete
+目标：Make federated task entry fail closed unless the origin Zone signs the requester identity it forwards.
+
+新增：
+
+- `FED_TASK_OPEN` frames carry `requester_zone_binding`.
+- Node `verifyFederatedTaskOpen` rejects missing or mismatched requester Zone bindings.
+- Go `Fixture.verifyTaskOpen` rejects missing or mismatched requester Zone bindings whenever `origin_zone` is present.
+- Node and Go federation clients emit requester Zone bindings.
+- Go queued/drained task state carries the requester Zone binding forward for later verification.
+- The shared `FED_TASK_OPEN` conformance vector includes the requester Zone binding.
+
+不做：
+
+- 不实现 DID document/resolver。
+- 不实现 remote trust-store sync。
+- 不改变 receipt frame requester proof。
+- 不实现 public reachability proof。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
-1. Bind requester identity to origin Zone only if the frame carries enough requester evidence to verify that claim without adding a broad identity system.
-2. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
-3. Continue Swarm proof work only where it adds verifiable accountability without dynamic decomposition, scheduler ownership, parallel execution, or cross-Zone Swarm.
+1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
+2. Continue Swarm proof work only where it adds verifiable accountability without dynamic decomposition, scheduler ownership, parallel execution, or cross-Zone Swarm.
+3. Keep compatibility work parked until the proof layer has an externally consumable release surface.

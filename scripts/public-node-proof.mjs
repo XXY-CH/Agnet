@@ -4,7 +4,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
-import { canonical, createAgent, createZone, publicKeyFromDescriptor, signObject, verifyObject } from "../asp-core.mjs";
+import { canonical, createAgent, createZone, publicKeyFromDescriptor, signObject, verifyObject, zoneBinding } from "../asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 await mkdir("state", { recursive: true });
@@ -176,6 +176,7 @@ function openTask(port, zone) {
       type: "FED_TASK_OPEN",
       origin_zone: zone.descriptor,
       requester: requester.descriptor,
+      requester_zone_binding: zoneBinding(zone, requester.descriptor),
       task: { ...task, signature: signObject(requester.privateKey, task) },
     },
     "FED_TASK_CLOSE",
@@ -232,6 +233,7 @@ function openSwarm(port, zone) {
       type: "FED_SWARM_OPEN",
       origin_zone: zone.descriptor,
       requester: requester.descriptor,
+      requester_zone_binding: zoneBinding(zone, requester.descriptor),
       swarm: {
         swarm_id: "swarm://public-node-proof/two-step",
         steps: [

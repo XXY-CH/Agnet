@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v11 active at `v11.0-protocol`.
+Status: research prototype, local-first, v11 active at `v11.1-protocol`.
 
 ## Why This Exists
 
@@ -32,6 +32,7 @@ The current prototype proves:
 - Ed25519 `aid:` agent identity and Zone identity.
 - Ed25519 `did:key` bridge fields for descriptors, without replacing `aid:`.
 - Signed tasks, events, artifacts, checkpoints, and receipts.
+- `FED_TASK_OPEN` verifies requester Zone bindings at the federation boundary.
 - Hash-chained JSONL audit logs.
 - Receipt and local artifact closure verification through Go and Node CLIs.
 - Node receipt verifier CLI outputs and proof summary JSON include stable `receipt_digest` values for external reports.
@@ -216,14 +217,15 @@ Optional hardening flags include:
 - `docs/agent-space-architecture.md` - architecture overview.
 - `docs/asp-core-draft.md` - narrow English draft for the implemented proof layer.
 - `docs/v11-roadmap.md` - active v11 roadmap.
-- `docs/v11.0-boundary.md` - latest closed boundary.
+- `docs/v11.1-boundary.md` - latest closed boundary.
+- `docs/v11.0-boundary.md` - receipt origin trust boundary.
 - `docs/v10-roadmap.md` - closed v10 roadmap.
 - `docs/v10.47-boundary.md` - v10 closeout boundary.
 - `docs/v9-roadmap.md` - closed v9 roadmap.
 
 ## Roadmap
 
-v9 and v10 are closed. v11 starts by tightening the proof layer where the Ultimate trust model depends on it: receipt verifiers now require signed receipt `origin_zone` values to name a trusted Zone, so a worker cannot produce a valid receipt that points provenance at an unknown origin.
+v9 and v10 are closed. v11 is tightening the proof layer where the Ultimate trust model depends on it: `FED_TASK_OPEN` now requires a requester Zone binding, and receipt verifiers require signed receipt `origin_zone` values to name a trusted Zone.
 
 Highest-value next directions:
 

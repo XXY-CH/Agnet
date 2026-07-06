@@ -323,7 +323,8 @@ export function verifyFederatedTaskOpen(frame, trustedZones, workerDescriptor) {
   if (!trusted || trusted.public_key_spki !== originZone.public_key_spki) {
     throw new Error(`untrusted zone: ${originZone.zid}`);
   }
-  const requester = resolveAgent(new Map([[frame.requester.alias, { descriptor: frame.requester }]]), frame.requester.alias);
+  if (!frame.requester_zone_binding) throw new Error("requester zone binding missing");
+  const requester = resolveAgent(new Map([[frame.requester.alias, { descriptor: frame.requester, zone: frame.origin_zone, zone_binding: frame.requester_zone_binding }]]), frame.requester.alias);
   const { signature, ...task } = frame.task;
   if (task.from !== frame.requester.aid) throw new Error("task sender does not match requester descriptor");
   if (task.to !== workerDescriptor.alias) throw new Error(`task target does not match worker alias: ${task.to}`);
