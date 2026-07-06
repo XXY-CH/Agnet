@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v10 active at `v10.46-protocol`.
+Status: research prototype, local-first, v10 closed at `v10.47-protocol`.
 
 ## Why This Exists
 
@@ -214,13 +214,13 @@ Optional hardening flags include:
 - `docs/agent-space-ultimate-vision.md` - long-range vision.
 - `docs/agent-space-architecture.md` - architecture overview.
 - `docs/asp-core-draft.md` - narrow English draft for the implemented proof layer.
-- `docs/v10-roadmap.md` - active v10 roadmap.
-- `docs/v10.46-boundary.md` - latest closed boundary.
+- `docs/v10-roadmap.md` - closed v10 roadmap.
+- `docs/v10.47-boundary.md` - latest closed boundary.
 - `docs/v9-roadmap.md` - closed v9 roadmap.
 
 ## Roadmap
 
-v9 is closed. v10 is making the proof layer easier to verify externally: identity bridge first, then Node artifact manifest parity, AFP hash strings, receipt-side manifest metadata checks, local artifact byte checks, minimal verifier CLIs with trusted-Zone descriptor validation and stable receipt digests, a local npm-facing verifier package contract, one-receipt local artifact closure verification, a narrow ASP Core draft, a reusable Go receipt-frame verifier package, a one-command local proof demo, verified Docker proof demos with overrideable base images, a verifier-ready local public-listen resolve/query/task/audit/artifact/swarm proof with negative artifact-read coverage for out-of-receipt and post-receipt-tampered artifact reads, verifier-ready local proof receipt closure files, summary receipt digests, artifact counts, artifact URIs, artifact byte digests, and artifact manifest hashes, and single ordered complete audit-backed Zone-signed Swarm close proof frames plus trusted Zone files tied to same-audit receipts with reproducible close digests and summary `swarm_close_verify`, a narrow Node `swarm-close` verifier command, and a shared `FED_SWARM_CLOSE` conformance vector.
+v9 and v10 are closed. v10 made the proof layer easier to verify externally: identity bridge first, then Node artifact manifest parity, AFP hash strings, receipt-side manifest metadata checks, local artifact byte checks, minimal verifier CLIs with trusted-Zone descriptor validation and stable receipt digests, a local npm-facing verifier package contract, one-receipt local artifact closure verification, a narrow ASP Core draft, a reusable Go receipt-frame verifier package, a one-command local proof demo, verified Docker proof demos with overrideable base images, a verifier-ready local public-listen resolve/query/task/audit/artifact/swarm proof with negative artifact-read coverage for out-of-receipt and post-receipt-tampered artifact reads, verifier-ready local proof receipt closure files, summary receipt digests, artifact counts, artifact URIs, artifact byte digests, and artifact manifest hashes, and single ordered complete audit-backed Zone-signed Swarm close proof frames plus trusted Zone files tied to same-audit receipts with reproducible close digests and summary `swarm_close_verify`, a narrow Node `swarm-close` verifier command, and a shared `FED_SWARM_CLOSE` conformance vector.
 
 Highest-value next directions:
 
@@ -240,7 +240,7 @@ Agnet is deliberately not claiming:
 - Token economy or settlement.
 - Dynamic Swarm decomposition or scheduler-owned DAG execution.
 
-Those may become v10+ work, but they are not current capabilities.
+Those may become v11+ work, but they are not current capabilities.
 
 ## Contributing
 

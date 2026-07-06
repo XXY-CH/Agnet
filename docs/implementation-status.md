@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v10.46 complete
-当前代码基线：`v10.46-proof-summary-artifact-manifest-hashes`
+状态：v10.47 complete
+当前代码基线：`v10.47-v10-closeout-alignment`
 
 ## 一句话
 
@@ -185,7 +185,7 @@ Go
 
 ## Next Boundary
 
-v10.46 is closed. The next natural boundary should keep making the accountability layer easier to verify externally: add real public reachability proof only after the Docker proof contract stays stable on the target network, add package signing/SBOM only after package publication becomes real, or continue Swarm proof work only where it adds verifiable accountability without scheduler breadth.
+v10.47 closes v10. The next natural boundary should keep moving toward Ultimate without widening the claim surface: add real public reachability proof only after the Docker proof contract stays stable on the target network, add package signing/SBOM only after package publication becomes real, or continue Swarm proof work only where it adds verifiable accountability without scheduler breadth.
 
 Route detail: `docs/v10-roadmap.md`。
 

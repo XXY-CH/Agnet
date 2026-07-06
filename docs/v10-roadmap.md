@@ -1,6 +1,6 @@
 # Agent Space v10 Roadmap
 
-状态：active
+状态：closed
 目标：把 v9 已经闭合的 proof/accountability core 推向更容易被外部生态验证和复用的形态，同时继续避免过早做调度器、产品平台或兼容性宣称。
 
 ## v10.0: Ed25519 did:key Identity Bridge
@@ -1112,8 +1112,39 @@
 - 不做公网可达性证明。
 - 不做 hosted public node。
 
+## v10.47: V10 Closeout Alignment
+
+状态：complete
+目标：Close v10 as an externally verifiable proof/accountability milestone without adding another runtime surface.
+
+新增：
+
+- README marks v10 closed at `v10.47-protocol`.
+- This roadmap marks v10 closed and records v10.47 as the closeout slice.
+- `docs/asp-core-draft.md` points to the current closed prototype tag.
+- `docs-contract.test.mjs` guards the public closeout wording.
+- `docs/v10.47-boundary.md` records the closeout boundary and remaining v11+ candidates.
+
+不做：
+
+- 不做新的协议字段。
+- 不做新的 verifier CLI。
+- 不做 receipt store/search。
+- 不做 batch verification。
+- 不做 HTTP verifier service。
+- 不做 package signing。
+- 不做 SBOM。
+- 不做公网可达性证明。
+- 不做 hosted public node。
+- 不做 dynamic Swarm decomposition。
+- 不做 scheduler-owned DAG execution。
+- 不做 parallel Swarm execution。
+- 不做 cross-Zone Swarm。
+
 ## Next Candidates
 
 1. Add public reachability proof only after the Docker proof contract stays stable on the target network.
 2. Add package signing or SBOM only after package publication becomes real.
 3. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.
+
+v10 到此收尾。下一轮应进入 v11+，继续围绕 Ultimate 的 Trust & Verification / public overlay / Swarm accountability gaps 选一个窄边界。
