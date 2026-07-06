@@ -97,6 +97,19 @@ test("FED_TASK_OPEN verification rejects missing worker descriptor context in No
   }
 });
 
+test("FED_TASK_OPEN verification rejects invalid worker descriptor identity in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.24-fed-task-open.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  const { public_key_spki, ...workerWithoutPublicKey } = vector.worker;
+
+  for (const workerDescriptor of [workerWithoutPublicKey, { ...vector.worker, aid: "aid:ed25519:tampered" }]) {
+    assert.throws(
+      () => verifyFederatedTaskOpen(vector.frame, trustedZones, workerDescriptor),
+      /task open worker invalid/,
+    );
+  }
+});
+
 test("FED_TASK_OPEN verification rejects missing origin Zones in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v9.24-fed-task-open.json", "utf8"));
   const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));

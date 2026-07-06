@@ -334,18 +334,24 @@ export function verifyFederatedTaskOpen(frame, trustedZones, workerDescriptor) {
     throw new Error(`untrusted zone: ${originZone.zid}`);
   }
   if (!workerDescriptor || typeof workerDescriptor !== "object" || Array.isArray(workerDescriptor)) throw new Error("task open worker missing");
+  let worker;
+  try {
+    worker = resolveAgent(new Map([[workerDescriptor.alias, workerDescriptor]]), workerDescriptor.alias).descriptor;
+  } catch (error) {
+    throw new Error(`task open worker invalid: ${error.message}`);
+  }
   if (!frame.requester_zone_binding) throw new Error("requester zone binding missing");
   const requester = resolveAgent(new Map([[frame.requester.alias, { descriptor: frame.requester, zone: frame.origin_zone, zone_binding: frame.requester_zone_binding }]]), frame.requester.alias);
   const { signature, ...task } = frame.task;
   validateTaskId(task.task_id);
   if (task.from !== frame.requester.aid) throw new Error("task sender does not match requester descriptor");
-  if (task.to !== workerDescriptor.alias) throw new Error(`task target does not match worker alias: ${task.to}`);
+  if (task.to !== worker.alias) throw new Error(`task target does not match worker alias: ${task.to}`);
   if (typeof signature !== "string" || signature === "") throw new Error("task signature missing");
   if (!verifyObject(requester.publicKey, task, signature)) {
     throw new Error("task signature verification failed");
   }
-  enforcePolicy(workerDescriptor, task);
-  return { originZone, requester: frame.requester, worker: workerDescriptor, task };
+  enforcePolicy(worker, task);
+  return { originZone, requester: frame.requester, worker, task };
 }
 
 export function validateTaskId(taskId) {

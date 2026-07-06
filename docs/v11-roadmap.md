@@ -593,6 +593,27 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.27: FED_TASK_OPEN Worker Descriptor Identity
+
+状态：complete
+目标：Make Node `FED_TASK_OPEN` verification validate local worker descriptor identity before target and policy checks.
+
+新增：
+
+- Node `verifyFederatedTaskOpen` resolves the local worker descriptor through the existing descriptor verifier before using worker alias or policy.
+- Node `verifyFederatedTaskOpen` rejects malformed local worker descriptors with `task open worker invalid`.
+- The Node tests prove missing worker public-key material or tampered worker Agent IDs no longer pass merely because the alias matches.
+
+不做：
+
+- 不实现 generic worker descriptor schema validation。
+- 不实现 worker registry/store。
+- 不改变 `FED_TASK_OPEN` frame shape。
+- 不改变 Go verifier behavior。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

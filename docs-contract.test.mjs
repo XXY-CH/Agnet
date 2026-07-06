@@ -461,13 +461,30 @@ test("v11 public docs include task and receipt signature presence", async () => 
     readFile("docs/v11.26-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.26-protocol`/);
+  assert.match(readme, /`docs\/v11\.26-boundary\.md` - FED_TASK_OPEN and FED_RECEIPT signature presence boundary\./);
   assert.match(readme, /signed task\/receipt signatures before crypto verification/);
   assert.match(roadmap, /## v11\.26: FED_TASK_OPEN and FED_RECEIPT Signature Presence/);
   assert.match(draft, /task signature is present as a string/);
   assert.match(draft, /receipt signature is present as a string/);
-  assert.match(status, /状态：v11\.26 active/);
   assert.match(status, /signed task\/receipt signature presence validation/);
   assert.match(boundary, /task signature missing/);
   assert.match(boundary, /receipt signature missing/);
+});
+
+test("v11 public docs include FED_TASK_OPEN worker descriptor identity", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v11.27-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v11 active at `v11\.27-protocol`/);
+  assert.match(readme, /valid local worker descriptor identity/);
+  assert.match(roadmap, /## v11\.27: FED_TASK_OPEN Worker Descriptor Identity/);
+  assert.match(draft, /local worker descriptor identity verifies/);
+  assert.match(status, /状态：v11\.27 active/);
+  assert.match(status, /worker descriptor context presence validation and worker descriptor identity validation/);
+  assert.match(boundary, /task open worker invalid/);
 });
