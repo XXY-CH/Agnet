@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v11 active at `v11.71-protocol`.
+Status: research prototype, local-first, v11 active at `v11.72-protocol`.
 
 ## Why This Exists
 
@@ -33,7 +33,7 @@ The current prototype proves:
 - Ed25519 `did:key` bridge fields for descriptors, with missing-input validation and without replacing `aid:`.
 - Signed tasks, events, artifacts, checkpoints, and receipts.
 - `FED_TASK_OPEN` verifies frame object/type, origin Zone descriptor and payload object presence, local worker descriptor context presence and identity validation, task signature presence, and requester Zone bindings at the federation boundary.
-- Task ids are constrained to a small ASCII token format before execution or queue state, and malformed signed task write scopes fail closed before execution.
+- Task ids are constrained to a small ASCII token format before execution or queue state, and malformed signed task write/data-domain scopes fail closed before execution.
 - Hash-chained JSONL audit logs.
 - Receipt and local artifact closure verification through Go and Node CLIs.
 - Node receipt verifier CLI outputs and proof summary JSON include stable `receipt_digest` values for external reports.
@@ -228,7 +228,8 @@ Optional hardening flags include:
 - `docs/agent-space-architecture.md` - architecture overview.
 - `docs/asp-core-draft.md` - narrow English draft for the implemented proof layer.
 - `docs/v11-roadmap.md` - active v11 roadmap.
-- `docs/v11.71-boundary.md` - latest closed boundary.
+- `docs/v11.72-boundary.md` - latest closed boundary.
+- `docs/v11.71-boundary.md` - Go task write scope list shape boundary.
 - `docs/v11.70-boundary.md` - Go queue grant scope list shape boundary.
 - `docs/v11.69-boundary.md` - Go FED_SWARM_OPEN after list shape boundary.
 - `docs/v11.68-boundary.md` - Go receipt artifact lookup list shape boundary.

@@ -1624,6 +1624,29 @@
 - 不实现 automatic drain。
 - 不实现 A2A/ARD compatibility。
 
+## v11.72: Go Task Data Domains List Shape Boundary
+
+状态：complete
+目标：Make Go `FED_TASK_OPEN` reject malformed signed task data-domain lists before policy evidence is recorded.
+
+新增：
+
+- Go `enforcePolicy` rejects non-string entries in signed task `scope.data_domains` lists with `policy.data_domains_invalid` / `policy data domains invalid`.
+- Existing network denial remains `policy.network_denied`.
+- Existing write-scope validation and denial remain unchanged.
+- Missing `scope.data_domains` still behaves as no declared data domains.
+- The fix is scoped to signed task policy evidence shape; it does not add generic task schema validation or a dynamic data policy service.
+
+不做：
+
+- 不实现 generic task JSON Schema validation。
+- 不实现 dynamic data policy service。
+- 不改变 network policy semantics。
+- 不改变 write-scope validation or denial semantics。
+- 不实现 scheduler-owned routing。
+- 不实现 automatic drain。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

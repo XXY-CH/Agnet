@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v11.71 active
-当前代码基线：`v11.71-go-task-write-scope-list-shape-boundary`
+状态：v11.72 active
+当前代码基线：`v11.72-go-task-data-domains-list-shape-boundary`
 
 ## 一句话
 
@@ -33,7 +33,7 @@
 | `FED_TASK_ENQUEUE` | not yet | durable local queue file + claim/lease expiry + reclaim + retry/backoff state + explicit drain path | `go-fed-discovery.test.mjs` | automatic drain |
 | `FED_TASK_CANCEL` | not yet | signed cancellation receipt evidence + durable cancelled state file + live external process interruption | `go-fed-discovery.test.mjs` | persisted running registry / multi-node cancel |
 | `FED_TASK_RETRY` | not yet | signed retry lineage evidence | `go-fed-discovery.test.mjs` | automatic retry / backoff / scheduler state |
-| Policy checks | done | network/write subset + Go signed task write-scope list shape validation + Go canonical policy scope digest + stable deny codes | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | policy negotiation / dynamic policy service |
+| Policy checks | done | network/write subset + Go signed task write/data-domain list shape validation + Go canonical policy scope digest + stable deny codes | `agent-runtime.test.mjs`, `go-fed-discovery.test.mjs` | policy negotiation / dynamic policy service |
 | Human approval | simulated | direct Go task execution and queued drain write pending approval state; in-process approval state writes are serialized; approve continues, deny/expiry stops before tools; direct approvals preserve named `human://...` actors in signed grants; approval actors pass configurable local allowlists; local bearer approval sessions can supply the approval actor; mismatched body/session actors are rejected; `/api/session` exposes local session actor/actions state; Human Gateway page displays that local session state | Node events, `cmd/go-fed-discovery/main_test.go`, `go-fed-discovery.test.mjs` | roles / cross-process locking |
 | Checkpoint evidence | not yet | signed protocol-native checkpoint evidence + audit-backed immediate and queued resume parent links + restored state digest evidence + receipt-linked task state file | `go-fed-discovery.test.mjs` | model KV/cache restore |
 | Transport | local TCP / local process + authenticated session handshake | local TCP + configurable main federation listen host + verifier-ready local public-listen authenticated resolve/query/task/audit/artifact/swarm proof with out-of-receipt and post-receipt-tamper rejection evidence + optional TLS/mTLS federation listener with certificate-to-Zone binding + minimal WebSocket + authenticated session handshake | README commands, `public-node-proof.test.mjs`, `cmd/go-fed-discovery/main_test.go`, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | public reachability / deployment / QUIC |
@@ -211,7 +211,7 @@ Go
 
 ## Next Boundary
 
-v11.71 makes Go `FED_TASK_OPEN` reject malformed signed task `scope.write` list entries before policy enforcement can silently ignore them. This keeps the policy boundary narrow: it does not add generic task schema validation, dynamic policy service, scheduler ownership, automatic drain, or A2A/ARD compatibility. The next natural boundary should keep moving toward Ultimate without widening the claim surface: close remaining Phase A trust-boundary bugs only when still present in live code, add real public reachability proof only with external network evidence, or continue proof/accountability work only where it adds verifiable enforcement without scheduler breadth.
+v11.72 makes Go `FED_TASK_OPEN` reject malformed signed task `scope.data_domains` list entries before policy evidence can silently drop them. This keeps the policy evidence boundary narrow: it does not add generic task schema validation, dynamic data policy service, scheduler ownership, automatic drain, or A2A/ARD compatibility. The next natural boundary should keep moving toward Ultimate without widening the claim surface: close remaining Phase A trust-boundary bugs only when still present in live code, add real public reachability proof only with external network evidence, or continue proof/accountability work only where it adds verifiable enforcement without scheduler breadth.
 
 Route detail: `docs/v11-roadmap.md`。
 

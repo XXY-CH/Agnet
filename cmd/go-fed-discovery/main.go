@@ -5330,7 +5330,7 @@ func enforcePolicy(worker, task map[string]any) error {
 	if scope["network"] == true && policy["allow_network"] != true {
 		return policyError{code: "policy.network_denied", message: "policy denied network access"}
 	}
-	writeTargets, err := policyWriteTargets(scope["write"])
+	writeTargets, err := policyStringList(scope["write"], "policy write scope invalid")
 	if err != nil {
 		return policyError{code: "policy.write_invalid", message: "policy write scope invalid"}
 	}
@@ -5339,10 +5339,13 @@ func enforcePolicy(worker, task map[string]any) error {
 			return policyError{code: "policy.write_denied", message: "policy denied write scope: " + target}
 		}
 	}
+	if _, err := policyStringList(scope["data_domains"], "policy data domains invalid"); err != nil {
+		return policyError{code: "policy.data_domains_invalid", message: "policy data domains invalid"}
+	}
 	return nil
 }
 
-func policyWriteTargets(value any) ([]string, error) {
+func policyStringList(value any, message string) ([]string, error) {
 	if value == nil {
 		return nil, nil
 	}
@@ -5351,13 +5354,13 @@ func policyWriteTargets(value any) ([]string, error) {
 	}
 	items, ok := value.([]any)
 	if !ok {
-		return nil, errors.New("policy write scope invalid")
+		return nil, errors.New(message)
 	}
 	out := []string{}
 	for _, item := range items {
 		text, ok := item.(string)
 		if !ok {
-			return nil, errors.New("policy write scope invalid")
+			return nil, errors.New(message)
 		}
 		out = append(out, text)
 	}

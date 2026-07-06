@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v11.71-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v11.72-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -131,6 +131,7 @@ Verifiers MUST check:
 - The target worker descriptor resolves from `to`.
 - Worker policy allows the requested scope.
 - Go `FED_TASK_OPEN` policy enforcement rejects malformed signed task `scope.write` list entries before execution.
+- Go `FED_TASK_OPEN` policy enforcement rejects malformed signed task `scope.data_domains` list entries before recording policy evidence.
 
 ## FED_TASK_OPEN
 

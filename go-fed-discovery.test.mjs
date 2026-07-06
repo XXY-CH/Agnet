@@ -2006,6 +2006,21 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     assert.equal(malformedWriteScopeFrames[0].code, "policy.write_invalid");
     assert.match(malformedWriteScopeFrames[0].error, /policy write scope invalid/);
 
+    const malformedDataDomainsTask = {
+      ...task,
+      task_id: "go_fed_task_malformed_data_domains",
+      scope: { network: false, data_domains: ["public.docs", { domain: "private.docs" }] },
+    };
+    const malformedDataDomainsFrames = await exchangeFrames(port, {
+      type: "FED_TASK_OPEN",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      task: { ...malformedDataDomainsTask, signature: signObject(requester.privateKey, malformedDataDomainsTask) },
+    });
+    assert.equal(malformedDataDomainsFrames[0].type, "FED_TASK_ERROR");
+    assert.equal(malformedDataDomainsFrames[0].code, "policy.data_domains_invalid");
+    assert.match(malformedDataDomainsFrames[0].error, /policy data domains invalid/);
+
     const verifiedAudit = await execFileAsync("go", [
       "run",
       "./cmd/go-fed-discovery",
