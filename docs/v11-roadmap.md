@@ -204,6 +204,27 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.9: Node-to-Go Interop Receipt Task Binding
+
+状态：complete
+目标：Make the Node interop client verify Go receipts against the signed task it sent.
+
+新增：
+
+- Node `federation-gateway.mjs request` keeps the signed task object sent to the Go gateway.
+- Node interop receipt verification passes that signed task to `verifyFederatedReceipt`.
+- Node integration tests prove mismatched interop task evidence fails closed.
+
+不做：
+
+- 不改变 `FED_TASK_OPEN` frame shape。
+- 不实现 task store/search。
+- 不实现 remote task evidence retrieval。
+- 不改变 audit query verification。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

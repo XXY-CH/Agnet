@@ -163,10 +163,26 @@ test("v11 public docs include Go-to-Node interop receipt task binding", async ()
     readFile("docs/v11.8-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.8-protocol`/);
-  assert.match(readme, /Go-to-Node interop checks can compare it/);
+  assert.match(readme, /`docs\/v11\.8-boundary\.md` - Go-to-Node interop receipt task binding boundary\./);
   assert.match(roadmap, /## v11\.8: Go-to-Node Interop Receipt Task Binding/);
-  assert.match(draft, /v11\.8-protocol/);
-  assert.match(status, /状态：v11\.8 active/);
+  assert.match(draft, /fed-receipt <frame\.json> <trusted-zones\.json> \[task\.json\]/);
+  assert.match(status, /Go-to-Node interop receipt verification/);
   assert.match(boundary, /signed task sent by the Go client/);
+});
+
+test("v11 public docs include Node-to-Go interop receipt task binding", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v11.9-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v11 active at `v11\.9-protocol`/);
+  assert.match(readme, /bidirectional Node\/Go interop checks can compare it/);
+  assert.match(roadmap, /## v11\.9: Node-to-Go Interop Receipt Task Binding/);
+  assert.match(draft, /v11\.9-protocol/);
+  assert.match(status, /状态：v11\.9 active/);
+  assert.match(boundary, /signed task sent by the Node client/);
 });

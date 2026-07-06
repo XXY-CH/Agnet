@@ -247,7 +247,7 @@ async function request(port, trustedZonesFile, alias = "agent://zone-b/summarize
       if (session(frame)) return;
       if (frame.type === "FED_TASK_EVENT") events.push(frame.event);
       if (frame.type === "FED_RECEIPT") {
-        receipt = verifyFederatedReceipt(frame, trustedZones).signedReceipt;
+        receipt = verifyFederatedReceipt(frame, trustedZones, signedTask).signedReceipt;
       }
       if (frame.type === "FED_TASK_ERROR") reject(new Error(frame.error));
       if (frame.type === "FED_TASK_CLOSE") resolve();

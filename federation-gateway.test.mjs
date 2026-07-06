@@ -4,7 +4,7 @@ import { writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { loadOrCreateZone, writeTrustedZones } from "./asp-core.mjs";
+import { loadOrCreateAgent, loadOrCreateZone, signObject, writeTrustedZones, zoneBinding } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -267,6 +267,62 @@ test("Go client completes a task against Node Federation Gateway", async () => {
     assert.equal(result.events.at(-1).type, "task.completed");
   } finally {
     gateway.kill("SIGINT");
+  }
+});
+
+test("Node client rejects Go receipt when task evidence digest mismatches", async () => {
+  const port = 8998;
+  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  const worker = await loadOrCreateAgent("agent://zone-b/summarizer", "state/keys/fed-zone-b-summarizer.pkcs8");
+  await writeTrustedZones("state/node-client-task-evidence-trust.json", [zoneB, zoneA]);
+
+  const server = net.createServer((socket) => {
+    let buffer = "";
+    socket.on("data", (chunk) => {
+      buffer += chunk.toString();
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const frame = JSON.parse(line);
+        if (frame.type === "HELLO") {
+          socket.write(`${JSON.stringify({ type: "HELLO", zone: zoneB.descriptor, session_id: "session:test", challenge: "challenge:test" })}\n`);
+        } else if (frame.type === "AUTH") {
+          socket.write(`${JSON.stringify({ type: "AUTH_OK", session_id: "session:test" })}\n`);
+        } else if (frame.type === "FED_TASK_OPEN") {
+          const receipt = {
+            task_id: frame.task.task_id,
+            task_digest: "0".repeat(64),
+            from: frame.task.from,
+            origin_zone: frame.origin_zone.zid,
+            executing_zone: zoneB.zid,
+            to: worker.aid,
+            artifact_refs: [],
+            event_count: 0,
+            approvals: [],
+          };
+          socket.write(`${JSON.stringify({ type: "FED_RECEIPT", zone: zoneB.descriptor, worker: worker.descriptor, zone_binding: zoneBinding(zoneB, worker.descriptor), receipt: { ...receipt, signature: signObject(worker.privateKey, receipt) } })}\n`);
+          socket.write(`${JSON.stringify({ type: "FED_TASK_CLOSE", task_id: frame.task.task_id })}\n`);
+        }
+      }
+    });
+  });
+  await new Promise((resolve) => server.listen(port, "127.0.0.1", resolve));
+
+  try {
+    await assert.rejects(
+      () =>
+        execFileAsync(process.execPath, [
+          "federation-gateway.mjs",
+          "request",
+          String(port),
+          "state/node-client-task-evidence-trust.json",
+        ]),
+      (error) => error.stderr.includes("receipt task_digest mismatch"),
+    );
+  } finally {
+    server.close();
   }
 });
 
