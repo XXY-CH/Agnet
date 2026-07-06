@@ -1126,6 +1126,20 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     assert.equal(outOfScopeGrantClaimResponse.status, 400);
     assert.match(await outOfScopeGrantClaimResponse.text(), /queue action grant scope mismatch/);
 
+    const malformedScopeGrantClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
+      method: "POST",
+      headers: humanHeaders(),
+      body: JSON.stringify({
+        action: "claim",
+        task_id: humanQueuedTask.task_id,
+        owner: "human://local",
+        actor: "human://local",
+        action_grant: queueActionGrant("claim", humanQueuedTask.task_id, null, { scope: { actions: ["claim", { action: "claim" }] } }),
+      }),
+    });
+    assert.equal(malformedScopeGrantClaimResponse.status, 400);
+    assert.match(await malformedScopeGrantClaimResponse.text(), /queue action grant scope invalid/);
+
     const missingActorGrantClaimResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/actions`, {
       method: "POST",
       headers: humanHeaders(),

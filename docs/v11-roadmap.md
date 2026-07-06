@@ -1578,6 +1578,29 @@
 - 不实现 generic Swarm schema validation。
 - 不实现 A2A/ARD compatibility。
 
+## v11.70: Go Queue Grant Scope List Shape Boundary
+
+状态：complete
+目标：Make Go Human Gateway queue action grants reject malformed signed scope action lists before accepting the grant.
+
+新增：
+
+- Go Human Gateway queue actions reject non-string entries in signed grant `scope.actions` lists with `queue action grant scope invalid`.
+- Existing out-of-scope grants still fail with `queue action grant scope mismatch`.
+- Existing actor, expiry, task binding, task digest, signature, nonce replay, and local actor policy checks stay unchanged.
+- The fix is scoped to signed queue grant authorization scope shape; it does not add roles, admin policy, distributed nonce storage, or generic grant schema validation.
+
+不做：
+
+- 不实现 roles / admin policy system。
+- 不实现 distributed nonce service。
+- 不改变 actor policy semantics。
+- 不改变 queue claim/drain/retry/resume semantics。
+- 不实现 automatic drain。
+- 不实现 scheduler-owned routing。
+- 不实现 generic grant schema validation。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

@@ -3862,7 +3862,11 @@ func (f Fixture) requireQueueActionGrant(action map[string]any) error {
 	if grant["action"] != action["action"] {
 		return errors.New("queue action grant action mismatch")
 	}
-	if !queueActionGrantAllows(grant, optionalString(action["action"])) {
+	actions, err := queueActionGrantActions(grant)
+	if err != nil {
+		return err
+	}
+	if !stringInSlice(optionalString(action["action"]), actions) {
 		return errors.New("queue action grant scope mismatch")
 	}
 	if optionalString(grant["actor"]) == "" {
@@ -3907,9 +3911,40 @@ func (f Fixture) requireQueueActionGrant(action map[string]any) error {
 }
 
 func queueActionGrantAllows(grant map[string]any, action string) bool {
+	actions, err := queueActionGrantActions(grant)
+	return err == nil && stringInSlice(action, actions)
+}
+
+func queueActionGrantActions(grant map[string]any) ([]string, error) {
 	scope, _ := grant["scope"].(map[string]any)
-	for _, item := range stringsFromAny(scope["actions"]) {
-		if item == action {
+	if scope == nil {
+		return nil, nil
+	}
+	value := scope["actions"]
+	if value == nil {
+		return nil, nil
+	}
+	if typed, ok := value.([]string); ok {
+		return typed, nil
+	}
+	items, ok := value.([]any)
+	if !ok {
+		return nil, errors.New("queue action grant scope invalid")
+	}
+	var actions []string
+	for _, item := range items {
+		text, ok := item.(string)
+		if !ok {
+			return nil, errors.New("queue action grant scope invalid")
+		}
+		actions = append(actions, text)
+	}
+	return actions, nil
+}
+
+func stringInSlice(needle string, haystack []string) bool {
+	for _, item := range haystack {
+		if item == needle {
 			return true
 		}
 	}

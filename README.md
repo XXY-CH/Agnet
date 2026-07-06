@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v11 active at `v11.69-protocol`.
+Status: research prototype, local-first, v11 active at `v11.70-protocol`.
 
 ## Why This Exists
 
@@ -54,7 +54,7 @@ The current prototype proves:
 - Node artifact manifests, AFP strings, sidecars, local URI/path validation, local byte verification, CLI verification, object presence validation, and manifest metadata verification; Go filesystem artifact manifests, AFP strings, strict artifact ref/manifest list entries and artifact lookup, mirror index object-entry, required SHA-256, URI, AFP, size, media type, manifest-hash digest, and exact field matching validation, SHA-256, size, media type, and manifest hash field validation before digest-addressed path or byte checks, content-addressed mirrors, and GC plan/apply.
 - Human approval evidence for direct and queued execution, with malformed receipt approval evidence list rejection.
 - Protocol-native checkpoint evidence, with malformed receipt checkpoint evidence list rejection and runtime lookup rejection.
-- Explicit queue claim, lease expiry, reclaim, retry, resume, and drain flows.
+- Explicit queue claim, lease expiry, reclaim, retry, resume, and drain flows, with signed queue action grant scope list validation.
 - Sandbox claim binding and fail-closed unsupported sandbox probes.
 - Node to Go and Go to Node `FED_TASK_OPEN` interoperability.
 - Shared `FED_TASK_OPEN`, `FED_RECEIPT`, and `FED_SWARM_CLOSE` conformance fixtures, including fail-closed checks for missing-frame, missing-zone, missing-proof, missing-signature, missing-identity, malformed-step, unsafe-task-id, NUL-bearing, empty, and duplicate-step Swarm close proofs.
@@ -228,7 +228,8 @@ Optional hardening flags include:
 - `docs/agent-space-architecture.md` - architecture overview.
 - `docs/asp-core-draft.md` - narrow English draft for the implemented proof layer.
 - `docs/v11-roadmap.md` - active v11 roadmap.
-- `docs/v11.69-boundary.md` - latest closed boundary.
+- `docs/v11.70-boundary.md` - latest closed boundary.
+- `docs/v11.69-boundary.md` - Go FED_SWARM_OPEN after list shape boundary.
 - `docs/v11.68-boundary.md` - Go receipt artifact lookup list shape boundary.
 - `docs/v11.67-boundary.md` - Go runtime checkpoint lookup list shape boundary.
 - `docs/v11.66-boundary.md` - Go receipt checkpoint list shape boundary.
