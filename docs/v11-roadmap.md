@@ -1556,6 +1556,28 @@
 - 不实现 generic receipt schema validation。
 - 不实现 A2A/ARD compatibility。
 
+## v11.69: Go FED_SWARM_OPEN After List Shape Boundary
+
+状态：complete
+目标：Make Go `FED_SWARM_OPEN` reject malformed step dependency lists before executing dependent steps.
+
+新增：
+
+- Go `executeSwarm` rejects non-string entries in step `after` lists with `swarm after invalid`.
+- Missing `after` still serializes as an empty list in generated Swarm receipts.
+- Existing Swarm step execution order, dependency artifact binding, close proof generation, and audit verification stay unchanged.
+- The fix reuses the existing strict Swarm `after` parser; it does not add generic Swarm schema validation.
+
+不做：
+
+- 不实现 dynamic Swarm decomposition。
+- 不实现 scheduler-owned routing。
+- 不实现 parallel Swarm execution。
+- 不实现 cross-Zone Swarm execution。
+- 不改变 close proof semantics。
+- 不实现 generic Swarm schema validation。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

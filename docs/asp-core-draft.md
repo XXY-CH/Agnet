@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v11.68-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v11.69-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -298,6 +298,8 @@ The implemented Node verifier checks the close frame object and type, trusted Zo
 This Node verifier is not an audit-backed completeness verifier. The audit-backed same-log Swarm completeness checks are implemented on the Go verifier path.
 
 Go audit-backed Swarm dependency verification MUST reject malformed `after` and `input_artifacts` list entries instead of silently filtering them before dependency count and digest checks.
+
+Go `FED_SWARM_OPEN` execution MUST reject malformed step `after` list entries before executing dependent steps.
 
 Go audit-backed Swarm close proof verification MUST reject malformed `step_receipts` list entries instead of silently filtering them before close step count, order, task, and digest checks.
 

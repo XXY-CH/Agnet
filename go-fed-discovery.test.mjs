@@ -786,6 +786,38 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     const { close_signature, ...swarmCloseBody } = swarmClose;
     assert.equal(verifyObject(swarmAuthorityPublicKey, swarmCloseBody, close_signature), true);
 
+    const badSwarmSummaryTask = {
+      ...swarmSummaryTask,
+      task_id: "go_fed_swarm_bad_after_summary",
+      intent: "Summarize before a malformed Swarm after list.",
+    };
+    const badSwarmTranslateTask = {
+      ...swarmTranslateTask,
+      task_id: "go_fed_swarm_bad_after_translate",
+      intent: "This malformed Swarm step should not execute.",
+    };
+    const badAfterSwarmFrames = await exchangeFrames(port, {
+      type: "FED_SWARM_OPEN",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      swarm: {
+        swarm_id: "swarm://local/go_fed_swarm_bad_after",
+        steps: [
+          {
+            step_id: "summary",
+            task: { ...badSwarmSummaryTask, signature: signObject(requester.privateKey, badSwarmSummaryTask) },
+          },
+          {
+            step_id: "translation",
+            after: ["summary", { step_id: "ghost" }],
+            task: { ...badSwarmTranslateTask, signature: signObject(requester.privateKey, badSwarmTranslateTask) },
+          },
+        ],
+      },
+    }, "FED_SWARM_CLOSE");
+    assert.equal(badAfterSwarmFrames.at(-1).type, "FED_TASK_ERROR");
+    assert.match(badAfterSwarmFrames.at(-1).error, /swarm after invalid/);
+
     const unauthenticated = await exchangeUnauthenticatedFrame(port, {
       type: "FED_QUERY",
       origin_zone: zoneA.descriptor,

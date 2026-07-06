@@ -2785,7 +2785,10 @@ func (f Fixture) executeSwarm(send sendFunc, origin, frame map[string]any) error
 		if _, exists := completed[stepID]; exists {
 			return errors.New("duplicate swarm step: " + stepID)
 		}
-		after := stringsFromAny(step["after"])
+		after, err := swarmAfterSteps(step["after"])
+		if err != nil {
+			return err
+		}
 		inputArtifacts := []map[string]any{}
 		for _, dependency := range after {
 			if hasSwarmDelimiter(dependency) {
@@ -4639,7 +4642,7 @@ func verifySwarmReceiptDependencies(receipt map[string]any, completed map[string
 
 func swarmAfterSteps(value any) ([]string, error) {
 	if value == nil {
-		return nil, nil
+		return []string{}, nil
 	}
 	if typed, ok := value.([]string); ok {
 		return typed, nil
