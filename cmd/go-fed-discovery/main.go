@@ -4570,8 +4570,14 @@ func verifySwarmReceiptDependencies(receipt map[string]any, completed map[string
 	if hasSwarmDelimiter(swarmID) || hasSwarmDelimiter(stepID) {
 		return errors.New("swarm identity contains NUL")
 	}
-	inputs := mapsFromAny(swarm["input_artifacts"])
-	after := stringsFromAny(swarm["after"])
+	inputs, err := swarmInputArtifacts(swarm["input_artifacts"])
+	if err != nil {
+		return err
+	}
+	after, err := swarmAfterSteps(swarm["after"])
+	if err != nil {
+		return err
+	}
 	if len(inputs) != len(after) {
 		return errors.New("swarm input artifact count mismatch")
 	}
@@ -4622,6 +4628,50 @@ func verifySwarmReceiptDependencies(receipt map[string]any, completed map[string
 	completed[completedKey] = manifest
 	order[swarmID] = append(order[swarmID], stepID)
 	return nil
+}
+
+func swarmAfterSteps(value any) ([]string, error) {
+	if value == nil {
+		return nil, nil
+	}
+	if typed, ok := value.([]string); ok {
+		return typed, nil
+	}
+	items, ok := value.([]any)
+	if !ok {
+		return nil, errors.New("swarm after invalid")
+	}
+	out := []string{}
+	for _, item := range items {
+		text, ok := item.(string)
+		if !ok {
+			return nil, errors.New("swarm after invalid")
+		}
+		out = append(out, text)
+	}
+	return out, nil
+}
+
+func swarmInputArtifacts(value any) ([]map[string]any, error) {
+	if value == nil {
+		return nil, nil
+	}
+	if typed, ok := value.([]map[string]any); ok {
+		return typed, nil
+	}
+	items, ok := value.([]any)
+	if !ok {
+		return nil, errors.New("swarm input artifact invalid")
+	}
+	out := []map[string]any{}
+	for _, item := range items {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			return nil, errors.New("swarm input artifact invalid")
+		}
+		out = append(out, entry)
+	}
+	return out, nil
 }
 
 func verifySwarmCloseProof(record map[string]any, completed map[string]map[string]any, order map[string][]string, closed map[string]bool) error {

@@ -484,7 +484,7 @@ test("v11 public docs include FED_TASK_OPEN worker descriptor identity", async (
   assert.match(readme, /valid local worker descriptor identity/);
   assert.match(roadmap, /## v11\.27: FED_TASK_OPEN Worker Descriptor Identity/);
   assert.match(draft, /local worker descriptor identity verifies/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /worker descriptor context presence validation and worker descriptor identity validation/);
   assert.match(boundary, /task open worker invalid/);
 });
@@ -502,7 +502,7 @@ test("v11 public docs include FED_RECEIPT worker descriptor identity", async () 
   assert.match(readme, /invalid worker descriptor identity/);
   assert.match(roadmap, /## v11\.28: FED_RECEIPT Worker Descriptor Identity/);
   assert.match(draft, /worker descriptor identity verifies before receipt identity and signature checks/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Node `FED_RECEIPT` worker descriptor identity validation/);
   assert.match(boundary, /receipt worker invalid/);
 });
@@ -520,7 +520,7 @@ test("v11 public docs include descriptor public key presence", async () => {
   assert.match(readme, /descriptor public key presence validation/);
   assert.match(roadmap, /## v11\.29: Node Descriptor Public Key Presence/);
   assert.match(draft, /public_key_spki` is missing before handing the descriptor to Node crypto parsing/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Node descriptor public key presence validation/);
   assert.match(boundary, /descriptor public key missing/);
 });
@@ -534,11 +534,11 @@ test("v11 public docs include object signature fail-closed verification", async 
     readFile("docs/v11.30-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /object signature type validation/);
   assert.match(roadmap, /## v11\.30: Node Object Signature Fail-Closed Verification/);
   assert.match(draft, /object signature verification returns false for missing, empty, or non-string signatures/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Node shared object signature fail-closed validation/);
   assert.match(boundary, /verifyObject` returns `false`/);
 });
@@ -552,12 +552,12 @@ test("v11 public docs include Zone descriptor object presence", async () => {
     readFile("docs/v11.31-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.31-boundary\.md` - Node Zone descriptor object presence boundary\./);
   assert.match(readme, /Zone descriptor object presence validation/);
   assert.match(roadmap, /## v11\.31: Node Zone Descriptor Object Presence/);
   assert.match(draft, /Zone descriptor object presence before reading descriptor fields/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Node Zone descriptor object presence validation/);
   assert.match(boundary, /zone descriptor missing/);
 });
@@ -571,12 +571,12 @@ test("v11 public docs include did:key input presence", async () => {
     readFile("docs/v11.32-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.32-boundary\.md` - Node did:key input presence boundary\./);
   assert.match(readme, /did:key` bridge fields for descriptors, with missing-input validation/);
   assert.match(roadmap, /## v11\.32: Node did:key Input Presence/);
   assert.match(draft, /did:key` bridge helpers reject missing descriptor\/public-key and DID string inputs/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /did:key` bridge input presence validation/);
   assert.match(boundary, /expected did:key z-base58btc value/);
 });
@@ -590,12 +590,12 @@ test("v11 public docs include artifact manifest object presence", async () => {
     readFile("docs/v11.33-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.33-boundary\.md` - Node artifact manifest object presence boundary\./);
   assert.match(readme, /artifact manifests, AFP strings, sidecars, local URI\/path validation, local byte verification, CLI verification, object presence validation/);
   assert.match(roadmap, /## v11\.33: Node Artifact Manifest Object Presence/);
   assert.match(draft, /artifact manifest helpers reject missing receipt and manifest objects/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Node artifact manifest object presence validation/);
   assert.match(boundary, /artifact manifest missing/);
 });
@@ -609,12 +609,12 @@ test("v11 public docs include credential object presence", async () => {
     readFile("docs/v11.34-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.34-boundary\.md` - Node credential object presence boundary\./);
   assert.match(readme, /capability credential and credential status helpers now reject missing proof objects/);
   assert.match(roadmap, /## v11\.34: Node Credential Object Presence/);
   assert.match(draft, /capability credential helpers reject missing credential and status proof objects/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Node capability credential object presence validation/);
   assert.match(boundary, /credential missing/);
 });
@@ -628,12 +628,12 @@ test("v11 public docs include rotation proof object presence", async () => {
     readFile("docs/v11.35-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.35-boundary\.md` - Node rotation proof object presence boundary\./);
   assert.match(readme, /rotation and alias rebinding proof verifiers reject missing proof\/descriptor objects/);
   assert.match(roadmap, /## v11\.35: Node Rotation Proof Object Presence/);
   assert.match(draft, /rotation and alias rebinding proof verifiers reject missing proof and descriptor objects/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Node rotation proof object presence validation/);
   assert.match(boundary, /verifyAliasRebindingProof` returns `false`/);
 });
@@ -647,12 +647,12 @@ test("v11 public docs include Zone binding object presence", async () => {
     readFile("docs/v11.36-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.36-boundary\.md` - Node Zone binding object presence boundary\./);
   assert.match(readme, /Zone binding object presence validation/);
   assert.match(roadmap, /## v11\.36: Node Zone Binding Object Presence/);
   assert.match(draft, /Zone binding verifier rejects missing binding context and descriptor objects/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Node Zone binding object presence validation/);
   assert.match(boundary, /zone binding context missing/);
 });
@@ -666,12 +666,12 @@ test("v11 public docs include Zone revocation object presence", async () => {
     readFile("docs/v11.37-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.37-boundary\.md` - Node Zone revocation object presence boundary\./);
   assert.match(readme, /Zone revocation object presence validation/);
   assert.match(roadmap, /## v11\.37: Node Zone Revocation Object Presence/);
   assert.match(draft, /Zone revocation verifiers reject missing revocation context, descriptor, and revocation-list objects/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Node Zone revocation object presence validation/);
   assert.match(boundary, /zone revocation context missing/);
 });
@@ -685,12 +685,12 @@ test("v11 public docs include trusted Zone file shape validation", async () => {
     readFile("docs/v11.38-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.38-boundary\.md` - Node trusted Zone file shape boundary\./);
   assert.match(readme, /trusted Zone files reject missing Zone lists/);
   assert.match(roadmap, /## v11\.38: Node Trusted Zone File Shape/);
   assert.match(draft, /Trusted Zone files MUST contain a Zone descriptor list/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Node trusted Zone file shape validation/);
   assert.match(boundary, /trusted zone list missing/);
 });
@@ -704,12 +704,12 @@ test("v11 public docs include registry file shape validation", async () => {
     readFile("docs/v11.39-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.39-boundary\.md` - Node registry file shape boundary\./);
   assert.match(readme, /registry files reject missing agent lists/);
   assert.match(roadmap, /## v11\.39: Node Registry File Shape/);
   assert.match(draft, /Registry files MUST contain agent descriptor entries/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Node registry file shape validation/);
   assert.match(boundary, /registry agents missing/);
 });
@@ -723,12 +723,12 @@ test("v11 public docs include resolveAgent registry context validation", async (
     readFile("docs/v11.40-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.40-boundary\.md` - Node resolveAgent registry context boundary\./);
   assert.match(readme, /agent resolution rejects missing registry context/);
   assert.match(roadmap, /## v11\.40: Node resolveAgent Registry Context/);
   assert.match(draft, /Agent resolution requires registry context/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Node resolveAgent registry context validation/);
   assert.match(boundary, /registry missing/);
 });
@@ -742,12 +742,12 @@ test("v11 public docs include descriptor body object presence validation", async
     readFile("docs/v11.41-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.41-boundary\.md` - Node descriptor body object presence boundary\./);
   assert.match(readme, /descriptor body helpers reject missing descriptor objects/);
   assert.match(roadmap, /## v11\.41: Node Descriptor Body Object Presence/);
   assert.match(draft, /Descriptor body helpers MUST receive descriptor objects/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Node descriptor body object presence validation/);
   assert.match(boundary, /descriptor missing/);
   assert.match(boundary, /zone descriptor missing/);
@@ -762,12 +762,12 @@ test("v11 public docs include proof verifier malformed descriptor fail-closed va
     readFile("docs/v11.42-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.42-boundary\.md` - Node proof verifier malformed descriptor fail-closed boundary\./);
   assert.match(readme, /proof verifiers now return false for malformed descriptor inputs/);
   assert.match(roadmap, /## v11\.42: Node Proof Verifier Malformed Descriptor Fail-Closed/);
   assert.match(draft, /boolean proof verifiers return false for malformed descriptor inputs/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Node proof verifier malformed descriptor fail-closed validation/);
   assert.match(boundary, /descriptor public key missing/);
   assert.match(boundary, /zone descriptor missing/);
@@ -782,12 +782,12 @@ test("v11 public docs include local artifact URI boundary validation", async () 
     readFile("docs/v11.43-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.43-boundary\.md` - Node local artifact URI boundary\./);
   assert.match(readme, /local artifact verification rejects non-`artifact:\/\/local\/` URIs and escaping local artifact paths/);
   assert.match(roadmap, /## v11\.43: Node Local Artifact URI Boundary/);
   assert.match(draft, /Local artifact byte verification MUST reject missing, non-`artifact:\/\/local\/`, or path-escaping manifest URIs/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Node local artifact URI boundary validation/);
   assert.match(boundary, /artifact uri invalid/);
 });
@@ -801,12 +801,12 @@ test("v11 public docs include local artifact path boundary validation", async ()
     readFile("docs/v11.44-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.44-boundary\.md` - Node local artifact path boundary\./);
   assert.match(readme, /escaping local artifact paths before filesystem reads/);
   assert.match(roadmap, /## v11\.44: Node Local Artifact Path Boundary/);
   assert.match(draft, /path-escaping manifest URIs before filesystem reads/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Node local artifact path boundary validation/);
   assert.match(boundary, /artifact:\/\/local\/\.\.\/evil\.md/);
 });
@@ -820,12 +820,12 @@ test("v11 public docs include Go artifact digest path boundary validation", asyn
     readFile("docs/v11.45-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.45-boundary\.md` - Go artifact digest path boundary\./);
   assert.match(readme, /Go artifact audit verification rejects non-hex manifest SHA-256 values before digest-addressed sidecar or mirror path reads/);
   assert.match(roadmap, /## v11\.45: Go Artifact Digest Path Boundary/);
   assert.match(draft, /reject malformed manifest `sha256` values before constructing digest-addressed sidecar or mirror paths/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Go artifact manifest SHA-256 path boundary validation/);
   assert.match(boundary, /artifact manifest sha256 invalid/);
 });
@@ -839,12 +839,12 @@ test("v11 public docs include receipt artifact digest shape validation", async (
     readFile("docs/v11.46-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.46-boundary\.md` - receipt artifact digest shape boundary\./);
   assert.match(readme, /receipt artifact manifests now require real 64-hex SHA-256 values/);
   assert.match(roadmap, /## v11\.46: Receipt Artifact Digest Shape Boundary/);
   assert.match(draft, /Receipt artifact manifest verification MUST reject malformed manifest `sha256` values/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /receipt artifact manifest SHA-256 shape validation/);
   assert.match(boundary, /sha256: "\.\.\/evil"/);
 });
@@ -858,12 +858,12 @@ test("v11 public docs include receipt artifact size shape validation", async () 
     readFile("docs/v11.47-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.47-boundary\.md` - receipt artifact size shape boundary\./);
   assert.match(readme, /non-negative integer sizes/);
   assert.match(roadmap, /## v11\.47: Receipt Artifact Size Shape Boundary/);
   assert.match(draft, /MUST reject negative or non-integer manifest `size` values/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /receipt artifact manifest size shape validation/);
   assert.match(boundary, /size: -1/);
   assert.match(boundary, /size: 1\.5/);
@@ -879,12 +879,12 @@ test("v11 public docs include Go artifact media type shape validation", async ()
     readFile("docs/v11.48-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.48-boundary\.md` - Go artifact media type shape boundary\./);
   assert.match(readme, /malformed Go manifest media types/);
   assert.match(roadmap, /## v11\.48: Go Receipt Artifact Media Type Shape Boundary/);
   assert.match(draft, /Go receipt and audit artifact manifest verification MUST reject non-string manifest `media_type` values/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Go artifact manifest media type shape validation/);
   assert.match(boundary, /media_type: \{"type":"text\/plain"\}/);
   assert.match(boundary, /artifact manifest media_type invalid/);
@@ -899,12 +899,12 @@ test("v11 public docs include Go artifact manifest hash shape validation", async
     readFile("docs/v11.49-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.49-boundary\.md` - Go artifact manifest hash shape boundary\./);
   assert.match(readme, /malformed Go manifest media types or manifest hashes/);
   assert.match(roadmap, /## v11\.49: Go Receipt Artifact Manifest Hash Shape Boundary/);
   assert.match(draft, /Go receipt and audit artifact manifest verification MUST reject non-string manifest `manifest_hash` values/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Go artifact manifest hash shape validation/);
   assert.match(boundary, /manifest_hash: \{"hash":"\.\.\."\}/);
   assert.match(boundary, /artifact manifest manifest_hash invalid/);
@@ -919,12 +919,12 @@ test("v11 public docs include Go artifact list shape validation", async () => {
     readFile("docs/v11.50-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.50-boundary\.md` - Go artifact list shape boundary\./);
   assert.match(readme, /malformed Go artifact list entries/);
   assert.match(roadmap, /## v11\.50: Go Artifact List Shape Boundary/);
   assert.match(draft, /MUST reject malformed `artifact_refs` and `artifact_manifests` list entries/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Go artifact list entry shape validation/);
   assert.match(boundary, /artifact refs invalid/);
   assert.match(boundary, /artifact manifest missing/);
@@ -939,12 +939,12 @@ test("v11 public docs include Go artifact mirror index shape validation", async 
     readFile("docs/v11.51-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.51-boundary\.md` - Go artifact mirror index shape boundary\./);
   assert.match(readme, /type-coerced Go mirror index entries/);
   assert.match(roadmap, /## v11\.51: Go Artifact Mirror Index Shape Boundary/);
   assert.match(draft, /MUST match index fields against receipt artifact manifest fields without string coercion/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Go artifact mirror index exact field matching validation/);
   assert.match(boundary, /size: "7"/);
   assert.match(boundary, /numeric `size: 7`/);
@@ -959,12 +959,12 @@ test("v11 public docs include Go artifact mirror index entry validation", async 
     readFile("docs/v11.52-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.52-boundary\.md` - Go artifact mirror index entry boundary\./);
   assert.match(readme, /null Go mirror index entries/);
   assert.match(roadmap, /## v11\.52: Go Artifact Mirror Index Entry Boundary/);
   assert.match(draft, /MUST reject non-object `objects\.ndjson` entries such as `null`/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Go artifact mirror index entry object validation/);
   assert.match(boundary, /artifact mirror index invalid/);
   assert.match(boundary, /JSON `null` decodes into a nil Go map/);
@@ -979,12 +979,12 @@ test("v11 public docs include Go artifact mirror index digest validation", async
     readFile("docs/v11.53-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.53-boundary\.md` - Go artifact mirror index digest boundary\./);
   assert.match(readme, /unsafe Go mirror index SHA-256 values/);
   assert.match(roadmap, /## v11\.53: Go Artifact Mirror Index Digest Boundary/);
   assert.match(draft, /MUST reject index entries whose `sha256` field is missing or not a 64-hex digest/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Go artifact mirror index SHA-256 path validation/);
   assert.match(boundary, /sha256: "\.\.\/evil"/);
   assert.match(boundary, /path-bearing digest field/);
@@ -1072,12 +1072,12 @@ test("v11 public docs include Go artifact mirror index media type validation", a
     readFile("docs/v11.58-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.58-boundary\.md` - Go artifact mirror index media type boundary\./);
   assert.match(readme, /invalid Go mirror index media types/);
   assert.match(roadmap, /## v11\.58: Go Artifact Mirror Index Media Type Boundary/);
   assert.match(draft, /MUST reject present `media_type` values that are not strings/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Go artifact mirror index media type validation/);
   assert.match(boundary, /media_type: \{"type":"text\/plain"\}/);
   assert.match(boundary, /does not make it required/);
@@ -1092,12 +1092,12 @@ test("v11 public docs include Go artifact mirror index URI validation", async ()
     readFile("docs/v11.59-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.59-boundary\.md` - Go artifact mirror index URI boundary\./);
   assert.match(readme, /invalid Go mirror index URIs/);
   assert.match(roadmap, /## v11\.59: Go Artifact Mirror Index URI Boundary/);
   assert.match(draft, /MUST reject present `uri` values that are not strings/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Go artifact mirror index URI validation/);
   assert.match(boundary, /uri: \{"path":"artifact:\/\/local\/out\.md"\}/);
   assert.match(boundary, /does not make it required/);
@@ -1112,12 +1112,12 @@ test("v11 public docs include Go artifact manifest URI validation", async () => 
     readFile("docs/v11.60-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.60-boundary\.md` - Go artifact manifest URI boundary\./);
   assert.match(readme, /malformed artifact manifest URIs/);
   assert.match(roadmap, /## v11\.60: Go Artifact Manifest URI Boundary/);
   assert.match(draft, /MUST reject non-string manifest `uri` values/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Go artifact manifest URI validation/);
   assert.match(boundary, /artifact manifest uri invalid/);
   assert.match(boundary, /does not change local URI\/path validation/);
@@ -1132,12 +1132,12 @@ test("v11 public docs include Go artifact manifest AFP validation", async () => 
     readFile("docs/v11.61-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
   assert.match(readme, /`docs\/v11\.61-boundary\.md` - Go artifact manifest AFP boundary\./);
   assert.match(readme, /malformed Go manifest AFP strings/);
   assert.match(roadmap, /## v11\.61: Go Artifact Manifest AFP Boundary/);
   assert.match(draft, /MUST reject present non-string manifest `afp` values/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Go artifact manifest AFP validation/);
   assert.match(boundary, /artifact manifest afp invalid/);
   assert.match(boundary, /artifact manifest afp mismatch/);
@@ -1153,14 +1153,35 @@ test("v11 public docs include Go artifact mirror index AFP type validation", asy
     readFile("docs/v11.62-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.62-protocol`/);
-  assert.match(readme, /`docs\/v11\.62-boundary\.md` - latest closed boundary\./);
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
+  assert.match(readme, /`docs\/v11\.62-boundary\.md` - Go artifact mirror index AFP type boundary\./);
   assert.match(readme, /invalid Go mirror index AFP values/);
   assert.match(roadmap, /## v11\.62: Go Artifact Mirror Index AFP Type Boundary/);
   assert.match(draft, /MUST reject present non-string `afp` values before comparing AFP strings/);
-  assert.match(status, /状态：v11\.62 active/);
+  assert.match(status, /状态：v11\.63 active/);
   assert.match(status, /Go artifact mirror index AFP type validation/);
   assert.match(boundary, /artifact mirror index afp invalid/);
   assert.match(boundary, /artifact mirror index invalid/);
   assert.match(boundary, /does not make it required/);
+});
+
+test("v11 public docs include Go Swarm dependency list shape validation", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v11.63-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v11 active at `v11\.63-protocol`/);
+  assert.match(readme, /`docs\/v11\.63-boundary\.md` - latest closed boundary\./);
+  assert.match(readme, /malformed dependency list rejection/);
+  assert.match(roadmap, /## v11\.63: Go Swarm Dependency List Shape Boundary/);
+  assert.match(draft, /MUST reject malformed `after` and `input_artifacts` list entries/);
+  assert.match(status, /状态：v11\.63 active/);
+  assert.match(status, /Go Swarm dependency list shape validation/);
+  assert.match(boundary, /swarm after invalid/);
+  assert.match(boundary, /swarm input artifact invalid/);
+  assert.match(boundary, /does not add generic Swarm schema validation/);
 });

@@ -1429,6 +1429,28 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.63: Go Swarm Dependency List Shape Boundary
+
+状态：complete
+目标：Make Go audit-backed Swarm dependency verification reject malformed dependency list entries instead of silently filtering them.
+
+新增：
+
+- Go `verifySwarmReceiptDependencies` rejects non-string entries in signed Swarm `after` lists with `swarm after invalid`.
+- Go `verifySwarmReceiptDependencies` rejects non-object entries in signed Swarm `input_artifacts` lists with `swarm input artifact invalid`.
+- Existing dependency count, step, URI, digest, manifest hash, receipt digest, duplicate step, NUL identity, and close proof checks stay unchanged.
+- The fix is scoped to signed Swarm dependency list shape before accountability checks; it does not add generic schema validation.
+
+不做：
+
+- 不实现 dynamic Swarm decomposition。
+- 不实现 scheduler-owned routing。
+- 不实现 parallel Swarm execution。
+- 不实现 cross-Zone Swarm execution。
+- 不实现 Node audit-backed Swarm completeness verification。
+- 不实现 generic Swarm schema validation。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

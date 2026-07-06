@@ -760,6 +760,59 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 			}},
 		},
 	})
+	invalidAfterReceipt := testSignedReceipt(t, zone, zoneKey, downstreamWorker, downstreamKey, "swarm_down_invalid_after", []map[string]any{downstreamManifest}, map[string]any{
+		"swarm": map[string]any{
+			"swarm_id": "swarm://test",
+			"step_id":  "downstream",
+			"after":    []any{"upstream", map[string]any{"step_id": "ghost"}},
+			"input_artifacts": []map[string]any{{
+				"step_id":        "upstream",
+				"uri":            upstreamManifest["uri"],
+				"sha256":         upstreamManifest["sha256"],
+				"manifest_hash":  upstreamManifest["manifest_hash"],
+				"receipt_digest": digestHex(upstreamReceipt),
+			}},
+		},
+	})
+	invalidAfterLog := &AuditLog{Path: "invalid-after-audit.log", Head: auditZeroHash}
+	if err := invalidAfterLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": upstreamReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	if err := invalidAfterLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": downstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(downstreamWorker), "receipt": invalidAfterReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	err = verifyAuditFile("invalid-after-audit.log", "")
+	if err == nil || !strings.Contains(err.Error(), "swarm after invalid") {
+		t.Fatalf("got %v, want swarm after invalid", err)
+	}
+	invalidInputReceipt := testSignedReceipt(t, zone, zoneKey, downstreamWorker, downstreamKey, "swarm_down_invalid_input", []map[string]any{downstreamManifest}, map[string]any{
+		"swarm": map[string]any{
+			"swarm_id": "swarm://test",
+			"step_id":  "downstream",
+			"after":    []any{"upstream"},
+			"input_artifacts": []any{
+				map[string]any{
+					"step_id":        "upstream",
+					"uri":            upstreamManifest["uri"],
+					"sha256":         upstreamManifest["sha256"],
+					"manifest_hash":  upstreamManifest["manifest_hash"],
+					"receipt_digest": digestHex(upstreamReceipt),
+				},
+				"bad-input",
+			},
+		},
+	})
+	invalidInputLog := &AuditLog{Path: "invalid-input-audit.log", Head: auditZeroHash}
+	if err := invalidInputLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": upstreamReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	if err := invalidInputLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": downstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(downstreamWorker), "receipt": invalidInputReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	err = verifyAuditFile("invalid-input-audit.log", "")
+	if err == nil || !strings.Contains(err.Error(), "swarm input artifact invalid") {
+		t.Fatalf("got %v, want swarm input artifact invalid", err)
+	}
 	log := &AuditLog{Path: "audit.log", Head: auditZeroHash}
 	if err := log.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": upstreamReceipt}); err != nil {
 		t.Fatal(err)
