@@ -1,8 +1,14 @@
 #!/usr/bin/env node
 import { readFile } from "node:fs/promises";
-import { loadTrustedZones, verifyFederatedReceipt, verifyLocalArtifact, verifySwarmClose } from "./asp-core.mjs";
+import { createHash } from "node:crypto";
+import { canonical, loadTrustedZones, verifyFederatedReceipt, verifyLocalArtifact, verifySwarmClose } from "./asp-core.mjs";
 
 const [command, file, trustedFile] = process.argv.slice(2);
+
+function receiptDigest(receipt) {
+  const { signature, ...body } = receipt;
+  return createHash("sha256").update(canonical(body)).digest("hex");
+}
 
 try {
   if (command === "artifact" && file) {
@@ -12,7 +18,7 @@ try {
   } else if (command === "fed-receipt" && file && trustedFile) {
     const frame = JSON.parse(await readFile(file, "utf8"));
     const verified = verifyFederatedReceipt(frame, await loadTrustedZones(trustedFile));
-    console.log(JSON.stringify({ fed_receipt_verify: "ok", task_id: verified.receipt.task_id }));
+    console.log(JSON.stringify({ fed_receipt_verify: "ok", task_id: verified.receipt.task_id, receipt_digest: receiptDigest(verified.signedReceipt) }));
   } else if (command === "fed-receipt-artifacts" && file && trustedFile) {
     const frame = JSON.parse(await readFile(file, "utf8"));
     const verified = verifyFederatedReceipt(frame, await loadTrustedZones(trustedFile));
@@ -21,7 +27,7 @@ try {
       throw new Error("receipt artifact manifests missing");
     }
     for (const manifest of manifests) await verifyLocalArtifact(manifest);
-    console.log(JSON.stringify({ fed_receipt_artifacts_verify: "ok", task_id: verified.receipt.task_id, artifact_count: manifests.length }));
+    console.log(JSON.stringify({ fed_receipt_artifacts_verify: "ok", task_id: verified.receipt.task_id, artifact_count: manifests.length, receipt_digest: receiptDigest(verified.signedReceipt) }));
   } else if (command === "swarm-close" && file && trustedFile) {
     const frame = JSON.parse(await readFile(file, "utf8"));
     const verified = verifySwarmClose(frame, await loadTrustedZones(trustedFile));

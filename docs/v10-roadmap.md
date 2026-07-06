@@ -946,6 +946,29 @@
 - 不做公网可达性证明。
 - 不做 hosted public node。
 
+## v10.40: Node CLI Receipt Digest Output
+
+状态：complete
+目标：Make Node receipt verifier CLI outputs externally pinnable with a stable receipt digest.
+
+新增：
+
+- `asp-verify.mjs fed-receipt` prints `receipt_digest` on success.
+- `asp-verify.mjs fed-receipt-artifacts` prints the same `receipt_digest` on success.
+- The digest is `sha256(canonical(receipt body without signature))`.
+- Vector, package-contract, proof-demo, and public proof tests pin the new output.
+
+不做：
+
+- 不做 receipt store/search。
+- 不做 batch verification。
+- 不做 HTTP verifier service。
+- 不做新的 frame schema。
+- 不做 package signing。
+- 不做 SBOM。
+- 不做公网可达性证明。
+- 不做 hosted public node。
+
 ## Next Candidates
 
 1. Add public reachability proof only after the Docker proof contract stays stable on the target network.

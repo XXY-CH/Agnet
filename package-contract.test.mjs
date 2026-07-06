@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import { promisify } from "node:util";
+import { canonical } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -22,5 +24,10 @@ test("npm package exposes the existing verifier CLI and core exports", async () 
   await writeFile(trustedPath, `${JSON.stringify({ zones: vector.trusted_zones }, null, 2)}\n`);
 
   const { stdout } = await execFileAsync("npm", ["exec", "--package", ".", "--", "asp-verify", "fed-receipt", framePath, trustedPath]);
-  assert.deepEqual(JSON.parse(stdout), { fed_receipt_verify: "ok", task_id: vector.expected.task_id });
+  const { signature, ...receipt } = vector.frame.receipt;
+  assert.deepEqual(JSON.parse(stdout), {
+    fed_receipt_verify: "ok",
+    task_id: vector.expected.task_id,
+    receipt_digest: createHash("sha256").update(canonical(receipt)).digest("hex"),
+  });
 });

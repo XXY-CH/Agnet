@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { access } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { access, readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { promisify } from "node:util";
+import { canonical } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -32,10 +34,13 @@ test("proof demo emits verifier-ready receipt closure files", async () => {
     result.receipt_frame,
     result.trusted_zones,
   ])).stdout);
+  const receiptFrame = JSON.parse(await readFile(result.receipt_frame, "utf8"));
+  const { signature, ...receiptBody } = receiptFrame.receipt;
 
   assert.deepEqual(verified, {
     fed_receipt_artifacts_verify: "ok",
     task_id: "task_001",
     artifact_count: 1,
+    receipt_digest: createHash("sha256").update(canonical(receiptBody)).digest("hex"),
   });
 });

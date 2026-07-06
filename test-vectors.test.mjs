@@ -100,6 +100,7 @@ test("FED_RECEIPT CLI verifies one frame in Node", async () => {
   assert.deepEqual(JSON.parse((await execFileAsync("node", ["asp-verify.mjs", "fed-receipt", framePath, trustedPath])).stdout), {
     fed_receipt_verify: "ok",
     task_id: vector.expected.task_id,
+    receipt_digest: createHash("sha256").update(vector.receipt_canonical).digest("hex"),
   });
 
   await writeFile(framePath, `${JSON.stringify({ ...vector.frame, receipt: { ...vector.frame.receipt, executing_zone: "zid:ed25519:bad" } }, null, 2)}\n`);
@@ -127,6 +128,7 @@ test("FED_RECEIPT artifact CLI verifies one frame and local artifact bytes in No
     fed_receipt_artifacts_verify: "ok",
     task_id: vector.expected.task_id,
     artifact_count: 1,
+    receipt_digest: createHash("sha256").update(canonical(receiptWithManifest)).digest("hex"),
   });
 
   await writeFile("artifacts/fed_task_conformance_001/federated-summary.md", "tampered\n");
