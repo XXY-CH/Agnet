@@ -30,7 +30,7 @@ const timer = setTimeout(() => {
   child.kill("SIGKILL");
   console.error("public node proof timeout");
   process.exit(1);
-}, 15000);
+}, 20000);
 
 let output = "";
 for await (const chunk of child.stdout) {
@@ -41,6 +41,7 @@ for await (const chunk of child.stdout) {
   const status = JSON.parse(line);
   if (status.public_transport !== true) throw new Error("public transport proof failed");
   const resolved = await resolveAlias(status.port, originZone, "agent://zone-b/summarizer");
+  const queried = await queryCapability(status.port, originZone, "summarize.text");
   child.kill("SIGTERM");
   console.log(JSON.stringify({
     public_node_proof: "ok",
@@ -50,6 +51,9 @@ for await (const chunk of child.stdout) {
     transport: status.transport,
     resolve_alias: resolved.alias,
     resolve_close: resolved.close,
+    query_capability: queried.capability,
+    query_match_count: queried.matchCount,
+    query_status: queried.status,
   }));
   process.exit(0);
 }
@@ -62,10 +66,43 @@ function authBody(sessionId, challenge, peerZid, remoteZid) {
 }
 
 function resolveAlias(port, zone, alias) {
+  let gotResult = false;
+  return exchangeFrame(
+    port,
+    zone,
+    { type: "FED_RESOLVE", origin_zone: zone.descriptor, alias },
+    "FED_RESOLVE_CLOSE",
+    (frame) => {
+      if (frame.type === "FED_RESOLVE_RESULT") gotResult = frame.worker?.alias === alias;
+      if (frame.type === "FED_RESOLVE_CLOSE") return { alias, close: gotResult && frame.alias === alias };
+      return null;
+    },
+  );
+}
+
+function queryCapability(port, zone, capability) {
+  let matchCount = 0;
+  let status = "";
+  return exchangeFrame(
+    port,
+    zone,
+    { type: "FED_QUERY", origin_zone: zone.descriptor, capability },
+    "FED_QUERY_CLOSE",
+    (frame) => {
+      if (frame.type === "FED_QUERY_RESULT") {
+        matchCount = frame.matches?.length ?? 0;
+        status = frame.matches?.[0]?.credential_statuses?.[0]?.status ?? "";
+      }
+      if (frame.type === "FED_QUERY_CLOSE") return { capability, matchCount, status };
+      return null;
+    },
+  );
+}
+
+function exchangeFrame(port, zone, request, closeType, collect) {
   return new Promise((resolve, reject) => {
     const socket = net.createConnection(Number(port), "127.0.0.1");
     let buffer = "";
-    let gotResult = false;
     socket.on("error", reject);
     socket.on("connect", () => {
       socket.write(`${JSON.stringify({ type: "HELLO", origin_zone: zone.descriptor })}\n`);
@@ -87,16 +124,13 @@ function resolveAlias(port, zone, alias) {
           continue;
         }
         if (frame.type === "AUTH_OK") {
-          socket.write(`${JSON.stringify({ type: "FED_RESOLVE", origin_zone: zone.descriptor, alias })}\n`);
+          socket.write(`${JSON.stringify(request)}\n`);
           continue;
         }
-        if (frame.type === "FED_RESOLVE_RESULT") {
-          gotResult = frame.worker?.alias === alias;
-          continue;
-        }
-        if (frame.type === "FED_RESOLVE_CLOSE") {
+        const result = collect(frame);
+        if (frame.type === closeType && result) {
           socket.end();
-          resolve({ alias, close: gotResult && frame.alias === alias });
+          resolve(result);
           return;
         }
         if (frame.type === "FED_TASK_ERROR") {

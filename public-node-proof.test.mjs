@@ -15,4 +15,7 @@ test("public node proof starts a public-listen gateway", async () => {
   assert.equal(result.transport, "fed+tcp");
   assert.equal(result.resolve_alias, "agent://zone-b/summarizer");
   assert.equal(result.resolve_close, true);
+  assert.equal(result.query_capability, "summarize.text");
+  assert.equal(result.query_match_count, 1);
+  assert.equal(result.query_status, "active");
 });

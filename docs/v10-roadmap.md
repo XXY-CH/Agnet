@@ -514,8 +514,31 @@
 - 不做 deployment automation。
 - 不做 broad protocol probe suite beyond one `FED_RESOLVE` round trip。
 
+## v10.23: Public-Listen Query Proof
+
+状态：complete
+目标：Prove the local public-listen node can answer a capability query.
+
+新增：
+
+- `scripts/public-node-proof.mjs` sends authenticated `FED_QUERY` for `summarize.text`.
+- The proof output includes `query_capability: "summarize.text"`.
+- The proof output includes `query_match_count: 1`.
+- The proof output includes `query_status: "active"`.
+- The existing authenticated `FED_RESOLVE` proof remains.
+
+不做：
+
+- 不做公网可达性证明。
+- 不做 NAT / relay。
+- 不做 hosted public node。
+- 不做 TLS certificate issuance。
+- 不做 QUIC。
+- 不做 deployment automation。
+- 不做 broad protocol probe suite beyond `FED_RESOLVE` and `FED_QUERY`。
+
 ## Next Candidates
 
-1. Strengthen the public-node proof beyond one local `FED_RESOLVE`.
+1. Strengthen the public-node proof beyond local resolve/query.
 2. Add an npm-facing verifier only when the existing Node exports are not enough.
 3. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.
