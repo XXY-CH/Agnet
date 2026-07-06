@@ -4968,6 +4968,11 @@ func readArtifactStoreIndex(path string) ([]map[string]any, error) {
 				return nil, errors.New("artifact mirror index invalid")
 			}
 		}
+		if mediaType, exists := entry["media_type"]; exists {
+			if _, ok := mediaType.(string); !ok {
+				return nil, errors.New("artifact mirror index invalid")
+			}
+		}
 		if manifestHash, ok := entry["manifest_hash"]; ok && !isHexDigest(fmt.Sprint(manifestHash)) {
 			return nil, errors.New("artifact mirror index invalid")
 		}

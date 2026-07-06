@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v11.57-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v11.58-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -242,6 +242,8 @@ Go filesystem artifact mirror index readers MUST reject index entries whose `sha
 Go filesystem artifact mirror index readers MUST reject present `afp` values that do not equal `afp:sha256:<sha256>` for that row.
 
 Go filesystem artifact mirror index readers MUST reject present `size` values that are not non-negative integers.
+
+Go filesystem artifact mirror index readers MUST reject present `media_type` values that are not strings.
 
 Go filesystem artifact mirror index readers MUST reject present `manifest_hash` values that are not 64-hex digests before those rows can be preserved as mirror or GC proof metadata.
 
