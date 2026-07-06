@@ -87,6 +87,28 @@ test("FED_TASK_OPEN verification rejects missing origin Zones in Node", async ()
   );
 });
 
+test("FED_TASK_OPEN verification rejects missing requesters in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.24-fed-task-open.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  const { requester, ...frameWithoutRequester } = vector.frame;
+
+  assert.throws(
+    () => verifyFederatedTaskOpen(frameWithoutRequester, trustedZones, vector.worker),
+    /task open requester missing/,
+  );
+});
+
+test("FED_TASK_OPEN verification rejects missing tasks in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.24-fed-task-open.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  const { task, ...frameWithoutTask } = vector.frame;
+
+  assert.throws(
+    () => verifyFederatedTaskOpen(frameWithoutTask, trustedZones, vector.worker),
+    /task open task missing/,
+  );
+});
+
 test("FED_TASK_OPEN verification rejects unbound requesters in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v9.24-fed-task-open.json", "utf8"));
   const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
@@ -146,6 +168,28 @@ test("FED_RECEIPT verification rejects missing signing Zones in Node", async () 
   assert.throws(
     () => verifyFederatedReceipt(frameWithoutZone, trustedZones),
     /receipt zone missing/,
+  );
+});
+
+test("FED_RECEIPT verification rejects missing workers in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  const { worker, ...frameWithoutWorker } = vector.frame;
+
+  assert.throws(
+    () => verifyFederatedReceipt(frameWithoutWorker, trustedZones),
+    /receipt worker missing/,
+  );
+});
+
+test("FED_RECEIPT verification rejects missing receipt bodies in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  const { receipt, ...frameWithoutReceipt } = vector.frame;
+
+  assert.throws(
+    () => verifyFederatedReceipt(frameWithoutReceipt, trustedZones),
+    /receipt body missing/,
   );
 });
 

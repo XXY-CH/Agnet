@@ -504,6 +504,30 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.23: FED_TASK_OPEN and FED_RECEIPT Payload Object Presence
+
+状态：complete
+目标：Make the Node `FED_TASK_OPEN` and `FED_RECEIPT` verifiers reject missing payload objects with protocol errors.
+
+新增：
+
+- Node `verifyFederatedTaskOpen` rejects missing, non-object, or array `requester` values before reading requester descriptor fields.
+- Node `verifyFederatedTaskOpen` rejects missing, non-object, or array `task` values before reading the signed task body.
+- Node `verifyFederatedReceipt` rejects missing, non-object, or array `worker` values before reading worker descriptor fields.
+- Node `verifyFederatedReceipt` rejects missing, non-object, or array `receipt` values before reading the signed receipt body.
+- The Node tests prove missing payload objects fail with `task open requester missing`, `task open task missing`, `receipt worker missing`, or `receipt body missing`.
+
+不做：
+
+- 不实现 generic payload schema validation。
+- 不改变 `FED_TASK_OPEN` frame shape。
+- 不改变 `FED_RECEIPT` frame shape。
+- 不改变 Go verifier behavior。
+- 不实现 task or receipt store/search。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
