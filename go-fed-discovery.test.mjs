@@ -1991,6 +1991,21 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     assert.equal(deniedFrames[0].code, "policy.network_denied");
     assert.match(deniedFrames[0].error, /policy denied network access/);
 
+    const malformedWriteScopeTask = {
+      ...task,
+      task_id: "go_fed_task_malformed_write_scope",
+      scope: { network: false, write: [{ target: "artifact://local/bad" }] },
+    };
+    const malformedWriteScopeFrames = await exchangeFrames(port, {
+      type: "FED_TASK_OPEN",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      task: { ...malformedWriteScopeTask, signature: signObject(requester.privateKey, malformedWriteScopeTask) },
+    });
+    assert.equal(malformedWriteScopeFrames[0].type, "FED_TASK_ERROR");
+    assert.equal(malformedWriteScopeFrames[0].code, "policy.write_invalid");
+    assert.match(malformedWriteScopeFrames[0].error, /policy write scope invalid/);
+
     const verifiedAudit = await execFileAsync("go", [
       "run",
       "./cmd/go-fed-discovery",

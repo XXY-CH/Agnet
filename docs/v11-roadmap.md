@@ -1601,6 +1601,29 @@
 - 不实现 generic grant schema validation。
 - 不实现 A2A/ARD compatibility。
 
+## v11.71: Go Task Write Scope List Shape Boundary
+
+状态：complete
+目标：Make Go `FED_TASK_OPEN` reject malformed signed task write-scope lists before policy enforcement.
+
+新增：
+
+- Go `enforcePolicy` rejects non-string entries in signed task `scope.write` lists with `policy.write_invalid` / `policy write scope invalid`.
+- Existing network denial remains `policy.network_denied`.
+- Existing valid string write-scope denial remains `policy.write_denied`.
+- Missing `scope.write` still behaves as no requested write targets.
+- The fix is scoped to signed task policy scope shape; it does not add generic task schema validation or a dynamic policy service.
+
+不做：
+
+- 不实现 generic task JSON Schema validation。
+- 不实现 dynamic policy service。
+- 不改变 network policy semantics。
+- 不改变 valid write-scope deny semantics。
+- 不实现 scheduler-owned routing。
+- 不实现 automatic drain。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

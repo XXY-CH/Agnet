@@ -5330,12 +5330,38 @@ func enforcePolicy(worker, task map[string]any) error {
 	if scope["network"] == true && policy["allow_network"] != true {
 		return policyError{code: "policy.network_denied", message: "policy denied network access"}
 	}
-	for _, target := range stringsFromAny(scope["write"]) {
+	writeTargets, err := policyWriteTargets(scope["write"])
+	if err != nil {
+		return policyError{code: "policy.write_invalid", message: "policy write scope invalid"}
+	}
+	for _, target := range writeTargets {
 		if !hasPrefix(target, stringsFromAny(policy["write_prefixes"])) {
 			return policyError{code: "policy.write_denied", message: "policy denied write scope: " + target}
 		}
 	}
 	return nil
+}
+
+func policyWriteTargets(value any) ([]string, error) {
+	if value == nil {
+		return nil, nil
+	}
+	if typed, ok := value.([]string); ok {
+		return typed, nil
+	}
+	items, ok := value.([]any)
+	if !ok {
+		return nil, errors.New("policy write scope invalid")
+	}
+	out := []string{}
+	for _, item := range items {
+		text, ok := item.(string)
+		if !ok {
+			return nil, errors.New("policy write scope invalid")
+		}
+		out = append(out, text)
+	}
+	return out, nil
 }
 
 func stringsFromAny(value any) []string {
