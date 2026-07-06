@@ -55,6 +55,15 @@ test("descriptor public key parsing rejects missing public keys in Node", async 
   );
 });
 
+test("object signature verification fails closed on missing signatures in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v0.json", "utf8"));
+  const publicKey = createPublicKey(privateKeyFromSeed(vector.agents.requester.seed_hex));
+
+  for (const signature of [undefined, null, {}, []]) {
+    assert.equal(verifyObject(publicKey, vector.task, signature), false);
+  }
+});
+
 test("FED_TASK_OPEN conformance vector verifies in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v9.24-fed-task-open.json", "utf8"));
   const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));

@@ -656,6 +656,28 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.30: Node Object Signature Fail-Closed Verification
+
+状态：complete
+目标：Make Node shared object signature verification reject missing, empty, or non-string signatures before Node crypto parsing.
+
+新增：
+
+- Node `verifyObject` returns `false` for missing, empty, or non-string signatures before calling Node crypto.
+- The shared verifier test proves missing object signatures no longer leak JavaScript `TypeError` failures.
+- Because Zone descriptors, Zone bindings, rotation proofs, capability credentials, credential status records, task receipts, and Swarm close proofs route through the same helper, malformed signatures now fail closed at the shared root.
+
+不做：
+
+- 不实现 generic signature schema validation。
+- 不改变 signed object shapes。
+- 不改变 Go verifier behavior。
+- 不新增 per-verifier guards。
+- 不实现 registry ownership changes。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

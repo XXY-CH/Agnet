@@ -112,6 +112,7 @@ export function signObject(privateKey, payload) {
 }
 
 export function verifyObject(publicKey, payload, signature) {
+  if (typeof signature !== "string" || signature === "") return false;
   return verify(null, Buffer.from(canonical(payload)), publicKey, Buffer.from(signature, "base64url"));
 }
 
