@@ -320,6 +320,7 @@ export function resolveAgent(registry, alias) {
 
 export function verifyFederatedTaskOpen(frame, trustedZones, workerDescriptor) {
   if (!frame || typeof frame !== "object" || Array.isArray(frame) || frame.type !== "FED_TASK_OPEN") throw new Error("expected FED_TASK_OPEN frame");
+  if (!frame.origin_zone || typeof frame.origin_zone !== "object" || Array.isArray(frame.origin_zone)) throw new Error("task open origin zone missing");
   const originZone = verifyZoneDescriptor(frame.origin_zone).descriptor;
   const trusted = trustedZones.get(originZone.zid);
   if (!trusted || trusted.public_key_spki !== originZone.public_key_spki) {
@@ -344,6 +345,7 @@ export function validateTaskId(taskId) {
 
 export function verifyFederatedReceipt(frame, trustedZones, signedTask) {
   if (!frame || typeof frame !== "object" || Array.isArray(frame) || frame.type !== "FED_RECEIPT") throw new Error("expected FED_RECEIPT frame");
+  if (!frame.zone || typeof frame.zone !== "object" || Array.isArray(frame.zone)) throw new Error("receipt zone missing");
   const zone = verifyZoneDescriptor(frame.zone).descriptor;
   const trusted = trustedZones.get(zone.zid);
   if (!trusted || trusted.public_key_spki !== zone.public_key_spki) {

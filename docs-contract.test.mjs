@@ -212,10 +212,10 @@ test("v11 public docs include FED_TASK_OPEN frame type validation", async () => 
   ]);
 
   assert.match(readme, /`docs\/v11\.11-boundary\.md` - FED_TASK_OPEN frame type validation boundary\./);
-  assert.match(readme, /task and receipt verifiers require valid `FED_TASK_OPEN` \/ `FED_RECEIPT` frame objects and correct frame types/);
+  assert.match(readme, /task and receipt verifiers require valid `FED_TASK_OPEN` \/ `FED_RECEIPT` frame objects, correct frame types, and required Zone descriptor objects/);
   assert.match(roadmap, /## v11\.11: FED_TASK_OPEN Frame Type Validation/);
   assert.match(draft, /frame is an object whose `frame\.type` is `FED_TASK_OPEN`/);
-  assert.match(status, /Node `FED_TASK_OPEN` and `FED_RECEIPT` frame object\/type validation/);
+  assert.match(status, /Node `FED_TASK_OPEN` and `FED_RECEIPT` frame object\/type(?: and Zone descriptor presence)? validation/);
   assert.match(boundary, /wrong protocol type/);
 });
 
@@ -369,12 +369,30 @@ test("v11 public docs include task and receipt frame object presence", async () 
     readFile("docs/v11.21-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.21-protocol`/);
-  assert.match(readme, /task and receipt verifiers require valid `FED_TASK_OPEN` \/ `FED_RECEIPT` frame objects and correct frame types/);
+  assert.match(readme, /`docs\/v11\.21-boundary\.md` - FED_TASK_OPEN and FED_RECEIPT frame object presence boundary\./);
+  assert.match(readme, /task and receipt verifiers require valid `FED_TASK_OPEN` \/ `FED_RECEIPT` frame objects, correct frame types, and required Zone descriptor objects/);
   assert.match(roadmap, /## v11\.21: FED_TASK_OPEN and FED_RECEIPT Frame Object Presence/);
   assert.match(draft, /frame is an object whose `frame\.type` is `FED_TASK_OPEN`/);
   assert.match(draft, /frame is an object whose `frame\.type` is `FED_RECEIPT`/);
-  assert.match(status, /状态：v11\.21 active/);
-  assert.match(status, /Node `FED_TASK_OPEN` and `FED_RECEIPT` frame object\/type validation/);
+  assert.match(status, /Node `FED_TASK_OPEN` and `FED_RECEIPT` frame object\/type(?: and Zone descriptor presence)? validation/);
   assert.match(boundary, /missing frame objects/);
+});
+
+test("v11 public docs include task and receipt Zone descriptor presence", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v11.22-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v11 active at `v11\.22-protocol`/);
+  assert.match(readme, /task and receipt verifiers require valid `FED_TASK_OPEN` \/ `FED_RECEIPT` frame objects, correct frame types, and required Zone descriptor objects/);
+  assert.match(roadmap, /## v11\.22: FED_TASK_OPEN and FED_RECEIPT Zone Descriptor Presence/);
+  assert.match(draft, /origin Zone descriptor is present as an object and verifies/);
+  assert.match(draft, /signing Zone descriptor is present as an object and trusted/);
+  assert.match(status, /状态：v11\.22 active/);
+  assert.match(status, /Node `FED_TASK_OPEN` and `FED_RECEIPT` frame object\/type and Zone descriptor presence validation/);
+  assert.match(boundary, /missing Zone descriptor objects/);
 });

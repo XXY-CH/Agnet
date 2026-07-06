@@ -76,6 +76,17 @@ test("FED_TASK_OPEN verification rejects missing frame objects in Node", async (
   );
 });
 
+test("FED_TASK_OPEN verification rejects missing origin Zones in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.24-fed-task-open.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  const { origin_zone, ...frameWithoutOriginZone } = vector.frame;
+
+  assert.throws(
+    () => verifyFederatedTaskOpen(frameWithoutOriginZone, trustedZones, vector.worker),
+    /task open origin zone missing/,
+  );
+});
+
 test("FED_TASK_OPEN verification rejects unbound requesters in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v9.24-fed-task-open.json", "utf8"));
   const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
@@ -124,6 +135,17 @@ test("FED_RECEIPT verification rejects missing frame objects in Node", async () 
   assert.throws(
     () => verifyFederatedReceipt(null, new Map()),
     /expected FED_RECEIPT frame/,
+  );
+});
+
+test("FED_RECEIPT verification rejects missing signing Zones in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  const { zone, ...frameWithoutZone } = vector.frame;
+
+  assert.throws(
+    () => verifyFederatedReceipt(frameWithoutZone, trustedZones),
+    /receipt zone missing/,
   );
 });
 
