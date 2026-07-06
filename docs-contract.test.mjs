@@ -27,11 +27,26 @@ test("v10 public docs agree that the proof milestone is closed", async () => {
     readFile("docs/v10.47-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /Status: research prototype, local-first, v10 closed at `v10\.47-protocol`\./);
   assert.match(readme, /`docs\/v10-roadmap\.md` - closed v10 roadmap\./);
+  assert.match(readme, /v9 and v10 are closed\./);
   assert.match(roadmap, /状态：closed/);
   assert.match(roadmap, /## v10\.47: V10 Closeout Alignment/);
   assert.match(draft, /local-first prototype at `v10\.47-protocol`/);
   assert.match(boundary, /状态：complete/);
   assert.match(boundary, /v10 到此收尾/);
+});
+
+test("v11 public docs start with receipt origin-zone trust validation", async () => {
+  const [readme, roadmap, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v11.0-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /Status: research prototype, local-first, v11 active at `v11\.0-protocol`\./);
+  assert.match(readme, /`docs\/v11-roadmap\.md` - active v11 roadmap\./);
+  assert.match(roadmap, /## v11\.0: Receipt Origin Zone Trust Validation/);
+  assert.match(status, /状态：v11\.0 active/);
+  assert.match(boundary, /untrusted signed receipt `origin_zone`/);
 });

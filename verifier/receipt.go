@@ -45,6 +45,9 @@ func VerifyFederatedReceipt(frame map[string]any, trusted map[string]map[string]
 	if receipt["executing_zone"] != zone["zid"] {
 		return errors.New("receipt executing_zone mismatch")
 	}
+	if trusted[fmt.Sprint(receipt["origin_zone"])] == nil {
+		return errors.New("untrusted receipt origin zone: " + fmt.Sprint(receipt["origin_zone"]))
+	}
 	if receipt["to"] != worker["aid"] {
 		return errors.New("receipt worker mismatch")
 	}

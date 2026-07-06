@@ -57,7 +57,7 @@ for await (const chunk of child.stdout) {
   const task = await openTask(status.port, originZone);
   const audited = await auditTask(status.port, originZone, task.taskId);
   await writeFile(receiptFramePath, `${JSON.stringify(audited.frame, null, 2)}\n`);
-  await writeFile(receiptTrustedPath, `${JSON.stringify({ zones: [audited.frame.zone] }, null, 2)}\n`);
+  await writeFile(receiptTrustedPath, `${JSON.stringify({ zones: [audited.frame.zone, originZone.descriptor] }, null, 2)}\n`);
   const artifact = await readArtifact(status.port, originZone, task.taskId, audited.frame.receipt.artifact_refs[0]);
   await mkdir(dirname(artifact.file), { recursive: true });
   await writeFile(artifact.file, artifact.bytes);

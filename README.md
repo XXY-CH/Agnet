@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v10 closed at `v10.47-protocol`.
+Status: research prototype, local-first, v11 active at `v11.0-protocol`.
 
 ## Why This Exists
 
@@ -36,6 +36,7 @@ The current prototype proves:
 - Receipt and local artifact closure verification through Go and Node CLIs.
 - Node receipt verifier CLI outputs and proof summary JSON include stable `receipt_digest` values for external reports.
 - Node verifier CLI trusted-Zone files are signature-checked before use.
+- Node and Go receipt verifiers reject signed receipts whose `origin_zone` is not trusted.
 - Minimal npm-facing package contract for the existing Node verifier CLI and `asp-core.mjs` exports.
 - One-command proof demo, Docker proof demo, and Docker public-listen proof that emit verifier-ready receipt/trust files, expose receipt digests, verified artifact counts, verified artifact URIs, verified artifact byte digests, and verified artifact manifest hashes, verify local artifact closure, and support base-image override env vars for restricted Docker environments.
 - Public-listen proof script that starts the Go federation gateway on `0.0.0.0`, proves `public_transport: true`, completes authenticated `FED_RESOLVE`, `FED_QUERY`, `FED_TASK_OPEN`, `FED_AUDIT_QUERY`, `FED_ARTIFACT_READ`, and `FED_SWARM_OPEN` round trips, verifies fetched artifact bytes, proves out-of-receipt and post-receipt-tampered artifact reads are rejected, and writes a two-step Swarm close proof frame plus trusted Zone file with a reproducible close digest and summary `swarm_close_verify` result from the Node CLI.
@@ -214,13 +215,15 @@ Optional hardening flags include:
 - `docs/agent-space-ultimate-vision.md` - long-range vision.
 - `docs/agent-space-architecture.md` - architecture overview.
 - `docs/asp-core-draft.md` - narrow English draft for the implemented proof layer.
+- `docs/v11-roadmap.md` - active v11 roadmap.
+- `docs/v11.0-boundary.md` - latest closed boundary.
 - `docs/v10-roadmap.md` - closed v10 roadmap.
-- `docs/v10.47-boundary.md` - latest closed boundary.
+- `docs/v10.47-boundary.md` - v10 closeout boundary.
 - `docs/v9-roadmap.md` - closed v9 roadmap.
 
 ## Roadmap
 
-v9 and v10 are closed. v10 made the proof layer easier to verify externally: identity bridge first, then Node artifact manifest parity, AFP hash strings, receipt-side manifest metadata checks, local artifact byte checks, minimal verifier CLIs with trusted-Zone descriptor validation and stable receipt digests, a local npm-facing verifier package contract, one-receipt local artifact closure verification, a narrow ASP Core draft, a reusable Go receipt-frame verifier package, a one-command local proof demo, verified Docker proof demos with overrideable base images, a verifier-ready local public-listen resolve/query/task/audit/artifact/swarm proof with negative artifact-read coverage for out-of-receipt and post-receipt-tampered artifact reads, verifier-ready local proof receipt closure files, summary receipt digests, artifact counts, artifact URIs, artifact byte digests, and artifact manifest hashes, and single ordered complete audit-backed Zone-signed Swarm close proof frames plus trusted Zone files tied to same-audit receipts with reproducible close digests and summary `swarm_close_verify`, a narrow Node `swarm-close` verifier command, and a shared `FED_SWARM_CLOSE` conformance vector.
+v9 and v10 are closed. v11 starts by tightening the proof layer where the Ultimate trust model depends on it: receipt verifiers now require signed receipt `origin_zone` values to name a trusted Zone, so a worker cannot produce a valid receipt that points provenance at an unknown origin.
 
 Highest-value next directions:
 

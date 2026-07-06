@@ -4,6 +4,12 @@
   "worker_seed_hex": "e0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
   "trusted_zones": [
     {
+      "name": "zone://conformance-origin",
+      "zid": "zid:ed25519:u9qeg4PY4Rd7RyZMpOQ8YxaxQP_sPV_Iju42ZUlrBF4",
+      "public_key_spki": "MCowBQYDK2VwAyEAzRSzf5VulTGU_3-3Oz2B3MVh1hp1OAlLfD4aZD7l86o",
+      "zone_signature": "MZuZkBv3b8Re3dn4jg0wLxPt6gIa-j4sBIXxkW3rjGmSxW0FvH6feTWZeauaVcblgFhVqtq5RWvdevcL_wk9Bw"
+    },
+    {
       "name": "zone://conformance-worker-zone",
       "zid": "zid:ed25519:kNxMZDO8Jt2xydIZ2HWD00unM7L0rufepboqzVOBQN4",
       "public_key_spki": "MCowBQYDK2VwAyEA3eO8zsfzpmoRFfRdcg9NwTXDrnxOItyjj9se_WpJX_g",

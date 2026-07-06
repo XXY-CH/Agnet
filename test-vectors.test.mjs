@@ -67,6 +67,17 @@ test("FED_RECEIPT conformance vector verifies in Node", async () => {
   assert.equal(verified.receipt.origin_zone, vector.expected.origin_zid);
 });
 
+test("FED_RECEIPT verification rejects untrusted signed origin zones in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  trustedZones.delete(vector.frame.receipt.origin_zone);
+
+  assert.throws(
+    () => verifyFederatedReceipt(vector.frame, trustedZones),
+    /untrusted receipt origin zone/,
+  );
+});
+
 test("FED_RECEIPT verification rejects signed artifact manifest hash mismatch in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
   const workerPrivateKey = privateKeyFromSeed(vector.worker_seed_hex);

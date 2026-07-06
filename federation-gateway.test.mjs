@@ -49,7 +49,7 @@ test("Federation Gateway completes a cross-Zone task", async () => {
   const port = 8991;
   const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
   const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
-  await writeTrustedZones("state/zone-a-trust.json", [zoneB]);
+  await writeTrustedZones("state/zone-a-trust.json", [zoneB, zoneA]);
   await writeTrustedZones("state/zone-b-trust.json", [zoneA]);
 
   const gateway = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-trust.json"], {
@@ -196,7 +196,7 @@ test("Federation Gateway hands off task from capability query result", async () 
   const port = 8995;
   const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
   const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
-  await writeTrustedZones("state/zone-a-capability-handoff-trust.json", [zoneB]);
+  await writeTrustedZones("state/zone-a-capability-handoff-trust.json", [zoneB, zoneA]);
   await writeTrustedZones("state/zone-b-capability-handoff-trust.json", [zoneA]);
 
   const gateway = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-capability-handoff-trust.json"], {
@@ -238,7 +238,7 @@ test("Go client completes a task against Node Federation Gateway", async () => {
     "--authority-key",
     goAuthorityKey,
   ])).stdout);
-  await writeTrustedZones("state/go-client-trusts-node.json", [zoneB]);
+  await writeTrustedZones("state/go-client-trusts-node.json", [zoneB, goZone]);
   await writeFile("state/node-trusts-go-client.json", `${JSON.stringify({ zones: [goZone] }, null, 2)}\n`);
 
   const gateway = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/node-trusts-go-client.json"], {

@@ -346,6 +346,7 @@ export function verifyFederatedReceipt(frame, trustedZones) {
   );
   const { signature, ...receipt } = frame.receipt;
   if (receipt.executing_zone !== zone.zid) throw new Error("receipt executing_zone mismatch");
+  if (!trustedZones.has(receipt.origin_zone)) throw new Error(`untrusted receipt origin zone: ${receipt.origin_zone}`);
   if (receipt.to !== frame.worker.aid) throw new Error("receipt worker mismatch");
   if (!verifyObject(resolved.publicKey, receipt, signature)) {
     throw new Error("remote receipt signature verification failed");

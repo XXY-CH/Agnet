@@ -609,7 +609,7 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     },
   }, null, 2)}\n`);
   await writeTrustedZones("state/go-fed-discovery-trusted-origin.json", [zoneA]);
-  await writeFile("state/node-trusts-go-discovery.json", `${JSON.stringify({ zones: [fixture.authority] }, null, 2)}\n`);
+  await writeFile("state/node-trusts-go-discovery.json", `${JSON.stringify({ zones: [fixture.authority, zoneA.descriptor] }, null, 2)}\n`);
   const gateway = spawn("go", [
     "run",
     "./cmd/go-fed-discovery",
