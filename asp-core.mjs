@@ -712,6 +712,7 @@ export async function writeArtifact(uri, text) {
 
 export async function verifyLocalArtifact(manifest) {
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) throw new Error("artifact manifest missing");
+  if (typeof manifest.uri !== "string" || !manifest.uri.startsWith("artifact://local/")) throw new Error("artifact uri invalid");
   const file = manifest.uri.replace("artifact://local/", "artifacts/");
   verifyReceiptArtifactManifests({ artifact_refs: [manifest.uri], artifact_manifests: [manifest] });
   const sidecar = JSON.parse(await readFile(`${file}.manifest.json`, "utf8"));

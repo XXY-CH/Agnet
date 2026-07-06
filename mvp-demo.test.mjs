@@ -2,10 +2,23 @@ import { access, readFile, writeFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { promisify } from "node:util";
-import { verifyLocalArtifact } from "./asp-core.mjs";
+import { canonical, verifyLocalArtifact } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
+
+function testManifest(uri) {
+  const manifest = {
+    uri,
+    sha256: createHash("sha256").update("").digest("hex"),
+    size: 0,
+    media_type: "text/plain",
+  };
+  manifest.afp = `afp:sha256:${manifest.sha256}`;
+  manifest.manifest_hash = createHash("sha256").update(canonical(manifest)).digest("hex");
+  return manifest;
+}
 
 test("MVP demo produces registry, artifact, and signed receipt", async () => {
   const { stdout } = await execFileAsync("node", ["mvp-demo.mjs"]);
@@ -33,6 +46,8 @@ test("MVP demo produces registry, artifact, and signed receipt", async () => {
     uri: manifest.uri,
   });
   await assert.rejects(() => verifyLocalArtifact(null), /artifact manifest missing/);
+  await assert.rejects(() => verifyLocalArtifact(testManifest(undefined)), /artifact uri invalid/);
+  await assert.rejects(() => verifyLocalArtifact(testManifest("file:///tmp/evil")), /artifact uri invalid/);
   assert.deepEqual(await verifyLocalArtifact(manifest), manifest);
   await writeFile(manifestPath, "{}\n");
   await assert.rejects(() => verifyLocalArtifact(manifest), /artifact manifest sidecar mismatch/);

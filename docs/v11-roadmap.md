@@ -962,6 +962,29 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.43: Node Local Artifact URI Boundary
+
+状态：complete
+目标：Make Node local artifact verification reject missing or non-local artifact URIs before filesystem reads.
+
+新增：
+
+- Node `verifyLocalArtifact` rejects missing manifest `uri` values with `artifact uri invalid`.
+- Node `verifyLocalArtifact` rejects manifest URIs outside the implemented `artifact://local/` namespace before sidecar or byte reads.
+- The focused MVP artifact verifier test proves malformed local artifact URIs no longer leak JavaScript `TypeError` failures or drift into arbitrary filesystem paths before local URI validation.
+
+不做：
+
+- 不改变 artifact manifest metadata schema。
+- 不改变 receipt artifact manifest comparison semantics。
+- 不实现 remote artifact fetch。
+- 不实现 object-store artifact backend。
+- 不实现 artifact retention policy。
+- 不改变 Go verifier behavior。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
