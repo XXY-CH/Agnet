@@ -580,3 +580,16 @@ export async function writeArtifact(uri, text) {
   await writeFile(`${file}.manifest.json`, `${JSON.stringify(manifest, null, 2)}\n`);
   return { path: file, manifest };
 }
+
+export async function verifyLocalArtifact(manifest) {
+  const file = manifest.uri.replace("artifact://local/", "artifacts/");
+  verifyReceiptArtifactManifests({ artifact_refs: [manifest.uri], artifact_manifests: [manifest] });
+  const sidecar = JSON.parse(await readFile(`${file}.manifest.json`, "utf8"));
+  if (JSON.stringify(sidecar) !== JSON.stringify(manifest)) throw new Error("artifact manifest sidecar mismatch");
+  const data = await readFile(file);
+  if (data.length !== manifest.size) throw new Error("artifact bytes size mismatch");
+  if (createHash("sha256").update(data).digest("hex") !== manifest.sha256) {
+    throw new Error("artifact bytes digest mismatch");
+  }
+  return manifest;
+}

@@ -67,6 +67,26 @@
 - 不做 receipt store/search。
 - 不做 Go verifier package extraction。
 
+## v10.3: Node Local Artifact Verification
+
+状态：complete
+目标：Node can verify local artifact bytes and sidecar files against a receipt artifact manifest.
+
+新增：
+
+- `verifyLocalArtifact(manifest)` verifies one local artifact.
+- It reuses receipt manifest metadata checks.
+- It rejects mismatched sidecar JSON.
+- It rejects local artifact size or SHA-256 mismatches.
+
+不做：
+
+- 不做 Node artifact verify/read API。
+- 不做 content-addressed mirror。
+- 不做 artifact-store GC。
+- 不做 remote artifact fetch。
+- 不做 batch verifier。
+
 ## Next Candidates
 
 1. Extract receipt verification into a small Go package and/or npm-facing verifier.

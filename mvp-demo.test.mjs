@@ -1,10 +1,9 @@
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, writeFile } from "node:fs/promises";
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { canonical } from "./asp-core.mjs";
+import { verifyLocalArtifact } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -26,12 +25,12 @@ test("MVP demo produces registry, artifact, and signed receipt", async () => {
 
   await access(result.registry);
   await access(result.artifactPath);
-  const artifactText = await readFile(result.artifactPath, "utf8");
   const manifest = result.receipt.artifact_manifests[0];
-  assert.equal(manifest.sha256, createHash("sha256").update(artifactText).digest("hex"));
-  assert.equal(manifest.size, Buffer.byteLength(artifactText));
-  const { manifest_hash, ...manifestBody } = manifest;
-  assert.equal(manifest_hash, createHash("sha256").update(canonical(manifestBody)).digest("hex"));
-  assert.deepEqual(JSON.parse(await readFile(`${result.artifactPath}.manifest.json`, "utf8")), manifest);
+  assert.deepEqual(await verifyLocalArtifact(manifest), manifest);
+  await writeFile(`${result.artifactPath}.manifest.json`, "{}\n");
+  await assert.rejects(() => verifyLocalArtifact(manifest), /artifact manifest sidecar mismatch/);
+  await writeFile(`${result.artifactPath}.manifest.json`, `${JSON.stringify(manifest, null, 2)}\n`);
+  await writeFile(result.artifactPath, "tampered\n");
+  await assert.rejects(() => verifyLocalArtifact(manifest), /artifact bytes (size|digest) mismatch/);
   await access(result.auditLog);
 });
