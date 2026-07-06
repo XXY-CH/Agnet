@@ -694,8 +694,35 @@
 - 不做 artifact authorization model beyond receipt-bound URI checks.
 - 不做新的 artifact verifier 逻辑。
 
+## v10.30: Docker Public-Listen Proof Contract
+
+状态：complete
+目标：Make the verifier-ready public-listen proof reproducible inside Docker without claiming public reachability.
+
+新增：
+
+- `Dockerfile.public-node-proof` builds `cmd/go-fed-discovery` in a Go build stage.
+- The runtime image uses Node and runs the existing `scripts/public-node-proof.mjs` proof helper.
+- `scripts/docker-public-node-proof.sh` builds `agnet-public-node-proof` and runs it.
+- `docker-demo.test.mjs` guards that the Docker public proof delegates to the existing public-listen proof path.
+- Verified `bash scripts/docker-public-node-proof.sh` on Docker Server `29.0.1`.
+- The Docker public proof run produced `public_node_proof: "ok"`, `public_transport: true`, `fed_receipt_artifacts_verify: "ok"`, `artifact_reject: true`, and `artifact_tamper_reject: true`.
+
+不做：
+
+- 不做公网可达性证明。
+- 不做 NAT / relay。
+- 不做 hosted public node。
+- 不做 image publishing。
+- 不做 Docker Compose。
+- 不做 TLS certificate issuance。
+- 不做 QUIC。
+- 不做 deployment automation。
+- 不做 supply-chain attestation。
+- 不做 container namespace sandbox。
+
 ## Next Candidates
 
 1. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.
 2. Add an npm-facing verifier only when the existing Node exports are not enough.
-3. Add public reachability proof only after the local proof contract stays stable.
+3. Add public reachability proof only after the Docker proof contract stays stable.
