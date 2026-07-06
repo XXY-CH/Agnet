@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 )
 
@@ -164,8 +165,12 @@ func verifyReceiptArtifactManifests(receipt map[string]any) error {
 		if afp, ok := manifest["afp"]; ok && fmt.Sprint(afp) != "afp:sha256:"+fmt.Sprint(manifest["sha256"]) {
 			return errors.New("artifact manifest afp mismatch")
 		}
-		if _, ok := manifest["size"].(float64); !ok {
+		size, ok := manifest["size"].(float64)
+		if !ok {
 			return errors.New("artifact manifest size missing")
+		}
+		if size < 0 || size != math.Trunc(size) {
+			return errors.New("artifact manifest size invalid")
 		}
 		body := map[string]any{}
 		for k, v := range manifest {

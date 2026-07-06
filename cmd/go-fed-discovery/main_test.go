@@ -155,6 +155,41 @@ func TestArtifactManifestRejectsUnsafeSHA256BeforeDigestPath(t *testing.T) {
 	}
 }
 
+func TestArtifactManifestRejectsMalformedSizeBeforeByteChecks(t *testing.T) {
+	manifest, err := writeArtifact("artifact://local/size-boundary-test/out.md", "# Size\n", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, size := range []float64{-1, 1.5} {
+		bad := map[string]any{
+			"uri":        manifest["uri"],
+			"sha256":     manifest["sha256"],
+			"size":       size,
+			"media_type": manifest["media_type"],
+			"afp":        manifest["afp"],
+		}
+		bad["manifest_hash"] = digestHex(bad)
+		sidecar, err := json.MarshalIndent(bad, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		path, err := localArtifactPath(fmt.Sprint(manifest["uri"]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path+".manifest.json", append(sidecar, '\n'), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		err = verifyArtifactManifests(map[string]any{
+			"artifact_refs":      []any{manifest["uri"]},
+			"artifact_manifests": []any{bad},
+		}, "")
+		if err == nil || !strings.Contains(err.Error(), "artifact manifest size invalid") {
+			t.Fatalf("size %v: got %v, want artifact manifest size invalid", size, err)
+		}
+	}
+}
+
 func TestAuditAppendRefreshesSharedHead(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
 	first := &AuditLog{Path: path, Head: auditZeroHash}

@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"math"
 	"math/big"
 	"net"
 	"net/http"
@@ -4789,8 +4790,12 @@ func verifyArtifactManifests(receipt map[string]any, artifactStoreDir string) er
 		if afp, ok := manifest["afp"]; ok && fmt.Sprint(afp) != "afp:sha256:"+fmt.Sprint(manifest["sha256"]) {
 			return errors.New("artifact manifest afp mismatch")
 		}
-		if _, ok := manifest["size"].(float64); !ok {
+		size, ok := manifest["size"].(float64)
+		if !ok {
 			return errors.New("artifact manifest size missing")
+		}
+		if size < 0 || size != math.Trunc(size) {
+			return errors.New("artifact manifest size invalid")
 		}
 		path, err := localArtifactPath(refs[index])
 		if err != nil {

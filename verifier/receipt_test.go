@@ -107,3 +107,23 @@ func TestArtifactManifestRejectsMalformedSHA256(t *testing.T) {
 		t.Fatalf("got %v, want artifact manifest sha256 invalid", err)
 	}
 }
+
+func TestArtifactManifestRejectsMalformedSize(t *testing.T) {
+	for _, size := range []float64{-1, 1.5} {
+		manifest := map[string]any{
+			"uri":        "artifact://local/size-test/out.md",
+			"sha256":     strings.Repeat("1", 64),
+			"size":       size,
+			"media_type": "text/markdown; charset=utf-8",
+			"afp":        "afp:sha256:" + strings.Repeat("1", 64),
+		}
+		manifest["manifest_hash"] = digestHex(manifest)
+		err := verifyReceiptArtifactManifests(map[string]any{
+			"artifact_refs":      []any{manifest["uri"]},
+			"artifact_manifests": []any{manifest},
+		})
+		if err == nil || !strings.Contains(err.Error(), "artifact manifest size invalid") {
+			t.Fatalf("size %v: got %v, want artifact manifest size invalid", size, err)
+		}
+	}
+}

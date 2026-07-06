@@ -470,6 +470,7 @@ export function verifyReceiptArtifactManifests(receipt) {
       throw new Error("artifact manifest afp mismatch");
     }
     if (typeof manifest.size !== "number") throw new Error("artifact manifest size missing");
+    if (!Number.isSafeInteger(manifest.size) || manifest.size < 0) throw new Error("artifact manifest size invalid");
     const { manifest_hash, ...body } = manifest;
     if (manifest_hash !== createHash("sha256").update(canonical(body)).digest("hex")) {
       throw new Error("artifact manifest hash mismatch");

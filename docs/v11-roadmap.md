@@ -1056,6 +1056,30 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.47: Receipt Artifact Size Shape Boundary
+
+状态：complete
+目标：Make Node and Go receipt/audit artifact verifiers reject negative or fractional artifact manifest sizes before accepting signed artifact metadata.
+
+新增：
+
+- Node `verifyReceiptArtifactManifests` rejects negative or non-integer manifest `size` values with `artifact manifest size invalid`.
+- Go `verifier.verifyReceiptArtifactManifests` rejects the same malformed manifest `size` values.
+- Go `verifyArtifactManifests` rejects malformed manifest `size` values before local byte and sidecar comparison.
+- Focused Node and Go tests prove signed receipt metadata using `size: -1` or `size: 1.5` is rejected even when `manifest_hash` is recomputed around the malformed value.
+
+不做：
+
+- 不改变 artifact manifest metadata schema。
+- 不实现 generic JSON Schema validation。
+- 不改变 receipt artifact manifest comparison semantics。
+- 不实现 remote artifact fetch。
+- 不实现 object-store artifact backend。
+- 不实现 artifact retention policy。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
