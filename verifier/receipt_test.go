@@ -182,6 +182,24 @@ func TestArtifactManifestRejectsMalformedURI(t *testing.T) {
 	}
 }
 
+func TestArtifactManifestRejectsMalformedAFP(t *testing.T) {
+	manifest := map[string]any{
+		"uri":        "artifact://local/afp-shape-test/out.md",
+		"sha256":     strings.Repeat("4", 64),
+		"size":       float64(1),
+		"media_type": "text/plain",
+		"afp":        map[string]any{"sha256": strings.Repeat("4", 64)},
+	}
+	manifest["manifest_hash"] = digestHex(manifest)
+	err := verifyReceiptArtifactManifests(map[string]any{
+		"artifact_refs":      []any{manifest["uri"]},
+		"artifact_manifests": []any{manifest},
+	})
+	if err == nil || !strings.Contains(err.Error(), "artifact manifest afp invalid") {
+		t.Fatalf("got %v, want artifact manifest afp invalid", err)
+	}
+}
+
 func TestArtifactManifestRejectsMalformedListEntries(t *testing.T) {
 	manifest := map[string]any{
 		"uri":        "artifact://local/list-shape-test/out.md",

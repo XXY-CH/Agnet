@@ -4803,8 +4803,14 @@ func verifyArtifactManifests(receipt map[string]any, artifactStoreDir string) er
 		if !isHexDigest(fmt.Sprint(manifest["sha256"])) {
 			return errors.New("artifact manifest sha256 invalid")
 		}
-		if afp, ok := manifest["afp"]; ok && fmt.Sprint(afp) != "afp:sha256:"+fmt.Sprint(manifest["sha256"]) {
-			return errors.New("artifact manifest afp mismatch")
+		if afp, ok := manifest["afp"]; ok {
+			afpText, ok := afp.(string)
+			if !ok {
+				return errors.New("artifact manifest afp invalid")
+			}
+			if afpText != "afp:sha256:"+fmt.Sprint(manifest["sha256"]) {
+				return errors.New("artifact manifest afp mismatch")
+			}
 		}
 		size, ok := manifest["size"].(float64)
 		if !ok {

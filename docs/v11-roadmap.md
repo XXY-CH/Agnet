@@ -1382,6 +1382,30 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.61: Go Artifact Manifest AFP Boundary
+
+状态：complete
+目标：Make Go receipt and audit artifact manifest verification reject present non-string AFP values.
+
+新增：
+
+- Go reusable receipt verification rejects present non-string artifact manifest `afp` values with `artifact manifest afp invalid`.
+- Go audit artifact verification rejects present non-string artifact manifest `afp` values with `artifact manifest afp invalid` before comparing AFP strings or reading local bytes.
+- Existing string AFP mismatch behavior remains `artifact manifest afp mismatch`.
+- The fix is scoped to optional artifact manifest proof metadata shape; it does not make `afp` required and does not add full artifact manifest schema validation.
+
+不做：
+
+- 不改变 artifact manifest metadata schema。
+- 不实现 generic JSON Schema validation。
+- 不改变 receipt artifact manifest comparison semantics。
+- 不实现 remote artifact fetch。
+- 不实现 object-store artifact backend。
+- 不实现 artifact retention policy。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
