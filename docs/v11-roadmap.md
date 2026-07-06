@@ -1472,6 +1472,27 @@
 - 不实现 generic Swarm close schema validation。
 - 不实现 A2A/ARD compatibility。
 
+## v11.65: Go Receipt Approval List Shape Boundary
+
+状态：complete
+目标：Make Go receipt approval verification reject malformed approval evidence list entries instead of silently filtering them.
+
+新增：
+
+- Go `verifyApprovalGrants` rejects non-string entries in signed receipt `approvals` lists with `receipt approval invalid`.
+- Go `verifyApprovalGrants` rejects non-object entries in signed receipt `approval_grants` lists with `approval grant invalid`.
+- Existing approval grant count, task binding, and Zone signature checks stay unchanged.
+- The fix is scoped to signed receipt approval evidence list shape before grant count and signature checks; it does not add generic receipt schema validation.
+
+不做：
+
+- 不改变 Human Gateway approval policy semantics。
+- 不实现 roles / admin policy system。
+- 不改变 approval session actor behavior。
+- 不实现 cross-process approval locking。
+- 不实现 generic receipt schema validation。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

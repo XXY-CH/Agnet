@@ -1105,6 +1105,33 @@ func TestPublicListenHostFlag(t *testing.T) {
 	}
 }
 
+func TestVerifyApprovalGrantsRejectsMalformedLists(t *testing.T) {
+	zonePub, zoneKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	grant := signBodyWithKey(zoneKey, map[string]any{"task_id": "approval_shape"}, "approval_signature")
+	err = verifyApprovalGrants(zonePub, map[string]any{
+		"task_id":         "approval_shape",
+		"approvals":       []any{"approval://ok", map[string]any{"approval": "ghost"}},
+		"approval_grants": []map[string]any{grant},
+	})
+	if err == nil || !strings.Contains(err.Error(), "receipt approval invalid") {
+		t.Fatalf("got %v, want receipt approval invalid", err)
+	}
+	err = verifyApprovalGrants(zonePub, map[string]any{
+		"task_id":   "approval_shape",
+		"approvals": []string{"approval://ok"},
+		"approval_grants": []any{
+			grant,
+			"bad-grant",
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "approval grant invalid") {
+		t.Fatalf("got %v, want approval grant invalid", err)
+	}
+}
+
 func testSignedReceipt(t *testing.T, zone map[string]any, zoneKey ed25519.PrivateKey, worker map[string]any, workerKey ed25519.PrivateKey, taskID string, manifests []map[string]any, extra map[string]any) map[string]any {
 	t.Helper()
 	refs := make([]string, 0, len(manifests))
