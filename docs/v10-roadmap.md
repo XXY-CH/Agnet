@@ -801,6 +801,28 @@
 - 不做 container namespace sandbox。
 - 不改变 proof demo 输出语义。
 
+## v10.34: Public Swarm Close Digest
+
+状态：complete
+目标：Make the public-listen Swarm close proof easier to pin in external reports without adding a new verifier.
+
+新增：
+
+- `scripts/public-node-proof.mjs` emits `swarm_close_digest`.
+- The digest is `sha256(canonical(close proof body without close_signature))`, reusing the existing Node canonical JSON helper.
+- `public-node-proof.test.mjs` recomputes the digest from `state/public-node-proof-audit.log` and checks it matches the proof output.
+
+不做：
+
+- 不做新的 Swarm verifier CLI。
+- 不做 Swarm receipt store/search。
+- 不做 dynamic Swarm decomposition。
+- 不做 scheduler-owned DAG execution。
+- 不做 parallel Swarm execution。
+- 不做 cross-Zone Swarm。
+- 不做公网可达性证明。
+- 不做 hosted public node。
+
 ## Next Candidates
 
 1. Add public reachability proof only after the Docker proof contract stays stable on the target network.

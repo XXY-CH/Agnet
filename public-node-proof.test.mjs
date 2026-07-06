@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { promisify } from "node:util";
+import { canonical } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -37,6 +40,16 @@ test("public node proof starts a public-listen gateway", async () => {
   assert.deepEqual(result.swarm_step_ids, ["summary", "dependent"]);
   assert.equal(result.swarm_close_signature, true);
   assert.equal(result.swarm_close_receipts, true);
+  assert.match(result.swarm_close_digest, /^[a-f0-9]{64}$/);
+
+  const audit = await readFile("state/public-node-proof-audit.log", "utf8");
+  const closeRecord = audit
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line))
+    .findLast((entry) => entry.record?.kind === "go_swarm_close")?.record;
+  const { close_signature, ...closeBody } = closeRecord.close;
+  assert.equal(result.swarm_close_digest, createHash("sha256").update(canonical(closeBody)).digest("hex"));
 
   const verified = await execFileAsync(process.execPath, ["asp-verify.mjs", "fed-receipt", result.receipt_frame, result.trusted_zones]);
   assert.deepEqual(JSON.parse(verified.stdout), { fed_receipt_verify: "ok", task_id: "public_node_probe_task" });

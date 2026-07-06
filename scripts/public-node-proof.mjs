@@ -95,6 +95,7 @@ for await (const chunk of child.stdout) {
     swarm_step_ids: swarm.stepReceipts.map((step) => step.step_id),
     swarm_close_signature: swarm.closeSignature,
     swarm_close_receipts: swarm.closeReceipts,
+    swarm_close_digest: swarm.closeDigest,
   }));
   process.exit(0);
 }
@@ -239,6 +240,7 @@ function openSwarm(port, zone) {
         stepReceipts: close.step_receipts,
         closeSignature: verifyObject(authorityKey, body, close_signature),
         closeReceipts: sameStepReceipts(close.step_receipts, expected),
+        closeDigest: digestJson(body),
       };
     },
   );
