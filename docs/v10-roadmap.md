@@ -969,6 +969,28 @@
 - 不做公网可达性证明。
 - 不做 hosted public node。
 
+## v10.41: Proof Summary Receipt Digest
+
+状态：complete
+目标：Make proof summary JSON outputs carry the verifier CLI receipt digest they already depend on.
+
+新增：
+
+- `scripts/proof-demo.sh` forwards `receipt_digest` from `asp-verify.mjs fed-receipt-artifacts`.
+- `scripts/public-node-proof.mjs` forwards `receipt_digest` from `asp-verify.mjs fed-receipt-artifacts`.
+- `proof-demo.test.mjs` and `public-node-proof.test.mjs` assert the summary digest equals `sha256(canonical(receipt body without signature))`.
+
+不做：
+
+- 不做 receipt store/search。
+- 不做 batch verification。
+- 不做 HTTP verifier service。
+- 不做新的 frame schema。
+- 不做 package signing。
+- 不做 SBOM。
+- 不做公网可达性证明。
+- 不做 hosted public node。
+
 ## Next Candidates
 
 1. Add public reachability proof only after the Docker proof contract stays stable on the target network.

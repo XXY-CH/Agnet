@@ -62,6 +62,7 @@ for await (const chunk of child.stdout) {
   await mkdir(dirname(artifact.file), { recursive: true });
   await writeFile(artifact.file, artifact.bytes);
   const artifactVerify = await execFileAsync(process.execPath, ["asp-verify.mjs", "fed-receipt-artifacts", receiptFramePath, receiptTrustedPath]);
+  const artifactProof = JSON.parse(artifactVerify.stdout);
   const artifactReject = await rejectArtifact(status.port, originZone, task.taskId, "artifact://local/public_node_probe_task/not-in-receipt.md");
   await writeFile(artifact.file, tamperedBytes(artifact.bytes));
   const artifactTamperReject = await rejectArtifact(status.port, originZone, task.taskId, audited.frame.receipt.artifact_refs[0]);
@@ -91,7 +92,8 @@ for await (const chunk of child.stdout) {
     receipt_frame: receiptFramePath,
     trusted_zones: receiptTrustedPath,
     artifact_file: artifact.file,
-    fed_receipt_artifacts_verify: JSON.parse(artifactVerify.stdout).fed_receipt_artifacts_verify,
+    fed_receipt_artifacts_verify: artifactProof.fed_receipt_artifacts_verify,
+    receipt_digest: artifactProof.receipt_digest,
     artifact_reject: artifactReject.rejected,
     artifact_reject_error: artifactReject.error,
     artifact_tamper_reject: artifactTamperReject.rejected,

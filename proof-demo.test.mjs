@@ -36,11 +36,14 @@ test("proof demo emits verifier-ready receipt closure files", async () => {
   ])).stdout);
   const receiptFrame = JSON.parse(await readFile(result.receipt_frame, "utf8"));
   const { signature, ...receiptBody } = receiptFrame.receipt;
+  const receiptDigest = createHash("sha256").update(canonical(receiptBody)).digest("hex");
+
+  assert.equal(result.receipt_digest, receiptDigest);
 
   assert.deepEqual(verified, {
     fed_receipt_artifacts_verify: "ok",
     task_id: "task_001",
     artifact_count: 1,
-    receipt_digest: createHash("sha256").update(canonical(receiptBody)).digest("hex"),
+    receipt_digest: receiptDigest,
   });
 });
