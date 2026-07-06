@@ -87,6 +87,25 @@
 - 不做 remote artifact fetch。
 - 不做 batch verifier。
 
+## v10.4: Node Artifact Verify CLI
+
+状态：complete
+目标：Expose local Node artifact verification through one command.
+
+新增：
+
+- `node asp-verify.mjs artifact <manifest.json>` verifies one local artifact manifest file.
+- The command prints JSON on success.
+- The command exits non-zero and prints the verifier error on failure.
+
+不做：
+
+- 不做 npm package。
+- 不做 receipt verifier CLI。
+- 不做 HTTP artifact verify/read API。
+- 不做 batch verification。
+- 不做 remote artifact fetch。
+
 ## Next Candidates
 
 1. Extract receipt verification into a small Go package and/or npm-facing verifier.

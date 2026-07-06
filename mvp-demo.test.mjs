@@ -26,11 +26,20 @@ test("MVP demo produces registry, artifact, and signed receipt", async () => {
   await access(result.registry);
   await access(result.artifactPath);
   const manifest = result.receipt.artifact_manifests[0];
+  const manifestPath = `${result.artifactPath}.manifest.json`;
+  assert.deepEqual(JSON.parse((await execFileAsync("node", ["asp-verify.mjs", "artifact", manifestPath])).stdout), {
+    artifact_verify: "ok",
+    uri: manifest.uri,
+  });
   assert.deepEqual(await verifyLocalArtifact(manifest), manifest);
-  await writeFile(`${result.artifactPath}.manifest.json`, "{}\n");
+  await writeFile(manifestPath, "{}\n");
   await assert.rejects(() => verifyLocalArtifact(manifest), /artifact manifest sidecar mismatch/);
-  await writeFile(`${result.artifactPath}.manifest.json`, `${JSON.stringify(manifest, null, 2)}\n`);
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   await writeFile(result.artifactPath, "tampered\n");
+  await assert.rejects(
+    () => execFileAsync("node", ["asp-verify.mjs", "artifact", manifestPath]),
+    (error) => /artifact bytes (size|digest) mismatch/.test(error.stderr),
+  );
   await assert.rejects(() => verifyLocalArtifact(manifest), /artifact bytes (size|digest) mismatch/);
   await access(result.auditLog);
 });
