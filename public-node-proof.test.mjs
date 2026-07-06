@@ -28,6 +28,8 @@ test("public node proof starts a public-listen gateway", async () => {
   assert.equal(result.trusted_zones, "state/public-node-proof-trusted-zones.json");
   assert.equal(result.artifact_file, "artifacts/public_node_probe_task/go-summary.md");
   assert.equal(result.fed_receipt_artifacts_verify, "ok");
+  assert.equal(result.artifact_reject, true);
+  assert.match(result.artifact_reject_error, /receipt artifact not found/);
 
   const verified = await execFileAsync(process.execPath, ["asp-verify.mjs", "fed-receipt", result.receipt_frame, result.trusted_zones]);
   assert.deepEqual(JSON.parse(verified.stdout), { fed_receipt_verify: "ok", task_id: "public_node_probe_task" });

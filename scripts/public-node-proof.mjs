@@ -57,6 +57,7 @@ for await (const chunk of child.stdout) {
   await mkdir(dirname(artifact.file), { recursive: true });
   await writeFile(artifact.file, artifact.bytes);
   const artifactVerify = await execFileAsync(process.execPath, ["asp-verify.mjs", "fed-receipt-artifacts", receiptFramePath, receiptTrustedPath]);
+  const artifactReject = await rejectArtifact(status.port, originZone, task.taskId, "artifact://local/public_node_probe_task/not-in-receipt.md");
   clearTimeout(timer);
   child.kill("SIGTERM");
   console.log(JSON.stringify({
@@ -80,6 +81,8 @@ for await (const chunk of child.stdout) {
     trusted_zones: receiptTrustedPath,
     artifact_file: artifact.file,
     fed_receipt_artifacts_verify: JSON.parse(artifactVerify.stdout).fed_receipt_artifacts_verify,
+    artifact_reject: artifactReject.rejected,
+    artifact_reject_error: artifactReject.error,
   }));
   process.exit(0);
 }
@@ -188,6 +191,15 @@ function readArtifact(port, zone, taskId, uri) {
       return null;
     },
   );
+}
+
+async function rejectArtifact(port, zone, taskId, uri) {
+  try {
+    await readArtifact(port, zone, taskId, uri);
+    return { rejected: false, error: "" };
+  } catch (error) {
+    return { rejected: true, error: error.message };
+  }
 }
 
 function artifactFilePath(uri) {

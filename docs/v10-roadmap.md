@@ -638,8 +638,34 @@
 - 不做 general artifact service。
 - 不做 range/cache/object-store fetch。
 
+## v10.28: Public-Listen Artifact Read Rejection Proof
+
+状态：complete
+目标：Prove public-listen artifact reads reject out-of-receipt artifact URIs.
+
+新增：
+
+- `scripts/public-node-proof.mjs` sends a negative authenticated `FED_ARTIFACT_READ` for an artifact URI outside the signed receipt.
+- The gateway returns a `FED_TASK_ERROR` from the existing receipt-bound artifact check.
+- The proof output includes `artifact_reject: true`.
+- The proof output includes `artifact_reject_error` matching `receipt artifact not found`.
+
+不做：
+
+- 不做公网可达性证明。
+- 不做 NAT / relay。
+- 不做 hosted public node。
+- 不做 TLS certificate issuance。
+- 不做 QUIC。
+- 不做 deployment automation。
+- 不做 remote audit sync。
+- 不做 audit search/index。
+- 不做 general artifact service。
+- 不做 range/cache/object-store fetch。
+- 不做 artifact authorization model beyond receipt-bound URI checks.
+
 ## Next Candidates
 
-1. Add negative coverage for `FED_ARTIFACT_READ` tampered or out-of-receipt artifact requests.
+1. Add tamper-negative coverage for `FED_ARTIFACT_READ` when local artifact bytes drift after receipt creation.
 2. Add an npm-facing verifier only when the existing Node exports are not enough.
 3. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.

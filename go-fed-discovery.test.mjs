@@ -279,6 +279,18 @@ async function waitForPendingApproval(humanPort, taskId) {
   throw new Error(`pending approval not found for ${taskId}`);
 }
 
+async function waitForLiveTranscriptLines(humanPort, taskId) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const response = await fetch(`http://127.0.0.1:${humanPort}/api/transcripts/live?task_id=${encodeURIComponent(taskId)}`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "application/x-ndjson; charset=utf-8");
+    const text = (await response.text()).trim();
+    if (text) return text.split("\n").map((line) => JSON.parse(line));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`live transcript did not become readable for ${taskId}`);
+}
+
 async function approvalState(humanPort, taskId) {
   const response = await fetch(`http://127.0.0.1:${humanPort}/api/approvals`);
   assert.equal(response.status, 200);
@@ -1846,10 +1858,7 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     assert.equal(runningTaskState.task_id, slowTask.task_id);
     assert.equal(runningTaskState.status, "running");
     assert.equal(runningTaskState.worker, resolvedSlowResult.aid);
-    const liveTranscriptResponse = await fetch(`http://127.0.0.1:${humanPort}/api/transcripts/live?task_id=${encodeURIComponent(slowTask.task_id)}`);
-    assert.equal(liveTranscriptResponse.status, 200);
-    assert.equal(liveTranscriptResponse.headers.get("content-type"), "application/x-ndjson; charset=utf-8");
-    const liveTranscriptLines = (await liveTranscriptResponse.text()).trim().split("\n").map((line) => JSON.parse(line));
+    const liveTranscriptLines = await waitForLiveTranscriptLines(humanPort, slowTask.task_id);
     assert.equal(liveTranscriptLines[0].type, "stdout.chunk");
     assert.equal(liveTranscriptLines[0].task_id, slowTask.task_id);
     assert.match(liveTranscriptLines[0].text, /Started/);
