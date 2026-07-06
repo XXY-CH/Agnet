@@ -162,6 +162,27 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.7: Go Receipt CLI Task Evidence
+
+状态：complete
+目标：Expose optional supplied-task `task_digest` verification through the Go receipt verifier CLI.
+
+新增：
+
+- `--verify-receipt <receipt.json>` accepts optional `--verify-task <task.json>`.
+- Go receipt file verification rejects supplied task evidence whose digest does not match `receipt.task_digest`.
+- Existing receipt-only CLI verification remains unchanged when `--verify-task` is absent.
+
+不做：
+
+- 不实现 task store/search。
+- 不实现 remote task evidence retrieval。
+- 不改变 audit verifier semantics。
+- 不实现 batch verifier。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

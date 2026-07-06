@@ -130,10 +130,27 @@ test("v11 public docs include artifact closure task evidence parity", async () =
     readFile("docs/v11.6-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.6-protocol`/);
-  assert.match(readme, /Node receipt\/artifact verifiers can reject supplied task evidence/);
+  assert.match(readme, /`docs\/v11\.6-boundary\.md` - artifact closure task evidence parity boundary\./);
+  assert.match(readme, /`docs\/v11\.6-boundary\.md` - artifact closure task evidence parity boundary\./);
   assert.match(roadmap, /## v11\.6: Artifact Closure Task Evidence Parity/);
   assert.match(draft, /fed-receipt-artifacts <frame\.json> <trusted-zones\.json> \[task\.json\]/);
-  assert.match(status, /状态：v11\.6 active/);
+  assert.match(status, /optional supplied-task `task_digest` verification across Node receipt\/artifact CLIs/);
   assert.match(boundary, /receipt-plus-artifact verifier CLIs aligned/);
+});
+
+test("v11 public docs include Go receipt CLI task evidence verification", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v11.7-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v11 active at `v11\.7-protocol`/);
+  assert.match(readme, /Node\/Go receipt verifiers can reject supplied task evidence/);
+  assert.match(roadmap, /## v11\.7: Go Receipt CLI Task Evidence/);
+  assert.match(draft, /--verify-receipt <receipt\.json> \[--verify-task <task\.json>\]/);
+  assert.match(status, /状态：v11\.7 active/);
+  assert.match(boundary, /Go receipt verifier CLI/);
 });

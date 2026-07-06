@@ -158,6 +158,7 @@ func main() {
 	auditPath := flag.String("audit", "state/go-fed-audit.log", "audit JSONL file")
 	verifyAudit := flag.Bool("verify-audit", false, "verify audit JSONL file and exit")
 	verifyReceiptPath := flag.String("verify-receipt", "", "verify one receipt record JSON file and exit")
+	verifyTaskPath := flag.String("verify-task", "", "optional signed task JSON file for --verify-receipt task_digest check")
 	artifactStoreGCPlan := flag.Bool("artifact-store-gc-plan", false, "print filesystem artifact mirror GC plan and exit")
 	artifactStoreGCApply := flag.Bool("artifact-store-gc-apply", false, "delete orphaned filesystem artifact mirror objects and exit")
 	sandboxProbe := flag.String("sandbox-probe", "", "print sandbox runtime support probe for a claim and exit")
@@ -220,7 +221,7 @@ func main() {
 		return
 	}
 	if *verifyReceiptPath != "" {
-		result, err := verifyReceiptFile(*verifyReceiptPath, *artifactStoreDir)
+		result, err := verifyReceiptFile(*verifyReceiptPath, *artifactStoreDir, *verifyTaskPath)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -4331,7 +4332,7 @@ func verifyAuditFile(path, artifactStoreDir string) error {
 	return nil
 }
 
-func verifyReceiptFile(path, artifactStoreDir string) (map[string]any, error) {
+func verifyReceiptFile(path, artifactStoreDir string, taskPath ...string) (map[string]any, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -4340,7 +4341,19 @@ func verifyReceiptFile(path, artifactStoreDir string) (map[string]any, error) {
 	if err := json.Unmarshal(data, &record); err != nil {
 		return nil, err
 	}
-	if err := verifyReceiptRecord(record, artifactStoreDir); err != nil {
+	var tasks []map[string]any
+	if len(taskPath) > 0 && taskPath[0] != "" {
+		taskData, err := os.ReadFile(taskPath[0])
+		if err != nil {
+			return nil, err
+		}
+		var task map[string]any
+		if err := json.Unmarshal(taskData, &task); err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, task)
+	}
+	if err := verifyReceiptRecord(record, artifactStoreDir, tasks...); err != nil {
 		return nil, err
 	}
 	receipt, _ := record["receipt"].(map[string]any)
@@ -4460,7 +4473,7 @@ func auditEntry(prev string, record map[string]any) (map[string]any, error) {
 	return map[string]any{"prev_hash": prev, "record": record, "hash": hex.EncodeToString(hash[:])}, nil
 }
 
-func verifyReceiptRecord(record map[string]any, artifactStoreDir string) error {
+func verifyReceiptRecord(record map[string]any, artifactStoreDir string, signedTasks ...map[string]any) error {
 	zone, ok := record["zone"].(map[string]any)
 	if !ok {
 		return errors.New("receipt zone missing")
@@ -4495,6 +4508,9 @@ func verifyReceiptRecord(record map[string]any, artifactStoreDir string) error {
 	}
 	if !isHexDigest(optionalString(receipt["task_digest"])) {
 		return errors.New("receipt task_digest missing")
+	}
+	if len(signedTasks) > 0 && digestHex(signedTasks[0]) != optionalString(receipt["task_digest"]) {
+		return errors.New("receipt task_digest mismatch")
 	}
 	if receipt["to"] != worker["aid"] {
 		return errors.New("receipt worker mismatch")

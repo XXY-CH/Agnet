@@ -757,6 +757,56 @@ func receiptBodyWithoutSignature(receipt map[string]any) map[string]any {
 	return body
 }
 
+func TestVerifyReceiptFileRejectsMismatchedTaskEvidence(t *testing.T) {
+	zone, zoneKey := testZoneDescriptor(t, "zone://go-verify-receipt")
+	_, workerKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := workerDescriptor(WorkerProfile{
+		Alias:        "agent://go-verify-receipt/worker",
+		Transports:   []string{"go-test"},
+		Capabilities: []string{"test"},
+		Policy:       map[string]any{"network": false},
+	}, workerKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := map[string]any{
+		"uri":           "artifact://local/go_verify_receipt_task/out.txt",
+		"sha256":        strings.Repeat("1", 64),
+		"size":          float64(1),
+		"media_type":    "text/plain",
+		"afp":           "afp:sha256:" + strings.Repeat("1", 64),
+		"manifest_hash": "",
+	}
+	manifestBody := map[string]any{}
+	for key, value := range manifest {
+		if key != "manifest_hash" {
+			manifestBody[key] = value
+		}
+	}
+	manifest["manifest_hash"] = digestHex(manifestBody)
+	record := map[string]any{
+		"zone":         zone,
+		"worker":       worker,
+		"zone_binding": signBodyWithKey(zoneKey, map[string]any{"zone": zone["zid"], "alias": worker["alias"], "aid": worker["aid"]}, "signature"),
+		"receipt":      testSignedReceipt(t, zone, zoneKey, worker, workerKey, "go_verify_receipt_task", []map[string]any{manifest}, map[string]any{}),
+	}
+	dir := t.TempDir()
+	receiptPath := filepath.Join(dir, "receipt.json")
+	taskPath := filepath.Join(dir, "wrong-task.json")
+	if err := writeJSONStateFile(receiptPath, record); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeJSONStateFile(taskPath, map[string]any{"task_id": "go_verify_receipt_task", "intent": "wrong task"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := verifyReceiptFile(receiptPath, "", taskPath); err == nil || !strings.Contains(err.Error(), "receipt task_digest mismatch") {
+		t.Fatalf("got %v, want receipt task_digest mismatch", err)
+	}
+}
+
 func TestFederationListenerCanRequireClientCertificate(t *testing.T) {
 	serverCertPath, serverKeyPath, caPath, clientCert := writeTestMTLSCertificates(t)
 	listener, transport, err := listenFederation("127.0.0.1", "0", serverCertPath, serverKeyPath, caPath)
