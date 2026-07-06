@@ -325,6 +325,18 @@ func TestArtifactStoreIndexRejectsMissingSHA256(t *testing.T) {
 	}
 }
 
+func TestArtifactStoreIndexRejectsUnsafeManifestHash(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "objects.ndjson")
+	row := `{"sha256":"` + strings.Repeat("1", 64) + `","manifest_hash":"../evil"}`
+	if err := os.WriteFile(path, []byte(row+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := readArtifactStoreIndex(path)
+	if err == nil || !strings.Contains(err.Error(), "artifact mirror index invalid") {
+		t.Fatalf("got %v, want artifact mirror index invalid", err)
+	}
+}
+
 func TestAuditAppendRefreshesSharedHead(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
 	first := &AuditLog{Path: path, Head: auditZeroHash}
