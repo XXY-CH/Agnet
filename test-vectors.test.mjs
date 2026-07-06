@@ -300,6 +300,31 @@ test("FED_SWARM_CLOSE verification rejects missing Swarm identity in Node", asyn
   );
 });
 
+test("FED_SWARM_CLOSE verification rejects NUL-bearing Swarm identities in Node", async () => {
+  const zone = createZone("zone://swarm-close-nul-test");
+  const trustedZones = new Map([[zone.descriptor.zid, zone.descriptor]]);
+  const nulSwarmBody = {
+    swarm_id: "swarm://node-test/nul\0shadow",
+    step_receipts: [{ step_id: "summary", task_id: "task_1", receipt_digest: "0".repeat(64) }],
+  };
+  const nulStepBody = {
+    swarm_id: "swarm://node-test/nul-step",
+    step_receipts: [{ step_id: "summary\0shadow", task_id: "task_1", receipt_digest: "0".repeat(64) }],
+  };
+
+  for (const closeBody of [nulSwarmBody, nulStepBody]) {
+    assert.throws(
+      () => verifySwarmClose({
+        type: "FED_SWARM_CLOSE",
+        swarm_id: closeBody.swarm_id,
+        zone: zone.descriptor,
+        close: { ...closeBody, close_signature: signObject(zone.privateKey, closeBody) },
+      }, trustedZones),
+      /swarm close identity contains NUL/,
+    );
+  }
+});
+
 test("FED_SWARM_CLOSE conformance vector verifies in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v10.38-fed-swarm-close.json", "utf8"));
   const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));

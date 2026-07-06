@@ -229,10 +229,9 @@ test("v11 public docs include FED_SWARM_CLOSE duplicate step validation", async 
   ]);
 
   assert.match(readme, /`docs\/v11\.12-boundary\.md` - FED_SWARM_CLOSE duplicate step validation boundary\./);
-  assert.match(readme, /duplicate-step Swarm close proofs/);
   assert.match(roadmap, /## v11\.12: FED_SWARM_CLOSE Duplicate Step Validation/);
-  assert.match(draft, /rejects duplicate `step_id` values/);
-  assert.match(status, /structural step receipt identity\/uniqueness checks/);
+  assert.match(draft, /rejects duplicate or NUL-bearing Swarm identities/);
+  assert.match(status, /structural step receipt identity\/uniqueness\/NUL checks/);
   assert.match(boundary, /duplicate step receipts/);
 });
 
@@ -245,10 +244,26 @@ test("v11 public docs include FED_SWARM_CLOSE Swarm identity presence", async ()
     readFile("docs/v11.13-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.13-protocol`/);
-  assert.match(readme, /missing-identity, structurally empty, or duplicate-step close proofs/);
+  assert.match(readme, /`docs\/v11\.13-boundary\.md` - FED_SWARM_CLOSE Swarm identity presence boundary\./);
   assert.match(roadmap, /## v11\.13: FED_SWARM_CLOSE Swarm Identity Presence/);
   assert.match(draft, /checks the signing Zone, the close signature, the signed Swarm id/);
-  assert.match(status, /状态：v11\.13 active/);
+  assert.match(status, /structural step receipt identity\/uniqueness\/NUL checks/);
   assert.match(boundary, /without a signed Swarm id/);
+});
+
+test("v11 public docs include FED_SWARM_CLOSE NUL identity validation", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v11.14-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v11 active at `v11\.14-protocol`/);
+  assert.match(readme, /missing-identity, NUL-bearing, structurally empty, or duplicate-step close proofs/);
+  assert.match(roadmap, /## v11\.14: FED_SWARM_CLOSE NUL Identity Validation/);
+  assert.match(draft, /rejects duplicate or NUL-bearing Swarm identities/);
+  assert.match(status, /状态：v11\.14 active/);
+  assert.match(boundary, /NUL-bearing Swarm identities/);
 });

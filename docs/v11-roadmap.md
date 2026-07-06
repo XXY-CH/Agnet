@@ -307,6 +307,27 @@
 - 不实现 public reachability proof。
 - 不实现 A2A/ARD compatibility。
 
+## v11.14: FED_SWARM_CLOSE NUL Identity Validation
+
+状态：complete
+目标：Make the Node `FED_SWARM_CLOSE` verifier reject NUL-bearing Swarm identities.
+
+新增：
+
+- Node `verifySwarmClose` rejects signed close `swarm_id` values containing NUL.
+- Node `verifySwarmClose` rejects close step `step_id` values containing NUL.
+- The Node test proves trusted signed close proofs fail closed for both NUL-bearing identity fields.
+
+不做：
+
+- 不实现 Node audit-backed Swarm completeness verification。
+- 不验证 step receipts against an audit log。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 scheduler-owned routing。
+- 不实现 parallel or cross-Zone Swarm execution。
+- 不实现 public reachability proof。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
