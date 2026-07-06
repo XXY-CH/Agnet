@@ -114,7 +114,7 @@ test("v11 public docs include optional receipt task evidence verification", asyn
   ]);
 
   assert.match(readme, /`docs\/v11\.5-boundary\.md` - optional receipt task evidence verification boundary\./);
-  assert.match(readme, /supplied task evidence whose digest does not match/);
+  assert.match(readme, /supplied or in-memory task evidence whose digest does not match/);
   assert.match(roadmap, /## v11\.5: Optional Receipt Task Evidence Verification/);
   assert.match(draft, /When signed task evidence is supplied/);
   assert.match(status, /optional supplied-task `task_digest` verification/);
@@ -147,10 +147,26 @@ test("v11 public docs include Go receipt CLI task evidence verification", async 
     readFile("docs/v11.7-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.7-protocol`/);
-  assert.match(readme, /Node\/Go receipt verifiers can reject supplied task evidence/);
+  assert.match(readme, /`docs\/v11\.7-boundary\.md` - Go receipt CLI task evidence boundary\./);
   assert.match(roadmap, /## v11\.7: Go Receipt CLI Task Evidence/);
   assert.match(draft, /--verify-receipt <receipt\.json> \[--verify-task <task\.json>\]/);
-  assert.match(status, /状态：v11\.7 active/);
+  assert.match(status, /Go receipt CLI/);
   assert.match(boundary, /Go receipt verifier CLI/);
+});
+
+test("v11 public docs include Go-to-Node interop receipt task binding", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v11.8-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v11 active at `v11\.8-protocol`/);
+  assert.match(readme, /Go-to-Node interop checks can compare it/);
+  assert.match(roadmap, /## v11\.8: Go-to-Node Interop Receipt Task Binding/);
+  assert.match(draft, /v11\.8-protocol/);
+  assert.match(status, /状态：v11\.8 active/);
+  assert.match(boundary, /signed task sent by the Go client/);
 });

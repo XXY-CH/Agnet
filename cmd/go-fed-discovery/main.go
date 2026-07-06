@@ -850,6 +850,7 @@ func interopRequestNode(port string, trusted map[string]map[string]any, zoneKey,
 	}
 	events := []any{}
 	var receipt map[string]any
+	var signedTask map[string]any
 	for {
 		var frame map[string]any
 		if err := decoder.Decode(&frame); err != nil {
@@ -877,13 +878,14 @@ func interopRequestNode(port string, trusted map[string]map[string]any, zoneKey,
 				"scope":   map[string]any{"network": false},
 				"budget":  map[string]any{"time_seconds": float64(30)},
 			}
-			if err := json.NewEncoder(conn).Encode(map[string]any{"type": "FED_TASK_OPEN", "origin_zone": origin, "requester": requester, "requester_zone_binding": signBodyWithKey(zoneKey, map[string]any{"zone": origin["zid"], "alias": requester["alias"], "aid": requester["aid"]}, "signature"), "task": signBody(requesterKey, task)}); err != nil {
+			signedTask = signBody(requesterKey, task)
+			if err := json.NewEncoder(conn).Encode(map[string]any{"type": "FED_TASK_OPEN", "origin_zone": origin, "requester": requester, "requester_zone_binding": signBodyWithKey(zoneKey, map[string]any{"zone": origin["zid"], "alias": requester["alias"], "aid": requester["aid"]}, "signature"), "task": signedTask}); err != nil {
 				return nil, err
 			}
 		case "FED_TASK_EVENT":
 			events = append(events, frame["event"])
 		case "FED_RECEIPT":
-			if err := verifyInteropReceipt(frame, trusted); err != nil {
+			if err := verifyInteropReceipt(frame, trusted, signedTask); err != nil {
 				return nil, err
 			}
 			receipt, _ = frame["receipt"].(map[string]any)
@@ -898,8 +900,8 @@ func interopRequestNode(port string, trusted map[string]map[string]any, zoneKey,
 	}
 }
 
-func verifyInteropReceipt(frame map[string]any, trusted map[string]map[string]any) error {
-	return verifier.VerifyFederatedReceipt(frame, trusted)
+func verifyInteropReceipt(frame map[string]any, trusted map[string]map[string]any, signedTasks ...map[string]any) error {
+	return verifier.VerifyFederatedReceipt(frame, trusted, signedTasks...)
 }
 
 func zoneDescriptor(key ed25519.PrivateKey, name string) (map[string]any, error) {

@@ -807,6 +807,48 @@ func TestVerifyReceiptFileRejectsMismatchedTaskEvidence(t *testing.T) {
 	}
 }
 
+func TestVerifyInteropReceiptRejectsMismatchedTaskEvidence(t *testing.T) {
+	zone, zoneKey := testZoneDescriptor(t, "zone://go-interop-receipt")
+	_, workerKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := workerDescriptor(WorkerProfile{
+		Alias:        "agent://go-interop-receipt/worker",
+		Transports:   []string{"go-test"},
+		Capabilities: []string{"test"},
+		Policy:       map[string]any{"network": false},
+	}, workerKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := map[string]any{
+		"uri":           "artifact://local/go_interop_receipt_task/out.txt",
+		"sha256":        strings.Repeat("2", 64),
+		"size":          float64(1),
+		"media_type":    "text/plain",
+		"afp":           "afp:sha256:" + strings.Repeat("2", 64),
+		"manifest_hash": "",
+	}
+	manifestBody := map[string]any{}
+	for key, value := range manifest {
+		if key != "manifest_hash" {
+			manifestBody[key] = value
+		}
+	}
+	manifest["manifest_hash"] = digestHex(manifestBody)
+	frame := map[string]any{
+		"zone":         zone,
+		"worker":       worker,
+		"zone_binding": signBodyWithKey(zoneKey, map[string]any{"zone": zone["zid"], "alias": worker["alias"], "aid": worker["aid"]}, "signature"),
+		"receipt":      testSignedReceipt(t, zone, zoneKey, worker, workerKey, "go_interop_receipt_task", []map[string]any{manifest}, map[string]any{}),
+	}
+	trusted := map[string]map[string]any{fmt.Sprint(zone["zid"]): zone}
+	if err := verifyInteropReceipt(frame, trusted, map[string]any{"task_id": "go_interop_receipt_task", "intent": "wrong task"}); err == nil || !strings.Contains(err.Error(), "receipt task_digest mismatch") {
+		t.Fatalf("got %v, want receipt task_digest mismatch", err)
+	}
+}
+
 func TestFederationListenerCanRequireClientCertificate(t *testing.T) {
 	serverCertPath, serverKeyPath, caPath, clientCert := writeTestMTLSCertificates(t)
 	listener, transport, err := listenFederation("127.0.0.1", "0", serverCertPath, serverKeyPath, caPath)
