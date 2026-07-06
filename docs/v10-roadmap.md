@@ -219,8 +219,31 @@
 - 不做 remote artifact fetch。
 - 不做 receipt store/search。
 
+## v10.10: Docker Proof Demo Contract
+
+状态：complete
+目标：Add a minimal Docker proof demo contract around the existing local proof demo.
+
+新增：
+
+- `Dockerfile` runs `bash scripts/proof-demo.sh` in a Node image.
+- `.dockerignore` keeps local state, artifacts, logs, and `.git` out of the image build context.
+- `scripts/docker-proof-demo.sh` builds `agnet-proof-demo` and runs it.
+- `docker-demo.test.mjs` guards that the Docker demo delegates to the local proof script.
+
+不做：
+
+- 不做 Docker Compose。
+- 不做 public node。
+- 不做 HTTP verifier service。
+- 不做 long-running daemon。
+- 不做 package release。
+- 不做 remote artifact fetch。
+- 不做 receipt store/search。
+- 不声称本机已经运行过 Docker image；当前验证环境 Docker daemon 不可用。
+
 ## Next Candidates
 
-1. Provide a first Docker demo that proves the existing local-first flow is reproducible in a clean environment.
+1. Run and publish Docker proof output once a Docker daemon is available.
 2. Add an npm-facing verifier only when the existing Node exports are not enough.
 3. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.
