@@ -383,8 +383,32 @@
 - 不做 receipt store/search。
 - 不做 A2A/ANP/AGNTCY compatibility。
 
+## v10.17: Known Swarm Close Rejection
+
+状态：complete
+目标：Reject close proofs for Swarms that have no same-audit receipts.
+
+新增：
+
+- `--verify-audit` requires a `go_swarm_close` proof to reference a Swarm id with at least one completed step receipt earlier in the same audit.
+- Empty `step_receipts` can no longer close an audit-absent Swarm.
+- Existing close proof signature, duplicate-close, completeness, duplicate-step, ordering, task id, and receipt digest checks still apply.
+- `cmd/go-fed-discovery/main_test.go` proves unknown empty Swarm close proofs are rejected.
+
+不做：
+
+- 不做 dynamic Swarm decomposition。
+- 不做 scheduler-owned DAG execution。
+- 不做 parallel Swarm execution。
+- 不做 conflict/merge receipts。
+- 不做 cross-Zone Swarm。
+- 不做 Swarm UI。
+- 不做 receipt store/search。
+- 不做 A2A/ANP/AGNTCY compatibility。
+- 不做 cross-audit Swarm lifecycle storage。
+
 ## Next Candidates
 
 1. Run and publish Docker proof output once a Docker daemon is available.
-2. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.
+2. Reject delimiter-breaking `swarm_id` / `step_id` values containing NUL bytes.
 3. Add an npm-facing verifier only when the existing Node exports are not enough.

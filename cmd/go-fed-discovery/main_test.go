@@ -501,6 +501,19 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 		t.Fatalf("got %v, want duplicate swarm close proof", err)
 	}
 
+	unknownSwarmClose := signBodyWithKey(zoneKey, map[string]any{
+		"swarm_id":      "swarm://unknown",
+		"step_receipts": []map[string]any{},
+	}, "close_signature")
+	unknownSwarmCloseLog := &AuditLog{Path: "unknown-swarm-close-audit.log", Head: auditZeroHash}
+	if err := unknownSwarmCloseLog.Append(map[string]any{"kind": "go_swarm_close", "zone": zone, "close": unknownSwarmClose}); err != nil {
+		t.Fatal(err)
+	}
+	err = verifyAuditFile("unknown-swarm-close-audit.log", "")
+	if err == nil || !strings.Contains(err.Error(), "swarm close proof without receipts") {
+		t.Fatalf("got %v, want swarm close proof without receipts", err)
+	}
+
 	reversedClose := signBodyWithKey(zoneKey, map[string]any{
 		"swarm_id": "swarm://test",
 		"step_receipts": []map[string]any{

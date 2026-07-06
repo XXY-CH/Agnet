@@ -4509,6 +4509,9 @@ func verifySwarmCloseProof(record map[string]any, completed map[string]map[strin
 			expected++
 		}
 	}
+	if expected == 0 {
+		return errors.New("swarm close proof without receipts: " + swarmID)
+	}
 	steps := mapsFromAny(closeProof["step_receipts"])
 	seen := map[string]bool{}
 	for _, step := range steps {
