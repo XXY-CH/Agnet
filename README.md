@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v10 active at `v10.6-protocol`.
+Status: research prototype, local-first, v10 active at `v10.7-protocol`.
 
 ## Why This Exists
 
@@ -152,18 +152,19 @@ Optional hardening flags include:
 - `docs/implementation-status.md` - current capability matrix.
 - `docs/agent-space-ultimate-vision.md` - long-range vision.
 - `docs/agent-space-architecture.md` - architecture overview.
+- `docs/asp-core-draft.md` - narrow English draft for the implemented proof layer.
 - `docs/v10-roadmap.md` - active v10 roadmap.
-- `docs/v10.6-boundary.md` - latest closed boundary.
+- `docs/v10.7-boundary.md` - latest closed boundary.
 - `docs/v9-roadmap.md` - closed v9 roadmap.
 
 ## Roadmap
 
-v9 is closed. v10 is making the proof layer easier to verify externally: identity bridge first, then Node artifact manifest parity, receipt-side manifest metadata checks, local artifact byte checks, minimal verifier CLIs, and one-receipt local artifact closure verification.
+v9 is closed. v10 is making the proof layer easier to verify externally: identity bridge first, then Node artifact manifest parity, receipt-side manifest metadata checks, local artifact byte checks, minimal verifier CLIs, one-receipt local artifact closure verification, and a narrow ASP Core draft.
 
 Highest-value next directions:
 
-1. Publish an English ASP Core draft for the narrow proof layer.
-2. Extract receipt verification into a small Go package and npm package.
+1. Extract receipt verification into a small Go package and npm package.
+2. Provide a reproducible public-node or Docker demo.
 3. Provide a first public node or Docker-based demo.
 4. Continue Swarm proof work without building a broad scheduler too early.
 

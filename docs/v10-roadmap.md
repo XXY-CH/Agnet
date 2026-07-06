@@ -150,9 +150,31 @@
 - 不做 HTTP verifier service。
 - 不做 object-store backend。
 
+## v10.7: ASP Core Draft
+
+状态：complete
+目标：Publish a narrow English ASP Core draft for the implemented proof layer.
+
+新增：
+
+- `docs/asp-core-draft.md` documents identity, Zone trust, `FED_TASK_OPEN`, `FED_RECEIPT`, artifact manifests, local artifact byte checks, and audit hash-chain evidence.
+- The draft states that `aid:` is canonical and `did:key` is only an Ed25519 bridge field.
+- The draft explicitly keeps compatibility, scheduling, public discovery, remote artifact fetch, receipt stores, batch verification, reputation, payments, and product UI out of scope.
+- `docs-contract.test.mjs` guards the core boundary phrases.
+
+不做：
+
+- 不做 npm package。
+- 不做 HTTP verifier service。
+- 不做 public node。
+- 不做 Docker demo。
+- 不做 A2A/ANP/AGNTCY compatibility。
+- 不做 DID document resolver。
+- 不做 scheduler。
+- 不做 semantic routing。
+
 ## Next Candidates
 
 1. Extract receipt verification into a small Go package and/or npm-facing verifier.
-2. Publish an English ASP Core draft focused on receipts, artifacts, audit, and identity bridge fields.
-3. Provide a first public-node or Docker demo that proves the existing local-first flow is reproducible.
-4. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.
+2. Provide a first public-node or Docker demo that proves the existing local-first flow is reproducible.
+3. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.
