@@ -1152,6 +1152,29 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.51: Go Artifact Mirror Index Shape Boundary
+
+状态：complete
+目标：Make Go filesystem artifact mirror index matching require exact manifest field values and types instead of string-coerced equality.
+
+新增：
+
+- Go mirror index matching now compares `objects.ndjson` entries to receipt artifact manifests without `fmt.Sprint` coercion.
+- Focused Go test proves a mirror index entry with `size: "7"` no longer matches a manifest with numeric `size: 7`.
+- The fix is scoped to artifact-store index proof matching; artifact manifest metadata, local byte checks, mirror bytes, and sidecar verification stay unchanged.
+
+不做：
+
+- 不改变 artifact manifest metadata schema。
+- 不实现 generic JSON Schema validation。
+- 不改变 receipt artifact manifest comparison semantics。
+- 不实现 remote artifact fetch。
+- 不实现 object-store artifact backend。
+- 不实现 artifact retention policy。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

@@ -270,6 +270,28 @@ func TestArtifactManifestRejectsMalformedListEntriesBeforeByteChecks(t *testing.
 	}
 }
 
+func TestArtifactStoreIndexRequiresExactManifestFieldTypes(t *testing.T) {
+	manifest := map[string]any{
+		"uri":           "artifact://local/index-shape-boundary-test/out.md",
+		"sha256":        strings.Repeat("1", 64),
+		"size":          float64(7),
+		"media_type":    "text/markdown",
+		"afp":           "afp:sha256:" + strings.Repeat("1", 64),
+		"manifest_hash": strings.Repeat("2", 64),
+	}
+	index := []map[string]any{{
+		"uri":           manifest["uri"],
+		"sha256":        manifest["sha256"],
+		"size":          "7",
+		"media_type":    manifest["media_type"],
+		"afp":           manifest["afp"],
+		"manifest_hash": manifest["manifest_hash"],
+	}}
+	if artifactStoreIndexContains(index, manifest) {
+		t.Fatal("string size index entry matched numeric manifest size")
+	}
+}
+
 func TestAuditAppendRefreshesSharedHead(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
 	first := &AuditLog{Path: path, Head: auditZeroHash}

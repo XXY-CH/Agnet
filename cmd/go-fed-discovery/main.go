@@ -28,6 +28,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -4964,7 +4965,7 @@ func artifactStoreIndexContains(index []map[string]any, manifest map[string]any)
 	for _, entry := range index {
 		matches := true
 		for _, field := range []string{"uri", "sha256", "size", "media_type", "afp", "manifest_hash"} {
-			if fmt.Sprint(entry[field]) != fmt.Sprint(manifest[field]) {
+			if !reflect.DeepEqual(entry[field], manifest[field]) {
 				matches = false
 				break
 			}
