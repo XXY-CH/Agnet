@@ -195,8 +195,10 @@ export async function writeTrustedZones(file, zones) {
 
 export async function loadTrustedZones(file) {
   const trustStore = JSON.parse(await readFile(file, "utf8"));
+  const zones = Array.isArray(trustStore) ? trustStore : trustStore.zones;
+  if (!Array.isArray(zones)) throw new Error("trusted zone list missing");
   return new Map(
-    trustStore.zones.map((zoneDescriptor) => {
+    zones.map((zoneDescriptor) => {
       verifyZoneDescriptor(zoneDescriptor);
       return [zoneDescriptor.zid, zoneDescriptor];
     }),

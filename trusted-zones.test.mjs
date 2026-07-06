@@ -45,6 +45,24 @@ test("trusted Zone store rejects missing Zone descriptor objects", async () => {
   assert.throws(() => verifyZoneDescriptor([]), /zone descriptor missing/);
 });
 
+test("trusted Zone store rejects missing zone lists", async () => {
+  await writeFile("state/trusted-zones-missing-zones-test.json", "{}\n");
+
+  await assert.rejects(
+    () => loadTrustedZones("state/trusted-zones-missing-zones-test.json"),
+    /trusted zone list missing/,
+  );
+});
+
+test("trusted Zone store loads raw Zone descriptor arrays", async () => {
+  const zone = createZone("zone://remote-b");
+  await writeFile("state/trusted-zones-raw-array-test.json", `${JSON.stringify([zone.descriptor])}\n`);
+
+  const trustedZones = await loadTrustedZones("state/trusted-zones-raw-array-test.json");
+
+  assert.equal(trustedZones.get(zone.zid).name, zone.name);
+});
+
 test("zone binding verification rejects missing context objects", () => {
   const zone = createZone("zone://local");
   const agent = createAgent("agent://local/summarizer");

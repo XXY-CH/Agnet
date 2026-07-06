@@ -844,6 +844,28 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.38: Node Trusted Zone File Shape
+
+状态：complete
+目标：Make Node trusted Zone file loading reject missing Zone lists before entry iteration while preserving raw descriptor-array inputs.
+
+新增：
+
+- Node `loadTrustedZones` accepts the documented raw descriptor-array trusted Zone file shape.
+- Node `loadTrustedZones` rejects missing or non-array trusted Zone lists with `trusted zone list missing`.
+- The focused trusted Zone tests prove missing lists no longer leak JavaScript `TypeError` failures.
+
+不做：
+
+- 不实现 generic trusted Zone file schema validation。
+- 不改变 trusted Zone descriptor verification。
+- 不实现 remote trust-store sync。
+- 不改变 Go verifier behavior。
+- 不实现 DID document/resolver。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
