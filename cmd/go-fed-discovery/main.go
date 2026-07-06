@@ -513,6 +513,14 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			"task_id":      frame["task_id"],
 		})
 		send(map[string]any{"type": "FED_AUDIT_CLOSE", "task_id": frame["task_id"]})
+	case "FED_ARTIFACT_READ":
+		result, err := fixture.artifactReadProof(fmt.Sprint(frame["task_id"]), fmt.Sprint(frame["uri"]))
+		if err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
+		send(result)
+		send(map[string]any{"type": "FED_ARTIFACT_CLOSE", "task_id": frame["task_id"], "uri": frame["uri"]})
 	case "FED_TASK_OPEN":
 		worker, task, err := fixture.verifyTaskOpen(frame)
 		if err != nil {
@@ -663,6 +671,41 @@ func (f Fixture) auditProof(taskID string) (map[string]any, error) {
 		}
 	}
 	return nil, errors.New("audit proof not found: " + taskID)
+}
+
+func (f Fixture) artifactReadProof(taskID, uri string) (map[string]any, error) {
+	if taskID == "" || uri == "" {
+		return nil, errors.New("artifact read task_id and uri required")
+	}
+	record, err := f.auditProof(taskID)
+	if err != nil {
+		return nil, err
+	}
+	receipt, _ := record["receipt"].(map[string]any)
+	manifest, err := receiptArtifactManifest(receipt, uri)
+	if err != nil {
+		return nil, err
+	}
+	if err := verifyArtifactManifests(receipt, f.ArtifactStoreDir); err != nil {
+		return nil, err
+	}
+	path, err := localArtifactPath(uri)
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"type":           "FED_ARTIFACT",
+		"task_id":        taskID,
+		"uri":            uri,
+		"audit_hash":     record["audit_hash"],
+		"receipt_digest": digestHex(receipt),
+		"manifest":       manifest,
+		"bytes_b64":      base64.RawURLEncoding.EncodeToString(data),
+	}, nil
 }
 
 func (f Fixture) requireCheckpoint(checkpointID string) error {

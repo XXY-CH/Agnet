@@ -611,8 +611,35 @@
 - 不做 public artifact byte fetch。
 - 不做 `fed-receipt-artifacts` closure for the public proof。
 
+## v10.27: Public-Listen Artifact Closure Proof
+
+状态：complete
+目标：Close the public-listen proof over fetched artifact bytes.
+
+新增：
+
+- The Go federation gateway accepts authenticated `FED_ARTIFACT_READ`.
+- `FED_ARTIFACT_READ` resolves task-scoped audit receipt proof, checks the requested artifact is in the signed receipt, reuses existing artifact verification, and returns base64url artifact bytes.
+- `scripts/public-node-proof.mjs` fetches the public proof task artifact over the authenticated federation connection.
+- The proof script writes the fetched bytes to `artifacts/public_node_probe_task/go-summary.md`.
+- The proof script verifies the fetched receipt and artifact bytes with `node asp-verify.mjs fed-receipt-artifacts`.
+- The proof output includes `artifact_file` and `fed_receipt_artifacts_verify: "ok"`.
+
+不做：
+
+- 不做公网可达性证明。
+- 不做 NAT / relay。
+- 不做 hosted public node。
+- 不做 TLS certificate issuance。
+- 不做 QUIC。
+- 不做 deployment automation。
+- 不做 remote audit sync。
+- 不做 audit search/index。
+- 不做 general artifact service。
+- 不做 range/cache/object-store fetch。
+
 ## Next Candidates
 
-1. Add public-proof artifact-byte closure only after there is a truthful local fetch or mirror path for the returned artifact refs.
+1. Add negative coverage for `FED_ARTIFACT_READ` tampered or out-of-receipt artifact requests.
 2. Add an npm-facing verifier only when the existing Node exports are not enough.
 3. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.

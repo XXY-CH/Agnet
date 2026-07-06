@@ -1,8 +1,11 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import net from "node:net";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+import { promisify } from "node:util";
 import { createAgent, createZone, signObject } from "../asp-core.mjs";
 
+const execFileAsync = promisify(execFile);
 await mkdir("state", { recursive: true });
 const originZone = createZone("zone://public-node-proof-origin");
 await writeFile("state/public-node-proof-trusted.json", `${JSON.stringify({ zones: [originZone.descriptor] }, null, 2)}\n`);
@@ -11,6 +14,8 @@ await writeFile("state/public-node-proof-authority.seed", `${fixture.authority_s
 await writeFile("state/public-node-proof-worker.seed", `${fixture.worker_seed_hex}\n`);
 const receiptFramePath = "state/public-node-proof-fed-receipt.json";
 const receiptTrustedPath = "state/public-node-proof-trusted-zones.json";
+await rm("state/public-node-proof-audit.log", { force: true });
+await rm("artifacts/public_node_probe_task", { force: true, recursive: true });
 
 const binary = process.argv[2] ?? "state/public-node-proof-go";
 const child = spawn(binary, [
@@ -27,6 +32,7 @@ const child = spawn(binary, [
   "--audit",
   "state/public-node-proof-audit.log",
 ], { stdio: ["ignore", "pipe", "inherit"] });
+process.on("exit", () => child.kill("SIGTERM"));
 
 const timer = setTimeout(() => {
   child.kill("SIGKILL");
@@ -47,6 +53,10 @@ for await (const chunk of child.stdout) {
   const audited = await auditTask(status.port, originZone, task.taskId);
   await writeFile(receiptFramePath, `${JSON.stringify(audited.frame, null, 2)}\n`);
   await writeFile(receiptTrustedPath, `${JSON.stringify({ zones: [audited.frame.zone] }, null, 2)}\n`);
+  const artifact = await readArtifact(status.port, originZone, task.taskId, audited.frame.receipt.artifact_refs[0]);
+  await mkdir(dirname(artifact.file), { recursive: true });
+  await writeFile(artifact.file, artifact.bytes);
+  const artifactVerify = await execFileAsync(process.execPath, ["asp-verify.mjs", "fed-receipt-artifacts", receiptFramePath, receiptTrustedPath]);
   clearTimeout(timer);
   child.kill("SIGTERM");
   console.log(JSON.stringify({
@@ -68,6 +78,8 @@ for await (const chunk of child.stdout) {
     audit_close: audited.close,
     receipt_frame: receiptFramePath,
     trusted_zones: receiptTrustedPath,
+    artifact_file: artifact.file,
+    fed_receipt_artifacts_verify: JSON.parse(artifactVerify.stdout).fed_receipt_artifacts_verify,
   }));
   process.exit(0);
 }
@@ -159,6 +171,29 @@ function auditTask(port, zone, taskId) {
       return null;
     },
   );
+}
+
+function readArtifact(port, zone, taskId, uri) {
+  let artifact = null;
+  return exchangeFrame(
+    port,
+    zone,
+    { type: "FED_ARTIFACT_READ", origin_zone: zone.descriptor, task_id: taskId, uri },
+    "FED_ARTIFACT_CLOSE",
+    (frame) => {
+      if (frame.type === "FED_ARTIFACT") {
+        artifact = { file: artifactFilePath(frame.uri), bytes: Buffer.from(frame.bytes_b64, "base64url") };
+      }
+      if (frame.type === "FED_ARTIFACT_CLOSE") return artifact;
+      return null;
+    },
+  );
+}
+
+function artifactFilePath(uri) {
+  const prefix = "artifact://local/";
+  if (!uri.startsWith(prefix)) throw new Error(`unsupported artifact uri: ${uri}`);
+  return `artifacts/${uri.slice(prefix.length)}`;
 }
 
 function exchangeFrame(port, zone, request, closeType, collect) {
