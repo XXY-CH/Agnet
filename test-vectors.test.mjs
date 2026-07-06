@@ -336,6 +336,26 @@ test("FED_SWARM_CLOSE verification rejects duplicate step receipts in Node", asy
   );
 });
 
+test("FED_SWARM_CLOSE verification rejects malformed step receipt entries in Node", async () => {
+  const zone = createZone("zone://swarm-close-malformed-step-test");
+  const closeBody = {
+    swarm_id: "swarm://node-test/malformed-step",
+    step_receipts: [null],
+  };
+  const frame = {
+    type: "FED_SWARM_CLOSE",
+    swarm_id: closeBody.swarm_id,
+    zone: zone.descriptor,
+    close: { ...closeBody, close_signature: signObject(zone.privateKey, closeBody) },
+  };
+  const trustedZones = new Map([[zone.descriptor.zid, zone.descriptor]]);
+
+  assert.throws(
+    () => verifySwarmClose(frame, trustedZones),
+    /swarm close step receipt missing/,
+  );
+});
+
 test("FED_SWARM_CLOSE verification rejects missing Swarm identity in Node", async () => {
   const zone = createZone("zone://swarm-close-missing-id-test");
   const closeBody = {

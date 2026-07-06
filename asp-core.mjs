@@ -385,6 +385,7 @@ export function verifySwarmClose(frame, trustedZones) {
   }
   const stepIds = new Set();
   for (const step of closeBody.step_receipts) {
+    if (!step || typeof step !== "object" || Array.isArray(step)) throw new Error("swarm close step receipt missing");
     if (typeof step.step_id !== "string" || step.step_id === "") throw new Error("swarm close step identity missing");
     if (step.step_id.includes("\0")) throw new Error("swarm close identity contains NUL");
     if (stepIds.has(step.step_id)) throw new Error("swarm close duplicate step receipt");
