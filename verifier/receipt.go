@@ -17,6 +17,9 @@ const base58BTCAlphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstu
 var ed25519MultikeyPrefix = []byte{0xed, 0x01}
 
 func VerifyFederatedReceipt(frame map[string]any, trusted map[string]map[string]any, signedTasks ...map[string]any) error {
+	if frame["type"] != "FED_RECEIPT" {
+		return errors.New("expected FED_RECEIPT frame")
+	}
 	zone, ok := frame["zone"].(map[string]any)
 	if !ok {
 		return errors.New("receipt zone missing")

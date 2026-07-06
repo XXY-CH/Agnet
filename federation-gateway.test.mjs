@@ -279,6 +279,7 @@ test("Node client rejects Go receipt when task evidence digest mismatches", asyn
 
   const server = net.createServer((socket) => {
     let buffer = "";
+    socket.on("error", () => {});
     socket.on("data", (chunk) => {
       buffer += chunk.toString();
       const lines = buffer.split("\n");

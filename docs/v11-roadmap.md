@@ -225,6 +225,27 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.10: FED_RECEIPT Frame Type Validation
+
+状态：complete
+目标：Make receipt verifiers reject receipt-shaped frames with the wrong protocol type.
+
+新增：
+
+- Node `verifyFederatedReceipt` rejects frames whose `type` is not `FED_RECEIPT`.
+- Go `agnet/verifier.VerifyFederatedReceipt` rejects frames whose `type` is not `FED_RECEIPT`.
+- Node and Go tests prove a `FED_TASK_OPEN` frame carrying otherwise valid receipt fields fails closed.
+
+不做：
+
+- 不改变 `FED_RECEIPT` frame schema。
+- 不实现 receipt store/search。
+- 不实现 batch verifier。
+- 不改变 interop request semantics。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

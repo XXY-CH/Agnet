@@ -368,7 +368,7 @@ async function auditRemote(port, trustedZonesFile, taskId) {
     readFrames(socket, (frame) => {
       if (session(frame)) return;
       if (frame.type === "FED_AUDIT_RESULT") {
-        const verified = verifyFederatedReceipt(frame, trustedZones);
+        const verified = verifyFederatedReceipt({ ...frame, type: "FED_RECEIPT" }, trustedZones);
         if (verified.receipt.task_id !== taskId) throw new Error("audit receipt task mismatch");
         result = {
           zone: verified.zone.zid,

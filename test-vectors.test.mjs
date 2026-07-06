@@ -90,6 +90,16 @@ test("FED_RECEIPT conformance vector verifies in Node", async () => {
   assert.equal(verified.receipt.origin_zone, vector.expected.origin_zid);
 });
 
+test("FED_RECEIPT verification rejects non-receipt frame types in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+
+  assert.throws(
+    () => verifyFederatedReceipt({ ...vector.frame, type: "FED_TASK_OPEN" }, trustedZones),
+    /expected FED_RECEIPT frame/,
+  );
+});
+
 test("FED_RECEIPT verification rejects untrusted signed origin zones in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
   const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));

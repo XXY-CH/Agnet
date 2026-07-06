@@ -28,6 +28,15 @@ func TestVerifyFederatedReceiptVector(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	wrongTypeFrame := map[string]any{}
+	for key, value := range vector.Frame {
+		wrongTypeFrame[key] = value
+	}
+	wrongTypeFrame["type"] = "FED_TASK_OPEN"
+	if err := VerifyFederatedReceipt(wrongTypeFrame, trusted); err == nil || !strings.Contains(err.Error(), "expected FED_RECEIPT frame") {
+		t.Fatalf("got %v, want expected FED_RECEIPT frame", err)
+	}
+
 	receipt := vector.Frame["receipt"].(map[string]any)
 	withoutOrigin := map[string]map[string]any{}
 	for zid, zone := range trusted {

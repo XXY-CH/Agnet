@@ -341,6 +341,7 @@ export function validateTaskId(taskId) {
 }
 
 export function verifyFederatedReceipt(frame, trustedZones, signedTask) {
+  if (frame.type !== "FED_RECEIPT") throw new Error("expected FED_RECEIPT frame");
   const zone = verifyZoneDescriptor(frame.zone).descriptor;
   const trusted = trustedZones.get(zone.zid);
   if (!trusted || trusted.public_key_spki !== zone.public_key_spki) {

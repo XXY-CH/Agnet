@@ -838,6 +838,7 @@ func TestVerifyInteropReceiptRejectsMismatchedTaskEvidence(t *testing.T) {
 	}
 	manifest["manifest_hash"] = digestHex(manifestBody)
 	frame := map[string]any{
+		"type":         "FED_RECEIPT",
 		"zone":         zone,
 		"worker":       worker,
 		"zone_binding": signBodyWithKey(zoneKey, map[string]any{"zone": zone["zid"], "alias": worker["alias"], "aid": worker["aid"]}, "signature"),
