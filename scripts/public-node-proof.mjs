@@ -98,6 +98,7 @@ for await (const chunk of child.stdout) {
     artifact_count: artifactProof.artifact_count,
     artifact_uris: artifactProof.artifact_uris,
     artifact_sha256s: artifactProof.artifact_sha256s,
+    artifact_manifest_hashes: artifactProof.artifact_manifest_hashes,
     receipt_digest: artifactProof.receipt_digest,
     artifact_reject: artifactReject.rejected,
     artifact_reject_error: artifactReject.error,

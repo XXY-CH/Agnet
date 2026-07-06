@@ -130,6 +130,7 @@ test("FED_RECEIPT artifact CLI verifies one frame and local artifact bytes in No
     artifact_count: 1,
     artifact_uris: [artifact.manifest.uri],
     artifact_sha256s: [artifact.manifest.sha256],
+    artifact_manifest_hashes: [artifact.manifest.manifest_hash],
     receipt_digest: createHash("sha256").update(canonical(receiptWithManifest)).digest("hex"),
   });
 

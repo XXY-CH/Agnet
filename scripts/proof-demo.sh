@@ -36,6 +36,7 @@ console.log(JSON.stringify({
   artifact_count: fedArtifact.artifact_count,
   artifact_uris: fedArtifact.artifact_uris,
   artifact_sha256s: fedArtifact.artifact_sha256s,
+  artifact_manifest_hashes: fedArtifact.artifact_manifest_hashes,
   receipt_digest: fedArtifact.receipt_digest
 }));
 ' "$demo_json" "$artifact_json" "$receipt_frame" "$trusted_zones" "$fed_artifact_json"

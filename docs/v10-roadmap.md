@@ -1087,6 +1087,31 @@
 - 不做公网可达性证明。
 - 不做 hosted public node。
 
+## v10.46: Verified Artifact Manifest Hash Output
+
+状态：complete
+目标：Make receipt-artifact verifier outputs and proof summaries expose the verified artifact manifest hashes.
+
+新增：
+
+- `asp-verify.mjs fed-receipt-artifacts` prints `artifact_manifest_hashes` on success.
+- `scripts/proof-demo.sh` forwards `artifact_manifest_hashes` from the verifier CLI.
+- `scripts/public-node-proof.mjs` forwards `artifact_manifest_hashes` from the verifier CLI.
+- Vector, proof demo, and public proof tests pin the verified manifest-hash list.
+
+不做：
+
+- 不做 receipt store/search。
+- 不做 artifact search。
+- 不做 batch verification。
+- 不做 HTTP verifier service。
+- 不做 remote artifact fetch。
+- 不做新的 manifest/frame schema。
+- 不做 package signing。
+- 不做 SBOM。
+- 不做公网可达性证明。
+- 不做 hosted public node。
+
 ## Next Candidates
 
 1. Add public reachability proof only after the Docker proof contract stays stable on the target network.
