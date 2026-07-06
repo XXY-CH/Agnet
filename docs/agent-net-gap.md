@@ -1,12 +1,12 @@
 # Agent Net Gap
 
-状态：v10.20 assessment
+状态：v10.21 assessment
 
 ## 一句话
 
 当前项目是 Agent Net 的 protocol seed，不是 Agent Net 产品。
 
-它已经抓住了真正 Agent Net 的底层骨架：identity with a narrow Ed25519 `did:key` bridge、Node/Go artifact manifest evidence and local verification CLI、minimal AFP `afp:sha256:<sha256>` strings、Node/Go receipt verification CLIs、one-receipt local artifact closure verification、implementation-backed ASP Core draft、reusable Go `FED_RECEIPT` verifier package、one-command local proof demo with verifier-ready receipt/trust files、verified Docker proof demo、signed task、policy、artifact、receipt、audit、federation、Node/Go bidirectional task interop、Go federation explicit bind host primitive、shared `FED_TASK_OPEN` / `FED_RECEIPT` conformance fixtures，以及 Go 侧最小 explicit Swarm DAG seed、single ordered complete audit-backed Zone-signed Swarm close proof tied to same-audit receipts、delimiter-safe Swarm ids 和同 audit Swarm dependency step/receipt verification。
+它已经抓住了真正 Agent Net 的底层骨架：identity with a narrow Ed25519 `did:key` bridge、Node/Go artifact manifest evidence and local verification CLI、minimal AFP `afp:sha256:<sha256>` strings、Node/Go receipt verification CLIs、one-receipt local artifact closure verification、implementation-backed ASP Core draft、reusable Go `FED_RECEIPT` verifier package、one-command local proof demo with verifier-ready receipt/trust files、verified Docker proof demo、local public-listen proof、signed task、policy、artifact、receipt、audit、federation、Node/Go bidirectional task interop、Go federation explicit bind host primitive、shared `FED_TASK_OPEN` / `FED_RECEIPT` conformance fixtures，以及 Go 侧最小 explicit Swarm DAG seed、single ordered complete audit-backed Zone-signed Swarm close proof tied to same-audit receipts、delimiter-safe Swarm ids 和同 audit Swarm dependency step/receipt verification。
 
 它还缺产品面、运行面、部署面、多人协作面和真实工具执行面。
 
@@ -31,6 +31,7 @@
 - Go exposes reusable `agnet/verifier.VerifyFederatedReceipt` for one `FED_RECEIPT` frame。
 - `scripts/proof-demo.sh` runs the local MVP, emits verifier-ready receipt/trust files, and verifies the generated artifact manifest plus local receipt closure。
 - `Dockerfile` and `scripts/docker-proof-demo.sh` produce a verified Docker proof demo output on Docker Server `29.0.1`。
+- `scripts/public-node-proof.sh` starts the Go federation gateway on `0.0.0.0` and proves `public_transport: true` locally。
 - shared Node/Go `FED_TASK_OPEN` and `FED_RECEIPT` conformance fixtures。
 - Go `FED_SWARM_OPEN` explicit two-step DAG seed with signed artifact dependency evidence。
 - Go `FED_SWARM_CLOSE` carries one ordered complete audit-backed Zone-signed close proof over ordered same-audit step receipt digests。
@@ -214,7 +215,7 @@
 
 主要缺：
 
-- QUIC binding / public transport deployment; Go federation TCP can run with mTLS client certificate verification, bind certificate URI SANs to the claimed Zone identity, and bind a configured host, but no public reachability/NAT/relay proof exists yet。
+- QUIC binding / public transport deployment; Go federation TCP can run with mTLS client certificate verification, bind certificate URI SANs to the claimed Zone identity, bind a configured host, and prove a local `0.0.0.0` public-listen status, but no public reachability/NAT/relay proof exists yet。
 - public gateway deployment。
 - NAT/proxy story。
 - service discovery beyond static trusted stores。

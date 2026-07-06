@@ -470,8 +470,29 @@
 - 不做 supply-chain attestation。
 - 不做 container namespace sandbox。
 
+## v10.21: Local Public-Listen Proof
+
+状态：complete
+目标：Add a local public-node proof path without claiming real public deployment.
+
+新增：
+
+- `scripts/public-node-proof.sh` builds the Go gateway and runs a proof helper.
+- `scripts/public-node-proof.mjs` starts the gateway with `--listen-host 0.0.0.0`.
+- The proof output includes `public_node_proof: "ok"`, `listen_host: "0.0.0.0"`, `public_transport: true`, and `transport: "fed+tcp"`.
+- `public-node-proof.test.mjs` runs the proof script end to end.
+
+不做：
+
+- 不做公网可达性证明。
+- 不做 NAT / relay。
+- 不做 hosted public node。
+- 不做 TLS certificate issuance。
+- 不做 QUIC。
+- 不做 deployment automation。
+
 ## Next Candidates
 
-1. Prepare a public-node proof path.
+1. Strengthen the public-node proof beyond local listen status.
 2. Add an npm-facing verifier only when the existing Node exports are not enough.
 3. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.

@@ -319,6 +319,10 @@ func serve(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath
 	if err != nil {
 		return err
 	}
+	listenPort := port
+	if addr, ok := listener.Addr().(*net.TCPAddr); ok {
+		listenPort = strconv.Itoa(addr.Port)
+	}
 	var wsListener net.Listener
 	if wsPort != "" {
 		wsListener, err = net.Listen("tcp", "127.0.0.1:"+wsPort)
@@ -335,7 +339,7 @@ func serve(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath
 		go serveHumanGateway(humanListener, auditPath, fixture, humanToken, listenHost)
 	}
 	if wsPort != "" || humanPort != "" {
-		status := map[string]any{"go_fed_discovery": "listening", "listen_host": listenHost, "port": port, "public_transport": isPublicListenHost(listenHost), "transport": transport}
+		status := map[string]any{"go_fed_discovery": "listening", "listen_host": listenHost, "port": listenPort, "public_transport": isPublicListenHost(listenHost), "transport": transport}
 		if wsPort != "" {
 			status["ws_port"] = wsPort
 		}
@@ -345,7 +349,7 @@ func serve(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath
 		data, _ := json.Marshal(status)
 		fmt.Println(string(data))
 	} else {
-		status := map[string]any{"go_fed_discovery": "listening", "listen_host": listenHost, "port": port, "public_transport": isPublicListenHost(listenHost), "transport": transport}
+		status := map[string]any{"go_fed_discovery": "listening", "listen_host": listenHost, "port": listenPort, "public_transport": isPublicListenHost(listenHost), "transport": transport}
 		data, _ := json.Marshal(status)
 		fmt.Println(string(data))
 	}
