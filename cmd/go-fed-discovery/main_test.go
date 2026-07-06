@@ -349,6 +349,23 @@ func TestArtifactStoreIndexRejectsAFPMismatch(t *testing.T) {
 	}
 }
 
+func TestArtifactStoreIndexRejectsInvalidSize(t *testing.T) {
+	for _, row := range []string{
+		`{"sha256":"` + strings.Repeat("1", 64) + `","size":"7"}`,
+		`{"sha256":"` + strings.Repeat("1", 64) + `","size":-1}`,
+		`{"sha256":"` + strings.Repeat("1", 64) + `","size":1.5}`,
+	} {
+		path := filepath.Join(t.TempDir(), "objects.ndjson")
+		if err := os.WriteFile(path, []byte(row+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := readArtifactStoreIndex(path)
+		if err == nil || !strings.Contains(err.Error(), "artifact mirror index invalid") {
+			t.Fatalf("row %s: got %v, want artifact mirror index invalid", row, err)
+		}
+	}
+}
+
 func TestAuditAppendRefreshesSharedHead(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
 	first := &AuditLog{Path: path, Head: auditZeroHash}
