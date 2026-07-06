@@ -5264,6 +5264,11 @@ func verifyPolicyScope(receipt map[string]any) error {
 			return errors.New("policy scope " + field + " missing")
 		}
 	}
+	for _, field := range []string{"write", "tools", "data_domains", "approval_required"} {
+		if _, err := policyStringList(scope[field], "policy scope "+field+" invalid"); err != nil {
+			return err
+		}
+	}
 	if fmt.Sprint(receipt["policy_digest"]) == "" {
 		return errors.New("receipt policy digest missing")
 	}

@@ -1190,6 +1190,30 @@ func TestVerifyCheckpointsRejectsMalformedLists(t *testing.T) {
 	}
 }
 
+func TestVerifyPolicyScopeRejectsMalformedLists(t *testing.T) {
+	for _, field := range []string{"write", "tools", "data_domains", "approval_required"} {
+		t.Run(field, func(t *testing.T) {
+			scope := map[string]any{
+				"network":           false,
+				"write":             []string{},
+				"tools":             []string{},
+				"data_domains":      []string{},
+				"approval_required": []string{},
+				"expires_at":        "",
+			}
+			scope[field] = []any{"ok", map[string]any{"bad": field}}
+			err := verifyPolicyScope(map[string]any{
+				"policy_scope":  scope,
+				"policy_digest": digestHex(scope),
+			})
+			want := "policy scope " + field + " invalid"
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("got %v, want %s", err, want)
+			}
+		})
+	}
+}
+
 func TestCheckpointByIDRejectsMalformedReceiptCheckpointLists(t *testing.T) {
 	zone, zoneKey := testZoneDescriptor(t, "zone://checkpoint-lookup-shape")
 	_, workerKey, err := ed25519.GenerateKey(rand.Reader)

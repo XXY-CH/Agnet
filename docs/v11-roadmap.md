@@ -1670,6 +1670,28 @@
 - 不实现 automatic drain。
 - 不实现 A2A/ARD compatibility。
 
+## v11.74: Go Receipt Policy Scope List Shape Boundary
+
+状态：complete
+目标：Make Go receipt verification reject malformed `policy_scope` list evidence before accepting a signed policy digest.
+
+新增：
+
+- Go `verifyPolicyScope` rejects non-string entries in signed receipt `policy_scope.write`, `policy_scope.tools`, `policy_scope.data_domains`, and `policy_scope.approval_required` lists with `policy scope <field> invalid`.
+- Existing policy digest comparison remains unchanged.
+- Existing generated receipt policy scopes remain unchanged.
+- The fix is scoped to receipt policy evidence list shape; it does not add generic receipt schema validation or a dynamic policy service.
+
+不做：
+
+- 不实现 generic receipt JSON Schema validation。
+- 不实现 dynamic policy service。
+- 不改变 generated receipt policy scope semantics。
+- 不改变 task policy enforcement semantics。
+- 不实现 scheduler-owned routing。
+- 不实现 automatic drain。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
