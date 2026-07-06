@@ -664,8 +664,38 @@
 - 不做 range/cache/object-store fetch。
 - 不做 artifact authorization model beyond receipt-bound URI checks.
 
+## v10.29: Public-Listen Artifact Tamper Rejection Proof
+
+状态：complete
+目标：Prove public-listen artifact reads reject receipt-valid artifact URIs when local artifact bytes drift after receipt creation.
+
+新增：
+
+- `scripts/public-node-proof.mjs` first performs a successful authenticated `FED_ARTIFACT_READ` and verifies the fetched artifact bytes with `asp-verify.mjs fed-receipt-artifacts`.
+- The proof mutates the same artifact file with equal-length different bytes after receipt creation.
+- The proof sends another authenticated `FED_ARTIFACT_READ` for the receipt-valid artifact URI.
+- The gateway returns a `FED_TASK_ERROR` from existing receipt-bound artifact byte verification.
+- The proof output includes `artifact_tamper_reject: true`.
+- The proof output includes `artifact_tamper_error` matching `artifact bytes digest mismatch`.
+- The proof restores valid artifact bytes before exit so verifier-ready receipt/trust closure files remain independently checkable.
+
+不做：
+
+- 不做公网可达性证明。
+- 不做 NAT / relay。
+- 不做 hosted public node。
+- 不做 TLS certificate issuance。
+- 不做 QUIC。
+- 不做 deployment automation。
+- 不做 remote audit sync。
+- 不做 audit search/index。
+- 不做 general artifact service。
+- 不做 range/cache/object-store fetch。
+- 不做 artifact authorization model beyond receipt-bound URI checks.
+- 不做新的 artifact verifier 逻辑。
+
 ## Next Candidates
 
-1. Add tamper-negative coverage for `FED_ARTIFACT_READ` when local artifact bytes drift after receipt creation.
+1. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.
 2. Add an npm-facing verifier only when the existing Node exports are not enough.
-3. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.
+3. Add public reachability proof only after the local proof contract stays stable.

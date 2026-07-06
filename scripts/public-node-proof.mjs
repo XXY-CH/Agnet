@@ -58,6 +58,9 @@ for await (const chunk of child.stdout) {
   await writeFile(artifact.file, artifact.bytes);
   const artifactVerify = await execFileAsync(process.execPath, ["asp-verify.mjs", "fed-receipt-artifacts", receiptFramePath, receiptTrustedPath]);
   const artifactReject = await rejectArtifact(status.port, originZone, task.taskId, "artifact://local/public_node_probe_task/not-in-receipt.md");
+  await writeFile(artifact.file, tamperedBytes(artifact.bytes));
+  const artifactTamperReject = await rejectArtifact(status.port, originZone, task.taskId, audited.frame.receipt.artifact_refs[0]);
+  await writeFile(artifact.file, artifact.bytes);
   clearTimeout(timer);
   child.kill("SIGTERM");
   console.log(JSON.stringify({
@@ -83,6 +86,8 @@ for await (const chunk of child.stdout) {
     fed_receipt_artifacts_verify: JSON.parse(artifactVerify.stdout).fed_receipt_artifacts_verify,
     artifact_reject: artifactReject.rejected,
     artifact_reject_error: artifactReject.error,
+    artifact_tamper_reject: artifactTamperReject.rejected,
+    artifact_tamper_error: artifactTamperReject.error,
   }));
   process.exit(0);
 }
@@ -200,6 +205,13 @@ async function rejectArtifact(port, zone, taskId, uri) {
   } catch (error) {
     return { rejected: true, error: error.message };
   }
+}
+
+function tamperedBytes(bytes) {
+  if (bytes.length === 0) throw new Error("cannot tamper empty artifact");
+  const tampered = Buffer.from(bytes);
+  tampered[0] ^= 1;
+  return tampered;
 }
 
 function artifactFilePath(uri) {
