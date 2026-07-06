@@ -4956,6 +4956,9 @@ func readArtifactStoreIndex(path string) ([]map[string]any, error) {
 		if entry == nil {
 			return nil, errors.New("artifact mirror index invalid")
 		}
+		if sha, ok := entry["sha256"]; ok && !isHexDigest(fmt.Sprint(sha)) {
+			return nil, errors.New("artifact mirror index invalid")
+		}
 		out = append(out, entry)
 	}
 	if err := scanner.Err(); err != nil {
