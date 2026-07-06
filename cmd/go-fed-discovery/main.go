@@ -5200,8 +5200,14 @@ func artifactStoreIndexContains(index []map[string]any, manifest map[string]any)
 }
 
 func receiptArtifactManifest(receipt map[string]any, uri string) (map[string]any, error) {
-	refs := stringsFromAny(receipt["artifact_refs"])
-	manifests := mapsFromAny(receipt["artifact_manifests"])
+	refs, err := artifactRefsFromAny(receipt["artifact_refs"])
+	if err != nil {
+		return nil, err
+	}
+	manifests, err := artifactManifestsFromAny(receipt["artifact_manifests"])
+	if err != nil {
+		return nil, err
+	}
 	for index, ref := range refs {
 		if ref == uri && index < len(manifests) {
 			return manifests[index], nil

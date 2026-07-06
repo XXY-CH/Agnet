@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v11.67-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v11.68-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -212,6 +212,7 @@ Verifiers MUST check:
 - Go receipt verification rejects malformed `approvals` and `approval_grants` list entries before approval grant count and signature checks.
 - Go receipt verification rejects malformed `checkpoint_refs` and `checkpoints` list entries before checkpoint count, parent, and signature checks.
 - Go checkpoint lookup for resume rejects malformed receipt `checkpoint_refs` and `checkpoints` list entries before accepting a receipt-carried checkpoint.
+- Go receipt artifact lookup rejects malformed `artifact_refs` and `artifact_manifests` list entries before returning a receipt-carried artifact manifest.
 - `artifact_refs` and `artifact_manifests` match when manifests are present.
 
 ## Artifacts

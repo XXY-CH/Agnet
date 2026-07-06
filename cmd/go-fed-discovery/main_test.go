@@ -314,6 +314,33 @@ func TestArtifactManifestRejectsMalformedListEntriesBeforeByteChecks(t *testing.
 	}
 }
 
+func TestReceiptArtifactManifestRejectsMalformedLists(t *testing.T) {
+	manifest := map[string]any{
+		"uri":           "artifact://local/lookup-shape-test/out.md",
+		"sha256":        strings.Repeat("1", 64),
+		"size":          float64(1),
+		"media_type":    "text/plain",
+		"manifest_hash": strings.Repeat("2", 64),
+	}
+	_, err := receiptArtifactManifest(map[string]any{
+		"artifact_refs":      []any{manifest["uri"], map[string]any{"uri": manifest["uri"]}},
+		"artifact_manifests": []map[string]any{manifest},
+	}, fmt.Sprint(manifest["uri"]))
+	if err == nil || !strings.Contains(err.Error(), "artifact refs invalid") {
+		t.Fatalf("got %v, want artifact refs invalid", err)
+	}
+	_, err = receiptArtifactManifest(map[string]any{
+		"artifact_refs": []string{fmt.Sprint(manifest["uri"])},
+		"artifact_manifests": []any{
+			manifest,
+			"bad-manifest",
+		},
+	}, fmt.Sprint(manifest["uri"]))
+	if err == nil || !strings.Contains(err.Error(), "artifact manifest missing") {
+		t.Fatalf("got %v, want artifact manifest missing", err)
+	}
+}
+
 func TestArtifactStoreIndexRequiresExactManifestFieldTypes(t *testing.T) {
 	manifest := map[string]any{
 		"uri":           "artifact://local/index-shape-boundary-test/out.md",

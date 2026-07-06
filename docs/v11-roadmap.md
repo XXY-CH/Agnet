@@ -1535,6 +1535,27 @@
 - 不实现 generic audit/schema validation。
 - 不实现 A2A/ARD compatibility。
 
+## v11.68: Go Receipt Artifact Lookup List Shape Boundary
+
+状态：complete
+目标：Make Go receipt artifact lookup reject malformed artifact evidence lists before returning a receipt-carried artifact manifest.
+
+新增：
+
+- Go `receiptArtifactManifest` rejects non-string entries in receipt `artifact_refs` lists with `artifact refs invalid`.
+- Go `receiptArtifactManifest` rejects non-object entries in receipt `artifact_manifests` lists with `artifact manifest missing`.
+- Existing receipt artifact manifest verification, byte verification, sidecar checks, and mirror checks stay unchanged.
+- The fix reuses existing strict artifact list parsers; it does not add generic receipt schema validation.
+
+不做：
+
+- 不实现 remote artifact fetch。
+- 不实现 object-store artifact backend。
+- 不实现 artifact retention policy。
+- 不改变 artifact byte verification semantics。
+- 不实现 generic receipt schema validation。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
