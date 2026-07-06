@@ -129,6 +129,7 @@ test("FED_RECEIPT artifact CLI verifies one frame and local artifact bytes in No
     task_id: vector.expected.task_id,
     artifact_count: 1,
     artifact_uris: [artifact.manifest.uri],
+    artifact_sha256s: [artifact.manifest.sha256],
     receipt_digest: createHash("sha256").update(canonical(receiptWithManifest)).digest("hex"),
   });
 

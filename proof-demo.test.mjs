@@ -38,8 +38,10 @@ test("proof demo emits verifier-ready receipt closure files", async () => {
   ])).stdout);
   const receiptFrame = JSON.parse(await readFile(result.receipt_frame, "utf8"));
   const { signature, ...receiptBody } = receiptFrame.receipt;
+  const artifactSha256 = receiptFrame.receipt.artifact_manifests[0].sha256;
   const receiptDigest = createHash("sha256").update(canonical(receiptBody)).digest("hex");
 
+  assert.deepEqual(result.artifact_sha256s, [artifactSha256]);
   assert.equal(result.receipt_digest, receiptDigest);
 
   assert.deepEqual(verified, {
@@ -47,6 +49,7 @@ test("proof demo emits verifier-ready receipt closure files", async () => {
     task_id: "task_001",
     artifact_count: 1,
     artifact_uris: [result.artifact_uri],
+    artifact_sha256s: [artifactSha256],
     receipt_digest: receiptDigest,
   });
 });

@@ -67,12 +67,14 @@ test("public node proof starts a public-listen gateway", async () => {
   assert.equal(result.swarm_close_digest, createHash("sha256").update(canonical(frameCloseBody)).digest("hex"));
 
   const { signature, ...receiptBody } = receiptFrame.receipt;
+  const artifactSha256 = receiptFrame.receipt.artifact_manifests[0].sha256;
   const receiptDigest = createHash("sha256").update(canonical(receiptBody)).digest("hex");
+  assert.deepEqual(result.artifact_sha256s, [artifactSha256]);
   assert.equal(result.receipt_digest, receiptDigest);
   const verified = await execFileAsync(process.execPath, ["asp-verify.mjs", "fed-receipt", result.receipt_frame, result.trusted_zones]);
   assert.deepEqual(JSON.parse(verified.stdout), { fed_receipt_verify: "ok", task_id: "public_node_probe_task", receipt_digest: receiptDigest });
   const verifiedArtifacts = await execFileAsync(process.execPath, ["asp-verify.mjs", "fed-receipt-artifacts", result.receipt_frame, result.trusted_zones]);
-  assert.deepEqual(JSON.parse(verifiedArtifacts.stdout), { fed_receipt_artifacts_verify: "ok", task_id: "public_node_probe_task", artifact_count: 1, artifact_uris: result.artifact_uris, receipt_digest: receiptDigest });
+  assert.deepEqual(JSON.parse(verifiedArtifacts.stdout), { fed_receipt_artifacts_verify: "ok", task_id: "public_node_probe_task", artifact_count: 1, artifact_uris: result.artifact_uris, artifact_sha256s: [artifactSha256], receipt_digest: receiptDigest });
   const verifiedSwarmClose = await execFileAsync(process.execPath, ["asp-verify.mjs", "swarm-close", result.swarm_close_frame, result.swarm_close_trusted_zones]);
   assert.deepEqual(JSON.parse(verifiedSwarmClose.stdout), { swarm_close_verify: "ok", swarm_id: result.swarm_id, swarm_close_digest: result.swarm_close_digest });
 });

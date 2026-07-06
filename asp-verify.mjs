@@ -27,7 +27,7 @@ try {
       throw new Error("receipt artifact manifests missing");
     }
     for (const manifest of manifests) await verifyLocalArtifact(manifest);
-    console.log(JSON.stringify({ fed_receipt_artifacts_verify: "ok", task_id: verified.receipt.task_id, artifact_count: manifests.length, artifact_uris: manifests.map(({ uri }) => uri), receipt_digest: receiptDigest(verified.signedReceipt) }));
+    console.log(JSON.stringify({ fed_receipt_artifacts_verify: "ok", task_id: verified.receipt.task_id, artifact_count: manifests.length, artifact_uris: manifests.map(({ uri }) => uri), artifact_sha256s: manifests.map(({ sha256 }) => sha256), receipt_digest: receiptDigest(verified.signedReceipt) }));
   } else if (command === "swarm-close" && file && trustedFile) {
     const frame = JSON.parse(await readFile(file, "utf8"));
     const verified = verifySwarmClose(frame, await loadTrustedZones(trustedFile));
