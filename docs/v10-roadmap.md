@@ -491,8 +491,31 @@
 - 不做 QUIC。
 - 不做 deployment automation。
 
+## v10.22: Public-Listen Resolve Proof
+
+状态：complete
+目标：Prove the local public-listen node can serve one authenticated federation frame.
+
+新增：
+
+- `scripts/public-node-proof.mjs` creates a trusted proof origin Zone.
+- The proof helper connects to the public-listen gateway over TCP.
+- It completes `HELLO` / `AUTH`.
+- It sends `FED_RESOLVE` for `agent://zone-b/summarizer`.
+- The proof output includes `resolve_alias: "agent://zone-b/summarizer"` and `resolve_close: true`.
+
+不做：
+
+- 不做公网可达性证明。
+- 不做 NAT / relay。
+- 不做 hosted public node。
+- 不做 TLS certificate issuance。
+- 不做 QUIC。
+- 不做 deployment automation。
+- 不做 broad protocol probe suite beyond one `FED_RESOLVE` round trip。
+
 ## Next Candidates
 
-1. Strengthen the public-node proof beyond local listen status.
+1. Strengthen the public-node proof beyond one local `FED_RESOLVE`.
 2. Add an npm-facing verifier only when the existing Node exports are not enough.
 3. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.

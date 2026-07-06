@@ -13,4 +13,6 @@ test("public node proof starts a public-listen gateway", async () => {
   assert.equal(result.listen_host, "0.0.0.0");
   assert.equal(result.public_transport, true);
   assert.equal(result.transport, "fed+tcp");
+  assert.equal(result.resolve_alias, "agent://zone-b/summarizer");
+  assert.equal(result.resolve_close, true);
 });
