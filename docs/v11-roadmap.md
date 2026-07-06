@@ -1451,6 +1451,27 @@
 - 不实现 generic Swarm schema validation。
 - 不实现 A2A/ARD compatibility。
 
+## v11.64: Go Swarm Close Step List Shape Boundary
+
+状态：complete
+目标：Make Go audit-backed Swarm close proof verification reject malformed step receipt list entries instead of silently filtering them.
+
+新增：
+
+- Go `verifySwarmCloseProof` rejects non-object entries in signed close `step_receipts` lists with `swarm close step receipt invalid`.
+- Existing close step identity, duplicate, count, order, task id, receipt digest, duplicate close, unknown Swarm, and NUL identity checks stay unchanged.
+- The fix is scoped to signed Swarm close proof list shape before accountability checks; it does not add generic Swarm close schema validation.
+
+不做：
+
+- 不实现 dynamic Swarm decomposition。
+- 不实现 scheduler-owned routing。
+- 不实现 parallel Swarm execution。
+- 不实现 cross-Zone Swarm execution。
+- 不实现 Node audit-backed Swarm completeness verification。
+- 不实现 generic Swarm close schema validation。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

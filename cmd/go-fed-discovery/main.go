@@ -4712,7 +4712,10 @@ func verifySwarmCloseProof(record map[string]any, completed map[string]map[strin
 	if expected == 0 {
 		return errors.New("swarm close proof without receipts: " + swarmID)
 	}
-	steps := mapsFromAny(closeProof["step_receipts"])
+	steps, err := swarmCloseStepReceipts(closeProof["step_receipts"])
+	if err != nil {
+		return err
+	}
 	seen := map[string]bool{}
 	for _, step := range steps {
 		stepID := optionalString(step["step_id"])
@@ -4748,6 +4751,25 @@ func verifySwarmCloseProof(record map[string]any, completed map[string]map[strin
 	}
 	closed[swarmID] = true
 	return nil
+}
+
+func swarmCloseStepReceipts(value any) ([]map[string]any, error) {
+	if typed, ok := value.([]map[string]any); ok {
+		return typed, nil
+	}
+	items, ok := value.([]any)
+	if !ok {
+		return nil, errors.New("swarm close step receipt invalid")
+	}
+	out := []map[string]any{}
+	for _, item := range items {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			return nil, errors.New("swarm close step receipt invalid")
+		}
+		out = append(out, entry)
+	}
+	return out, nil
 }
 
 func hasSwarmDelimiter(value string) bool {

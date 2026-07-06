@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v11 active at `v11.63-protocol`.
+Status: research prototype, local-first, v11 active at `v11.64-protocol`.
 
 ## Why This Exists
 
@@ -58,7 +58,7 @@ The current prototype proves:
 - Node to Go and Go to Node `FED_TASK_OPEN` interoperability.
 - Shared `FED_TASK_OPEN`, `FED_RECEIPT`, and `FED_SWARM_CLOSE` conformance fixtures, including fail-closed checks for missing-frame, missing-zone, missing-proof, missing-signature, missing-identity, malformed-step, unsafe-task-id, NUL-bearing, empty, and duplicate-step Swarm close proofs.
 - Minimal two-step `FED_SWARM_OPEN` with signed dependency evidence.
-- Swarm audit verification for declared dependency steps, delimiter-safe step identity, malformed dependency list rejection, artifact manifests, upstream receipt digests, and single ordered complete audit-backed Zone-signed close proofs over Swarms that appeared in the same audit.
+- Swarm audit verification for declared dependency steps, delimiter-safe step identity, malformed dependency list rejection, malformed close step receipt list rejection, artifact manifests, upstream receipt digests, and single ordered complete audit-backed Zone-signed close proofs over Swarms that appeared in the same audit.
 
 It is not yet a production Agent Net, public federation network, DID-native identity layer, scheduler, economic layer, or container-isolated runtime.
 
@@ -227,7 +227,8 @@ Optional hardening flags include:
 - `docs/agent-space-architecture.md` - architecture overview.
 - `docs/asp-core-draft.md` - narrow English draft for the implemented proof layer.
 - `docs/v11-roadmap.md` - active v11 roadmap.
-- `docs/v11.63-boundary.md` - latest closed boundary.
+- `docs/v11.64-boundary.md` - latest closed boundary.
+- `docs/v11.63-boundary.md` - Go Swarm dependency list shape boundary.
 - `docs/v11.62-boundary.md` - Go artifact mirror index AFP type boundary.
 - `docs/v11.61-boundary.md` - Go artifact manifest AFP boundary.
 - `docs/v11.60-boundary.md` - Go artifact manifest URI boundary.

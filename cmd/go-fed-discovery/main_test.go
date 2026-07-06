@@ -953,6 +953,29 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	malformedClose := signBodyWithKey(zoneKey, map[string]any{
+		"swarm_id": "swarm://test",
+		"step_receipts": []any{
+			map[string]any{"step_id": "upstream", "task_id": "swarm_up", "receipt_digest": digestHex(upstreamReceipt)},
+			map[string]any{"step_id": "downstream", "task_id": "swarm_down", "receipt_digest": digestHex(downstreamRecord)},
+			"bad-step",
+		},
+	}, "close_signature")
+	malformedCloseLog := &AuditLog{Path: "malformed-close-audit.log", Head: auditZeroHash}
+	if err := malformedCloseLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": upstreamReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	if err := malformedCloseLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": downstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(downstreamWorker), "receipt": downstreamRecord}); err != nil {
+		t.Fatal(err)
+	}
+	if err := malformedCloseLog.Append(map[string]any{"kind": "go_swarm_close", "zone": zone, "close": malformedClose}); err != nil {
+		t.Fatal(err)
+	}
+	err = verifyAuditFile("malformed-close-audit.log", "")
+	if err == nil || !strings.Contains(err.Error(), "swarm close step receipt invalid") {
+		t.Fatalf("got %v, want swarm close step receipt invalid", err)
+	}
+
 	duplicateCloseRecordLog := &AuditLog{Path: "duplicate-close-record-audit.log", Head: auditZeroHash}
 	if err := duplicateCloseRecordLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": upstreamReceipt}); err != nil {
 		t.Fatal(err)
