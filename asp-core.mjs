@@ -481,6 +481,7 @@ export function verifyZoneBinding(entry, descriptor, alias) {
 }
 
 export function verifyZoneRevocation(revocation, zoneDescriptor) {
+  if (!revocation || typeof revocation !== "object" || Array.isArray(revocation)) return false;
   let zonePublicKey;
   try {
     ({ publicKey: zonePublicKey } = verifyZoneDescriptor(zoneDescriptor));
@@ -492,6 +493,9 @@ export function verifyZoneRevocation(revocation, zoneDescriptor) {
 }
 
 export function verifyNotRevoked(entry, descriptor, alias) {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw new Error("zone revocation context missing");
+  if (!descriptor || typeof descriptor !== "object" || Array.isArray(descriptor)) throw new Error("zone revocation descriptor missing");
+  if (!Array.isArray(entry.revocations)) throw new Error("zone revocations missing");
   for (const revocation of entry.revocations) {
     if (!verifyZoneRevocation(revocation, entry.zone)) {
       throw new Error(`zone revocation signature verification failed for ${alias}`);

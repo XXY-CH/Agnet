@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v11.36-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v11.37-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -22,6 +22,8 @@ ASP Core covers:
 The implementation-backed rotation and alias rebinding proof verifiers reject missing proof and descriptor objects before field reads.
 
 The implementation-backed Zone binding verifier rejects missing binding context and descriptor objects before field reads.
+
+The implementation-backed Zone revocation verifiers reject missing revocation context, descriptor, and revocation-list objects before field reads.
 
 The implementation-backed capability credential helpers reject missing credential and status proof objects before field reads.
 

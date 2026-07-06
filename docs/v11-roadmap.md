@@ -819,6 +819,31 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.37: Node Zone Revocation Object Presence
+
+状态：complete
+目标：Make Node Zone revocation verification reject missing revocation context and descriptor objects before field reads.
+
+新增：
+
+- Node `verifyZoneRevocation` returns `false` for missing, array, or otherwise non-object revocation inputs.
+- Node `verifyNotRevoked` rejects missing, array, or otherwise non-object entry/context inputs with `zone revocation context missing`.
+- Node `verifyNotRevoked` rejects missing, array, or otherwise non-object descriptor inputs with `zone revocation descriptor missing`.
+- Node `verifyNotRevoked` rejects missing revocation-list inputs with `zone revocations missing`.
+- The focused revocation tests prove malformed revocation context inputs no longer leak JavaScript `TypeError` failures.
+
+不做：
+
+- 不改变 Zone revocation schema。
+- 不改变 revocation verification semantics。
+- 不实现 revocation feed sync。
+- 不实现 Zone lifecycle API。
+- 不实现 generic registry schema validation。
+- 不改变 Go verifier behavior。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
