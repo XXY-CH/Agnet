@@ -83,8 +83,8 @@ async function runWorker(port = 8787) {
         await sendEvent(socket, { type: "task.progress", task_id: task.task_id, progress: 0.5 });
 
         const artifactUri = `artifact://local/${task.task_id}/summary.md`;
-        await writeArtifact(artifactUri, `# Runtime Summary\n\nCompleted ${task.task_id} for ${task.from}.\n`);
-        await sendEvent(socket, { type: "artifact.created", task_id: task.task_id, uri: artifactUri });
+        const artifact = await writeArtifact(artifactUri, `# Runtime Summary\n\nCompleted ${task.task_id} for ${task.from}.\n`);
+        await sendEvent(socket, { type: "artifact.created", task_id: task.task_id, uri: artifactUri, manifest: artifact.manifest });
         await sendEvent(socket, { type: "task.completed", task_id: task.task_id, by: worker.aid });
 
         const receipt = {
@@ -92,6 +92,7 @@ async function runWorker(port = 8787) {
           from: task.from,
           to: worker.aid,
           artifact_refs: [artifactUri],
+          artifact_manifests: [artifact.manifest],
           event_count: approvals.length > 0 ? 7 : 5,
           approvals,
         };

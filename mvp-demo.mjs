@@ -58,11 +58,11 @@ async function run() {
   events.push({ type: "task.progress", task_id: task.task_id, progress: 0.5 });
 
   const artifactUri = "artifact://local/task_001/summary.md";
-  const artifactPath = await writeArtifact(
+  const artifact = await writeArtifact(
     artifactUri,
     "# MVP Summary\n\nAgent Space MVP proved identity, signed task, events, artifact, and receipt.\n",
   );
-  events.push({ type: "artifact.created", task_id: task.task_id, uri: artifactUri });
+  events.push({ type: "artifact.created", task_id: task.task_id, uri: artifactUri, manifest: artifact.manifest });
   events.push({ type: "task.completed", task_id: task.task_id, by: worker.aid });
   for (const event of events) await appendAudit({ kind: "event", ...event });
 
@@ -71,6 +71,7 @@ async function run() {
     from: requester.aid,
     to: worker.aid,
     artifact_refs: [artifactUri],
+    artifact_manifests: [artifact.manifest],
     event_count: events.length,
     approvals,
   };
@@ -87,7 +88,7 @@ async function run() {
     worker: worker.aid,
     deniedTask,
     events,
-    artifactPath,
+    artifactPath: artifact.path,
     auditLog: "state/audit.log",
     receipt: signedReceipt,
   }, null, 2));

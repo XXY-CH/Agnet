@@ -178,8 +178,8 @@ async function serve(port, trustedZonesFile) {
         await sendEvent(socket, { type: "task.progress", task_id: task.task_id, progress: 0.5 });
 
         const artifactUri = `artifact://local/${task.task_id}/federated-summary.md`;
-        await writeArtifact(artifactUri, `# Federated Summary\n\nCompleted ${task.task_id} from ${originZone.zid}.\n`);
-        await sendEvent(socket, { type: "artifact.created", task_id: task.task_id, uri: artifactUri });
+        const artifact = await writeArtifact(artifactUri, `# Federated Summary\n\nCompleted ${task.task_id} from ${originZone.zid}.\n`);
+        await sendEvent(socket, { type: "artifact.created", task_id: task.task_id, uri: artifactUri, manifest: artifact.manifest });
         await sendEvent(socket, { type: "task.completed", task_id: task.task_id, by: worker.aid, zone: zone.zid });
 
         const receipt = {
@@ -189,6 +189,7 @@ async function serve(port, trustedZonesFile) {
           executing_zone: zone.zid,
           to: worker.aid,
           artifact_refs: [artifactUri],
+          artifact_manifests: [artifact.manifest],
           event_count: approvals.length > 0 ? 7 : 5,
           approvals,
         };

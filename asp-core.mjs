@@ -547,5 +547,14 @@ export async function writeArtifact(uri, text) {
   const file = uri.replace("artifact://local/", "artifacts/");
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, text);
-  return file;
+  const data = Buffer.from(text);
+  const manifest = {
+    uri,
+    sha256: createHash("sha256").update(data).digest("hex"),
+    size: data.length,
+    media_type: "text/markdown; charset=utf-8",
+  };
+  manifest.manifest_hash = createHash("sha256").update(canonical(manifest)).digest("hex");
+  await writeFile(`${file}.manifest.json`, `${JSON.stringify(manifest, null, 2)}\n`);
+  return { path: file, manifest };
 }

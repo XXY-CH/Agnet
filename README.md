@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v10 started with `v10.0-protocol`.
+Status: research prototype, local-first, v10 active at `v10.1-protocol`.
 
 ## Why This Exists
 
@@ -34,7 +34,7 @@ The current prototype proves:
 - Signed tasks, events, artifacts, checkpoints, and receipts.
 - Hash-chained JSONL audit logs.
 - Receipt verification through the Go CLI.
-- Filesystem artifact manifests, sidecars, content-addressed mirrors, and GC plan/apply.
+- Node artifact manifests and sidecars; Go filesystem artifact manifests, content-addressed mirrors, and GC plan/apply.
 - Human approval evidence for direct and queued execution.
 - Explicit queue claim, lease expiry, reclaim, retry, resume, and drain flows.
 - Sandbox claim binding and fail-closed unsupported sandbox probes.
@@ -135,20 +135,19 @@ Optional hardening flags include:
 - `docs/agent-space-ultimate-vision.md` - long-range vision.
 - `docs/agent-space-architecture.md` - architecture overview.
 - `docs/v10-roadmap.md` - active v10 roadmap.
-- `docs/v10.0-boundary.md` - latest closed boundary.
+- `docs/v10.1-boundary.md` - latest closed boundary.
 - `docs/v9-roadmap.md` - closed v9 roadmap.
 
 ## Roadmap
 
-v9 is closed. v10 has started with an identity bridge that makes descriptors easier to compare with DID ecosystems while keeping `aid:` canonical.
+v9 is closed. v10 is making the proof layer easier to verify externally: identity bridge first, then Node artifact manifest parity.
 
 Highest-value next directions:
 
 1. Publish an English ASP Core draft for the narrow proof layer.
 2. Extract receipt verification into a small Go package and npm package.
 3. Provide a first public node or Docker-based demo.
-4. Align Node artifact manifests with the Go evidence model.
-5. Continue Swarm proof work without building a broad scheduler too early.
+4. Continue Swarm proof work without building a broad scheduler too early.
 
 ## Current Boundaries
 

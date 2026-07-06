@@ -27,10 +27,29 @@
 - 不做 ANP/A2A/AGNTCY compatibility。
 - 不做 public identity registry。
 
+## v10.1: Node Artifact Manifest Parity
+
+状态：complete
+目标：Node artifact writes produce the same minimal manifest evidence shape already used by Go.
+
+新增：
+
+- Node `writeArtifact` persists `<artifact>.manifest.json`.
+- Node artifact manifests include `uri`, `sha256`, `size`, `media_type`, and `manifest_hash`.
+- Node MVP, local runtime, and federation gateway receipts bind `artifact_manifests`.
+- Node `artifact.created` events carry the produced manifest.
+
+不做：
+
+- 不做 Node content-addressed mirror。
+- 不做 Node artifact verify/read API。
+- 不做 Node artifact-store GC。
+- 不做 object-store backend。
+- 不做 Node receipt verifier CLI。
+
 ## Next Candidates
 
 1. Extract receipt verification into a small Go package and/or npm-facing verifier.
 2. Publish an English ASP Core draft focused on receipts, artifacts, audit, and identity bridge fields.
 3. Provide a first public-node or Docker demo that proves the existing local-first flow is reproducible.
-4. Align Node artifact manifests with the Go evidence model.
-5. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.
+4. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.
