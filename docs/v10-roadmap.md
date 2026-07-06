@@ -126,6 +126,30 @@
 - 不做 audit-log scan。
 - 不做 HTTP verifier service。
 
+## v10.6: Node FED_RECEIPT Local Artifact Closure CLI
+
+状态：complete
+目标：Verify one `FED_RECEIPT` frame and the local artifact bytes named by its signed manifests through the existing minimal CLI.
+
+新增：
+
+- `node asp-verify.mjs fed-receipt-artifacts <frame.json> <trusted-zones.json>` verifies one frame.
+- The command reuses `verifyFederatedReceipt`.
+- The command verifies each signed local artifact manifest with `verifyLocalArtifact`.
+- The command rejects artifact refs without artifact manifests because local bytes cannot be checked.
+- The command prints JSON on success.
+- The command exits non-zero and prints the verifier error on failure.
+
+不做：
+
+- 不做 npm package。
+- 不做 batch receipt verification。
+- 不做 receipt store/search。
+- 不做 audit-log scan。
+- 不做 remote artifact fetch。
+- 不做 HTTP verifier service。
+- 不做 object-store backend。
+
 ## Next Candidates
 
 1. Extract receipt verification into a small Go package and/or npm-facing verifier.

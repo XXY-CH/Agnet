@@ -4,7 +4,7 @@ import { createPrivateKey, createPublicKey } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { canonical, computeAid, createAgent, didKeyFromDescriptor, didKeyFromPublicKeySPKI, publicKeySPKIFromDidKey, signObject, verifyFederatedReceipt, verifyFederatedTaskOpen, verifyObject } from "./asp-core.mjs";
+import { canonical, computeAid, createAgent, didKeyFromDescriptor, didKeyFromPublicKeySPKI, publicKeySPKIFromDidKey, signObject, verifyFederatedReceipt, verifyFederatedTaskOpen, verifyObject, writeArtifact } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -106,5 +106,32 @@ test("FED_RECEIPT CLI verifies one frame in Node", async () => {
   await assert.rejects(
     () => execFileAsync("node", ["asp-verify.mjs", "fed-receipt", framePath, trustedPath]),
     (error) => error.stderr.includes("receipt executing_zone mismatch"),
+  );
+});
+
+test("FED_RECEIPT artifact CLI verifies one frame and local artifact bytes in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
+  const artifact = await writeArtifact(
+    vector.frame.receipt.artifact_refs[0],
+    "# Federated Summary\n\nThe conformance task produced a verifiable local artifact.\n",
+  );
+  const { signature, ...receipt } = vector.frame.receipt;
+  const receiptWithManifest = { ...receipt, artifact_manifests: [artifact.manifest] };
+  const frame = { ...vector.frame, receipt: { ...receiptWithManifest, signature: signObject(privateKeyFromSeed(vector.worker_seed_hex), receiptWithManifest) } };
+  const framePath = "state/node-fed-receipt-artifact-frame.json";
+  const trustedPath = "state/node-fed-receipt-artifact-trusted.json";
+  await writeFile(framePath, `${JSON.stringify(frame, null, 2)}\n`);
+  await writeFile(trustedPath, `${JSON.stringify({ zones: vector.trusted_zones }, null, 2)}\n`);
+
+  assert.deepEqual(JSON.parse((await execFileAsync("node", ["asp-verify.mjs", "fed-receipt-artifacts", framePath, trustedPath])).stdout), {
+    fed_receipt_artifacts_verify: "ok",
+    task_id: vector.expected.task_id,
+    artifact_count: 1,
+  });
+
+  await writeFile("artifacts/fed_task_conformance_001/federated-summary.md", "tampered\n");
+  await assert.rejects(
+    () => execFileAsync("node", ["asp-verify.mjs", "fed-receipt-artifacts", framePath, trustedPath]),
+    (error) => /artifact bytes (size|digest) mismatch/.test(error.stderr),
   );
 });
