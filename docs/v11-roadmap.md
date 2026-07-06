@@ -1647,6 +1647,29 @@
 - 不实现 automatic drain。
 - 不实现 A2A/ARD compatibility。
 
+## v11.73: Go Worker Approval Required List Shape Boundary
+
+状态：complete
+目标：Make Go worker policy `approval_required` lists fail closed before tool approval gates can be skipped.
+
+新增：
+
+- Go `enforcePolicy` rejects non-string entries in worker policy `approval_required` lists with `policy.approval_required_invalid` / `policy approval required invalid`.
+- Existing task `scope.write` and `scope.data_domains` list validation remains unchanged.
+- Existing valid `approval_required: ["tool"]` behavior remains unchanged.
+- Missing `approval_required` still behaves as no required approval reasons.
+- The fix is scoped to worker policy list shape before task execution; it does not add roles, admin policy, or a dynamic policy service.
+
+不做：
+
+- 不实现 roles / admin policy system。
+- 不实现 dynamic policy service。
+- 不改变 valid approval-required semantics。
+- 不改变 task write/data-domain validation semantics。
+- 不实现 scheduler-owned routing。
+- 不实现 automatic drain。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

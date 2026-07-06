@@ -530,6 +530,16 @@ test("Go discovery gateway serves FED_RESOLVE, FED_QUERY, and FED_TASK_OPEN to N
       capabilities: ["container.claimed"],
       policy: { allow_network: false, approval_required: ["tool"] },
     },
+    {
+      key_file: "state/go-fed-discovery-malformed-approval.seed",
+      alias: "agent://zone-b/malformed-approval",
+      tool: "external.stdio",
+      tool_command: [process.execPath, `${process.cwd()}/state/go-fed-container-marker-tool.mjs`],
+      sandbox_claim: "local-temp-dir",
+      transports: ["fed+tcp://127.0.0.1:8996"],
+      capabilities: ["approval.malformed"],
+      policy: { allow_network: false, approval_required: [{ reason: "tool" }] },
+    },
   ];
   delete goFixture.worker_profile;
   await writeFile("state/go-fed-discovery-dynamic-worker.json", `${JSON.stringify(goFixture, null, 2)}\n`);
@@ -540,6 +550,7 @@ test("Go discovery gateway serves FED_RESOLVE, FED_QUERY, and FED_TASK_OPEN to N
   await writeFile("state/go-fed-discovery-strict-translator.seed", "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf\n");
   await writeFile("state/go-fed-discovery-slow.seed", "c0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf\n");
   await writeFile("state/go-fed-discovery-container-claimed.seed", "d0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeef\n");
+  await writeFile("state/go-fed-discovery-malformed-approval.seed", "e0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff\n");
   await writeFile("state/go-fed-mcp-server.mjs", `
 import readline from "node:readline";
 const requireLocale = process.argv.includes("--require-locale");
@@ -2020,6 +2031,22 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     assert.equal(malformedDataDomainsFrames[0].type, "FED_TASK_ERROR");
     assert.equal(malformedDataDomainsFrames[0].code, "policy.data_domains_invalid");
     assert.match(malformedDataDomainsFrames[0].error, /policy data domains invalid/);
+
+    const malformedApprovalPolicyTask = {
+      ...task,
+      task_id: "go_fed_task_malformed_approval_policy",
+      to: "agent://zone-b/malformed-approval",
+      scope: { network: false },
+    };
+    const malformedApprovalPolicyFrames = await exchangeFrames(port, {
+      type: "FED_TASK_OPEN",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      task: { ...malformedApprovalPolicyTask, signature: signObject(requester.privateKey, malformedApprovalPolicyTask) },
+    });
+    assert.equal(malformedApprovalPolicyFrames[0].type, "FED_TASK_ERROR");
+    assert.equal(malformedApprovalPolicyFrames[0].code, "policy.approval_required_invalid");
+    assert.match(malformedApprovalPolicyFrames[0].error, /policy approval required invalid/);
 
     const verifiedAudit = await execFileAsync("go", [
       "run",

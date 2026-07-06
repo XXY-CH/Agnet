@@ -5342,6 +5342,9 @@ func enforcePolicy(worker, task map[string]any) error {
 	if _, err := policyStringList(scope["data_domains"], "policy data domains invalid"); err != nil {
 		return policyError{code: "policy.data_domains_invalid", message: "policy data domains invalid"}
 	}
+	if _, err := policyStringList(policy["approval_required"], "policy approval required invalid"); err != nil {
+		return policyError{code: "policy.approval_required_invalid", message: "policy approval required invalid"}
+	}
 	return nil
 }
 
