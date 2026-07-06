@@ -282,6 +282,24 @@ test("FED_SWARM_CLOSE verification rejects duplicate step receipts in Node", asy
   );
 });
 
+test("FED_SWARM_CLOSE verification rejects missing Swarm identity in Node", async () => {
+  const zone = createZone("zone://swarm-close-missing-id-test");
+  const closeBody = {
+    step_receipts: [{ step_id: "summary", task_id: "task_1", receipt_digest: "0".repeat(64) }],
+  };
+  const frame = {
+    type: "FED_SWARM_CLOSE",
+    zone: zone.descriptor,
+    close: { ...closeBody, close_signature: signObject(zone.privateKey, closeBody) },
+  };
+  const trustedZones = new Map([[zone.descriptor.zid, zone.descriptor]]);
+
+  assert.throws(
+    () => verifySwarmClose(frame, trustedZones),
+    /swarm close identity missing/,
+  );
+});
+
 test("FED_SWARM_CLOSE conformance vector verifies in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v10.38-fed-swarm-close.json", "utf8"));
   const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));

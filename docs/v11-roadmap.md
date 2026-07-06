@@ -287,6 +287,26 @@
 - 不实现 public reachability proof。
 - 不实现 A2A/ARD compatibility。
 
+## v11.13: FED_SWARM_CLOSE Swarm Identity Presence
+
+状态：complete
+目标：Make the Node `FED_SWARM_CLOSE` verifier reject close proofs without a signed Swarm id.
+
+新增：
+
+- Node `verifySwarmClose` requires the signed close body to include a non-empty `swarm_id`.
+- The Node test proves a trusted Zone signature cannot make a close proof valid when Swarm identity is omitted.
+
+不做：
+
+- 不实现 Node audit-backed Swarm completeness verification。
+- 不验证 step receipts against an audit log。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 scheduler-owned routing。
+- 不实现 parallel or cross-Zone Swarm execution。
+- 不实现 public reachability proof。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
