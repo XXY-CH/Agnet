@@ -4783,6 +4783,9 @@ func verifyArtifactManifests(receipt map[string]any, artifactStoreDir string) er
 		artifactStoreIndex = index
 	}
 	for index, manifest := range manifests {
+		if _, ok := manifest["uri"].(string); !ok {
+			return errors.New("artifact manifest uri invalid")
+		}
 		if manifest["uri"] != refs[index] {
 			return errors.New("artifact manifest uri mismatch")
 		}

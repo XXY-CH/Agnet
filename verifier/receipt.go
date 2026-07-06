@@ -157,6 +157,9 @@ func verifyReceiptArtifactManifests(receipt map[string]any) error {
 		return errors.New("receipt artifact manifest count mismatch")
 	}
 	for index, manifest := range manifests {
+		if _, ok := manifest["uri"].(string); !ok {
+			return errors.New("artifact manifest uri invalid")
+		}
 		if manifest["uri"] != refs[index] {
 			return errors.New("artifact manifest uri mismatch")
 		}

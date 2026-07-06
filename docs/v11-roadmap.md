@@ -1359,6 +1359,29 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.60: Go Artifact Manifest URI Boundary
+
+状态：complete
+目标：Make Go receipt and audit artifact manifest verification reject non-string manifest URIs.
+
+新增：
+
+- Go reusable receipt verification rejects non-string artifact manifest `uri` values with `artifact manifest uri invalid`.
+- Go audit artifact verification rejects non-string artifact manifest `uri` values with `artifact manifest uri invalid` before comparing artifact refs or reading local bytes.
+- The fix is scoped to artifact manifest proof metadata shape; it does not change local URI/path validation or full artifact manifest schema validation.
+
+不做：
+
+- 不改变 artifact manifest metadata schema。
+- 不实现 generic JSON Schema validation。
+- 不改变 receipt artifact manifest comparison semantics。
+- 不实现 remote artifact fetch。
+- 不实现 object-store artifact backend。
+- 不实现 artifact retention policy。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

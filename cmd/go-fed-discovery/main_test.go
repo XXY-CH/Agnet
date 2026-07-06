@@ -256,6 +256,28 @@ func TestArtifactManifestRejectsMalformedManifestHashBeforeByteChecks(t *testing
 	}
 }
 
+func TestArtifactManifestRejectsMalformedURIBeforeByteChecks(t *testing.T) {
+	manifest, err := writeArtifact("artifact://local/uri-boundary-test/out.md", "# URI\n", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := map[string]any{
+		"uri":        map[string]any{"path": manifest["uri"]},
+		"sha256":     manifest["sha256"],
+		"size":       manifest["size"],
+		"media_type": manifest["media_type"],
+		"afp":        manifest["afp"],
+	}
+	bad["manifest_hash"] = digestHex(bad)
+	err = verifyArtifactManifests(map[string]any{
+		"artifact_refs":      []any{manifest["uri"]},
+		"artifact_manifests": []any{bad},
+	}, "")
+	if err == nil || !strings.Contains(err.Error(), "artifact manifest uri invalid") {
+		t.Fatalf("got %v, want artifact manifest uri invalid", err)
+	}
+}
+
 func TestArtifactManifestRejectsMalformedListEntriesBeforeByteChecks(t *testing.T) {
 	manifest, err := writeArtifact("artifact://local/list-shape-boundary-test/out.md", "# List\n", "")
 	if err != nil {

@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v11.59-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v11.60-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -226,6 +226,8 @@ Filesystem audit artifact verification MUST reject malformed manifest `sha256` v
 Receipt artifact manifest verification MUST reject malformed manifest `sha256` values before accepting signed artifact metadata.
 
 Receipt and audit artifact manifest verification MUST reject negative or non-integer manifest `size` values before accepting signed artifact metadata or comparing local bytes.
+
+Go receipt and audit artifact manifest verification MUST reject non-string manifest `uri` values before comparing artifact refs or reading local bytes. Node already enforces string manifest fields in the shared artifact manifest helper.
 
 Go receipt and audit artifact manifest verification MUST reject non-string manifest `media_type` values before accepting signed artifact metadata or comparing local bytes. Node already enforces string manifest fields in the shared artifact manifest helper.
 
