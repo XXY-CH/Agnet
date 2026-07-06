@@ -21,4 +21,7 @@ test("public node proof starts a public-listen gateway", async () => {
   assert.equal(result.task_id, "public_node_probe_task");
   assert.equal(result.task_receipt, true);
   assert.equal(result.task_close, true);
+  assert.equal(result.audit_task_id, "public_node_probe_task");
+  assert.equal(result.audit_receipt, true);
+  assert.equal(result.audit_close, true);
 });

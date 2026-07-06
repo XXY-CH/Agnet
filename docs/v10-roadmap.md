@@ -537,8 +537,57 @@
 - 不做 deployment automation。
 - 不做 broad protocol probe suite beyond `FED_RESOLVE` and `FED_QUERY`。
 
+## v10.24: Public-Listen Task Proof
+
+状态：complete
+目标：Prove the local public-listen node can execute a signed task.
+
+新增：
+
+- `scripts/public-node-proof.mjs` sends authenticated `FED_TASK_OPEN` to `agent://zone-b/summarizer`.
+- The proof output includes `task_id: "public_node_probe_task"`.
+- The proof output includes `task_receipt: true`.
+- The proof output includes `task_close: true`.
+- The public proof watchdog is 60 seconds to cover full verification runs after task execution was added.
+
+不做：
+
+- 不做公网可达性证明。
+- 不做 NAT / relay。
+- 不做 hosted public node。
+- 不做 TLS certificate issuance。
+- 不做 QUIC。
+- 不做 deployment automation。
+- 不做 broad protocol probe suite beyond `FED_RESOLVE`, `FED_QUERY`, and one `FED_TASK_OPEN`。
+
+## v10.25: Public-Listen Audit Proof
+
+状态：complete
+目标：Prove the local public-listen node can return audit receipt proof for the task it executed.
+
+新增：
+
+- `scripts/public-node-proof.mjs` sends authenticated `FED_AUDIT_QUERY` after the public-listen task completes.
+- The audit query requests `public_node_probe_task`.
+- The proof output includes `audit_task_id: "public_node_probe_task"`.
+- The proof output includes `audit_receipt: true`.
+- The proof output includes `audit_close: true`.
+- The existing public-listen resolve, query, and task execution proof remains.
+
+不做：
+
+- 不做公网可达性证明。
+- 不做 NAT / relay。
+- 不做 hosted public node。
+- 不做 TLS certificate issuance。
+- 不做 QUIC。
+- 不做 deployment automation。
+- 不做 remote audit sync。
+- 不做 audit search/index。
+- 不做 broad protocol probe suite beyond the one proof path.
+
 ## Next Candidates
 
-1. Strengthen the public-node proof beyond local resolve/query.
+1. Make the public proof verifier-ready by emitting the fetched `FED_RECEIPT` frame and trusted Zone set.
 2. Add an npm-facing verifier only when the existing Node exports are not enough.
 3. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.

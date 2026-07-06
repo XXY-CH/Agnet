@@ -37,12 +37,13 @@ for await (const chunk of child.stdout) {
   output += chunk;
   const line = output.split("\n").find((item) => item.trim().startsWith("{"));
   if (!line) continue;
-  clearTimeout(timer);
   const status = JSON.parse(line);
   if (status.public_transport !== true) throw new Error("public transport proof failed");
   const resolved = await resolveAlias(status.port, originZone, "agent://zone-b/summarizer");
   const queried = await queryCapability(status.port, originZone, "summarize.text");
   const task = await openTask(status.port, originZone);
+  const audited = await auditTask(status.port, originZone, task.taskId);
+  clearTimeout(timer);
   child.kill("SIGTERM");
   console.log(JSON.stringify({
     public_node_proof: "ok",
@@ -58,6 +59,9 @@ for await (const chunk of child.stdout) {
     task_id: task.taskId,
     task_receipt: task.receipt,
     task_close: task.close,
+    audit_task_id: audited.taskId,
+    audit_receipt: audited.receipt,
+    audit_close: audited.close,
   }));
   process.exit(0);
 }
@@ -127,6 +131,21 @@ function openTask(port, zone) {
     (frame) => {
       if (frame.type === "FED_RECEIPT") gotReceipt = frame.receipt?.task_id === task.task_id;
       if (frame.type === "FED_TASK_CLOSE") return { taskId: task.task_id, receipt: gotReceipt, close: frame.task_id === task.task_id };
+      return null;
+    },
+  );
+}
+
+function auditTask(port, zone, taskId) {
+  let gotReceipt = false;
+  return exchangeFrame(
+    port,
+    zone,
+    { type: "FED_AUDIT_QUERY", origin_zone: zone.descriptor, task_id: taskId },
+    "FED_AUDIT_CLOSE",
+    (frame) => {
+      if (frame.type === "FED_AUDIT_RESULT") gotReceipt = frame.receipt?.task_id === taskId;
+      if (frame.type === "FED_AUDIT_CLOSE") return { taskId, receipt: gotReceipt, close: frame.task_id === taskId };
       return null;
     },
   );
