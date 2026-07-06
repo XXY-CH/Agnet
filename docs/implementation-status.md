@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v11.75 active
-当前代码基线：`v11.75-go-receipt-policy-scope-scalar-shape-boundary`
+状态：v11.76 active
+当前代码基线：`v11.76-go-receipt-task-id-token-boundary`
 
 ## 一句话
 
@@ -28,7 +28,7 @@
 | Capability query | done | done | `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | ranking / scheduling |
 | Capability credential | done | done + Go signed status evidence | `capability-credential.test.mjs`, `go-fed-discovery.test.mjs` | revocation feed / renewal |
 | Key persistence | PKCS8 files | seed key files | `state/keys`, `--authority-key`, `--worker-key` | rotation, encryption, permissions |
-| `FED_TASK_OPEN` / `FED_RECEIPT` / `FED_SWARM_CLOSE` vectors | execute + requester Zone binding + task id token validation + verifier context presence validation + receipt `task_digest` validation + Node client to Go task interop with receipt/task digest binding + shared task/receipt/Swarm-close conformance fixture verification | execute + requester Zone binding + task id token validation + receipt `task_digest` validation + Go client to Node task interop with receipt/task digest binding + durable running/completed/failed task state files + shared task/receipt conformance fixture verification | `test-vectors/asp-v9.24-fed-task-open.json`, `test-vectors/asp-v9.25-fed-receipt.json`, `test-vectors/asp-v10.38-fed-swarm-close.json`, `test-vectors.test.mjs`, `cmd/go-fed-discovery/main_test.go`, `federation-gateway.mjs`, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | scheduler / real restore / broader conformance suite |
+| `FED_TASK_OPEN` / `FED_RECEIPT` / `FED_SWARM_CLOSE` vectors | execute + requester Zone binding + task id token validation + verifier context presence validation + receipt `task_digest` validation + Node client to Go task interop with receipt/task digest binding + shared task/receipt/Swarm-close conformance fixture verification | execute + requester Zone binding + task id token validation including Go receipt task id validation + receipt `task_digest` validation + Go client to Node task interop with receipt/task digest binding + durable running/completed/failed task state files + shared task/receipt conformance fixture verification | `test-vectors/asp-v9.24-fed-task-open.json`, `test-vectors/asp-v9.25-fed-receipt.json`, `test-vectors/asp-v10.38-fed-swarm-close.json`, `test-vectors.test.mjs`, `cmd/go-fed-discovery/main_test.go`, `federation-gateway.mjs`, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | scheduler / real restore / broader conformance suite |
 | `FED_SWARM_OPEN` | not yet | explicit ordered two-step DAG seed; each step reuses signed task execution; receipts bind delimiter-safe dependency step ids, artifact manifests, and upstream receipt digest; `FED_SWARM_CLOSE` carries one complete audit-backed Zone-signed ordered close proof over same-audit receipts; audit verifier rejects duplicate step receipts, including artifactless duplicates, NUL-bearing Swarm identities, false signed dependency steps/manifests/receipt digests, incomplete/duplicate/reordered close summaries, duplicate close records, close proofs for audit-absent Swarms, and false close step digests | `go-fed-discovery.test.mjs`, `cmd/go-fed-discovery/main_test.go` | dynamic decomposition / scheduler / parallel execution / conflict resolution / cross-Zone Swarm |
 | `FED_TASK_ENQUEUE` | not yet | durable local queue file + claim/lease expiry + reclaim + retry/backoff state + explicit drain path | `go-fed-discovery.test.mjs` | automatic drain |
 | `FED_TASK_CANCEL` | not yet | signed cancellation receipt evidence + durable cancelled state file + live external process interruption | `go-fed-discovery.test.mjs` | persisted running registry / multi-node cancel |
@@ -64,6 +64,7 @@ Node
   -> FED_TASK_OPEN verifier validates local worker descriptor identity before target/policy checks
   -> FED_TASK_OPEN and FED_RECEIPT verifiers require signatures before crypto verification
   -> FED_RECEIPT verifier requires receipt task_digest and can compare supplied signed task evidence
+  -> FED_RECEIPT verifier rejects unsafe Go receipt task ids
   -> Node-to-Go interop receipt verification compares receipt task_digest against the sent signed task
   -> local artifact byte and sidecar verification against receipt manifest
   -> asp-verify.mjs artifact <manifest.json> CLI
@@ -211,7 +212,7 @@ Go
 
 ## Next Boundary
 
-v11.75 makes Go receipt verification reject malformed `policy_scope.network` and `policy_scope.expires_at` scalar evidence before accepting a signed policy digest. This keeps the proof boundary narrow: it does not add generic receipt schema validation, dynamic policy service, scheduler ownership, automatic drain, or A2A/ARD compatibility. The next natural boundary should keep moving toward Ultimate without widening the claim surface: close remaining Phase A trust-boundary bugs only when still present in live code, add real public reachability proof only with external network evidence, or continue proof/accountability work only where it adds verifiable enforcement without scheduler breadth.
+v11.76 makes Go receipt verification reject unsafe signed receipt task ids before accepting receipt evidence. This keeps the proof boundary narrow: it does not add generic receipt schema validation, dynamic policy service, scheduler ownership, automatic drain, or A2A/ARD compatibility. The next natural boundary should keep moving toward Ultimate without widening the claim surface: close remaining Phase A trust-boundary bugs only when still present in live code, add real public reachability proof only with external network evidence, or continue proof/accountability work only where it adds verifiable enforcement without scheduler breadth.
 
 Route detail: `docs/v11-roadmap.md`。
 

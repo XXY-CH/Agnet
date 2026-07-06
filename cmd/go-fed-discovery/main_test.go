@@ -1245,6 +1245,39 @@ func TestVerifyPolicyScopeRejectsMalformedScalars(t *testing.T) {
 	}
 }
 
+func TestVerifyReceiptRecordRejectsUnsafeTaskID(t *testing.T) {
+	zone, zoneKey := testZoneDescriptor(t, "zone://receipt-task-id-shape")
+	_, workerKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := workerDescriptor(WorkerProfile{
+		Alias:        "agent://receipt-task-id-shape/worker",
+		Transports:   []string{"go-test"},
+		Capabilities: []string{"test"},
+		Policy:       map[string]any{"network": false},
+	}, workerKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := writeArtifact("artifact://local/receipt_task_id_shape/out.md", "# Task ID\n", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := Fixture{Authority: zone, AuthorityPrivateKey: zoneKey}
+	receipt := testSignedReceipt(t, zone, zoneKey, worker, workerKey, "../bad/task", []map[string]any{manifest}, nil)
+	err = verifyReceiptRecord(map[string]any{
+		"kind":         "go_fed_receipt",
+		"zone":         zone,
+		"worker":       worker,
+		"zone_binding": fixture.zoneBindingForDescriptor(worker),
+		"receipt":      receipt,
+	}, "")
+	if err == nil || !strings.Contains(err.Error(), "task_id invalid") {
+		t.Fatalf("got %v, want task_id invalid", err)
+	}
+}
+
 func TestCheckpointByIDRejectsMalformedReceiptCheckpointLists(t *testing.T) {
 	zone, zoneKey := testZoneDescriptor(t, "zone://checkpoint-lookup-shape")
 	_, workerKey, err := ed25519.GenerateKey(rand.Reader)

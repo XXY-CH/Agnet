@@ -4568,6 +4568,9 @@ func verifyReceiptRecord(record map[string]any, artifactStoreDir string, signedT
 	if receipt["executing_zone"] != zone["zid"] {
 		return errors.New("receipt executing_zone mismatch")
 	}
+	if err := validateTaskID(optionalString(receipt["task_id"])); err != nil {
+		return err
+	}
 	if !isHexDigest(optionalString(receipt["task_digest"])) {
 		return errors.New("receipt task_digest missing")
 	}

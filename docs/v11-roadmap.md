@@ -1715,6 +1715,28 @@
 - 不实现 automatic drain。
 - 不实现 A2A/ARD compatibility。
 
+## v11.76: Go Receipt Task ID Token Boundary
+
+状态：complete
+目标：Make Go receipt verification reject unsafe signed receipt task ids before accepting receipt evidence.
+
+新增：
+
+- Go `verifyReceiptRecord` now reuses `validateTaskID` for signed receipt `task_id` values.
+- Unsafe receipt task ids fail with `task_id invalid`.
+- Existing task-open, queue, cancel, and policy-scope validation remains unchanged.
+- The fix is scoped to receipt task identity; it does not add generic receipt schema validation.
+
+不做：
+
+- 不实现 generic receipt JSON Schema validation。
+- 不实现 dynamic policy service。
+- 不改变 generated valid receipt task ids。
+- 不改变 task policy enforcement semantics。
+- 不实现 scheduler-owned routing。
+- 不实现 automatic drain。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
