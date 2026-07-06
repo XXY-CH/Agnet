@@ -367,7 +367,7 @@ export function verifyFederatedReceipt(frame, trustedZones, signedTask) {
 }
 
 export function verifySwarmClose(frame, trustedZones) {
-  if (frame.type !== "FED_SWARM_CLOSE") throw new Error("expected FED_SWARM_CLOSE frame");
+  if (!frame || typeof frame !== "object" || Array.isArray(frame) || frame.type !== "FED_SWARM_CLOSE") throw new Error("expected FED_SWARM_CLOSE frame");
   if (!frame.zone || typeof frame.zone !== "object" || Array.isArray(frame.zone)) throw new Error("swarm close zone missing");
   const zone = verifyZoneDescriptor(frame.zone).descriptor;
   const trusted = trustedZones.get(zone.zid);

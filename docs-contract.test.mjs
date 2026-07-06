@@ -231,7 +231,7 @@ test("v11 public docs include FED_SWARM_CLOSE duplicate step validation", async 
   assert.match(readme, /`docs\/v11\.12-boundary\.md` - FED_SWARM_CLOSE duplicate step validation boundary\./);
   assert.match(roadmap, /## v11\.12: FED_SWARM_CLOSE Duplicate Step Validation/);
   assert.match(draft, /rejects duplicate or NUL-bearing Swarm identities/);
-  assert.match(status, /structural close-zone\/close-proof\/close-signature\/step-receipt object\/identity\/task-id\/uniqueness\/NUL checks/);
+  assert.match(status, /structural close-frame\/close-zone\/close-proof\/close-signature\/step-receipt object\/identity\/task-id\/uniqueness\/NUL checks/);
   assert.match(boundary, /duplicate step receipts/);
 });
 
@@ -246,8 +246,8 @@ test("v11 public docs include FED_SWARM_CLOSE Swarm identity presence", async ()
 
   assert.match(readme, /`docs\/v11\.13-boundary\.md` - FED_SWARM_CLOSE Swarm identity presence boundary\./);
   assert.match(roadmap, /## v11\.13: FED_SWARM_CLOSE Swarm Identity Presence/);
-  assert.match(draft, /checks the signing Zone object and descriptor, close proof object, close signature presence and verification/);
-  assert.match(status, /structural close-zone\/close-proof\/close-signature\/step-receipt object\/identity\/task-id\/uniqueness\/NUL checks/);
+  assert.match(draft, /checks the close frame object and type, signing Zone object and descriptor, close proof object, close signature presence and verification/);
+  assert.match(status, /structural close-frame\/close-zone\/close-proof\/close-signature\/step-receipt object\/identity\/task-id\/uniqueness\/NUL checks/);
   assert.match(boundary, /without a signed Swarm id/);
 });
 
@@ -307,7 +307,7 @@ test("v11 public docs include FED_SWARM_CLOSE close proof presence", async () =>
 
   assert.match(readme, /`docs\/v11\.17-boundary\.md` - FED_SWARM_CLOSE close proof presence boundary\./);
   assert.match(roadmap, /## v11\.17: FED_SWARM_CLOSE Close Proof Presence/);
-  assert.match(draft, /checks the signing Zone object and descriptor, close proof object, close signature presence and verification/);
+  assert.match(draft, /checks the close frame object and type, signing Zone object and descriptor, close proof object, close signature presence and verification/);
   assert.match(boundary, /missing close proof objects/);
 });
 
@@ -323,7 +323,7 @@ test("v11 public docs include FED_SWARM_CLOSE signing Zone presence", async () =
   assert.match(readme, /`docs\/v11\.18-boundary\.md` - FED_SWARM_CLOSE signing Zone presence boundary\./);
   assert.match(roadmap, /## v11\.18: FED_SWARM_CLOSE Signing Zone Presence/);
   assert.match(draft, /signing Zone object and descriptor/);
-  assert.match(status, /structural close-zone\/close-proof\/close-signature\/step-receipt object\/identity\/task-id\/uniqueness\/NUL checks/);
+  assert.match(status, /structural close-frame\/close-zone\/close-proof\/close-signature\/step-receipt object\/identity\/task-id\/uniqueness\/NUL checks/);
   assert.match(boundary, /missing signing Zones/);
 });
 
@@ -336,11 +336,27 @@ test("v11 public docs include FED_SWARM_CLOSE step receipt object presence", asy
     readFile("docs/v11.19-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.19-protocol`/);
-  assert.match(readme, /missing-zone, missing-proof, missing-signature, missing-identity, malformed-step, unsafe-task-id, NUL-bearing, structurally empty, or duplicate-step close proofs/);
+  assert.match(readme, /`docs\/v11\.19-boundary\.md` - FED_SWARM_CLOSE step receipt object presence boundary\./);
   assert.match(roadmap, /## v11\.19: FED_SWARM_CLOSE Step Receipt Object Presence/);
   assert.match(draft, /requires each step receipt to be an object/);
-  assert.match(status, /状态：v11\.19 active/);
-  assert.match(status, /structural close-zone\/close-proof\/close-signature\/step-receipt object\/identity\/task-id\/uniqueness\/NUL checks/);
+  assert.match(status, /structural close-frame\/close-zone\/close-proof\/close-signature\/step-receipt object\/identity\/task-id\/uniqueness\/NUL checks/);
   assert.match(boundary, /malformed step receipt entries/);
+});
+
+test("v11 public docs include FED_SWARM_CLOSE frame object presence", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v11.20-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v11 active at `v11\.20-protocol`/);
+  assert.match(readme, /missing-frame, missing-zone, missing-proof, missing-signature, missing-identity, malformed-step, unsafe-task-id, NUL-bearing, structurally empty, or duplicate-step close proofs/);
+  assert.match(roadmap, /## v11\.20: FED_SWARM_CLOSE Frame Object Presence/);
+  assert.match(draft, /checks the close frame object and type/);
+  assert.match(status, /状态：v11\.20 active/);
+  assert.match(status, /structural close-frame\/close-zone\/close-proof\/close-signature\/step-receipt object\/identity\/task-id\/uniqueness\/NUL checks/);
+  assert.match(boundary, /missing frame objects/);
 });

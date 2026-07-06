@@ -239,6 +239,13 @@ test("FED_SWARM_CLOSE verification rejects tampered close signatures in Node", a
   );
 });
 
+test("FED_SWARM_CLOSE verification rejects missing frame objects in Node", async () => {
+  assert.throws(
+    () => verifySwarmClose(null, new Map()),
+    /expected FED_SWARM_CLOSE frame/,
+  );
+});
+
 test("FED_SWARM_CLOSE verification rejects missing signing zones in Node", async () => {
   const zone = createZone("zone://swarm-close-missing-zone-test");
   const closeBody = {
