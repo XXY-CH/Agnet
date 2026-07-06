@@ -231,7 +231,7 @@ test("v11 public docs include FED_SWARM_CLOSE duplicate step validation", async 
   assert.match(readme, /`docs\/v11\.12-boundary\.md` - FED_SWARM_CLOSE duplicate step validation boundary\./);
   assert.match(roadmap, /## v11\.12: FED_SWARM_CLOSE Duplicate Step Validation/);
   assert.match(draft, /rejects duplicate or NUL-bearing Swarm identities/);
-  assert.match(status, /structural step receipt identity\/task-id\/uniqueness\/NUL checks/);
+  assert.match(status, /structural close-signature\/step-receipt identity\/task-id\/uniqueness\/NUL checks/);
   assert.match(boundary, /duplicate step receipts/);
 });
 
@@ -246,8 +246,8 @@ test("v11 public docs include FED_SWARM_CLOSE Swarm identity presence", async ()
 
   assert.match(readme, /`docs\/v11\.13-boundary\.md` - FED_SWARM_CLOSE Swarm identity presence boundary\./);
   assert.match(roadmap, /## v11\.13: FED_SWARM_CLOSE Swarm Identity Presence/);
-  assert.match(draft, /checks the signing Zone, the close signature, the signed Swarm id/);
-  assert.match(status, /structural step receipt identity\/task-id\/uniqueness\/NUL checks/);
+  assert.match(draft, /checks the signing Zone, close signature presence and verification, the signed Swarm id/);
+  assert.match(status, /structural close-signature\/step-receipt identity\/task-id\/uniqueness\/NUL checks/);
   assert.match(boundary, /without a signed Swarm id/);
 });
 
@@ -275,11 +275,26 @@ test("v11 public docs include FED_SWARM_CLOSE step task id validation", async ()
     readFile("docs/v11.15-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.15-protocol`/);
-  assert.match(readme, /missing-identity, unsafe-task-id, NUL-bearing, structurally empty, or duplicate-step close proofs/);
+  assert.match(readme, /`docs\/v11\.15-boundary\.md` - FED_SWARM_CLOSE step task id validation boundary\./);
   assert.match(roadmap, /## v11\.15: FED_SWARM_CLOSE Step Task ID Validation/);
   assert.match(draft, /safe `task_id` token/);
-  assert.match(status, /状态：v11\.15 active/);
-  assert.match(status, /structural step receipt identity\/task-id\/uniqueness\/NUL checks/);
   assert.match(boundary, /unsafe close step task ids/);
+});
+
+test("v11 public docs include FED_SWARM_CLOSE close signature presence", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v11.16-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v11 active at `v11\.16-protocol`/);
+  assert.match(readme, /missing-signature, missing-identity, unsafe-task-id, NUL-bearing, structurally empty, or duplicate-step close proofs/);
+  assert.match(roadmap, /## v11\.16: FED_SWARM_CLOSE Close Signature Presence/);
+  assert.match(draft, /close signature presence and verification/);
+  assert.match(status, /状态：v11\.16 active/);
+  assert.match(status, /structural close-signature\/step-receipt identity\/task-id\/uniqueness\/NUL checks/);
+  assert.match(boundary, /missing close signatures/);
 });
