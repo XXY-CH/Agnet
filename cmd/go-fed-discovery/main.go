@@ -4959,6 +4959,11 @@ func readArtifactStoreIndex(path string) ([]map[string]any, error) {
 		if !isHexDigest(fmt.Sprint(entry["sha256"])) {
 			return nil, errors.New("artifact mirror index invalid")
 		}
+		if uri, ok := entry["uri"]; ok {
+			if _, ok := uri.(string); !ok {
+				return nil, errors.New("artifact mirror index invalid")
+			}
+		}
 		if afp, ok := entry["afp"]; ok && fmt.Sprint(afp) != "afp:sha256:"+fmt.Sprint(entry["sha256"]) {
 			return nil, errors.New("artifact mirror index invalid")
 		}
