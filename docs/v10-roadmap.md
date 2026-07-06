@@ -47,6 +47,26 @@
 - 不做 object-store backend。
 - 不做 Node receipt verifier CLI。
 
+## v10.2: Node Receipt Artifact Manifest Verification
+
+状态：complete
+目标：Node `FED_RECEIPT` verification rejects signed-but-invalid artifact manifest metadata.
+
+新增：
+
+- `verifyFederatedReceipt` validates optional `artifact_manifests`.
+- Manifest count must match `artifact_refs`.
+- Manifest `uri`, required fields, `size`, and `manifest_hash` are checked.
+- A signed bad manifest hash is rejected by the vector test.
+
+不做：
+
+- 不读取 artifact bytes。
+- 不验证 Node sidecar files。
+- 不做 Node artifact verify/read API。
+- 不做 receipt store/search。
+- 不做 Go verifier package extraction。
+
 ## Next Candidates
 
 1. Extract receipt verification into a small Go package and/or npm-facing verifier.

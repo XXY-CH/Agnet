@@ -350,7 +350,29 @@ export function verifyFederatedReceipt(frame, trustedZones) {
   if (!verifyObject(resolved.publicKey, receipt, signature)) {
     throw new Error("remote receipt signature verification failed");
   }
+  verifyReceiptArtifactManifests(receipt);
   return { zone, worker: resolved.descriptor, receipt, signedReceipt: frame.receipt };
+}
+
+export function verifyReceiptArtifactManifests(receipt) {
+  if (receipt.artifact_manifests === undefined) return;
+  if (!Array.isArray(receipt.artifact_refs) || !Array.isArray(receipt.artifact_manifests)) {
+    throw new Error("receipt artifact manifest count mismatch");
+  }
+  if (receipt.artifact_refs.length !== receipt.artifact_manifests.length) {
+    throw new Error("receipt artifact manifest count mismatch");
+  }
+  for (const [index, manifest] of receipt.artifact_manifests.entries()) {
+    if (manifest.uri !== receipt.artifact_refs[index]) throw new Error("artifact manifest uri mismatch");
+    for (const field of ["sha256", "media_type", "manifest_hash"]) {
+      if (typeof manifest[field] !== "string" || manifest[field] === "") throw new Error(`artifact manifest ${field} missing`);
+    }
+    if (typeof manifest.size !== "number") throw new Error("artifact manifest size missing");
+    const { manifest_hash, ...body } = manifest;
+    if (manifest_hash !== createHash("sha256").update(canonical(body)).digest("hex")) {
+      throw new Error("artifact manifest hash mismatch");
+    }
+  }
 }
 
 export function verifyZoneBinding(entry, descriptor, alias) {

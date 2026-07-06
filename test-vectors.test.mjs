@@ -62,3 +62,26 @@ test("FED_RECEIPT conformance vector verifies in Node", async () => {
   assert.equal(verified.worker.aid, vector.expected.worker_aid);
   assert.equal(verified.receipt.origin_zone, vector.expected.origin_zid);
 });
+
+test("FED_RECEIPT verification rejects signed artifact manifest hash mismatch in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
+  const workerPrivateKey = privateKeyFromSeed(vector.worker_seed_hex);
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  const { signature, ...receipt } = vector.frame.receipt;
+  const uri = receipt.artifact_refs[0];
+  const badReceipt = {
+    ...receipt,
+    artifact_manifests: [{
+      uri,
+      sha256: "0".repeat(64),
+      size: 12,
+      media_type: "text/markdown; charset=utf-8",
+      manifest_hash: "1".repeat(64),
+    }],
+  };
+
+  assert.throws(
+    () => verifyFederatedReceipt({ ...vector.frame, receipt: { ...badReceipt, signature: signObject(workerPrivateKey, badReceipt) } }, trustedZones),
+    /artifact manifest hash mismatch/,
+  );
+});
