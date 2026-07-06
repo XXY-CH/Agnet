@@ -173,8 +173,32 @@
 - 不做 scheduler。
 - 不做 semantic routing。
 
+## v10.8: Go FED_RECEIPT Verifier Package
+
+状态：complete
+目标：Expose Go `FED_RECEIPT` frame verification as a reusable package function.
+
+新增：
+
+- `agnet/verifier.VerifyFederatedReceipt(frame, trustedZones)` verifies one `FED_RECEIPT` frame.
+- The Go discovery gateway interop receipt path delegates to the package function.
+- The package verifies trusted Zone identity, worker descriptor identity, `did:key` bridge consistency, Zone binding, `executing_zone`, worker target, receipt signature, and signed artifact manifest metadata when present.
+- `verifier/receipt_test.go` proves the package verifies the shared receipt fixture and rejects an `executing_zone` mismatch.
+
+不做：
+
+- 不做 npm package。
+- 不做 Go module split。
+- 不做 HTTP verifier service。
+- 不做 batch receipt verification。
+- 不做 receipt store/search。
+- 不做 audit-log scan。
+- 不做 remote artifact fetch。
+- 不做 local artifact byte verification in the package。
+- 不做 public node。
+
 ## Next Candidates
 
-1. Extract receipt verification into a small Go package and/or npm-facing verifier.
-2. Provide a first public-node or Docker demo that proves the existing local-first flow is reproducible.
+1. Provide a first public-node or Docker demo that proves the existing local-first flow is reproducible.
+2. Add an npm-facing verifier only when the existing Node exports are not enough.
 3. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.

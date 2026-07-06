@@ -33,6 +33,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"agnet/verifier"
 )
 
 type Fixture struct {
@@ -837,39 +839,7 @@ func interopRequestNode(port string, trusted map[string]map[string]any, zoneKey,
 }
 
 func verifyInteropReceipt(frame map[string]any, trusted map[string]map[string]any) error {
-	zone, ok := frame["zone"].(map[string]any)
-	if !ok {
-		return errors.New("receipt zone missing")
-	}
-	if err := verifyTrustedZone(zone, trusted); err != nil {
-		return err
-	}
-	worker, ok := frame["worker"].(map[string]any)
-	if !ok {
-		return errors.New("receipt worker missing")
-	}
-	if err := verifyAgentDescriptor(worker); err != nil {
-		return err
-	}
-	binding, ok := frame["zone_binding"].(map[string]any)
-	if !ok {
-		return errors.New("receipt zone binding missing")
-	}
-	if err := verifyZoneBinding(zone, binding, worker); err != nil {
-		return err
-	}
-	receipt, ok := frame["receipt"].(map[string]any)
-	if !ok {
-		return errors.New("receipt missing")
-	}
-	workerKey, _, err := publicKey(worker)
-	if err != nil {
-		return err
-	}
-	if err := verifyMapSignature(workerKey, receipt, "signature"); err != nil {
-		return errors.New("remote receipt signature verification failed")
-	}
-	return nil
+	return verifier.VerifyFederatedReceipt(frame, trusted)
 }
 
 func zoneDescriptor(key ed25519.PrivateKey, name string) (map[string]any, error) {
