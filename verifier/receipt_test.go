@@ -53,6 +53,10 @@ func TestVerifyFederatedReceiptVector(t *testing.T) {
 		t.Fatalf("got %v, want receipt task_digest missing", err)
 	}
 
+	if err := VerifyFederatedReceipt(vector.Frame, trusted, map[string]any{"task_id": receipt["task_id"], "intent": "wrong task"}); err == nil || !strings.Contains(err.Error(), "receipt task_digest mismatch") {
+		t.Fatalf("got %v, want receipt task_digest mismatch", err)
+	}
+
 	receipt["executing_zone"] = "zid:ed25519:bad"
 	if err := VerifyFederatedReceipt(vector.Frame, trusted); err == nil || !strings.Contains(err.Error(), "receipt executing_zone mismatch") {
 		t.Fatalf("got %v, want receipt executing_zone mismatch", err)

@@ -139,14 +139,20 @@ test("FED_RECEIPT CLI verifies one frame in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
   const framePath = "state/node-fed-receipt-frame.json";
   const trustedPath = "state/node-fed-receipt-trusted.json";
+  const taskPath = "state/node-fed-receipt-wrong-task.json";
   await writeFile(framePath, `${JSON.stringify(vector.frame, null, 2)}\n`);
   await writeFile(trustedPath, `${JSON.stringify({ zones: vector.trusted_zones }, null, 2)}\n`);
+  await writeFile(taskPath, `${JSON.stringify({ task_id: vector.expected.task_id, intent: "wrong task" }, null, 2)}\n`);
 
   assert.deepEqual(JSON.parse((await execFileAsync("node", ["asp-verify.mjs", "fed-receipt", framePath, trustedPath])).stdout), {
     fed_receipt_verify: "ok",
     task_id: vector.expected.task_id,
     receipt_digest: createHash("sha256").update(vector.receipt_canonical).digest("hex"),
   });
+  await assert.rejects(
+    () => execFileAsync("node", ["asp-verify.mjs", "fed-receipt", framePath, trustedPath, taskPath]),
+    (error) => error.stderr.includes("receipt task_digest mismatch"),
+  );
 
   await writeFile(framePath, `${JSON.stringify({ ...vector.frame, receipt: { ...vector.frame.receipt, executing_zone: "zid:ed25519:bad" } }, null, 2)}\n`);
   await assert.rejects(

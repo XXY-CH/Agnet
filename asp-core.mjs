@@ -340,7 +340,7 @@ export function validateTaskId(taskId) {
   if (typeof taskId !== "string" || !/^[A-Za-z0-9._:-]{1,128}$/.test(taskId)) throw new Error("task_id invalid");
 }
 
-export function verifyFederatedReceipt(frame, trustedZones) {
+export function verifyFederatedReceipt(frame, trustedZones, signedTask) {
   const zone = verifyZoneDescriptor(frame.zone).descriptor;
   const trusted = trustedZones.get(zone.zid);
   if (!trusted || trusted.public_key_spki !== zone.public_key_spki) {
@@ -354,6 +354,7 @@ export function verifyFederatedReceipt(frame, trustedZones) {
   if (receipt.executing_zone !== zone.zid) throw new Error("receipt executing_zone mismatch");
   if (!trustedZones.has(receipt.origin_zone)) throw new Error(`untrusted receipt origin zone: ${receipt.origin_zone}`);
   if (typeof receipt.task_digest !== "string" || !/^[0-9a-f]{64}$/.test(receipt.task_digest)) throw new Error("receipt task_digest missing");
+  if (signedTask !== undefined && createHash("sha256").update(canonical(signedTask)).digest("hex") !== receipt.task_digest) throw new Error("receipt task_digest mismatch");
   if (receipt.to !== frame.worker.aid) throw new Error("receipt worker mismatch");
   if (!verifyObject(resolved.publicKey, receipt, signature)) {
     throw new Error("remote receipt signature verification failed");

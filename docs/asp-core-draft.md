@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v11.4-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v11.5-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -159,14 +159,14 @@ Minimum implemented receipt fields:
 
 The worker signs the receipt body without `signature`.
 
-`task_digest` is the SHA-256 digest of the canonical signed task object, encoded as 64 lowercase hex characters. Current verifiers require this field to be present and well formed. They do not yet look up the original task from an external task store.
+`task_digest` is the SHA-256 digest of the canonical signed task object, encoded as 64 lowercase hex characters. Current verifiers require this field to be present and well formed. When signed task evidence is supplied, verifiers compare its canonical digest to `receipt.task_digest`. They do not yet look up the original task from an external task store.
 
 Verifiers MUST check:
 
 - The Zone descriptor is trusted.
 - The Zone binding resolves the worker alias and Agent ID.
 - `receipt.executing_zone` matches the signing Zone.
-- `receipt.task_digest` is a 64-hex digest.
+- `receipt.task_digest` is a 64-hex digest and matches supplied signed task evidence when present.
 - `receipt.to` matches the worker Agent ID.
 - The worker receipt signature is valid.
 - `artifact_refs` and `artifact_manifests` match when manifests are present.
@@ -227,7 +227,7 @@ Implemented Node checks:
 bash scripts/proof-demo.sh
 bash scripts/docker-proof-demo.sh
 node asp-verify.mjs artifact <manifest.json>
-node asp-verify.mjs fed-receipt <frame.json> <trusted-zones.json>
+node asp-verify.mjs fed-receipt <frame.json> <trusted-zones.json> [task.json]
 node asp-verify.mjs fed-receipt-artifacts <frame.json> <trusted-zones.json>
 node asp-verify.mjs swarm-close <frame.json> <trusted-zones.json>
 ```

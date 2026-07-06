@@ -119,6 +119,28 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.5: Optional Receipt Task Evidence Verification
+
+状态：complete
+目标：Allow external verifiers to check receipt `task_digest` against a supplied signed task object.
+
+新增：
+
+- Node `verifyFederatedReceipt` accepts optional signed task evidence and rejects digest mismatches.
+- `asp-verify.mjs fed-receipt` accepts an optional task JSON file and rejects digest mismatches.
+- Go `agnet/verifier.VerifyFederatedReceipt` accepts optional signed task evidence and rejects digest mismatches.
+- Node and Go tests prove mismatched supplied task evidence fails closed.
+
+不做：
+
+- 不实现 task store/search。
+- 不要求 receipt permanently embed raw task bodies。
+- 不改变 existing receipt verification when no task evidence is supplied。
+- 不实现 batch verifier。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

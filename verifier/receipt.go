@@ -16,7 +16,7 @@ const base58BTCAlphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstu
 
 var ed25519MultikeyPrefix = []byte{0xed, 0x01}
 
-func VerifyFederatedReceipt(frame map[string]any, trusted map[string]map[string]any) error {
+func VerifyFederatedReceipt(frame map[string]any, trusted map[string]map[string]any, signedTasks ...map[string]any) error {
 	zone, ok := frame["zone"].(map[string]any)
 	if !ok {
 		return errors.New("receipt zone missing")
@@ -50,6 +50,9 @@ func VerifyFederatedReceipt(frame map[string]any, trusted map[string]map[string]
 	}
 	if !isHexDigest(optionalString(receipt["task_digest"])) {
 		return errors.New("receipt task_digest missing")
+	}
+	if len(signedTasks) > 0 && digestHex(signedTasks[0]) != optionalString(receipt["task_digest"]) {
+		return errors.New("receipt task_digest mismatch")
 	}
 	if receipt["to"] != worker["aid"] {
 		return errors.New("receipt worker mismatch")

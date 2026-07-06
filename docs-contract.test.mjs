@@ -96,10 +96,27 @@ test("v11 public docs include receipt task digest binding", async () => {
     readFile("docs/v11.4-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.4-protocol`/);
+  assert.match(readme, /`docs\/v11\.4-boundary\.md` - receipt task digest binding boundary\./);
   assert.match(readme, /receipts now carry `task_digest`/);
   assert.match(roadmap, /## v11\.4: Receipt Task Digest Binding/);
   assert.match(draft, /`task_digest` is the SHA-256 digest/);
-  assert.match(status, /状态：v11\.4 active/);
+  assert.match(status, /receipt `task_digest` binding requirement/);
   assert.match(boundary, /Bind signed receipts to the signed task object/);
+});
+
+test("v11 public docs include optional receipt task evidence verification", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v11.5-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v11 active at `v11\.5-protocol`/);
+  assert.match(readme, /supplied task evidence whose digest does not match/);
+  assert.match(roadmap, /## v11\.5: Optional Receipt Task Evidence Verification/);
+  assert.match(draft, /When signed task evidence is supplied/);
+  assert.match(status, /状态：v11\.5 active/);
+  assert.match(boundary, /supplied signed task evidence/);
 });
