@@ -23,6 +23,7 @@ test("proof demo emits verifier-ready receipt closure files", async () => {
   const result = JSON.parse(stdout);
 
   assert.equal(result.fed_receipt_artifacts_verify, "ok");
+  assert.equal(result.artifact_count, 1);
   assert.match(result.receipt_frame, /^state\/proof-demo-fed-receipt\.json$/);
   assert.match(result.trusted_zones, /^state\/proof-demo-trusted-zones\.json$/);
   await access(result.receipt_frame);

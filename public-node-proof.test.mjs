@@ -31,6 +31,7 @@ test("public node proof starts a public-listen gateway", async () => {
   assert.equal(result.trusted_zones, "state/public-node-proof-trusted-zones.json");
   assert.equal(result.artifact_file, "artifacts/public_node_probe_task/go-summary.md");
   assert.equal(result.fed_receipt_artifacts_verify, "ok");
+  assert.equal(result.artifact_count, 1);
   assert.equal(result.artifact_reject, true);
   assert.match(result.artifact_reject_error, /receipt artifact not found/);
   assert.equal(result.artifact_tamper_reject, true);

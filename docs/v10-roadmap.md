@@ -1016,6 +1016,28 @@
 - 不做公网可达性证明。
 - 不做 hosted public node。
 
+## v10.43: Proof Summary Artifact Count
+
+状态：complete
+目标：Make proof summary JSON outputs expose the artifact count verified by the existing receipt-artifact CLI.
+
+新增：
+
+- `scripts/proof-demo.sh` forwards `artifact_count` from `asp-verify.mjs fed-receipt-artifacts`.
+- `scripts/public-node-proof.mjs` forwards `artifact_count` from `asp-verify.mjs fed-receipt-artifacts`.
+- `proof-demo.test.mjs` and `public-node-proof.test.mjs` assert the summary artifact count is `1` for the current proof fixtures.
+
+不做：
+
+- 不做 receipt store/search。
+- 不做 batch verification。
+- 不做 HTTP verifier service。
+- 不做新的 frame schema。
+- 不做 package signing。
+- 不做 SBOM。
+- 不做公网可达性证明。
+- 不做 hosted public node。
+
 ## Next Candidates
 
 1. Add public reachability proof only after the Docker proof contract stays stable on the target network.
