@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import net from "node:net";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { createZone, signObject } from "../asp-core.mjs";
+import { createAgent, createZone, signObject } from "../asp-core.mjs";
 
 await mkdir("state", { recursive: true });
 const originZone = createZone("zone://public-node-proof-origin");
@@ -30,7 +30,7 @@ const timer = setTimeout(() => {
   child.kill("SIGKILL");
   console.error("public node proof timeout");
   process.exit(1);
-}, 20000);
+}, 60000);
 
 let output = "";
 for await (const chunk of child.stdout) {
@@ -42,6 +42,7 @@ for await (const chunk of child.stdout) {
   if (status.public_transport !== true) throw new Error("public transport proof failed");
   const resolved = await resolveAlias(status.port, originZone, "agent://zone-b/summarizer");
   const queried = await queryCapability(status.port, originZone, "summarize.text");
+  const task = await openTask(status.port, originZone);
   child.kill("SIGTERM");
   console.log(JSON.stringify({
     public_node_proof: "ok",
@@ -54,6 +55,9 @@ for await (const chunk of child.stdout) {
     query_capability: queried.capability,
     query_match_count: queried.matchCount,
     query_status: queried.status,
+    task_id: task.taskId,
+    task_receipt: task.receipt,
+    task_close: task.close,
   }));
   process.exit(0);
 }
@@ -94,6 +98,35 @@ function queryCapability(port, zone, capability) {
         status = frame.matches?.[0]?.credential_statuses?.[0]?.status ?? "";
       }
       if (frame.type === "FED_QUERY_CLOSE") return { capability, matchCount, status };
+      return null;
+    },
+  );
+}
+
+function openTask(port, zone) {
+  const requester = createAgent("agent://public-node-proof/requester");
+  const task = {
+    task_id: "public_node_probe_task",
+    from: requester.aid,
+    to: "agent://zone-b/summarizer",
+    intent: "Prove public-listen FED_TASK_OPEN.",
+    scope: { network: false },
+    budget: { time_seconds: 30 },
+  };
+  let gotReceipt = false;
+  return exchangeFrame(
+    port,
+    zone,
+    {
+      type: "FED_TASK_OPEN",
+      origin_zone: zone.descriptor,
+      requester: requester.descriptor,
+      task: { ...task, signature: signObject(requester.privateKey, task) },
+    },
+    "FED_TASK_CLOSE",
+    (frame) => {
+      if (frame.type === "FED_RECEIPT") gotReceipt = frame.receipt?.task_id === task.task_id;
+      if (frame.type === "FED_TASK_CLOSE") return { taskId: task.task_id, receipt: gotReceipt, close: frame.task_id === task.task_id };
       return null;
     },
   );

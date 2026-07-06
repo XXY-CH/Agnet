@@ -18,4 +18,7 @@ test("public node proof starts a public-listen gateway", async () => {
   assert.equal(result.query_capability, "summarize.text");
   assert.equal(result.query_match_count, 1);
   assert.equal(result.query_status, "active");
+  assert.equal(result.task_id, "public_node_probe_task");
+  assert.equal(result.task_receipt, true);
+  assert.equal(result.task_close, true);
 });
