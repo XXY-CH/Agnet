@@ -167,3 +167,16 @@ test("FED_SWARM_CLOSE conformance vector verifies in Node", async () => {
   assert.equal(verified.close.swarm_id, vector.expected.swarm_id);
   assert.deepEqual(verified.close.step_receipts.map((step) => step.step_id), vector.expected.step_ids);
 });
+
+test("FED_SWARM_CLOSE CLI rejects tampered trusted Zone descriptors", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v10.38-fed-swarm-close.json", "utf8"));
+  const framePath = "state/node-fed-swarm-close-frame.json";
+  const trustedPath = "state/node-fed-swarm-close-trusted.json";
+  await writeFile(framePath, `${JSON.stringify(vector.frame, null, 2)}\n`);
+  await writeFile(trustedPath, `${JSON.stringify({ zones: [{ ...vector.trusted_zones[0], zone_signature: "bad" }] }, null, 2)}\n`);
+
+  await assert.rejects(
+    () => execFileAsync("node", ["asp-verify.mjs", "swarm-close", framePath, trustedPath]),
+    (error) => error.stderr.includes("zone signature verification failed"),
+  );
+});

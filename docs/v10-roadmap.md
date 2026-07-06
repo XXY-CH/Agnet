@@ -923,6 +923,29 @@
 - 不做公网可达性证明。
 - 不做 hosted public node。
 
+## v10.39: Node CLI Trusted Zone Validation
+
+状态：complete
+目标：Make Node verifier CLI trusted-Zone files fail closed on tampered Zone descriptors.
+
+新增：
+
+- `asp-verify.mjs` reuses `loadTrustedZones` for all trusted-Zone verifier commands.
+- `fed-receipt`, `fed-receipt-artifacts`, and `swarm-close` now verify trusted Zone descriptor signatures before verification.
+- `test-vectors.test.mjs` proves `swarm-close` rejects a trusted-Zone file with a tampered `zone_signature`.
+
+不做：
+
+- 不做新的 trust-store schema。
+- 不做 trust-store revocation feed for the Node CLI。
+- 不做 batch verification。
+- 不做 HTTP verifier service。
+- 不做 package signing。
+- 不做 full Swarm audit verifier CLI。
+- 不做 Node close proof completeness/order/dependency verification。
+- 不做公网可达性证明。
+- 不做 hosted public node。
+
 ## Next Candidates
 
 1. Add public reachability proof only after the Docker proof contract stays stable on the target network.
