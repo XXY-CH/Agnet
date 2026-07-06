@@ -89,3 +89,21 @@ func TestArtifactManifestAFPMatchesSHA256(t *testing.T) {
 		t.Fatalf("got %v, want artifact manifest afp mismatch", err)
 	}
 }
+
+func TestArtifactManifestRejectsMalformedSHA256(t *testing.T) {
+	manifest := map[string]any{
+		"uri":        "artifact://local/sha-test/out.md",
+		"sha256":     "../evil",
+		"size":       float64(1),
+		"media_type": "text/markdown; charset=utf-8",
+		"afp":        "afp:sha256:../evil",
+	}
+	manifest["manifest_hash"] = digestHex(manifest)
+	err := verifyReceiptArtifactManifests(map[string]any{
+		"artifact_refs":      []any{manifest["uri"]},
+		"artifact_manifests": []any{manifest},
+	})
+	if err == nil || !strings.Contains(err.Error(), "artifact manifest sha256 invalid") {
+		t.Fatalf("got %v, want artifact manifest sha256 invalid", err)
+	}
+}

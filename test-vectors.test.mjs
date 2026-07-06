@@ -359,6 +359,29 @@ test("FED_RECEIPT verification rejects signed artifact manifest hash mismatch in
   );
 });
 
+test("FED_RECEIPT verification rejects malformed artifact manifest SHA-256 in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
+  const workerPrivateKey = privateKeyFromSeed(vector.worker_seed_hex);
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  const { signature, ...receipt } = vector.frame.receipt;
+  const uri = receipt.artifact_refs[0];
+  const manifest = {
+    uri,
+    sha256: "../evil",
+    size: 12,
+    media_type: "text/markdown; charset=utf-8",
+    afp: "afp:sha256:../evil",
+  };
+  const { manifest_hash, ...body } = manifest;
+  manifest.manifest_hash = createHash("sha256").update(canonical(body)).digest("hex");
+  const badReceipt = { ...receipt, artifact_manifests: [manifest] };
+
+  assert.throws(
+    () => verifyFederatedReceipt({ ...vector.frame, receipt: { ...badReceipt, signature: signObject(workerPrivateKey, badReceipt) } }, trustedZones),
+    /artifact manifest sha256 invalid/,
+  );
+});
+
 test("receipt artifact manifest verification rejects missing objects in Node", () => {
   assert.throws(
     () => verifyReceiptArtifactManifests(null),

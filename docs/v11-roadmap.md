@@ -1032,6 +1032,30 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.46: Receipt Artifact Digest Shape Boundary
+
+状态：complete
+目标：Make Node and Go reusable receipt verifiers reject malformed artifact manifest SHA-256 values before accepting signed artifact metadata.
+
+新增：
+
+- Node `verifyReceiptArtifactManifests` rejects non-64-hex manifest `sha256` values with `artifact manifest sha256 invalid`.
+- Go `verifier.verifyReceiptArtifactManifests` rejects the same malformed manifest `sha256` values.
+- Focused Node and Go tests prove signed receipt metadata using `sha256: "../evil"` is rejected even when `afp` and `manifest_hash` are recomputed around the malformed value.
+
+不做：
+
+- 不改变 artifact manifest metadata schema。
+- 不实现 generic JSON Schema validation。
+- 不改变 receipt artifact manifest comparison semantics。
+- 不实现 remote artifact fetch。
+- 不实现 object-store artifact backend。
+- 不实现 artifact retention policy。
+- 不改变 Go audit digest path behavior beyond v11.45。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

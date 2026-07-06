@@ -465,6 +465,7 @@ export function verifyReceiptArtifactManifests(receipt) {
     for (const field of ["sha256", "media_type", "manifest_hash"]) {
       if (typeof manifest[field] !== "string" || manifest[field] === "") throw new Error(`artifact manifest ${field} missing`);
     }
+    if (!/^[0-9a-f]{64}$/.test(manifest.sha256)) throw new Error("artifact manifest sha256 invalid");
     if (manifest.afp !== undefined && manifest.afp !== `afp:sha256:${manifest.sha256}`) {
       throw new Error("artifact manifest afp mismatch");
     }
