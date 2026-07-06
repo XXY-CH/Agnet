@@ -195,10 +195,26 @@ test("v11 public docs include FED_RECEIPT frame type validation", async () => {
     readFile("docs/v11.10-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.10-protocol`/);
-  assert.match(readme, /receipt verifiers require `FED_RECEIPT` frame types/);
+  assert.match(readme, /`docs\/v11\.10-boundary\.md` - FED_RECEIPT frame type validation boundary\./);
   assert.match(roadmap, /## v11\.10: FED_RECEIPT Frame Type Validation/);
   assert.match(draft, /`frame\.type` is `FED_RECEIPT`/);
-  assert.match(status, /状态：v11\.10 active/);
+  assert.match(status, /FED_RECEIPT verifier requires frame\.type FED_RECEIPT/);
+  assert.match(boundary, /wrong protocol type/);
+});
+
+test("v11 public docs include FED_TASK_OPEN frame type validation", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v11.11-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v11 active at `v11\.11-protocol`/);
+  assert.match(readme, /task and receipt verifiers require the correct `FED_TASK_OPEN` \/ `FED_RECEIPT` frame types/);
+  assert.match(roadmap, /## v11\.11: FED_TASK_OPEN Frame Type Validation/);
+  assert.match(draft, /`frame\.type` is `FED_TASK_OPEN`/);
+  assert.match(status, /状态：v11\.11 active/);
   assert.match(boundary, /wrong protocol type/);
 });

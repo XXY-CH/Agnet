@@ -252,6 +252,15 @@ func TestFedTaskOpenConformanceVectorVerifiesInGo(t *testing.T) {
 	}
 
 	fixture := Fixture{Workers: []Worker{{Descriptor: vector.Worker}}}
+	wrongTypeFrame := map[string]any{}
+	for key, value := range vector.Frame {
+		wrongTypeFrame[key] = value
+	}
+	wrongTypeFrame["type"] = "FED_RECEIPT"
+	if _, _, err := fixture.verifyTaskOpen(wrongTypeFrame); err == nil || !strings.Contains(err.Error(), "expected FED_TASK_OPEN frame") {
+		t.Fatalf("got %v, want expected FED_TASK_OPEN frame", err)
+	}
+
 	unboundFrame := map[string]any{}
 	for key, value := range vector.Frame {
 		if key != "requester_zone_binding" {

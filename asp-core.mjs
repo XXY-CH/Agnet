@@ -318,6 +318,7 @@ export function resolveAgent(registry, alias) {
 }
 
 export function verifyFederatedTaskOpen(frame, trustedZones, workerDescriptor) {
+  if (frame.type !== "FED_TASK_OPEN") throw new Error("expected FED_TASK_OPEN frame");
   const originZone = verifyZoneDescriptor(frame.origin_zone).descriptor;
   const trusted = trustedZones.get(originZone.zid);
   if (!trusted || trusted.public_key_spki !== originZone.public_key_spki) {

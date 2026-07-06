@@ -246,6 +246,27 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.11: FED_TASK_OPEN Frame Type Validation
+
+状态：complete
+目标：Make task-open verifiers reject task-shaped frames with the wrong protocol type.
+
+新增：
+
+- Node `verifyFederatedTaskOpen` rejects frames whose `type` is not `FED_TASK_OPEN`.
+- Go `Fixture.verifyTaskOpen` rejects frames whose `type` is not `FED_TASK_OPEN`.
+- Go internal queue/resume/retry and Swarm replay callers pass explicit `FED_TASK_OPEN` type when re-validating embedded or stored signed tasks.
+- Node and Go tests prove a `FED_RECEIPT` frame carrying otherwise valid task-open fields fails closed.
+
+不做：
+
+- 不改变 `FED_TASK_OPEN` frame schema。
+- 不实现 task store/search。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不改变 requester Zone binding semantics。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

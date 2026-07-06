@@ -612,7 +612,7 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			return false
 		}
 	case "FED_TASK_RESUME":
-		worker, task, err := fixture.verifyTaskOpen(frame)
+		worker, task, err := fixture.verifyTaskOpen(taskOpenFrameForVerification(frame))
 		if err != nil {
 			send(taskErrorFrame(err))
 			return false
@@ -632,7 +632,7 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			return false
 		}
 	case "FED_TASK_RETRY":
-		worker, task, err := fixture.verifyTaskOpen(frame)
+		worker, task, err := fixture.verifyTaskOpen(taskOpenFrameForVerification(frame))
 		if err != nil {
 			send(taskErrorFrame(err))
 			return false
@@ -2485,6 +2485,9 @@ func credentialID(credential map[string]any) string {
 }
 
 func (f Fixture) verifyTaskOpen(frame map[string]any) (*Worker, map[string]any, error) {
+	if frame["type"] != "FED_TASK_OPEN" {
+		return nil, nil, errors.New("expected FED_TASK_OPEN frame")
+	}
 	requester, ok := frame["requester"].(map[string]any)
 	if !ok {
 		return nil, nil, errors.New("missing requester")
@@ -2526,6 +2529,16 @@ func (f Fixture) verifyTaskOpen(frame map[string]any) (*Worker, map[string]any, 
 		return nil, nil, err
 	}
 	return worker, task, nil
+}
+
+func taskOpenFrameForVerification(frame map[string]any) map[string]any {
+	return map[string]any{
+		"type":                   "FED_TASK_OPEN",
+		"origin_zone":            frame["origin_zone"],
+		"requester":              frame["requester"],
+		"requester_zone_binding": frame["requester_zone_binding"],
+		"task":                   frame["task"],
+	}
 }
 
 func (f Fixture) verifyTaskCancel(frame map[string]any) (*Worker, map[string]any, map[string]any, error) {
@@ -2790,7 +2803,7 @@ func (f Fixture) executeSwarm(send sendFunc, origin, frame map[string]any) error
 		if !ok {
 			return errors.New("swarm step task missing")
 		}
-		worker, task, err := f.verifyTaskOpen(map[string]any{"requester": requester, "task": task})
+		worker, task, err := f.verifyTaskOpen(map[string]any{"type": "FED_TASK_OPEN", "requester": requester, "task": task})
 		if err != nil {
 			return err
 		}
@@ -3710,7 +3723,7 @@ func (f Fixture) enqueueResumeQueueItem(origin map[string]any, frame map[string]
 }
 
 func (f Fixture) enqueueQueueItemWithExtra(origin map[string]any, frame map[string]any, extra map[string]any) (string, any, error) {
-	worker, task, err := f.verifyTaskOpen(frame)
+	worker, task, err := f.verifyTaskOpen(taskOpenFrameForVerification(frame))
 	if err != nil {
 		return "", nil, err
 	}
@@ -3751,7 +3764,7 @@ func (f Fixture) retryQueueItem(origin map[string]any, frame map[string]any, ret
 	if optionalString(parent["status"]) != "failed" {
 		return "", errors.New("queue retry parent is not failed: " + retryOf)
 	}
-	worker, task, err := f.verifyTaskOpen(frame)
+	worker, task, err := f.verifyTaskOpen(taskOpenFrameForVerification(frame))
 	if err != nil {
 		return "", err
 	}
@@ -4062,7 +4075,7 @@ func (f Fixture) writeClaimedQueueItem(taskID, owner string, leaseSeconds int, i
 	origin, _ := item["origin_zone_descriptor"].(map[string]any)
 	requester, _ := item["requester"].(map[string]any)
 	task, _ := item["task"].(map[string]any)
-	worker, task, err := f.verifyTaskOpen(map[string]any{"origin_zone": origin, "requester": requester, "requester_zone_binding": item["requester_zone_binding"], "task": task})
+	worker, task, err := f.verifyTaskOpen(map[string]any{"type": "FED_TASK_OPEN", "origin_zone": origin, "requester": requester, "requester_zone_binding": item["requester_zone_binding"], "task": task})
 	if err != nil {
 		return "", err
 	}
@@ -4093,7 +4106,7 @@ func (f Fixture) drainQueueItem(send sendFunc, taskID, leaseID string) error {
 	origin, _ := item["origin_zone_descriptor"].(map[string]any)
 	requester, _ := item["requester"].(map[string]any)
 	task, _ := item["task"].(map[string]any)
-	worker, task, err := f.verifyTaskOpen(map[string]any{"origin_zone": origin, "requester": requester, "requester_zone_binding": item["requester_zone_binding"], "task": task})
+	worker, task, err := f.verifyTaskOpen(map[string]any{"type": "FED_TASK_OPEN", "origin_zone": origin, "requester": requester, "requester_zone_binding": item["requester_zone_binding"], "task": task})
 	if err != nil {
 		return err
 	}
