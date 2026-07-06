@@ -53,8 +53,29 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.2: FED_SWARM_CLOSE Structural Close Proof Validation
+
+状态：complete
+目标：Make the Node `FED_SWARM_CLOSE` verifier reject signed but structurally empty close proofs.
+
+新增：
+
+- Node `verifySwarmClose` rejects missing or empty `step_receipts`.
+- Node `verifySwarmClose` requires each close step to include `step_id`, `task_id`, and a 64-hex `receipt_digest`.
+- The Node test proves a trusted Zone signature alone cannot turn an empty close body into a valid close proof.
+
+不做：
+
+- 不实现 Node audit-backed Swarm completeness verification。
+- 不验证 step receipts against an audit log。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 scheduler-owned routing。
+- 不实现 parallel or cross-Zone Swarm execution。
+- 不实现 public reachability proof。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
-2. Continue Swarm proof work only where it adds verifiable accountability without dynamic decomposition, scheduler ownership, parallel execution, or cross-Zone Swarm.
+2. Continue Swarm proof work only where it adds verifiable accountability without dynamic decomposition, scheduler ownership, parallel execution, cross-Zone Swarm, or a Node audit verifier.
 3. Keep compatibility work parked until the proof layer has an externally consumable release surface.

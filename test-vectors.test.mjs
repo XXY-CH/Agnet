@@ -184,6 +184,26 @@ test("FED_SWARM_CLOSE verification rejects tampered close signatures in Node", a
   );
 });
 
+test("FED_SWARM_CLOSE verification rejects empty close proofs in Node", async () => {
+  const zone = createZone("zone://swarm-close-empty-test");
+  const closeBody = {
+    swarm_id: "swarm://node-test/empty",
+    step_receipts: [],
+  };
+  const frame = {
+    type: "FED_SWARM_CLOSE",
+    swarm_id: closeBody.swarm_id,
+    zone: zone.descriptor,
+    close: { ...closeBody, close_signature: signObject(zone.privateKey, closeBody) },
+  };
+  const trustedZones = new Map([[zone.descriptor.zid, zone.descriptor]]);
+
+  assert.throws(
+    () => verifySwarmClose(frame, trustedZones),
+    /swarm close step receipts missing/,
+  );
+});
+
 test("FED_SWARM_CLOSE conformance vector verifies in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v10.38-fed-swarm-close.json", "utf8"));
   const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));

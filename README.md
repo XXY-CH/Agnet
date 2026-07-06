@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v11 active at `v11.1-protocol`.
+Status: research prototype, local-first, v11 active at `v11.2-protocol`.
 
 ## Why This Exists
 
@@ -46,7 +46,7 @@ The current prototype proves:
 - Explicit queue claim, lease expiry, reclaim, retry, resume, and drain flows.
 - Sandbox claim binding and fail-closed unsupported sandbox probes.
 - Node to Go and Go to Node `FED_TASK_OPEN` interoperability.
-- Shared `FED_TASK_OPEN`, `FED_RECEIPT`, and `FED_SWARM_CLOSE` conformance fixtures.
+- Shared `FED_TASK_OPEN`, `FED_RECEIPT`, and `FED_SWARM_CLOSE` conformance fixtures, including fail-closed checks for empty Swarm close proofs.
 - Minimal two-step `FED_SWARM_OPEN` with signed dependency evidence.
 - Swarm audit verification for declared dependency steps, delimiter-safe step identity, artifact manifests, upstream receipt digests, and single ordered complete audit-backed Zone-signed close proofs over Swarms that appeared in the same audit.
 
@@ -217,7 +217,8 @@ Optional hardening flags include:
 - `docs/agent-space-architecture.md` - architecture overview.
 - `docs/asp-core-draft.md` - narrow English draft for the implemented proof layer.
 - `docs/v11-roadmap.md` - active v11 roadmap.
-- `docs/v11.1-boundary.md` - latest closed boundary.
+- `docs/v11.2-boundary.md` - latest closed boundary.
+- `docs/v11.1-boundary.md` - requester Zone binding boundary.
 - `docs/v11.0-boundary.md` - receipt origin trust boundary.
 - `docs/v10-roadmap.md` - closed v10 roadmap.
 - `docs/v10.47-boundary.md` - v10 closeout boundary.
@@ -225,7 +226,7 @@ Optional hardening flags include:
 
 ## Roadmap
 
-v9 and v10 are closed. v11 is tightening the proof layer where the Ultimate trust model depends on it: `FED_TASK_OPEN` now requires a requester Zone binding, and receipt verifiers require signed receipt `origin_zone` values to name a trusted Zone.
+v9 and v10 are closed. v11 is tightening the proof layer where the Ultimate trust model depends on it: receipt verifiers require signed receipt `origin_zone` values to name a trusted Zone, `FED_TASK_OPEN` requires a requester Zone binding, and Node `FED_SWARM_CLOSE` rejects structurally empty close proofs.
 
 Highest-value next directions:
 

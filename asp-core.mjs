@@ -365,6 +365,16 @@ export function verifySwarmClose(frame, trustedZones) {
   }
   const { close_signature, ...closeBody } = frame.close;
   if (frame.swarm_id !== closeBody.swarm_id) throw new Error("swarm close frame id mismatch");
+  if (!Array.isArray(closeBody.step_receipts) || closeBody.step_receipts.length === 0) {
+    throw new Error("swarm close step receipts missing");
+  }
+  for (const step of closeBody.step_receipts) {
+    if (typeof step.step_id !== "string" || step.step_id === "") throw new Error("swarm close step identity missing");
+    if (typeof step.task_id !== "string" || step.task_id === "") throw new Error("swarm close task missing");
+    if (typeof step.receipt_digest !== "string" || !/^[0-9a-f]{64}$/.test(step.receipt_digest)) {
+      throw new Error("swarm close receipt digest invalid");
+    }
+  }
   if (!verifyObject(publicKeyFromDescriptor(zone), closeBody, close_signature)) {
     throw new Error("swarm close signature verification failed");
   }
