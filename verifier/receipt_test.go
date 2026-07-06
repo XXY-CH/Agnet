@@ -145,3 +145,21 @@ func TestArtifactManifestRejectsMalformedMediaType(t *testing.T) {
 		t.Fatalf("got %v, want artifact manifest media_type invalid", err)
 	}
 }
+
+func TestArtifactManifestRejectsMalformedManifestHash(t *testing.T) {
+	manifest := map[string]any{
+		"uri":           "artifact://local/manifest-hash-test/out.md",
+		"sha256":        strings.Repeat("3", 64),
+		"size":          float64(1),
+		"media_type":    "text/plain",
+		"afp":           "afp:sha256:" + strings.Repeat("3", 64),
+		"manifest_hash": map[string]any{"hash": strings.Repeat("4", 64)},
+	}
+	err := verifyReceiptArtifactManifests(map[string]any{
+		"artifact_refs":      []any{manifest["uri"]},
+		"artifact_manifests": []any{manifest},
+	})
+	if err == nil || !strings.Contains(err.Error(), "artifact manifest manifest_hash invalid") {
+		t.Fatalf("got %v, want artifact manifest manifest_hash invalid", err)
+	}
+}

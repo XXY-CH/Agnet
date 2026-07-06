@@ -223,6 +223,39 @@ func TestArtifactManifestRejectsMalformedMediaTypeBeforeByteChecks(t *testing.T)
 	}
 }
 
+func TestArtifactManifestRejectsMalformedManifestHashBeforeByteChecks(t *testing.T) {
+	manifest, err := writeArtifact("artifact://local/manifest-hash-boundary-test/out.md", "# Manifest Hash\n", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := map[string]any{
+		"uri":           manifest["uri"],
+		"sha256":        manifest["sha256"],
+		"size":          manifest["size"],
+		"media_type":    manifest["media_type"],
+		"afp":           manifest["afp"],
+		"manifest_hash": map[string]any{"hash": manifest["manifest_hash"]},
+	}
+	sidecar, err := json.MarshalIndent(bad, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := localArtifactPath(fmt.Sprint(manifest["uri"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path+".manifest.json", append(sidecar, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err = verifyArtifactManifests(map[string]any{
+		"artifact_refs":      []any{manifest["uri"]},
+		"artifact_manifests": []any{bad},
+	}, "")
+	if err == nil || !strings.Contains(err.Error(), "artifact manifest manifest_hash invalid") {
+		t.Fatalf("got %v, want artifact manifest manifest_hash invalid", err)
+	}
+}
+
 func TestAuditAppendRefreshesSharedHead(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
 	first := &AuditLog{Path: path, Head: auditZeroHash}

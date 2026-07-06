@@ -162,6 +162,9 @@ func verifyReceiptArtifactManifests(receipt map[string]any) error {
 		if _, ok := manifest["media_type"].(string); !ok {
 			return errors.New("artifact manifest media_type invalid")
 		}
+		if _, ok := manifest["manifest_hash"].(string); !ok {
+			return errors.New("artifact manifest manifest_hash invalid")
+		}
 		if !isHexDigest(fmt.Sprint(manifest["sha256"])) {
 			return errors.New("artifact manifest sha256 invalid")
 		}
