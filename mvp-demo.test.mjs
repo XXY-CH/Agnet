@@ -48,6 +48,7 @@ test("MVP demo produces registry, artifact, and signed receipt", async () => {
   await assert.rejects(() => verifyLocalArtifact(null), /artifact manifest missing/);
   await assert.rejects(() => verifyLocalArtifact(testManifest(undefined)), /artifact uri invalid/);
   await assert.rejects(() => verifyLocalArtifact(testManifest("file:///tmp/evil")), /artifact uri invalid/);
+  await assert.rejects(() => verifyLocalArtifact(testManifest("artifact://local/../evil.md")), /artifact uri invalid/);
   assert.deepEqual(await verifyLocalArtifact(manifest), manifest);
   await writeFile(manifestPath, "{}\n");
   await assert.rejects(() => verifyLocalArtifact(manifest), /artifact manifest sidecar mismatch/);

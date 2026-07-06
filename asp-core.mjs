@@ -693,8 +693,18 @@ export function approvalReasons(descriptor, task) {
   return required.filter((item) => item === "write" && (scope.write ?? []).length > 0);
 }
 
+function localArtifactPath(uri) {
+  const prefix = "artifact://local/";
+  if (typeof uri !== "string" || !uri.startsWith(prefix)) throw new Error("artifact uri invalid");
+  const localPath = uri.slice(prefix.length);
+  if (!localPath || localPath.includes("\\") || localPath.split("/").some((part) => !part || part === "." || part === "..")) {
+    throw new Error("artifact uri invalid");
+  }
+  return `artifacts/${localPath}`;
+}
+
 export async function writeArtifact(uri, text) {
-  const file = uri.replace("artifact://local/", "artifacts/");
+  const file = localArtifactPath(uri);
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, text);
   const data = Buffer.from(text);
@@ -712,8 +722,7 @@ export async function writeArtifact(uri, text) {
 
 export async function verifyLocalArtifact(manifest) {
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) throw new Error("artifact manifest missing");
-  if (typeof manifest.uri !== "string" || !manifest.uri.startsWith("artifact://local/")) throw new Error("artifact uri invalid");
-  const file = manifest.uri.replace("artifact://local/", "artifacts/");
+  const file = localArtifactPath(manifest.uri);
   verifyReceiptArtifactManifests({ artifact_refs: [manifest.uri], artifact_manifests: [manifest] });
   const sidecar = JSON.parse(await readFile(`${file}.manifest.json`, "utf8"));
   if (JSON.stringify(sidecar) !== JSON.stringify(manifest)) throw new Error("artifact manifest sidecar mismatch");

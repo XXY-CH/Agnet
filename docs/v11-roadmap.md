@@ -985,6 +985,29 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.44: Node Local Artifact Path Boundary
+
+状态：complete
+目标：Make Node local artifact URI-to-path mapping reject escaping or malformed local path segments before filesystem reads or writes.
+
+新增：
+
+- Node local artifact path mapping rejects `artifact://local/` URIs with empty, `.`, `..`, empty-segment, or backslash path segments with `artifact uri invalid`.
+- Node `writeArtifact` and `verifyLocalArtifact` share the same local URI-to-path validation.
+- The focused MVP artifact verifier test proves `artifact://local/../evil.md` fails before sidecar or byte reads.
+
+不做：
+
+- 不改变 artifact manifest metadata schema。
+- 不改变 receipt artifact manifest comparison semantics。
+- 不实现 remote artifact fetch。
+- 不实现 object-store artifact backend。
+- 不实现 artifact retention policy。
+- 不改变 Go verifier behavior。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

@@ -484,7 +484,7 @@ test("v11 public docs include FED_TASK_OPEN worker descriptor identity", async (
   assert.match(readme, /valid local worker descriptor identity/);
   assert.match(roadmap, /## v11\.27: FED_TASK_OPEN Worker Descriptor Identity/);
   assert.match(draft, /local worker descriptor identity verifies/);
-  assert.match(status, /状态：v11\.43 active/);
+  assert.match(status, /状态：v11\.44 active/);
   assert.match(status, /worker descriptor context presence validation and worker descriptor identity validation/);
   assert.match(boundary, /task open worker invalid/);
 });
@@ -502,7 +502,7 @@ test("v11 public docs include FED_RECEIPT worker descriptor identity", async () 
   assert.match(readme, /invalid worker descriptor identity/);
   assert.match(roadmap, /## v11\.28: FED_RECEIPT Worker Descriptor Identity/);
   assert.match(draft, /worker descriptor identity verifies before receipt identity and signature checks/);
-  assert.match(status, /状态：v11\.43 active/);
+  assert.match(status, /状态：v11\.44 active/);
   assert.match(status, /Node `FED_RECEIPT` worker descriptor identity validation/);
   assert.match(boundary, /receipt worker invalid/);
 });
@@ -520,7 +520,7 @@ test("v11 public docs include descriptor public key presence", async () => {
   assert.match(readme, /descriptor public key presence validation/);
   assert.match(roadmap, /## v11\.29: Node Descriptor Public Key Presence/);
   assert.match(draft, /public_key_spki` is missing before handing the descriptor to Node crypto parsing/);
-  assert.match(status, /状态：v11\.43 active/);
+  assert.match(status, /状态：v11\.44 active/);
   assert.match(status, /Node descriptor public key presence validation/);
   assert.match(boundary, /descriptor public key missing/);
 });
@@ -534,11 +534,11 @@ test("v11 public docs include object signature fail-closed verification", async 
     readFile("docs/v11.30-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.43-protocol`/);
+  assert.match(readme, /v11 active at `v11\.44-protocol`/);
   assert.match(readme, /object signature type validation/);
   assert.match(roadmap, /## v11\.30: Node Object Signature Fail-Closed Verification/);
   assert.match(draft, /object signature verification returns false for missing, empty, or non-string signatures/);
-  assert.match(status, /状态：v11\.43 active/);
+  assert.match(status, /状态：v11\.44 active/);
   assert.match(status, /Node shared object signature fail-closed validation/);
   assert.match(boundary, /verifyObject` returns `false`/);
 });
@@ -552,12 +552,12 @@ test("v11 public docs include Zone descriptor object presence", async () => {
     readFile("docs/v11.31-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.43-protocol`/);
+  assert.match(readme, /v11 active at `v11\.44-protocol`/);
   assert.match(readme, /`docs\/v11\.31-boundary\.md` - Node Zone descriptor object presence boundary\./);
   assert.match(readme, /Zone descriptor object presence validation/);
   assert.match(roadmap, /## v11\.31: Node Zone Descriptor Object Presence/);
   assert.match(draft, /Zone descriptor object presence before reading descriptor fields/);
-  assert.match(status, /状态：v11\.43 active/);
+  assert.match(status, /状态：v11\.44 active/);
   assert.match(status, /Node Zone descriptor object presence validation/);
   assert.match(boundary, /zone descriptor missing/);
 });
@@ -571,12 +571,12 @@ test("v11 public docs include did:key input presence", async () => {
     readFile("docs/v11.32-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.43-protocol`/);
+  assert.match(readme, /v11 active at `v11\.44-protocol`/);
   assert.match(readme, /`docs\/v11\.32-boundary\.md` - Node did:key input presence boundary\./);
   assert.match(readme, /did:key` bridge fields for descriptors, with missing-input validation/);
   assert.match(roadmap, /## v11\.32: Node did:key Input Presence/);
   assert.match(draft, /did:key` bridge helpers reject missing descriptor\/public-key and DID string inputs/);
-  assert.match(status, /状态：v11\.43 active/);
+  assert.match(status, /状态：v11\.44 active/);
   assert.match(status, /did:key` bridge input presence validation/);
   assert.match(boundary, /expected did:key z-base58btc value/);
 });
@@ -590,12 +590,12 @@ test("v11 public docs include artifact manifest object presence", async () => {
     readFile("docs/v11.33-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.43-protocol`/);
+  assert.match(readme, /v11 active at `v11\.44-protocol`/);
   assert.match(readme, /`docs\/v11\.33-boundary\.md` - Node artifact manifest object presence boundary\./);
-  assert.match(readme, /artifact manifests, AFP strings, sidecars, local URI validation, local byte verification, CLI verification, object presence validation/);
+  assert.match(readme, /artifact manifests, AFP strings, sidecars, local URI\/path validation, local byte verification, CLI verification, object presence validation/);
   assert.match(roadmap, /## v11\.33: Node Artifact Manifest Object Presence/);
   assert.match(draft, /artifact manifest helpers reject missing receipt and manifest objects/);
-  assert.match(status, /状态：v11\.43 active/);
+  assert.match(status, /状态：v11\.44 active/);
   assert.match(status, /Node artifact manifest object presence validation/);
   assert.match(boundary, /artifact manifest missing/);
 });
@@ -609,12 +609,12 @@ test("v11 public docs include credential object presence", async () => {
     readFile("docs/v11.34-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.43-protocol`/);
+  assert.match(readme, /v11 active at `v11\.44-protocol`/);
   assert.match(readme, /`docs\/v11\.34-boundary\.md` - Node credential object presence boundary\./);
   assert.match(readme, /capability credential and credential status helpers now reject missing proof objects/);
   assert.match(roadmap, /## v11\.34: Node Credential Object Presence/);
   assert.match(draft, /capability credential helpers reject missing credential and status proof objects/);
-  assert.match(status, /状态：v11\.43 active/);
+  assert.match(status, /状态：v11\.44 active/);
   assert.match(status, /Node capability credential object presence validation/);
   assert.match(boundary, /credential missing/);
 });
@@ -628,12 +628,12 @@ test("v11 public docs include rotation proof object presence", async () => {
     readFile("docs/v11.35-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.43-protocol`/);
+  assert.match(readme, /v11 active at `v11\.44-protocol`/);
   assert.match(readme, /`docs\/v11\.35-boundary\.md` - Node rotation proof object presence boundary\./);
   assert.match(readme, /rotation and alias rebinding proof verifiers reject missing proof\/descriptor objects/);
   assert.match(roadmap, /## v11\.35: Node Rotation Proof Object Presence/);
   assert.match(draft, /rotation and alias rebinding proof verifiers reject missing proof and descriptor objects/);
-  assert.match(status, /状态：v11\.43 active/);
+  assert.match(status, /状态：v11\.44 active/);
   assert.match(status, /Node rotation proof object presence validation/);
   assert.match(boundary, /verifyAliasRebindingProof` returns `false`/);
 });
@@ -647,12 +647,12 @@ test("v11 public docs include Zone binding object presence", async () => {
     readFile("docs/v11.36-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.43-protocol`/);
+  assert.match(readme, /v11 active at `v11\.44-protocol`/);
   assert.match(readme, /`docs\/v11\.36-boundary\.md` - Node Zone binding object presence boundary\./);
   assert.match(readme, /Zone binding object presence validation/);
   assert.match(roadmap, /## v11\.36: Node Zone Binding Object Presence/);
   assert.match(draft, /Zone binding verifier rejects missing binding context and descriptor objects/);
-  assert.match(status, /状态：v11\.43 active/);
+  assert.match(status, /状态：v11\.44 active/);
   assert.match(status, /Node Zone binding object presence validation/);
   assert.match(boundary, /zone binding context missing/);
 });
@@ -666,12 +666,12 @@ test("v11 public docs include Zone revocation object presence", async () => {
     readFile("docs/v11.37-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.43-protocol`/);
+  assert.match(readme, /v11 active at `v11\.44-protocol`/);
   assert.match(readme, /`docs\/v11\.37-boundary\.md` - Node Zone revocation object presence boundary\./);
   assert.match(readme, /Zone revocation object presence validation/);
   assert.match(roadmap, /## v11\.37: Node Zone Revocation Object Presence/);
   assert.match(draft, /Zone revocation verifiers reject missing revocation context, descriptor, and revocation-list objects/);
-  assert.match(status, /状态：v11\.43 active/);
+  assert.match(status, /状态：v11\.44 active/);
   assert.match(status, /Node Zone revocation object presence validation/);
   assert.match(boundary, /zone revocation context missing/);
 });
@@ -685,12 +685,12 @@ test("v11 public docs include trusted Zone file shape validation", async () => {
     readFile("docs/v11.38-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.43-protocol`/);
+  assert.match(readme, /v11 active at `v11\.44-protocol`/);
   assert.match(readme, /`docs\/v11\.38-boundary\.md` - Node trusted Zone file shape boundary\./);
   assert.match(readme, /trusted Zone files reject missing Zone lists/);
   assert.match(roadmap, /## v11\.38: Node Trusted Zone File Shape/);
   assert.match(draft, /Trusted Zone files MUST contain a Zone descriptor list/);
-  assert.match(status, /状态：v11\.43 active/);
+  assert.match(status, /状态：v11\.44 active/);
   assert.match(status, /Node trusted Zone file shape validation/);
   assert.match(boundary, /trusted zone list missing/);
 });
@@ -704,12 +704,12 @@ test("v11 public docs include registry file shape validation", async () => {
     readFile("docs/v11.39-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.43-protocol`/);
+  assert.match(readme, /v11 active at `v11\.44-protocol`/);
   assert.match(readme, /`docs\/v11\.39-boundary\.md` - Node registry file shape boundary\./);
   assert.match(readme, /registry files reject missing agent lists/);
   assert.match(roadmap, /## v11\.39: Node Registry File Shape/);
   assert.match(draft, /Registry files MUST contain agent descriptor entries/);
-  assert.match(status, /状态：v11\.43 active/);
+  assert.match(status, /状态：v11\.44 active/);
   assert.match(status, /Node registry file shape validation/);
   assert.match(boundary, /registry agents missing/);
 });
@@ -723,12 +723,12 @@ test("v11 public docs include resolveAgent registry context validation", async (
     readFile("docs/v11.40-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.43-protocol`/);
+  assert.match(readme, /v11 active at `v11\.44-protocol`/);
   assert.match(readme, /`docs\/v11\.40-boundary\.md` - Node resolveAgent registry context boundary\./);
   assert.match(readme, /agent resolution rejects missing registry context/);
   assert.match(roadmap, /## v11\.40: Node resolveAgent Registry Context/);
   assert.match(draft, /Agent resolution requires registry context/);
-  assert.match(status, /状态：v11\.43 active/);
+  assert.match(status, /状态：v11\.44 active/);
   assert.match(status, /Node resolveAgent registry context validation/);
   assert.match(boundary, /registry missing/);
 });
@@ -742,12 +742,12 @@ test("v11 public docs include descriptor body object presence validation", async
     readFile("docs/v11.41-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.43-protocol`/);
+  assert.match(readme, /v11 active at `v11\.44-protocol`/);
   assert.match(readme, /`docs\/v11\.41-boundary\.md` - Node descriptor body object presence boundary\./);
   assert.match(readme, /descriptor body helpers reject missing descriptor objects/);
   assert.match(roadmap, /## v11\.41: Node Descriptor Body Object Presence/);
   assert.match(draft, /Descriptor body helpers MUST receive descriptor objects/);
-  assert.match(status, /状态：v11\.43 active/);
+  assert.match(status, /状态：v11\.44 active/);
   assert.match(status, /Node descriptor body object presence validation/);
   assert.match(boundary, /descriptor missing/);
   assert.match(boundary, /zone descriptor missing/);
@@ -762,12 +762,12 @@ test("v11 public docs include proof verifier malformed descriptor fail-closed va
     readFile("docs/v11.42-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.43-protocol`/);
+  assert.match(readme, /v11 active at `v11\.44-protocol`/);
   assert.match(readme, /`docs\/v11\.42-boundary\.md` - Node proof verifier malformed descriptor fail-closed boundary\./);
   assert.match(readme, /proof verifiers now return false for malformed descriptor inputs/);
   assert.match(roadmap, /## v11\.42: Node Proof Verifier Malformed Descriptor Fail-Closed/);
   assert.match(draft, /boolean proof verifiers return false for malformed descriptor inputs/);
-  assert.match(status, /状态：v11\.43 active/);
+  assert.match(status, /状态：v11\.44 active/);
   assert.match(status, /Node proof verifier malformed descriptor fail-closed validation/);
   assert.match(boundary, /descriptor public key missing/);
   assert.match(boundary, /zone descriptor missing/);
@@ -782,12 +782,31 @@ test("v11 public docs include local artifact URI boundary validation", async () 
     readFile("docs/v11.43-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.43-protocol`/);
-  assert.match(readme, /`docs\/v11\.43-boundary\.md` - latest closed boundary\./);
-  assert.match(readme, /local artifact verification rejects non-`artifact:\/\/local\/` URIs/);
+  assert.match(readme, /v11 active at `v11\.44-protocol`/);
+  assert.match(readme, /`docs\/v11\.43-boundary\.md` - Node local artifact URI boundary\./);
+  assert.match(readme, /local artifact verification rejects non-`artifact:\/\/local\/` URIs and escaping local artifact paths/);
   assert.match(roadmap, /## v11\.43: Node Local Artifact URI Boundary/);
-  assert.match(draft, /Local artifact byte verification MUST reject missing or non-`artifact:\/\/local\/` manifest URIs/);
-  assert.match(status, /状态：v11\.43 active/);
+  assert.match(draft, /Local artifact byte verification MUST reject missing, non-`artifact:\/\/local\/`, or path-escaping manifest URIs/);
+  assert.match(status, /状态：v11\.44 active/);
   assert.match(status, /Node local artifact URI boundary validation/);
   assert.match(boundary, /artifact uri invalid/);
+});
+
+test("v11 public docs include local artifact path boundary validation", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v11.44-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v11 active at `v11\.44-protocol`/);
+  assert.match(readme, /`docs\/v11\.44-boundary\.md` - latest closed boundary\./);
+  assert.match(readme, /escaping local artifact paths before filesystem reads/);
+  assert.match(roadmap, /## v11\.44: Node Local Artifact Path Boundary/);
+  assert.match(draft, /path-escaping manifest URIs before filesystem reads/);
+  assert.match(status, /状态：v11\.44 active/);
+  assert.match(status, /Node local artifact path boundary validation/);
+  assert.match(boundary, /artifact:\/\/local\/\.\.\/evil\.md/);
 });
