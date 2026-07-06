@@ -290,6 +290,30 @@
 - 不做 receipt store/search。
 - 不做 A2A/ANP/AGNTCY compatibility。
 
+## v10.13: Audit-backed Swarm Close Verification
+
+状态：complete
+目标：Make Swarm close proof audit-backed and verifier-checked.
+
+新增：
+
+- Go `executeSwarm` appends `go_swarm_close` audit records with the Zone-signed close proof.
+- `--verify-audit` verifies `go_swarm_close.close_signature`.
+- `--verify-audit` checks close `step_receipts` against same-audit Swarm receipt state by `step_id`, `task_id`, and `receipt_digest`.
+- `go-fed-discovery.test.mjs` proves live Swarm close records appear through the Human Gateway audit API.
+- `cmd/go-fed-discovery/main_test.go` proves a tampered close receipt digest is rejected.
+
+不做：
+
+- 不做 dynamic Swarm decomposition。
+- 不做 scheduler-owned DAG execution。
+- 不做 parallel Swarm execution。
+- 不做 conflict/merge receipts。
+- 不做 cross-Zone Swarm。
+- 不做 Swarm UI。
+- 不做 receipt store/search。
+- 不做 A2A/ANP/AGNTCY compatibility。
+
 ## Next Candidates
 
 1. Run and publish Docker proof output once a Docker daemon is available.

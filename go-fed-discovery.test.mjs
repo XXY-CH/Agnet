@@ -2053,6 +2053,8 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     );
     assert.ok(requestedReceiptEntry);
     assert.equal(requestedReceiptEntry.record.receipt.executing_zone, fixture.authority.zid);
+    const swarmCloseEntry = auditBody.entries.find((entry) => entry.record.kind === "go_swarm_close");
+    assert.deepEqual(swarmCloseEntry.record.close, swarmFrames.at(-1).close);
     const auditProofResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit?task_id=${encodeURIComponent(task.task_id)}`);
     assert.equal(auditProofResponse.status, 200);
     const auditProofBody = await auditProofResponse.json();

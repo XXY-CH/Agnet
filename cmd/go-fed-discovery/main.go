@@ -2713,6 +2713,9 @@ func (f Fixture) executeSwarm(send sendFunc, origin, frame map[string]any) error
 		}
 	}
 	closeProof := signBodyWithKey(f.AuthorityPrivateKey, map[string]any{"swarm_id": swarmID, "step_receipts": stepReceipts}, "close_signature")
+	if err := f.appendAudit(map[string]any{"kind": "go_swarm_close", "zone": f.Authority, "close": closeProof}); err != nil {
+		return err
+	}
 	send(map[string]any{"type": "FED_SWARM_CLOSE", "swarm_id": swarmID, "close": closeProof})
 	return nil
 }
@@ -4214,6 +4217,11 @@ func verifyAuditFile(path, artifactStoreDir string) error {
 				return err
 			}
 		}
+		if record["kind"] == "go_swarm_close" {
+			if err := verifySwarmCloseProof(record, swarmManifests); err != nil {
+				return err
+			}
+		}
 		prev = fmt.Sprint(entry["hash"])
 	}
 	return nil
@@ -4455,15 +4463,52 @@ func verifySwarmReceiptDependencies(receipt map[string]any, completed map[string
 	}
 	manifests := mapsFromAny(receipt["artifact_manifests"])
 	if len(manifests) == 0 {
-		completed[completedKey] = map[string]any{}
+		completed[completedKey] = map[string]any{"task_id": receipt["task_id"], "receipt_digest": digestHex(receipt)}
 		return nil
 	}
 	manifest := map[string]any{}
 	for key, value := range manifests[0] {
 		manifest[key] = value
 	}
+	manifest["task_id"] = receipt["task_id"]
 	manifest["receipt_digest"] = digestHex(receipt)
 	completed[completedKey] = manifest
+	return nil
+}
+
+func verifySwarmCloseProof(record map[string]any, completed map[string]map[string]any) error {
+	zone, ok := record["zone"].(map[string]any)
+	if !ok {
+		return errors.New("swarm close zone missing")
+	}
+	closeProof, ok := record["close"].(map[string]any)
+	if !ok {
+		return errors.New("swarm close proof missing")
+	}
+	if err := verifyZoneDescriptor(zone); err != nil {
+		return err
+	}
+	zoneKey, _, err := publicKey(zone)
+	if err != nil {
+		return err
+	}
+	if err := verifyMapSignature(zoneKey, closeProof, "close_signature"); err != nil {
+		return errors.New("swarm close signature verification failed")
+	}
+	swarmID := optionalString(closeProof["swarm_id"])
+	for _, step := range mapsFromAny(closeProof["step_receipts"]) {
+		stepID := optionalString(step["step_id"])
+		completedStep, ok := completed[swarmID+"\x00"+stepID]
+		if !ok {
+			return errors.New("swarm close step receipt missing: " + stepID)
+		}
+		if step["task_id"] != completedStep["task_id"] {
+			return errors.New("swarm close task mismatch")
+		}
+		if step["receipt_digest"] != completedStep["receipt_digest"] {
+			return errors.New("swarm close receipt digest mismatch")
+		}
+	}
 	return nil
 }
 
