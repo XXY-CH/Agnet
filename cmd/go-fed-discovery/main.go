@@ -2657,6 +2657,7 @@ func (f Fixture) executeSwarm(send sendFunc, origin, frame map[string]any) error
 		return errors.New("swarm steps missing")
 	}
 	completed := map[string]map[string]any{}
+	stepReceipts := []map[string]any{}
 	for _, item := range steps {
 		step, ok := item.(map[string]any)
 		if !ok {
@@ -2705,12 +2706,14 @@ func (f Fixture) executeSwarm(send sendFunc, origin, frame map[string]any) error
 		}
 		if err := f.executeTask(send, origin, worker, task, nil, "", nil, false, map[string]any{"swarm": proof}, func(receipt map[string]any) error {
 			completed[stepID] = receipt
+			stepReceipts = append(stepReceipts, map[string]any{"step_id": stepID, "task_id": receipt["task_id"], "receipt_digest": digestHex(receipt)})
 			return nil
 		}); err != nil {
 			return err
 		}
 	}
-	send(map[string]any{"type": "FED_SWARM_CLOSE", "swarm_id": swarmID})
+	closeProof := signBodyWithKey(f.AuthorityPrivateKey, map[string]any{"swarm_id": swarmID, "step_receipts": stepReceipts}, "close_signature")
+	send(map[string]any{"type": "FED_SWARM_CLOSE", "swarm_id": swarmID, "close": closeProof})
 	return nil
 }
 

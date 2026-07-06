@@ -757,6 +757,15 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
       manifest_hash: summaryReceipt.artifact_manifests[0].manifest_hash,
       receipt_digest: summaryReceiptDigest,
     }]);
+    const swarmClose = swarmFrames.at(-1).close;
+    assert.equal(swarmClose.swarm_id, "swarm://local/go_fed_swarm_two_step");
+    assert.deepEqual(swarmClose.step_receipts, [
+      { step_id: "summary", task_id: "go_fed_swarm_summary", receipt_digest: summaryReceiptDigest },
+      { step_id: "translation", task_id: "go_fed_swarm_translate", receipt_digest: createHash("sha256").update(JSON.stringify(translationReceipt)).digest("hex") },
+    ]);
+    const swarmAuthorityPublicKey = publicKeyFromDescriptor(fixture.authority);
+    const { close_signature, ...swarmCloseBody } = swarmClose;
+    assert.equal(verifyObject(swarmAuthorityPublicKey, swarmCloseBody, close_signature), true);
 
     const unauthenticated = await exchangeUnauthenticatedFrame(port, {
       type: "FED_QUERY",

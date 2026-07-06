@@ -267,6 +267,29 @@
 - 不做 Swarm scheduler。
 - 不做 A2A/ANP/AGNTCY compatibility。
 
+## v10.12: Zone-signed Swarm Close Proof
+
+状态：complete
+目标：Make `FED_SWARM_CLOSE` carry a Zone-signed close proof for completed Swarm steps.
+
+新增：
+
+- Go `FED_SWARM_CLOSE` includes a `close` proof object.
+- `close.step_receipts` lists completed steps in execution order with `step_id`, `task_id`, and `receipt_digest`.
+- `close.close_signature` is signed by the local Zone authority key.
+- `go-fed-discovery.test.mjs` verifies the close proof contents and signature.
+
+不做：
+
+- 不做 dynamic Swarm decomposition。
+- 不做 scheduler-owned DAG execution。
+- 不做 parallel Swarm execution。
+- 不做 conflict/merge receipts。
+- 不做 cross-Zone Swarm。
+- 不做 Swarm UI。
+- 不做 receipt store/search。
+- 不做 A2A/ANP/AGNTCY compatibility。
+
 ## Next Candidates
 
 1. Run and publish Docker proof output once a Docker daemon is available.
