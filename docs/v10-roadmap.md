@@ -991,6 +991,31 @@
 - 不做公网可达性证明。
 - 不做 hosted public node。
 
+## v10.42: Public Proof Swarm Close Verify Summary
+
+状态：complete
+目标：Make the public proof summary show that its portable Swarm close frame passed the existing Node CLI verifier.
+
+新增：
+
+- `scripts/public-node-proof.mjs` runs `asp-verify.mjs swarm-close` after writing the Swarm close frame and trusted Zone file.
+- The public proof summary includes top-level `swarm_close_verify: "ok"`.
+- `public-node-proof.test.mjs` asserts the summary exposes the CLI verification result.
+
+不做：
+
+- 不做 full Swarm audit verifier CLI。
+- 不做 Node close proof completeness/order/dependency verification。
+- 不做 Swarm receipt store/search。
+- 不做 batch verification。
+- 不做 HTTP verifier service。
+- 不做 dynamic Swarm decomposition。
+- 不做 scheduler-owned DAG execution。
+- 不做 parallel Swarm execution。
+- 不做 cross-Zone Swarm。
+- 不做公网可达性证明。
+- 不做 hosted public node。
+
 ## Next Candidates
 
 1. Add public reachability proof only after the Docker proof contract stays stable on the target network.

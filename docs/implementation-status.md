@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v10.41 complete
-当前代码基线：`v10.41-proof-summary-receipt-digest`
+状态：v10.42 complete
+当前代码基线：`v10.42-public-proof-swarm-close-verify-summary`
 
 ## 一句话
 
@@ -22,7 +22,7 @@
 | Receipt signing | done + single FED_RECEIPT frame verification CLI + one-receipt local artifact closure CLI | done for minimal Go execution + single receipt record verification CLI | `test-vectors.test.mjs`, `go-fed-discovery.test.mjs` | receipt store/search / batch receipt verification |
 | Reusable verifier | Node exports verifier functions + local npm-facing `asp-verify` bin contract, including stable receipt digest output, proof summary receipt digest forwarding, narrow `FED_SWARM_CLOSE` signature/digest verification, and trusted-Zone descriptor validation in CLI paths | `agnet/verifier.VerifyFederatedReceipt` package function for one `FED_RECEIPT` frame | `test-vectors.test.mjs`, `package-contract.test.mjs`, `proof-demo.test.mjs`, `public-node-proof.test.mjs`, `verifier/receipt_test.go`, `cmd/go-fed-discovery/main_test.go` | package publish/signing / Go module split / batch verifier |
 | ASP Core draft | implementation-backed Draft 0 | implementation-backed Draft 0 | `docs/asp-core-draft.md`, `docs-contract.test.mjs` | full standard / public interoperability process |
-| Reproducible demo | `scripts/proof-demo.sh` local proof demo emits verifier-ready receipt/trust files, forwards `receipt_digest`, and verifies local artifact closure + `scripts/docker-proof-demo.sh` verified on Docker Server `29.0.1` and accepts `AGNET_NODE_BASE_IMAGE` + `scripts/public-node-proof.sh` verifies local public-listen status and authenticated `FED_RESOLVE` / `FED_QUERY` / `FED_TASK_OPEN` / `FED_AUDIT_QUERY` / `FED_ARTIFACT_READ` / `FED_SWARM_OPEN` round trips, emits verifier-ready receipt/trust files, forwards `receipt_digest`, writes `state/public-node-proof-swarm-close.json` and `state/public-node-proof-swarm-close-trusted-zones.json`, verifies fetched artifact bytes, proves out-of-receipt plus post-receipt-tampered artifact reads are rejected, and verifies a two-step Swarm close proof with `swarm_close_digest` plus `asp-verify.mjs swarm-close` + `scripts/docker-public-node-proof.sh` verifies the same public-listen proof inside Docker and accepts `AGNET_GO_BASE_IMAGE` / `AGNET_NODE_BASE_IMAGE` | not yet | `proof-demo.test.mjs`, `docker-demo.test.mjs`, `public-node-proof.test.mjs`, `bash scripts/docker-proof-demo.sh`, `bash scripts/docker-public-node-proof.sh` | public reachability / hosted demo |
+| Reproducible demo | `scripts/proof-demo.sh` local proof demo emits verifier-ready receipt/trust files, forwards `receipt_digest`, and verifies local artifact closure + `scripts/docker-proof-demo.sh` verified on Docker Server `29.0.1` and accepts `AGNET_NODE_BASE_IMAGE` + `scripts/public-node-proof.sh` verifies local public-listen status and authenticated `FED_RESOLVE` / `FED_QUERY` / `FED_TASK_OPEN` / `FED_AUDIT_QUERY` / `FED_ARTIFACT_READ` / `FED_SWARM_OPEN` round trips, emits verifier-ready receipt/trust files, forwards `receipt_digest`, writes `state/public-node-proof-swarm-close.json` and `state/public-node-proof-swarm-close-trusted-zones.json`, verifies fetched artifact bytes, proves out-of-receipt plus post-receipt-tampered artifact reads are rejected, and verifies a two-step Swarm close proof with `swarm_close_digest` and summary `swarm_close_verify` via `asp-verify.mjs swarm-close` + `scripts/docker-public-node-proof.sh` verifies the same public-listen proof inside Docker and accepts `AGNET_GO_BASE_IMAGE` / `AGNET_NODE_BASE_IMAGE` | not yet | `proof-demo.test.mjs`, `docker-demo.test.mjs`, `public-node-proof.test.mjs`, `bash scripts/docker-proof-demo.sh`, `bash scripts/docker-public-node-proof.sh` | public reachability / hosted demo |
 | Audit hash chain | done + in-process append serialization | done for Go execution, same-host append lock + head refresh, queue actions, remote receipt proof query, Human Gateway task-scoped receipt proof query, and large-line audit reads | `audit-chain.test.mjs`, `cmd/go-fed-discovery/main_test.go`, `go-fed-discovery.test.mjs` | Node cross-process locking / full log sync / remote search |
 | Federation resolve | done | done | `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | public transport |
 | Capability query | done | done | `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs` | ranking / scheduling |
@@ -80,7 +80,7 @@ Go
   -> single receipt record verification CLI
   -> multi-worker profile registry
   -> explicit main federation listen host while defaulting to 127.0.0.1
-  -> local public-listen proof for authenticated resolve, query, task execution, audit receipt query, artifact byte fetch, out-of-receipt artifact read rejection, post-receipt artifact byte tamper rejection, summary receipt_digest, two-step Swarm close proof verification, reproducible close digest, verifier-ready receipt/trust/Swarm-close/trusted-Zone files, Node CLI close-frame verification, and fetched artifact byte verification
+  -> local public-listen proof for authenticated resolve, query, task execution, audit receipt query, artifact byte fetch, out-of-receipt artifact read rejection, post-receipt artifact byte tamper rejection, summary receipt_digest, two-step Swarm close proof verification, summary swarm_close_verify, reproducible close digest, verifier-ready receipt/trust/Swarm-close/trusted-Zone files, Node CLI close-frame verification, and fetched artifact byte verification
   -> WebSocket transport binding
   -> thin Human Gateway
   -> built-in pure-text tool adapter
@@ -185,7 +185,7 @@ Go
 
 ## Next Boundary
 
-v10.41 is closed. The next natural boundary should keep making the accountability layer easier to verify externally: add real public reachability proof only after the Docker proof contract stays stable on the target network, add package signing/SBOM only after package publication becomes real, or continue Swarm proof work only where it adds verifiable accountability without scheduler breadth.
+v10.42 is closed. The next natural boundary should keep making the accountability layer easier to verify externally: add real public reachability proof only after the Docker proof contract stays stable on the target network, add package signing/SBOM only after package publication becomes real, or continue Swarm proof work only where it adds verifiable accountability without scheduler breadth.
 
 Route detail: `docs/v10-roadmap.md`。
 

@@ -70,6 +70,8 @@ for await (const chunk of child.stdout) {
   const swarm = await openSwarm(status.port, originZone);
   await writeFile(swarmCloseFramePath, `${JSON.stringify(swarm.closeFrame, null, 2)}\n`);
   await writeFile(swarmCloseTrustedPath, `${JSON.stringify({ zones: [swarm.closeFrame.zone] }, null, 2)}\n`);
+  const swarmCloseVerify = await execFileAsync(process.execPath, ["asp-verify.mjs", "swarm-close", swarmCloseFramePath, swarmCloseTrustedPath]);
+  const swarmCloseProof = JSON.parse(swarmCloseVerify.stdout);
   clearTimeout(timer);
   child.kill("SIGTERM");
   console.log(JSON.stringify({
@@ -103,6 +105,7 @@ for await (const chunk of child.stdout) {
     swarm_step_ids: swarm.stepReceipts.map((step) => step.step_id),
     swarm_close_signature: swarm.closeSignature,
     swarm_close_receipts: swarm.closeReceipts,
+    swarm_close_verify: swarmCloseProof.swarm_close_verify,
     swarm_close_digest: swarm.closeDigest,
     swarm_close_frame: swarmCloseFramePath,
     swarm_close_trusted_zones: swarmCloseTrustedPath,

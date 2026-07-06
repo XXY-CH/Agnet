@@ -40,6 +40,7 @@ test("public node proof starts a public-listen gateway", async () => {
   assert.deepEqual(result.swarm_step_ids, ["summary", "dependent"]);
   assert.equal(result.swarm_close_signature, true);
   assert.equal(result.swarm_close_receipts, true);
+  assert.equal(result.swarm_close_verify, "ok");
   assert.match(result.swarm_close_digest, /^[a-f0-9]{64}$/);
   assert.equal(result.swarm_close_frame, "state/public-node-proof-swarm-close.json");
   assert.equal(result.swarm_close_trusted_zones, "state/public-node-proof-swarm-close-trusted-zones.json");
