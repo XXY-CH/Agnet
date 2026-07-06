@@ -869,6 +869,34 @@
 - 不做公网可达性证明。
 - 不做 hosted public node。
 
+## v10.37: Swarm Close Verifier CLI
+
+状态：complete
+目标：Expose a narrow verifier command for one portable `FED_SWARM_CLOSE` frame.
+
+新增：
+
+- `asp-core.mjs` exports `verifySwarmClose(frame, trustedZones)`.
+- `node asp-verify.mjs swarm-close <frame.json> <trusted-zones.json>` verifies the close frame Zone signature.
+- The command recomputes `swarm_close_digest` from the canonical close body without `close_signature`.
+- `public-node-proof.test.mjs` verifies the public-listen proof's generated close frame/trusted-Zone files through the CLI.
+- `test-vectors.test.mjs` rejects a tampered close signature.
+
+不做：
+
+- 不做 full Swarm audit verifier CLI。
+- 不做 Node close proof completeness/order/dependency verification。
+- 不做 Swarm receipt store/search。
+- 不做 batch verification。
+- 不做 HTTP verifier service。
+- 不做新的 Swarm frame schema。
+- 不做 dynamic Swarm decomposition。
+- 不做 scheduler-owned DAG execution。
+- 不做 parallel Swarm execution。
+- 不做 cross-Zone Swarm。
+- 不做公网可达性证明。
+- 不做 hosted public node。
+
 ## Next Candidates
 
 1. Add public reachability proof only after the Docker proof contract stays stable on the target network.

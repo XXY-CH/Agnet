@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { createPrivateKey, createPublicKey } from "node:crypto";
+import { createHash, createPrivateKey, createPublicKey } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { canonical, computeAid, createAgent, didKeyFromDescriptor, didKeyFromPublicKeySPKI, publicKeySPKIFromDidKey, signObject, verifyFederatedReceipt, verifyFederatedTaskOpen, verifyObject, writeArtifact } from "./asp-core.mjs";
+import { canonical, computeAid, createAgent, createZone, didKeyFromDescriptor, didKeyFromPublicKeySPKI, publicKeySPKIFromDidKey, signObject, verifyFederatedReceipt, verifyFederatedTaskOpen, verifyObject, verifySwarmClose, writeArtifact } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -133,5 +133,26 @@ test("FED_RECEIPT artifact CLI verifies one frame and local artifact bytes in No
   await assert.rejects(
     () => execFileAsync("node", ["asp-verify.mjs", "fed-receipt-artifacts", framePath, trustedPath]),
     (error) => /artifact bytes (size|digest) mismatch/.test(error.stderr),
+  );
+});
+
+test("FED_SWARM_CLOSE verification rejects tampered close signatures in Node", async () => {
+  const zone = createZone("zone://swarm-close-test");
+  const closeBody = {
+    swarm_id: "swarm://node-test/two-step",
+    step_receipts: [{ step_id: "summary", task_id: "task_1", receipt_digest: "0".repeat(64) }],
+  };
+  const frame = {
+    type: "FED_SWARM_CLOSE",
+    swarm_id: closeBody.swarm_id,
+    zone: zone.descriptor,
+    close: { ...closeBody, close_signature: signObject(zone.privateKey, closeBody) },
+  };
+  const trustedZones = new Map([[zone.descriptor.zid, zone.descriptor]]);
+
+  assert.equal(verifySwarmClose(frame, trustedZones).closeDigest, createHash("sha256").update(canonical(closeBody)).digest("hex"));
+  assert.throws(
+    () => verifySwarmClose({ ...frame, close: { ...frame.close, close_signature: "bad" } }, trustedZones),
+    /swarm close signature verification failed/,
   );
 });

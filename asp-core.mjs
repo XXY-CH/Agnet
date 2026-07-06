@@ -354,6 +354,21 @@ export function verifyFederatedReceipt(frame, trustedZones) {
   return { zone, worker: resolved.descriptor, receipt, signedReceipt: frame.receipt };
 }
 
+export function verifySwarmClose(frame, trustedZones) {
+  if (frame.type !== "FED_SWARM_CLOSE") throw new Error("expected FED_SWARM_CLOSE frame");
+  const zone = verifyZoneDescriptor(frame.zone).descriptor;
+  const trusted = trustedZones.get(zone.zid);
+  if (!trusted || trusted.public_key_spki !== zone.public_key_spki) {
+    throw new Error(`untrusted zone: ${zone.zid}`);
+  }
+  const { close_signature, ...closeBody } = frame.close;
+  if (frame.swarm_id !== closeBody.swarm_id) throw new Error("swarm close frame id mismatch");
+  if (!verifyObject(publicKeyFromDescriptor(zone), closeBody, close_signature)) {
+    throw new Error("swarm close signature verification failed");
+  }
+  return { zone, close: frame.close, closeDigest: createHash("sha256").update(canonical(closeBody)).digest("hex") };
+}
+
 export function verifyReceiptArtifactManifests(receipt) {
   if (receipt.artifact_manifests === undefined) return;
   if (!Array.isArray(receipt.artifact_refs) || !Array.isArray(receipt.artifact_manifests)) {
