@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v11 active at `v11.24-protocol`.
+Status: research prototype, local-first, v11 active at `v11.25-protocol`.
 
 ## Why This Exists
 
@@ -32,14 +32,14 @@ The current prototype proves:
 - Ed25519 `aid:` agent identity and Zone identity.
 - Ed25519 `did:key` bridge fields for descriptors, without replacing `aid:`.
 - Signed tasks, events, artifacts, checkpoints, and receipts.
-- `FED_TASK_OPEN` verifies frame object/type, origin Zone descriptor and payload object presence, and requester Zone bindings at the federation boundary.
+- `FED_TASK_OPEN` verifies frame object/type, origin Zone descriptor and payload object presence, local worker descriptor context presence, and requester Zone bindings at the federation boundary.
 - Task ids are constrained to a small ASCII token format before execution or queue state.
 - Hash-chained JSONL audit logs.
 - Receipt and local artifact closure verification through Go and Node CLIs.
 - Node receipt verifier CLI outputs and proof summary JSON include stable `receipt_digest` values for external reports.
 - Node verifier CLI trusted-Zone files are signature-checked before use.
 - Node receipt verifiers reject missing/non-`FED_RECEIPT` frames and missing signing Zone, worker, or receipt body objects, Go receipt verifiers reject non-`FED_RECEIPT` frames, and signed receipts whose `origin_zone` is not trusted fail closed.
-- Node task, receipt, and Swarm close verifiers reject missing trusted Zone stores before reading trust entries.
+- Node task, receipt, and Swarm close verifiers reject missing trusted Zone stores before reading trust entries; the Node task-open verifier also rejects missing local worker descriptor context before reading the worker alias.
 - Node and Go receipt verifiers require `task_digest` as a compact anchor to the signed task object; Node receipt/artifact CLIs, the Go receipt CLI, and bidirectional Node/Go interop checks can compare it against supplied or in-memory signed task evidence.
 - Minimal npm-facing package contract for the existing Node verifier CLI and `asp-core.mjs` exports.
 - One-command proof demo, Docker proof demo, and Docker public-listen proof that emit verifier-ready receipt/trust files, expose receipt digests, verified artifact counts, verified artifact URIs, verified artifact byte digests, and verified artifact manifest hashes, verify local artifact closure, and support base-image override env vars for restricted Docker environments.
@@ -220,7 +220,8 @@ Optional hardening flags include:
 - `docs/agent-space-architecture.md` - architecture overview.
 - `docs/asp-core-draft.md` - narrow English draft for the implemented proof layer.
 - `docs/v11-roadmap.md` - active v11 roadmap.
-- `docs/v11.24-boundary.md` - latest closed boundary.
+- `docs/v11.25-boundary.md` - latest closed boundary.
+- `docs/v11.24-boundary.md` - Node trusted Zone store presence boundary.
 - `docs/v11.23-boundary.md` - FED_TASK_OPEN and FED_RECEIPT payload object presence boundary.
 - `docs/v11.22-boundary.md` - FED_TASK_OPEN and FED_RECEIPT Zone descriptor presence boundary.
 - `docs/v11.21-boundary.md` - FED_TASK_OPEN and FED_RECEIPT frame object presence boundary.
@@ -251,7 +252,7 @@ Optional hardening flags include:
 
 ## Roadmap
 
-v9 and v10 are closed. v11 is tightening the proof layer where the Ultimate trust model depends on it: task and receipt verifiers require valid `FED_TASK_OPEN` / `FED_RECEIPT` frame objects, correct frame types, required Zone descriptor objects, required payload objects, and a trusted Zone store, signed receipt `origin_zone` values must name a trusted Zone, `FED_TASK_OPEN` requires a requester Zone binding, Node `FED_SWARM_CLOSE` rejects missing-frame, missing-zone, missing-proof, missing-signature, missing-identity, malformed-step, unsafe-task-id, NUL-bearing, structurally empty, or duplicate-step close proofs, task ids now fail closed unless they are safe protocol tokens, receipts now carry `task_digest` to anchor the signed task body, and Node/Go verifier paths can reject supplied or in-memory task evidence whose digest does not match.
+v9 and v10 are closed. v11 is tightening the proof layer where the Ultimate trust model depends on it: task and receipt verifiers require valid `FED_TASK_OPEN` / `FED_RECEIPT` frame objects, correct frame types, required Zone descriptor objects, required payload objects, and a trusted Zone store, Node task-open verification requires local worker descriptor context, signed receipt `origin_zone` values must name a trusted Zone, `FED_TASK_OPEN` requires a requester Zone binding, Node `FED_SWARM_CLOSE` rejects missing-frame, missing-zone, missing-proof, missing-signature, missing-identity, malformed-step, unsafe-task-id, NUL-bearing, structurally empty, or duplicate-step close proofs, task ids now fail closed unless they are safe protocol tokens, receipts now carry `task_digest` to anchor the signed task body, and Node/Go verifier paths can reject supplied or in-memory task evidence whose digest does not match.
 
 Highest-value next directions:
 

@@ -551,6 +551,26 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.25: FED_TASK_OPEN Worker Context Presence
+
+状态：complete
+目标：Make Node `FED_TASK_OPEN` verification reject missing local worker descriptor context with a protocol-shaped error.
+
+新增：
+
+- Node `verifyFederatedTaskOpen` rejects missing, non-object, or array local worker descriptor context before reading `workerDescriptor.alias`.
+- The Node tests prove missing worker descriptor context fails with `task open worker missing`, not JavaScript `TypeError` or a misleading target-alias mismatch.
+
+不做：
+
+- 不实现 generic worker descriptor schema validation。
+- 不改变 `FED_TASK_OPEN` frame shape。
+- 不改变 Go verifier behavior。
+- 不实现 worker registry/store。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

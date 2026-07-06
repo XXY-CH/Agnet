@@ -425,13 +425,30 @@ test("v11 public docs include Node trusted Zone store presence", async () => {
     readFile("docs/v11.24-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.24-protocol`/);
+  assert.match(readme, /`docs\/v11\.24-boundary\.md` - Node trusted Zone store presence boundary\./);
   assert.match(readme, /Node task, receipt, and Swarm close verifiers reject missing trusted Zone stores/);
   assert.match(roadmap, /## v11\.24: Node Trusted Zone Store Presence/);
   assert.match(draft, /trusted Zone store is present for origin Zone lookup/);
   assert.match(draft, /trusted Zone store is present for signing and origin Zone lookup/);
   assert.match(draft, /trusted Zone store presence, signing Zone object and descriptor/);
-  assert.match(status, /状态：v11\.24 active/);
   assert.match(status, /trusted Zone store presence validation/);
   assert.match(boundary, /missing trusted Zone stores/);
+});
+
+test("v11 public docs include FED_TASK_OPEN worker context presence", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v11.25-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v11 active at `v11\.25-protocol`/);
+  assert.match(readme, /local worker descriptor context presence/);
+  assert.match(roadmap, /## v11\.25: FED_TASK_OPEN Worker Context Presence/);
+  assert.match(draft, /local worker descriptor context is present as an object/);
+  assert.match(status, /状态：v11\.25 active/);
+  assert.match(status, /worker descriptor context presence validation/);
+  assert.match(boundary, /task open worker missing/);
 });

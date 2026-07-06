@@ -85,6 +85,18 @@ test("FED_TASK_OPEN verification rejects missing trusted Zone stores in Node", a
   );
 });
 
+test("FED_TASK_OPEN verification rejects missing worker descriptor context in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.24-fed-task-open.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+
+  for (const workerDescriptor of [undefined, null, [], "worker"]) {
+    assert.throws(
+      () => verifyFederatedTaskOpen(vector.frame, trustedZones, workerDescriptor),
+      /task open worker missing/,
+    );
+  }
+});
+
 test("FED_TASK_OPEN verification rejects missing origin Zones in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v9.24-fed-task-open.json", "utf8"));
   const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));

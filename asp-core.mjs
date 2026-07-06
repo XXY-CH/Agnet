@@ -333,6 +333,7 @@ export function verifyFederatedTaskOpen(frame, trustedZones, workerDescriptor) {
   if (!trusted || trusted.public_key_spki !== originZone.public_key_spki) {
     throw new Error(`untrusted zone: ${originZone.zid}`);
   }
+  if (!workerDescriptor || typeof workerDescriptor !== "object" || Array.isArray(workerDescriptor)) throw new Error("task open worker missing");
   if (!frame.requester_zone_binding) throw new Error("requester zone binding missing");
   const requester = resolveAgent(new Map([[frame.requester.alias, { descriptor: frame.requester, zone: frame.origin_zone, zone_binding: frame.requester_zone_binding }]]), frame.requester.alias);
   const { signature, ...task } = frame.task;
