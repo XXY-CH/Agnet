@@ -328,6 +328,27 @@
 - 不实现 public reachability proof。
 - 不实现 A2A/ARD compatibility。
 
+## v11.15: FED_SWARM_CLOSE Step Task ID Validation
+
+状态：complete
+目标：Make the Node `FED_SWARM_CLOSE` verifier reject unsafe close step task ids.
+
+新增：
+
+- Node `verifySwarmClose` applies the implemented `task_id` token boundary to each close step `task_id`.
+- The Node test proves a trusted signed close proof cannot make a path-like step task id valid.
+- The portable Swarm close verifier aligns step task identity with the `FED_TASK_OPEN` task id boundary.
+
+不做：
+
+- 不实现 Node audit-backed Swarm completeness verification。
+- 不验证 step receipts against an audit log。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 scheduler-owned routing。
+- 不实现 parallel or cross-Zone Swarm execution。
+- 不实现 public reachability proof。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

@@ -325,6 +325,26 @@ test("FED_SWARM_CLOSE verification rejects NUL-bearing Swarm identities in Node"
   }
 });
 
+test("FED_SWARM_CLOSE verification rejects unsafe task ids in Node", async () => {
+  const zone = createZone("zone://swarm-close-unsafe-task-test");
+  const closeBody = {
+    swarm_id: "swarm://node-test/unsafe-task",
+    step_receipts: [{ step_id: "summary", task_id: "../bad/task", receipt_digest: "0".repeat(64) }],
+  };
+  const frame = {
+    type: "FED_SWARM_CLOSE",
+    swarm_id: closeBody.swarm_id,
+    zone: zone.descriptor,
+    close: { ...closeBody, close_signature: signObject(zone.privateKey, closeBody) },
+  };
+  const trustedZones = new Map([[zone.descriptor.zid, zone.descriptor]]);
+
+  assert.throws(
+    () => verifySwarmClose(frame, trustedZones),
+    /swarm close task invalid/,
+  );
+});
+
 test("FED_SWARM_CLOSE conformance vector verifies in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v10.38-fed-swarm-close.json", "utf8"));
   const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));

@@ -7,6 +7,7 @@ const ZONE_DOMAIN = Buffer.from("asp-zone-id-v1\0");
 const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 const ED25519_MULTIKEY_PREFIX = Buffer.from([0xed, 0x01]);
 const BASE58BTC = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const TASK_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
 export function b64url(bytes) {
   return Buffer.from(bytes).toString("base64url");
@@ -338,7 +339,7 @@ export function verifyFederatedTaskOpen(frame, trustedZones, workerDescriptor) {
 }
 
 export function validateTaskId(taskId) {
-  if (typeof taskId !== "string" || !/^[A-Za-z0-9._:-]{1,128}$/.test(taskId)) throw new Error("task_id invalid");
+  if (typeof taskId !== "string" || !TASK_ID_PATTERN.test(taskId)) throw new Error("task_id invalid");
 }
 
 export function verifyFederatedReceipt(frame, trustedZones, signedTask) {
@@ -386,6 +387,7 @@ export function verifySwarmClose(frame, trustedZones) {
     if (stepIds.has(step.step_id)) throw new Error("swarm close duplicate step receipt");
     stepIds.add(step.step_id);
     if (typeof step.task_id !== "string" || step.task_id === "") throw new Error("swarm close task missing");
+    if (!TASK_ID_PATTERN.test(step.task_id)) throw new Error("swarm close task invalid");
     if (typeof step.receipt_digest !== "string" || !/^[0-9a-f]{64}$/.test(step.receipt_digest)) {
       throw new Error("swarm close receipt digest invalid");
     }
