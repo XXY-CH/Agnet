@@ -4784,6 +4784,9 @@ func verifyArtifactManifests(receipt map[string]any, artifactStoreDir string) er
 				return errors.New("artifact manifest " + field + " missing")
 			}
 		}
+		if _, ok := manifest["media_type"].(string); !ok {
+			return errors.New("artifact manifest media_type invalid")
+		}
 		if !isHexDigest(fmt.Sprint(manifest["sha256"])) {
 			return errors.New("artifact manifest sha256 invalid")
 		}

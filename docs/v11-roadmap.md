@@ -1080,6 +1080,30 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.48: Go Receipt Artifact Media Type Shape Boundary
+
+状态：complete
+目标：Make Go receipt/audit artifact verifiers reject non-string artifact manifest media types before accepting signed artifact metadata.
+
+新增：
+
+- Go `verifier.verifyReceiptArtifactManifests` rejects non-string manifest `media_type` values with `artifact manifest media_type invalid`.
+- Go `verifyArtifactManifests` rejects non-string manifest `media_type` values before local byte and sidecar comparison.
+- Focused Go tests prove signed receipt metadata using `media_type: {"type":"text/plain"}` is rejected even when `manifest_hash` is recomputed around the malformed value.
+- Node already had the equivalent string-field guard in `verifyReceiptArtifactManifests`, so no Node behavior change was needed.
+
+不做：
+
+- 不改变 artifact manifest metadata schema。
+- 不实现 generic JSON Schema validation。
+- 不改变 receipt artifact manifest comparison semantics。
+- 不实现 remote artifact fetch。
+- 不实现 object-store artifact backend。
+- 不实现 artifact retention policy。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

@@ -127,3 +127,21 @@ func TestArtifactManifestRejectsMalformedSize(t *testing.T) {
 		}
 	}
 }
+
+func TestArtifactManifestRejectsMalformedMediaType(t *testing.T) {
+	manifest := map[string]any{
+		"uri":        "artifact://local/media-type-test/out.md",
+		"sha256":     strings.Repeat("2", 64),
+		"size":       float64(1),
+		"media_type": map[string]any{"type": "text/plain"},
+		"afp":        "afp:sha256:" + strings.Repeat("2", 64),
+	}
+	manifest["manifest_hash"] = digestHex(manifest)
+	err := verifyReceiptArtifactManifests(map[string]any{
+		"artifact_refs":      []any{manifest["uri"]},
+		"artifact_manifests": []any{manifest},
+	})
+	if err == nil || !strings.Contains(err.Error(), "artifact manifest media_type invalid") {
+		t.Fatalf("got %v, want artifact manifest media_type invalid", err)
+	}
+}
