@@ -32,6 +32,11 @@ test("public node proof starts a public-listen gateway", async () => {
   assert.match(result.artifact_reject_error, /receipt artifact not found/);
   assert.equal(result.artifact_tamper_reject, true);
   assert.match(result.artifact_tamper_error, /artifact bytes digest mismatch/);
+  assert.equal(result.swarm_id, "swarm://public-node-proof/two-step");
+  assert.equal(result.swarm_step_count, 2);
+  assert.deepEqual(result.swarm_step_ids, ["summary", "dependent"]);
+  assert.equal(result.swarm_close_signature, true);
+  assert.equal(result.swarm_close_receipts, true);
 
   const verified = await execFileAsync(process.execPath, ["asp-verify.mjs", "fed-receipt", result.receipt_frame, result.trusted_zones]);
   assert.deepEqual(JSON.parse(verified.stdout), { fed_receipt_verify: "ok", task_id: "public_node_probe_task" });

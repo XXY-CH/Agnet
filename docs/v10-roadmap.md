@@ -748,8 +748,34 @@
 - 不做 remote artifact fetch。
 - 不做新的 verifier 逻辑。
 
+## v10.32: Public-Listen Swarm Close Proof
+
+状态：complete
+目标：Prove the public-listen gateway can carry a two-step Swarm close proof over the authenticated federation transport.
+
+新增：
+
+- `scripts/public-node-proof.mjs` sends authenticated `FED_SWARM_OPEN` after the public task/audit/artifact proof.
+- The public proof uses the existing fixed two-step Swarm path: `summary` then `dependent`.
+- The proof verifies the returned `FED_SWARM_CLOSE.close_signature` with the existing Zone authority descriptor.
+- The proof verifies the close proof step receipts match the received Swarm receipts by step id, task id, and receipt digest.
+- `public-node-proof.test.mjs` asserts `swarm_id`, step count, ordered step ids, close signature verification, and close receipt matching.
+
+不做：
+
+- 不做 dynamic Swarm decomposition。
+- 不做 scheduler-owned DAG execution。
+- 不做 parallel Swarm execution。
+- 不做 conflict/merge receipts。
+- 不做 cross-Zone Swarm。
+- 不做 Swarm UI。
+- 不做 Swarm receipt store/search。
+- 不做公网可达性证明。
+- 不做 hosted public node。
+- 不做新的 Swarm verifier 逻辑。
+
 ## Next Candidates
 
-1. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.
-2. Add public reachability proof only after the Docker proof contract stays stable.
-3. Add package signing or SBOM only after package publication becomes real.
+1. Add public reachability proof only after the Docker proof contract stays stable.
+2. Add package signing or SBOM only after package publication becomes real.
+3. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.

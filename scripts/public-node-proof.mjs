@@ -3,7 +3,8 @@ import net from "node:net";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { promisify } from "node:util";
-import { createAgent, createZone, signObject } from "../asp-core.mjs";
+import { createHash } from "node:crypto";
+import { canonical, createAgent, createZone, publicKeyFromDescriptor, signObject, verifyObject } from "../asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 await mkdir("state", { recursive: true });
@@ -61,6 +62,7 @@ for await (const chunk of child.stdout) {
   await writeFile(artifact.file, tamperedBytes(artifact.bytes));
   const artifactTamperReject = await rejectArtifact(status.port, originZone, task.taskId, audited.frame.receipt.artifact_refs[0]);
   await writeFile(artifact.file, artifact.bytes);
+  const swarm = await openSwarm(status.port, originZone);
   clearTimeout(timer);
   child.kill("SIGTERM");
   console.log(JSON.stringify({
@@ -88,6 +90,11 @@ for await (const chunk of child.stdout) {
     artifact_reject_error: artifactReject.error,
     artifact_tamper_reject: artifactTamperReject.rejected,
     artifact_tamper_error: artifactTamperReject.error,
+    swarm_id: swarm.swarmId,
+    swarm_step_count: swarm.stepReceipts.length,
+    swarm_step_ids: swarm.stepReceipts.map((step) => step.step_id),
+    swarm_close_signature: swarm.closeSignature,
+    swarm_close_receipts: swarm.closeReceipts,
   }));
   process.exit(0);
 }
@@ -181,6 +188,70 @@ function auditTask(port, zone, taskId) {
   );
 }
 
+function openSwarm(port, zone) {
+  const requester = createAgent("agent://public-node-proof/swarm-requester");
+  const summaryTask = {
+    task_id: "public_node_swarm_summary",
+    from: requester.aid,
+    to: "agent://zone-b/summarizer",
+    intent: "Prove public-listen FED_SWARM_OPEN summary step.",
+    scope: { network: false },
+    budget: { time_seconds: 30 },
+  };
+  const dependentTask = {
+    task_id: "public_node_swarm_dependent",
+    from: requester.aid,
+    to: "agent://zone-b/summarizer",
+    intent: "Prove public-listen FED_SWARM_OPEN dependent step.",
+    scope: { network: false },
+    budget: { time_seconds: 30 },
+  };
+  const receipts = [];
+  return exchangeFrame(
+    port,
+    zone,
+    {
+      type: "FED_SWARM_OPEN",
+      origin_zone: zone.descriptor,
+      requester: requester.descriptor,
+      swarm: {
+        swarm_id: "swarm://public-node-proof/two-step",
+        steps: [
+          { step_id: "summary", task: { ...summaryTask, signature: signObject(requester.privateKey, summaryTask) } },
+          { step_id: "dependent", after: ["summary"], task: { ...dependentTask, signature: signObject(requester.privateKey, dependentTask) } },
+        ],
+      },
+    },
+    "FED_SWARM_CLOSE",
+    (frame) => {
+      if (frame.type === "FED_RECEIPT") receipts.push(frame.receipt);
+      if (frame.type !== "FED_SWARM_CLOSE") return null;
+      const close = frame.close;
+      const { close_signature, ...body } = close;
+      const authorityKey = publicKeyFromDescriptor(fixture.authority);
+      const expected = receipts.map((receipt) => ({
+        step_id: receipt.swarm.step_id,
+        task_id: receipt.task_id,
+        receipt_digest: digestJson(receipt),
+      }));
+      return {
+        swarmId: close.swarm_id,
+        stepReceipts: close.step_receipts,
+        closeSignature: verifyObject(authorityKey, body, close_signature),
+        closeReceipts: sameStepReceipts(close.step_receipts, expected),
+      };
+    },
+  );
+}
+
+function sameStepReceipts(actual, expected) {
+  return actual.length === expected.length && actual.every((step, index) =>
+    step.step_id === expected[index].step_id &&
+    step.task_id === expected[index].task_id &&
+    step.receipt_digest === expected[index].receipt_digest
+  );
+}
+
 function readArtifact(port, zone, taskId, uri) {
   let artifact = null;
   return exchangeFrame(
@@ -205,6 +276,10 @@ async function rejectArtifact(port, zone, taskId, uri) {
   } catch (error) {
     return { rejected: true, error: error.message };
   }
+}
+
+function digestJson(value) {
+  return createHash("sha256").update(canonical(value)).digest("hex");
 }
 
 function tamperedBytes(bytes) {
