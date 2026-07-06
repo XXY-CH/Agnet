@@ -73,6 +73,7 @@ export function didKeyFromPublicKey(publicKey) {
 }
 
 export function didKeyFromPublicKeySPKI(publicKeySPKI) {
+  if (typeof publicKeySPKI !== "string" || publicKeySPKI === "") throw new Error("expected ed25519 public_key_spki");
   const der = Buffer.from(publicKeySPKI, "base64url");
   if (der.length !== ED25519_SPKI_PREFIX.length + 32 || !der.subarray(0, ED25519_SPKI_PREFIX.length).equals(ED25519_SPKI_PREFIX)) {
     throw new Error("expected ed25519 public_key_spki");
@@ -81,11 +82,11 @@ export function didKeyFromPublicKeySPKI(publicKeySPKI) {
 }
 
 export function didKeyFromDescriptor(descriptor) {
-  return didKeyFromPublicKeySPKI(descriptor.public_key_spki);
+  return didKeyFromPublicKeySPKI(descriptor?.public_key_spki);
 }
 
 export function publicKeySPKIFromDidKey(didKey) {
-  if (!didKey.startsWith("did:key:z")) throw new Error("expected did:key z-base58btc value");
+  if (typeof didKey !== "string" || !didKey.startsWith("did:key:z")) throw new Error("expected did:key z-base58btc value");
   const bytes = base58btcDecode(didKey.slice("did:key:z".length));
   if (bytes.length !== 34 || !bytes.subarray(0, 2).equals(ED25519_MULTIKEY_PREFIX)) {
     throw new Error("expected ed25519 did:key");

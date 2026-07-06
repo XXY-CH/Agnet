@@ -484,7 +484,7 @@ test("v11 public docs include FED_TASK_OPEN worker descriptor identity", async (
   assert.match(readme, /valid local worker descriptor identity/);
   assert.match(roadmap, /## v11\.27: FED_TASK_OPEN Worker Descriptor Identity/);
   assert.match(draft, /local worker descriptor identity verifies/);
-  assert.match(status, /状态：v11\.31 active/);
+  assert.match(status, /状态：v11\.32 active/);
   assert.match(status, /worker descriptor context presence validation and worker descriptor identity validation/);
   assert.match(boundary, /task open worker invalid/);
 });
@@ -502,7 +502,7 @@ test("v11 public docs include FED_RECEIPT worker descriptor identity", async () 
   assert.match(readme, /invalid worker descriptor identity/);
   assert.match(roadmap, /## v11\.28: FED_RECEIPT Worker Descriptor Identity/);
   assert.match(draft, /worker descriptor identity verifies before receipt identity and signature checks/);
-  assert.match(status, /状态：v11\.31 active/);
+  assert.match(status, /状态：v11\.32 active/);
   assert.match(status, /Node `FED_RECEIPT` worker descriptor identity validation/);
   assert.match(boundary, /receipt worker invalid/);
 });
@@ -520,7 +520,7 @@ test("v11 public docs include descriptor public key presence", async () => {
   assert.match(readme, /descriptor public key presence validation/);
   assert.match(roadmap, /## v11\.29: Node Descriptor Public Key Presence/);
   assert.match(draft, /public_key_spki` is missing before handing the descriptor to Node crypto parsing/);
-  assert.match(status, /状态：v11\.31 active/);
+  assert.match(status, /状态：v11\.32 active/);
   assert.match(status, /Node descriptor public key presence validation/);
   assert.match(boundary, /descriptor public key missing/);
 });
@@ -534,11 +534,11 @@ test("v11 public docs include object signature fail-closed verification", async 
     readFile("docs/v11.30-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.31-protocol`/);
+  assert.match(readme, /v11 active at `v11\.32-protocol`/);
   assert.match(readme, /object signature type validation/);
   assert.match(roadmap, /## v11\.30: Node Object Signature Fail-Closed Verification/);
   assert.match(draft, /object signature verification returns false for missing, empty, or non-string signatures/);
-  assert.match(status, /状态：v11\.31 active/);
+  assert.match(status, /状态：v11\.32 active/);
   assert.match(status, /Node shared object signature fail-closed validation/);
   assert.match(boundary, /verifyObject` returns `false`/);
 });
@@ -552,12 +552,31 @@ test("v11 public docs include Zone descriptor object presence", async () => {
     readFile("docs/v11.31-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.31-protocol`/);
-  assert.match(readme, /`docs\/v11\.31-boundary\.md` - latest closed boundary\./);
+  assert.match(readme, /v11 active at `v11\.32-protocol`/);
+  assert.match(readme, /`docs\/v11\.31-boundary\.md` - Node Zone descriptor object presence boundary\./);
   assert.match(readme, /Zone descriptor object presence validation/);
   assert.match(roadmap, /## v11\.31: Node Zone Descriptor Object Presence/);
   assert.match(draft, /Zone descriptor object presence before reading descriptor fields/);
-  assert.match(status, /状态：v11\.31 active/);
+  assert.match(status, /状态：v11\.32 active/);
   assert.match(status, /Node Zone descriptor object presence validation/);
   assert.match(boundary, /zone descriptor missing/);
+});
+
+test("v11 public docs include did:key input presence", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v11.32-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v11 active at `v11\.32-protocol`/);
+  assert.match(readme, /`docs\/v11\.32-boundary\.md` - latest closed boundary\./);
+  assert.match(readme, /did:key` bridge fields for descriptors, with missing-input validation/);
+  assert.match(roadmap, /## v11\.32: Node did:key Input Presence/);
+  assert.match(draft, /did:key` bridge helpers reject missing descriptor\/public-key and DID string inputs/);
+  assert.match(status, /状态：v11\.32 active/);
+  assert.match(status, /did:key` bridge input presence validation/);
+  assert.match(boundary, /expected did:key z-base58btc value/);
 });

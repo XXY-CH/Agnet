@@ -701,6 +701,30 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.32: Node did:key Input Presence
+
+状态：complete
+目标：Make Node `did:key` bridge helpers reject missing descriptor/public-key and DID string inputs before field reads or parsing.
+
+新增：
+
+- Node `didKeyFromPublicKeySPKI` rejects missing, empty, or non-string public key values with `expected ed25519 public_key_spki`.
+- Node `didKeyFromDescriptor` routes missing descriptor/public key values through the same public-key bridge guard.
+- Node `publicKeySPKIFromDidKey` rejects missing or non-string DID values with `expected did:key z-base58btc value`.
+- The test vector suite proves malformed bridge inputs no longer leak JavaScript or Node `TypeError` failures.
+
+不做：
+
+- 不实现 DID-native resolver。
+- 不改变 descriptor shape。
+- 不改变 `aid:` identity semantics。
+- 不实现 generic descriptor schema validation。
+- 不改变 Go verifier behavior。
+- 不实现 registry ownership changes。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

@@ -45,6 +45,16 @@ test("Ed25519 descriptors export stable did:key bridges in Node", async () => {
   assert.equal(generated.descriptor.did_key, didKeyFromDescriptor(generated.descriptor));
 });
 
+test("did:key bridge helpers reject missing values in Node", () => {
+  for (const descriptor of [null, {}]) {
+    assert.throws(() => didKeyFromDescriptor(descriptor), /expected ed25519 public_key_spki/);
+  }
+
+  for (const didKey of [null, {}]) {
+    assert.throws(() => publicKeySPKIFromDidKey(didKey), /expected did:key z-base58btc value/);
+  }
+});
+
 test("descriptor public key parsing rejects missing public keys in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v0.json", "utf8"));
   const { public_key_spki, ...descriptorWithoutPublicKey } = vector.agents.requester;

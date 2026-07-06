@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v11 active at `v11.31-protocol`.
+Status: research prototype, local-first, v11 active at `v11.32-protocol`.
 
 ## Why This Exists
 
@@ -30,7 +30,7 @@ Agnet currently includes two implementations:
 The current prototype proves:
 
 - Ed25519 `aid:` agent identity and Zone identity with Zone descriptor object presence validation, descriptor public key presence validation, and object signature type validation before crypto parsing.
-- Ed25519 `did:key` bridge fields for descriptors, without replacing `aid:`.
+- Ed25519 `did:key` bridge fields for descriptors, with missing-input validation and without replacing `aid:`.
 - Signed tasks, events, artifacts, checkpoints, and receipts.
 - `FED_TASK_OPEN` verifies frame object/type, origin Zone descriptor and payload object presence, local worker descriptor context presence and identity validation, task signature presence, and requester Zone bindings at the federation boundary.
 - Task ids are constrained to a small ASCII token format before execution or queue state.
@@ -220,7 +220,8 @@ Optional hardening flags include:
 - `docs/agent-space-architecture.md` - architecture overview.
 - `docs/asp-core-draft.md` - narrow English draft for the implemented proof layer.
 - `docs/v11-roadmap.md` - active v11 roadmap.
-- `docs/v11.31-boundary.md` - latest closed boundary.
+- `docs/v11.32-boundary.md` - latest closed boundary.
+- `docs/v11.31-boundary.md` - Node Zone descriptor object presence boundary.
 - `docs/v11.30-boundary.md` - Node shared object signature fail-closed boundary.
 - `docs/v11.29-boundary.md` - Node descriptor public key presence boundary.
 - `docs/v11.28-boundary.md` - FED_RECEIPT worker descriptor identity boundary.
@@ -258,7 +259,7 @@ Optional hardening flags include:
 
 ## Roadmap
 
-v9 and v10 are closed. v11 is tightening the proof layer where the Ultimate trust model depends on it: task and receipt verifiers require valid `FED_TASK_OPEN` / `FED_RECEIPT` frame objects, correct frame types, required Zone descriptor objects, required payload objects, and a trusted Zone store; Node Zone descriptor loading now rejects missing or non-object descriptor values before reading descriptor fields; Node descriptor public keys and shared object signatures now fail closed before crypto parsing; Node task/receipt verification also requires local verifier context, signed task/receipt signatures before crypto verification, and valid local worker descriptor identity, signed receipt `origin_zone` values must name a trusted Zone, `FED_TASK_OPEN` requires a requester Zone binding, Node `FED_SWARM_CLOSE` rejects missing-frame, missing-zone, missing-proof, missing-signature, missing-identity, malformed-step, unsafe-task-id, NUL-bearing, structurally empty, or duplicate-step close proofs, task ids now fail closed unless they are safe protocol tokens, receipts now carry `task_digest` to anchor the signed task body, and Node/Go verifier paths can reject supplied or in-memory task evidence whose digest does not match.
+v9 and v10 are closed. v11 is tightening the proof layer where the Ultimate trust model depends on it: task and receipt verifiers require valid `FED_TASK_OPEN` / `FED_RECEIPT` frame objects, correct frame types, required Zone descriptor objects, required payload objects, and a trusted Zone store; Node `did:key` bridge helpers now reject missing inputs before descriptor or string field reads; Node Zone descriptor loading now rejects missing or non-object descriptor values before reading descriptor fields; Node descriptor public keys and shared object signatures now fail closed before crypto parsing; Node task/receipt verification also requires local verifier context, signed task/receipt signatures before crypto verification, and valid local worker descriptor identity, signed receipt `origin_zone` values must name a trusted Zone, `FED_TASK_OPEN` requires a requester Zone binding, Node `FED_SWARM_CLOSE` rejects missing-frame, missing-zone, missing-proof, missing-signature, missing-identity, malformed-step, unsafe-task-id, NUL-bearing, structurally empty, or duplicate-step close proofs, task ids now fail closed unless they are safe protocol tokens, receipts now carry `task_digest` to anchor the signed task body, and Node/Go verifier paths can reject supplied or in-memory task evidence whose digest does not match.
 
 Highest-value next directions:
 
