@@ -337,6 +337,29 @@
 - 不做 receipt store/search。
 - 不做 A2A/ANP/AGNTCY compatibility。
 
+## v10.15: Ordered Swarm Close Summary Verification
+
+状态：complete
+目标：Make Swarm close proof order match same-audit completion order.
+
+新增：
+
+- `--verify-audit` preserves same-audit Swarm step completion order while scanning receipts.
+- `--verify-audit` rejects `go_swarm_close.step_receipts` whose order differs from completed Swarm receipt order.
+- Existing close proof completeness, duplicate-step, signature, task id, and receipt digest checks still apply.
+- `cmd/go-fed-discovery/main_test.go` proves a reversed close summary is rejected.
+
+不做：
+
+- 不做 dynamic Swarm decomposition。
+- 不做 scheduler-owned DAG execution。
+- 不做 parallel Swarm execution。
+- 不做 conflict/merge receipts。
+- 不做 cross-Zone Swarm。
+- 不做 Swarm UI。
+- 不做 receipt store/search。
+- 不做 A2A/ANP/AGNTCY compatibility。
+
 ## Next Candidates
 
 1. Run and publish Docker proof output once a Docker daemon is available.

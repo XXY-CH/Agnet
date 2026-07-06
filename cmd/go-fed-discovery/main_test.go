@@ -483,6 +483,28 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	reversedClose := signBodyWithKey(zoneKey, map[string]any{
+		"swarm_id": "swarm://test",
+		"step_receipts": []map[string]any{
+			{"step_id": "downstream", "task_id": "swarm_down", "receipt_digest": digestHex(downstreamRecord)},
+			{"step_id": "upstream", "task_id": "swarm_up", "receipt_digest": digestHex(upstreamReceipt)},
+		},
+	}, "close_signature")
+	reversedCloseLog := &AuditLog{Path: "reversed-close-audit.log", Head: auditZeroHash}
+	if err := reversedCloseLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": upstreamReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	if err := reversedCloseLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": downstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(downstreamWorker), "receipt": downstreamRecord}); err != nil {
+		t.Fatal(err)
+	}
+	if err := reversedCloseLog.Append(map[string]any{"kind": "go_swarm_close", "zone": zone, "close": reversedClose}); err != nil {
+		t.Fatal(err)
+	}
+	err = verifyAuditFile("reversed-close-audit.log", "")
+	if err == nil || !strings.Contains(err.Error(), "swarm close step order mismatch") {
+		t.Fatalf("got %v, want swarm close step order mismatch", err)
+	}
+
 	incompleteClose := signBodyWithKey(zoneKey, map[string]any{
 		"swarm_id": "swarm://test",
 		"step_receipts": []map[string]any{

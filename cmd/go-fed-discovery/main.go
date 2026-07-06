@@ -4200,6 +4200,7 @@ func verifyAuditFile(path, artifactStoreDir string) error {
 	}
 	prev := auditZeroHash
 	swarmManifests := map[string]map[string]any{}
+	swarmOrder := map[string][]string{}
 	for _, entry := range entries {
 		if err := verifyAuditEntry(entry, prev); err != nil {
 			return err
@@ -4213,12 +4214,12 @@ func verifyAuditFile(path, artifactStoreDir string) error {
 				return err
 			}
 			receipt, _ := record["receipt"].(map[string]any)
-			if err := verifySwarmReceiptDependencies(receipt, swarmManifests); err != nil {
+			if err := verifySwarmReceiptDependencies(receipt, swarmManifests, swarmOrder); err != nil {
 				return err
 			}
 		}
 		if record["kind"] == "go_swarm_close" {
-			if err := verifySwarmCloseProof(record, swarmManifests); err != nil {
+			if err := verifySwarmCloseProof(record, swarmManifests, swarmOrder); err != nil {
 				return err
 			}
 		}
@@ -4417,7 +4418,7 @@ func verifyReceiptRecord(record map[string]any, artifactStoreDir string) error {
 	return nil
 }
 
-func verifySwarmReceiptDependencies(receipt map[string]any, completed map[string]map[string]any) error {
+func verifySwarmReceiptDependencies(receipt map[string]any, completed map[string]map[string]any, order map[string][]string) error {
 	swarm, ok := receipt["swarm"].(map[string]any)
 	if !ok {
 		return nil
@@ -4464,6 +4465,7 @@ func verifySwarmReceiptDependencies(receipt map[string]any, completed map[string
 	manifests := mapsFromAny(receipt["artifact_manifests"])
 	if len(manifests) == 0 {
 		completed[completedKey] = map[string]any{"task_id": receipt["task_id"], "receipt_digest": digestHex(receipt)}
+		order[swarmID] = append(order[swarmID], stepID)
 		return nil
 	}
 	manifest := map[string]any{}
@@ -4473,10 +4475,11 @@ func verifySwarmReceiptDependencies(receipt map[string]any, completed map[string
 	manifest["task_id"] = receipt["task_id"]
 	manifest["receipt_digest"] = digestHex(receipt)
 	completed[completedKey] = manifest
+	order[swarmID] = append(order[swarmID], stepID)
 	return nil
 }
 
-func verifySwarmCloseProof(record map[string]any, completed map[string]map[string]any) error {
+func verifySwarmCloseProof(record map[string]any, completed map[string]map[string]any, order map[string][]string) error {
 	zone, ok := record["zone"].(map[string]any)
 	if !ok {
 		return errors.New("swarm close zone missing")
@@ -4514,8 +4517,11 @@ func verifySwarmCloseProof(record map[string]any, completed map[string]map[strin
 	if len(steps) != expected {
 		return errors.New("swarm close step count mismatch")
 	}
-	for _, step := range steps {
+	for index, step := range steps {
 		stepID := optionalString(step["step_id"])
+		if index >= len(order[swarmID]) || stepID != order[swarmID][index] {
+			return errors.New("swarm close step order mismatch")
+		}
 		completedStep, ok := completed[swarmID+"\x00"+stepID]
 		if !ok {
 			return errors.New("swarm close step receipt missing: " + stepID)
