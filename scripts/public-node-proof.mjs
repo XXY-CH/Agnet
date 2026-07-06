@@ -9,6 +9,8 @@ await writeFile("state/public-node-proof-trusted.json", `${JSON.stringify({ zone
 const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
 await writeFile("state/public-node-proof-authority.seed", `${fixture.authority_seed_hex}\n`);
 await writeFile("state/public-node-proof-worker.seed", `${fixture.worker_seed_hex}\n`);
+const receiptFramePath = "state/public-node-proof-fed-receipt.json";
+const receiptTrustedPath = "state/public-node-proof-trusted-zones.json";
 
 const binary = process.argv[2] ?? "state/public-node-proof-go";
 const child = spawn(binary, [
@@ -43,6 +45,8 @@ for await (const chunk of child.stdout) {
   const queried = await queryCapability(status.port, originZone, "summarize.text");
   const task = await openTask(status.port, originZone);
   const audited = await auditTask(status.port, originZone, task.taskId);
+  await writeFile(receiptFramePath, `${JSON.stringify(audited.frame, null, 2)}\n`);
+  await writeFile(receiptTrustedPath, `${JSON.stringify({ zones: [audited.frame.zone] }, null, 2)}\n`);
   clearTimeout(timer);
   child.kill("SIGTERM");
   console.log(JSON.stringify({
@@ -62,6 +66,8 @@ for await (const chunk of child.stdout) {
     audit_task_id: audited.taskId,
     audit_receipt: audited.receipt,
     audit_close: audited.close,
+    receipt_frame: receiptFramePath,
+    trusted_zones: receiptTrustedPath,
   }));
   process.exit(0);
 }
@@ -138,14 +144,18 @@ function openTask(port, zone) {
 
 function auditTask(port, zone, taskId) {
   let gotReceipt = false;
+  let resultFrame = null;
   return exchangeFrame(
     port,
     zone,
     { type: "FED_AUDIT_QUERY", origin_zone: zone.descriptor, task_id: taskId },
     "FED_AUDIT_CLOSE",
     (frame) => {
-      if (frame.type === "FED_AUDIT_RESULT") gotReceipt = frame.receipt?.task_id === taskId;
-      if (frame.type === "FED_AUDIT_CLOSE") return { taskId, receipt: gotReceipt, close: frame.task_id === taskId };
+      if (frame.type === "FED_AUDIT_RESULT") {
+        resultFrame = frame;
+        gotReceipt = frame.receipt?.task_id === taskId;
+      }
+      if (frame.type === "FED_AUDIT_CLOSE") return { taskId, receipt: gotReceipt, close: frame.task_id === taskId, frame: resultFrame };
       return null;
     },
   );

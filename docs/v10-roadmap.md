@@ -586,8 +586,33 @@
 - 不做 audit search/index。
 - 不做 broad protocol probe suite beyond the one proof path.
 
+## v10.26: Public-Listen Verifier-Ready Receipt Proof
+
+状态：complete
+目标：Make the public-listen audit proof verifier-ready.
+
+新增：
+
+- `scripts/public-node-proof.mjs` writes the fetched audit receipt proof to `state/public-node-proof-fed-receipt.json`.
+- It writes the matching trusted Zone set to `state/public-node-proof-trusted-zones.json`.
+- The proof output includes `receipt_frame` and `trusted_zones` paths.
+- `public-node-proof.test.mjs` verifies those files with `node asp-verify.mjs fed-receipt`.
+
+不做：
+
+- 不做公网可达性证明。
+- 不做 NAT / relay。
+- 不做 hosted public node。
+- 不做 TLS certificate issuance。
+- 不做 QUIC。
+- 不做 deployment automation。
+- 不做 remote audit sync。
+- 不做 audit search/index。
+- 不做 public artifact byte fetch。
+- 不做 `fed-receipt-artifacts` closure for the public proof。
+
 ## Next Candidates
 
-1. Make the public proof verifier-ready by emitting the fetched `FED_RECEIPT` frame and trusted Zone set.
+1. Add public-proof artifact-byte closure only after there is a truthful local fetch or mirror path for the returned artifact refs.
 2. Add an npm-facing verifier only when the existing Node exports are not enough.
 3. Continue Swarm proof work only where it adds verifiable accountability, not scheduler breadth.
