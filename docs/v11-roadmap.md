@@ -1267,6 +1267,29 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.56: Go Artifact Mirror Index AFP Boundary
+
+状态：complete
+目标：Make Go filesystem artifact mirror index readers reject present AFP strings that do not match the row SHA-256.
+
+新增：
+
+- Go `readArtifactStoreIndex` rejects present `afp` fields that are not exactly `afp:sha256:<sha256>` for the same row.
+- Focused Go test proves an index row with a valid `sha256` but mismatched AFP no longer reads as a valid orphan/index row.
+- The fix is scoped to proof metadata consistency already present in mirror index rows; it does not make `afp` required and does not add full mirror index schema validation.
+
+不做：
+
+- 不改变 artifact manifest metadata schema。
+- 不实现 generic JSON Schema validation。
+- 不改变 receipt artifact manifest comparison semantics。
+- 不实现 remote artifact fetch。
+- 不实现 object-store artifact backend。
+- 不实现 artifact retention policy。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
