@@ -483,6 +483,24 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	duplicateCloseRecordLog := &AuditLog{Path: "duplicate-close-record-audit.log", Head: auditZeroHash}
+	if err := duplicateCloseRecordLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": upstreamReceipt}); err != nil {
+		t.Fatal(err)
+	}
+	if err := duplicateCloseRecordLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": downstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(downstreamWorker), "receipt": downstreamRecord}); err != nil {
+		t.Fatal(err)
+	}
+	if err := duplicateCloseRecordLog.Append(map[string]any{"kind": "go_swarm_close", "zone": zone, "close": cleanClose}); err != nil {
+		t.Fatal(err)
+	}
+	if err := duplicateCloseRecordLog.Append(map[string]any{"kind": "go_swarm_close", "zone": zone, "close": cleanClose}); err != nil {
+		t.Fatal(err)
+	}
+	err = verifyAuditFile("duplicate-close-record-audit.log", "")
+	if err == nil || !strings.Contains(err.Error(), "duplicate swarm close proof") {
+		t.Fatalf("got %v, want duplicate swarm close proof", err)
+	}
+
 	reversedClose := signBodyWithKey(zoneKey, map[string]any{
 		"swarm_id": "swarm://test",
 		"step_receipts": []map[string]any{

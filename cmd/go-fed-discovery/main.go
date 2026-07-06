@@ -4201,6 +4201,7 @@ func verifyAuditFile(path, artifactStoreDir string) error {
 	prev := auditZeroHash
 	swarmManifests := map[string]map[string]any{}
 	swarmOrder := map[string][]string{}
+	closedSwarms := map[string]bool{}
 	for _, entry := range entries {
 		if err := verifyAuditEntry(entry, prev); err != nil {
 			return err
@@ -4219,7 +4220,7 @@ func verifyAuditFile(path, artifactStoreDir string) error {
 			}
 		}
 		if record["kind"] == "go_swarm_close" {
-			if err := verifySwarmCloseProof(record, swarmManifests, swarmOrder); err != nil {
+			if err := verifySwarmCloseProof(record, swarmManifests, swarmOrder, closedSwarms); err != nil {
 				return err
 			}
 		}
@@ -4479,7 +4480,7 @@ func verifySwarmReceiptDependencies(receipt map[string]any, completed map[string
 	return nil
 }
 
-func verifySwarmCloseProof(record map[string]any, completed map[string]map[string]any, order map[string][]string) error {
+func verifySwarmCloseProof(record map[string]any, completed map[string]map[string]any, order map[string][]string, closed map[string]bool) error {
 	zone, ok := record["zone"].(map[string]any)
 	if !ok {
 		return errors.New("swarm close zone missing")
@@ -4499,6 +4500,9 @@ func verifySwarmCloseProof(record map[string]any, completed map[string]map[strin
 		return errors.New("swarm close signature verification failed")
 	}
 	swarmID := optionalString(closeProof["swarm_id"])
+	if closed[swarmID] {
+		return errors.New("duplicate swarm close proof: " + swarmID)
+	}
 	expected := 0
 	for key := range completed {
 		if strings.HasPrefix(key, swarmID+"\x00") {
@@ -4533,6 +4537,7 @@ func verifySwarmCloseProof(record map[string]any, completed map[string]map[strin
 			return errors.New("swarm close receipt digest mismatch")
 		}
 	}
+	closed[swarmID] = true
 	return nil
 }
 
