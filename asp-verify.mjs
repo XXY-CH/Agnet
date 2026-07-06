@@ -22,7 +22,8 @@ try {
     console.log(JSON.stringify({ fed_receipt_verify: "ok", task_id: verified.receipt.task_id, receipt_digest: receiptDigest(verified.signedReceipt) }));
   } else if (command === "fed-receipt-artifacts" && file && trustedFile) {
     const frame = JSON.parse(await readFile(file, "utf8"));
-    const verified = verifyFederatedReceipt(frame, await loadTrustedZones(trustedFile));
+    const task = taskFile ? JSON.parse(await readFile(taskFile, "utf8")) : undefined;
+    const verified = verifyFederatedReceipt(frame, await loadTrustedZones(trustedFile), task);
     const manifests = verified.receipt.artifact_manifests ?? [];
     if ((verified.receipt.artifact_refs?.length ?? 0) > 0 && manifests.length === 0) {
       throw new Error("receipt artifact manifests missing");
@@ -34,7 +35,7 @@ try {
     const verified = verifySwarmClose(frame, await loadTrustedZones(trustedFile));
     console.log(JSON.stringify({ swarm_close_verify: "ok", swarm_id: verified.close.swarm_id, swarm_close_digest: verified.closeDigest }));
   } else {
-    throw new Error("usage: node asp-verify.mjs artifact <manifest.json> | fed-receipt <frame.json> <trusted-zones.json> [task.json] | fed-receipt-artifacts <frame.json> <trusted-zones.json> | swarm-close <frame.json> <trusted-zones.json>");
+    throw new Error("usage: node asp-verify.mjs artifact <manifest.json> | fed-receipt <frame.json> <trusted-zones.json> [task.json] | fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] | swarm-close <frame.json> <trusted-zones.json>");
   }
 } catch (error) {
   console.error(error.message);

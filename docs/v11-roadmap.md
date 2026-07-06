@@ -141,6 +141,27 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.6: Artifact Closure Task Evidence Parity
+
+状态：complete
+目标：Make the Node receipt-plus-artifact verifier enforce the same optional task evidence check as the receipt-only verifier.
+
+新增：
+
+- `asp-verify.mjs fed-receipt-artifacts` accepts an optional task JSON file.
+- The artifact-closure verifier rejects supplied task evidence whose digest does not match `receipt.task_digest`.
+- The existing local artifact byte and manifest checks remain unchanged.
+
+不做：
+
+- 不实现 task store/search。
+- 不实现 batch verifier。
+- 不改变 no-task-evidence verification behavior。
+- 不改变 artifact byte or manifest verification semantics。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

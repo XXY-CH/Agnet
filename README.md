@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v11 active at `v11.5-protocol`.
+Status: research prototype, local-first, v11 active at `v11.6-protocol`.
 
 ## Why This Exists
 
@@ -39,7 +39,7 @@ The current prototype proves:
 - Node receipt verifier CLI outputs and proof summary JSON include stable `receipt_digest` values for external reports.
 - Node verifier CLI trusted-Zone files are signature-checked before use.
 - Node and Go receipt verifiers reject signed receipts whose `origin_zone` is not trusted.
-- Node and Go receipt verifiers require `task_digest` as a compact anchor to the signed task object, and can check it against supplied signed task evidence.
+- Node and Go receipt verifiers require `task_digest` as a compact anchor to the signed task object; Node receipt and artifact-closure CLIs can check it against supplied signed task evidence.
 - Minimal npm-facing package contract for the existing Node verifier CLI and `asp-core.mjs` exports.
 - One-command proof demo, Docker proof demo, and Docker public-listen proof that emit verifier-ready receipt/trust files, expose receipt digests, verified artifact counts, verified artifact URIs, verified artifact byte digests, and verified artifact manifest hashes, verify local artifact closure, and support base-image override env vars for restricted Docker environments.
 - Public-listen proof script that starts the Go federation gateway on `0.0.0.0`, proves `public_transport: true`, completes authenticated `FED_RESOLVE`, `FED_QUERY`, `FED_TASK_OPEN`, `FED_AUDIT_QUERY`, `FED_ARTIFACT_READ`, and `FED_SWARM_OPEN` round trips, verifies fetched artifact bytes, proves out-of-receipt and post-receipt-tampered artifact reads are rejected, and writes a two-step Swarm close proof frame plus trusted Zone file with a reproducible close digest and summary `swarm_close_verify` result from the Node CLI.
@@ -163,7 +163,7 @@ npm exec --package . -- asp-verify fed-receipt frame.json trusted-zones.json
 Verify one Node `FED_RECEIPT` frame plus its local artifact bytes:
 
 ```bash
-node asp-verify.mjs fed-receipt-artifacts frame.json trusted-zones.json
+node asp-verify.mjs fed-receipt-artifacts frame.json trusted-zones.json task.json
 ```
 
 Verify one Node `FED_SWARM_CLOSE` frame signature and digest:
@@ -219,7 +219,8 @@ Optional hardening flags include:
 - `docs/agent-space-architecture.md` - architecture overview.
 - `docs/asp-core-draft.md` - narrow English draft for the implemented proof layer.
 - `docs/v11-roadmap.md` - active v11 roadmap.
-- `docs/v11.5-boundary.md` - latest closed boundary.
+- `docs/v11.6-boundary.md` - latest closed boundary.
+- `docs/v11.5-boundary.md` - optional receipt task evidence verification boundary.
 - `docs/v11.4-boundary.md` - receipt task digest binding boundary.
 - `docs/v11.3-boundary.md` - task id token validation boundary.
 - `docs/v11.2-boundary.md` - Swarm close structural validation boundary.
@@ -231,7 +232,7 @@ Optional hardening flags include:
 
 ## Roadmap
 
-v9 and v10 are closed. v11 is tightening the proof layer where the Ultimate trust model depends on it: receipt verifiers require signed receipt `origin_zone` values to name a trusted Zone, `FED_TASK_OPEN` requires a requester Zone binding, Node `FED_SWARM_CLOSE` rejects structurally empty close proofs, task ids now fail closed unless they are safe protocol tokens, receipts now carry `task_digest` to anchor the signed task body, and external verifiers can reject supplied task evidence whose digest does not match.
+v9 and v10 are closed. v11 is tightening the proof layer where the Ultimate trust model depends on it: receipt verifiers require signed receipt `origin_zone` values to name a trusted Zone, `FED_TASK_OPEN` requires a requester Zone binding, Node `FED_SWARM_CLOSE` rejects structurally empty close proofs, task ids now fail closed unless they are safe protocol tokens, receipts now carry `task_digest` to anchor the signed task body, and Node receipt/artifact verifiers can reject supplied task evidence whose digest does not match.
 
 Highest-value next directions:
 

@@ -172,8 +172,10 @@ test("FED_RECEIPT artifact CLI verifies one frame and local artifact bytes in No
   const frame = { ...vector.frame, receipt: { ...receiptWithManifest, signature: signObject(privateKeyFromSeed(vector.worker_seed_hex), receiptWithManifest) } };
   const framePath = "state/node-fed-receipt-artifact-frame.json";
   const trustedPath = "state/node-fed-receipt-artifact-trusted.json";
+  const taskPath = "state/node-fed-receipt-artifact-wrong-task.json";
   await writeFile(framePath, `${JSON.stringify(frame, null, 2)}\n`);
   await writeFile(trustedPath, `${JSON.stringify({ zones: vector.trusted_zones }, null, 2)}\n`);
+  await writeFile(taskPath, `${JSON.stringify({ task_id: vector.expected.task_id, intent: "wrong task" }, null, 2)}\n`);
 
   assert.deepEqual(JSON.parse((await execFileAsync("node", ["asp-verify.mjs", "fed-receipt-artifacts", framePath, trustedPath])).stdout), {
     fed_receipt_artifacts_verify: "ok",
@@ -184,6 +186,10 @@ test("FED_RECEIPT artifact CLI verifies one frame and local artifact bytes in No
     artifact_manifest_hashes: [artifact.manifest.manifest_hash],
     receipt_digest: createHash("sha256").update(canonical(receiptWithManifest)).digest("hex"),
   });
+  await assert.rejects(
+    () => execFileAsync("node", ["asp-verify.mjs", "fed-receipt-artifacts", framePath, trustedPath, taskPath]),
+    (error) => error.stderr.includes("receipt task_digest mismatch"),
+  );
 
   await writeFile("artifacts/fed_task_conformance_001/federated-summary.md", "tampered\n");
   await assert.rejects(

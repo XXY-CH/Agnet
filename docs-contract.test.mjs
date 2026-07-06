@@ -113,10 +113,27 @@ test("v11 public docs include optional receipt task evidence verification", asyn
     readFile("docs/v11.5-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v11 active at `v11\.5-protocol`/);
+  assert.match(readme, /`docs\/v11\.5-boundary\.md` - optional receipt task evidence verification boundary\./);
   assert.match(readme, /supplied task evidence whose digest does not match/);
   assert.match(roadmap, /## v11\.5: Optional Receipt Task Evidence Verification/);
   assert.match(draft, /When signed task evidence is supplied/);
-  assert.match(status, /状态：v11\.5 active/);
+  assert.match(status, /optional supplied-task `task_digest` verification/);
   assert.match(boundary, /supplied signed task evidence/);
+});
+
+test("v11 public docs include artifact closure task evidence parity", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v11-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v11.6-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v11 active at `v11\.6-protocol`/);
+  assert.match(readme, /Node receipt\/artifact verifiers can reject supplied task evidence/);
+  assert.match(roadmap, /## v11\.6: Artifact Closure Task Evidence Parity/);
+  assert.match(draft, /fed-receipt-artifacts <frame\.json> <trusted-zones\.json> \[task\.json\]/);
+  assert.match(status, /状态：v11\.6 active/);
+  assert.match(boundary, /receipt-plus-artifact verifier CLIs aligned/);
 });
