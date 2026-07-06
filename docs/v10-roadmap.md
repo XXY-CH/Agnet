@@ -823,6 +823,29 @@
 - 不做公网可达性证明。
 - 不做 hosted public node。
 
+## v10.35: Public Swarm Close Frame File
+
+状态：complete
+目标：Make the public-listen Swarm close proof portable as a file, matching the existing receipt/trust proof-file pattern.
+
+新增：
+
+- `scripts/public-node-proof.mjs` writes `state/public-node-proof-swarm-close.json`.
+- The proof output includes `swarm_close_frame` with that path.
+- `public-node-proof.test.mjs` reads the frame file and checks its close digest matches `swarm_close_digest`.
+
+不做：
+
+- 不做新的 Swarm verifier CLI。
+- 不做 Swarm receipt store/search。
+- 不做新的 Swarm frame schema。
+- 不做 dynamic Swarm decomposition。
+- 不做 scheduler-owned DAG execution。
+- 不做 parallel Swarm execution。
+- 不做 cross-Zone Swarm。
+- 不做公网可达性证明。
+- 不做 hosted public node。
+
 ## Next Candidates
 
 1. Add public reachability proof only after the Docker proof contract stays stable on the target network.

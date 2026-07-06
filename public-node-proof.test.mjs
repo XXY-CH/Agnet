@@ -41,6 +41,12 @@ test("public node proof starts a public-listen gateway", async () => {
   assert.equal(result.swarm_close_signature, true);
   assert.equal(result.swarm_close_receipts, true);
   assert.match(result.swarm_close_digest, /^[a-f0-9]{64}$/);
+  assert.equal(result.swarm_close_frame, "state/public-node-proof-swarm-close.json");
+
+  const closeFrame = JSON.parse(await readFile(result.swarm_close_frame, "utf8"));
+  assert.equal(closeFrame.type, "FED_SWARM_CLOSE");
+  assert.equal(closeFrame.swarm_id, result.swarm_id);
+  assert.equal(closeFrame.close.swarm_id, result.swarm_id);
 
   const audit = await readFile("state/public-node-proof-audit.log", "utf8");
   const closeRecord = audit
@@ -50,6 +56,8 @@ test("public node proof starts a public-listen gateway", async () => {
     .findLast((entry) => entry.record?.kind === "go_swarm_close")?.record;
   const { close_signature, ...closeBody } = closeRecord.close;
   assert.equal(result.swarm_close_digest, createHash("sha256").update(canonical(closeBody)).digest("hex"));
+  const { close_signature: frameCloseSignature, ...frameCloseBody } = closeFrame.close;
+  assert.equal(result.swarm_close_digest, createHash("sha256").update(canonical(frameCloseBody)).digest("hex"));
 
   const verified = await execFileAsync(process.execPath, ["asp-verify.mjs", "fed-receipt", result.receipt_frame, result.trusted_zones]);
   assert.deepEqual(JSON.parse(verified.stdout), { fed_receipt_verify: "ok", task_id: "public_node_probe_task" });

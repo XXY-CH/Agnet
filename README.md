@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v10 active at `v10.34-protocol`.
+Status: research prototype, local-first, v10 active at `v10.35-protocol`.
 
 ## Why This Exists
 
@@ -36,7 +36,7 @@ The current prototype proves:
 - Receipt and local artifact closure verification through Go and Node CLIs.
 - Minimal npm-facing package contract for the existing Node verifier CLI and `asp-core.mjs` exports.
 - One-command proof demo, Docker proof demo, and Docker public-listen proof that emit verifier-ready receipt/trust files, verify local artifact closure, and support base-image override env vars for restricted Docker environments.
-- Public-listen proof script that starts the Go federation gateway on `0.0.0.0`, proves `public_transport: true`, completes authenticated `FED_RESOLVE`, `FED_QUERY`, `FED_TASK_OPEN`, `FED_AUDIT_QUERY`, `FED_ARTIFACT_READ`, and `FED_SWARM_OPEN` round trips, verifies fetched artifact bytes, proves out-of-receipt and post-receipt-tampered artifact reads are rejected, and verifies a two-step Swarm close proof with a reproducible close digest.
+- Public-listen proof script that starts the Go federation gateway on `0.0.0.0`, proves `public_transport: true`, completes authenticated `FED_RESOLVE`, `FED_QUERY`, `FED_TASK_OPEN`, `FED_AUDIT_QUERY`, `FED_ARTIFACT_READ`, and `FED_SWARM_OPEN` round trips, verifies fetched artifact bytes, proves out-of-receipt and post-receipt-tampered artifact reads are rejected, and writes a two-step Swarm close proof frame with a reproducible close digest.
 - Node artifact manifests, AFP strings, sidecars, local byte verification, CLI verification, and manifest metadata verification; Go filesystem artifact manifests, AFP strings, content-addressed mirrors, and GC plan/apply.
 - Human approval evidence for direct and queued execution.
 - Explicit queue claim, lease expiry, reclaim, retry, resume, and drain flows.
@@ -207,12 +207,12 @@ Optional hardening flags include:
 - `docs/agent-space-architecture.md` - architecture overview.
 - `docs/asp-core-draft.md` - narrow English draft for the implemented proof layer.
 - `docs/v10-roadmap.md` - active v10 roadmap.
-- `docs/v10.34-boundary.md` - latest closed boundary.
+- `docs/v10.35-boundary.md` - latest closed boundary.
 - `docs/v9-roadmap.md` - closed v9 roadmap.
 
 ## Roadmap
 
-v9 is closed. v10 is making the proof layer easier to verify externally: identity bridge first, then Node artifact manifest parity, AFP hash strings, receipt-side manifest metadata checks, local artifact byte checks, minimal verifier CLIs, a local npm-facing verifier package contract, one-receipt local artifact closure verification, a narrow ASP Core draft, a reusable Go receipt-frame verifier package, a one-command local proof demo, verified Docker proof demos with overrideable base images, a verifier-ready local public-listen resolve/query/task/audit/artifact/swarm proof with negative artifact-read coverage for out-of-receipt and post-receipt-tampered artifact reads, verifier-ready local proof receipt closure files, and single ordered complete audit-backed Zone-signed Swarm close proofs tied to same-audit receipts with reproducible close digests.
+v9 is closed. v10 is making the proof layer easier to verify externally: identity bridge first, then Node artifact manifest parity, AFP hash strings, receipt-side manifest metadata checks, local artifact byte checks, minimal verifier CLIs, a local npm-facing verifier package contract, one-receipt local artifact closure verification, a narrow ASP Core draft, a reusable Go receipt-frame verifier package, a one-command local proof demo, verified Docker proof demos with overrideable base images, a verifier-ready local public-listen resolve/query/task/audit/artifact/swarm proof with negative artifact-read coverage for out-of-receipt and post-receipt-tampered artifact reads, verifier-ready local proof receipt closure files, and single ordered complete audit-backed Zone-signed Swarm close proof frames tied to same-audit receipts with reproducible close digests.
 
 Highest-value next directions:
 
