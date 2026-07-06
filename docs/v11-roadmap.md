@@ -614,6 +614,27 @@
 - 不实现 dynamic Swarm decomposition。
 - 不实现 A2A/ARD compatibility。
 
+## v11.28: FED_RECEIPT Worker Descriptor Identity
+
+状态：complete
+目标：Make Node `FED_RECEIPT` verification validate worker descriptor identity before receipt identity and signature checks.
+
+新增：
+
+- Node `verifyFederatedReceipt` resolves the receipt worker descriptor through the existing descriptor verifier before using the worker Agent ID or public key.
+- Node `verifyFederatedReceipt` rejects malformed worker descriptors with `receipt worker invalid`.
+- The Node conformance tests prove missing worker public-key material or tampered worker Agent IDs no longer leak low-level descriptor errors or JavaScript `TypeError` failures.
+
+不做：
+
+- 不实现 generic receipt schema validation。
+- 不实现 worker registry/store。
+- 不改变 `FED_RECEIPT` frame shape。
+- 不改变 Go verifier behavior。
+- 不实现 scheduler-owned routing。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v11.27-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v11.28-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -173,6 +173,7 @@ Verifiers MUST check:
 - The signing Zone descriptor is present as an object and trusted.
 - A trusted Zone store is present for signing and origin Zone lookup.
 - The worker descriptor is present as an object.
+- The worker descriptor identity verifies before receipt identity and signature checks.
 - The receipt body is present as an object.
 - The receipt signature is present as a string.
 - The Zone binding resolves the worker alias and Agent ID.

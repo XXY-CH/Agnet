@@ -369,10 +369,15 @@ export function verifyFederatedReceipt(frame, trustedZones, signedTask) {
   if (!trusted || trusted.public_key_spki !== zone.public_key_spki) {
     throw new Error(`untrusted zone: ${zone.zid}`);
   }
-  const resolved = resolveAgent(
-    new Map([[frame.worker.alias, { descriptor: frame.worker, zone: frame.zone, zone_binding: frame.zone_binding }]]),
-    frame.worker.alias,
-  );
+  let resolved;
+  try {
+    resolved = resolveAgent(
+      new Map([[frame.worker.alias, { descriptor: frame.worker, zone: frame.zone, zone_binding: frame.zone_binding }]]),
+      frame.worker.alias,
+    );
+  } catch (error) {
+    throw new Error(`receipt worker invalid: ${error.message}`);
+  }
   const { signature, ...receipt } = frame.receipt;
   if (receipt.executing_zone !== zone.zid) throw new Error("receipt executing_zone mismatch");
   if (!trustedZones.has(receipt.origin_zone)) throw new Error(`untrusted receipt origin zone: ${receipt.origin_zone}`);

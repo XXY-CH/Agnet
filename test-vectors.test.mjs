@@ -238,6 +238,19 @@ test("FED_RECEIPT verification rejects missing workers in Node", async () => {
   );
 });
 
+test("FED_RECEIPT verification rejects invalid worker descriptor identity in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  const { public_key_spki, ...workerWithoutPublicKey } = vector.frame.worker;
+
+  for (const worker of [workerWithoutPublicKey, { ...vector.frame.worker, aid: "aid:ed25519:tampered" }]) {
+    assert.throws(
+      () => verifyFederatedReceipt({ ...vector.frame, worker }, trustedZones),
+      /receipt worker invalid/,
+    );
+  }
+});
+
 test("FED_RECEIPT verification rejects missing receipt bodies in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
   const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
