@@ -72,7 +72,11 @@ try {
     requireEqual("artifact_sha256s", bundle.artifact_sha256s, manifests.map(({ sha256 }) => sha256));
     requireEqual("artifact_manifest_hashes", bundle.artifact_manifest_hashes, manifests.map(({ manifest_hash }) => manifest_hash));
     requireEqual("transport_proof", bundle.transport_proof, receiptVerified.receipt.transport_proof);
-    if (!receiptVerified.receipt.transport_proof || typeof receiptVerified.receipt.transport_proof !== "object" || Array.isArray(receiptVerified.receipt.transport_proof) || receiptVerified.receipt.transport_proof.public_transport !== true) {
+    const transportProof = receiptVerified.receipt.transport_proof;
+    if (!transportProof || typeof transportProof !== "object" || Array.isArray(transportProof) || typeof transportProof.transport !== "string" || transportProof.transport === "" || typeof transportProof.listen_host !== "string" || transportProof.listen_host === "" || typeof transportProof.port !== "string" || !/^[1-9][0-9]{0,4}$/.test(transportProof.port)) {
+      throw new Error("bundle transport_proof invalid");
+    }
+    if (transportProof.public_transport !== true) {
       throw new Error("bundle public_transport proof missing");
     }
     requireEqual("swarm_close_digest", bundle.swarm_close_digest, closeVerified.closeDigest);

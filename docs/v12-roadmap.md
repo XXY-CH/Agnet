@@ -282,6 +282,32 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.12: Proof Bundle Transport Proof Shape
+
+状态：complete
+目标：Make public proof bundles reject incomplete signed transport proofs.
+
+新增：
+
+- `asp-verify.mjs proof-bundle <bundle.json>` requires verified receipt `transport_proof` to include non-empty `transport`, non-empty `listen_host`, decimal-string `port`, and `public_transport: true`.
+- A bundle that matches a signed receipt with only `public_transport: true` is rejected with `bundle transport_proof invalid`.
+- `public-node-proof.test.mjs` covers a re-signed incomplete transport proof receipt and matching bundle.
+
+不做：
+
+- 不实现 external public reachability proof。
+- 不实现 hosted public node。
+- 不改变 normal `fed-receipt` verification。
+- 不改变 verifier JSON output。
+- 不改变 Go receipt transport proof field shape。
+- 不实现 DNS, TLS, QUIC, NAT traversal, or remote probe infrastructure。
+- 不实现 batch verifier。
+- 不实现 JSON Schema。
+- 不实现 generic proof bundle schema。
+- 不实现 package signing or SBOM。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.
