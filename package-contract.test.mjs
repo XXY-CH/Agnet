@@ -54,4 +54,15 @@ test("package proof creates an npm tarball artifact", async () => {
   assert.equal(tarball.size, proof.size);
   assert.deepEqual(proof.files, ["README.md", "asp-core.mjs", "asp-verify.mjs", "package.json"]);
   assert.deepEqual(JSON.parse(await readFile(proof.manifest, "utf8")), proof);
+
+  const verified = JSON.parse((await execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", proof.manifest])).stdout);
+  assert.deepEqual(verified, {
+    package_proof_verify: "ok",
+    name: proof.name,
+    version: proof.version,
+    filename: proof.filename,
+    tarball: proof.tarball,
+    sha256: proof.sha256,
+    proof_digest: proof.proof_digest,
+  });
 });

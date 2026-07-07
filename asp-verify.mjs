@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { isIP } from "node:net";
 import { dirname, join } from "node:path";
@@ -54,6 +54,14 @@ try {
     const frame = JSON.parse(await readFile(file, "utf8"));
     const verified = verifySwarmClose(frame, await loadTrustedZones(trustedFile));
     console.log(JSON.stringify({ swarm_close_verify: "ok", swarm_id: verified.close.swarm_id, swarm_close_digest: verified.closeDigest }));
+  } else if (command === "package-proof" && file && args.length === 2) {
+    const proof = JSON.parse(await readFile(file, "utf8"));
+    const { proof_digest: proofDigest, ...proofBody } = proof;
+    requireEqual("package_proof", proof.package_proof, "ok");
+    requireEqual("proof_digest", proofDigest, createHash("sha256").update(canonical(proofBody)).digest("hex"));
+    requireEqual("sha256", proof.sha256, createHash("sha256").update(await readFile(proof.tarball)).digest("hex"));
+    requireEqual("size", (await stat(proof.tarball)).size, proof.size);
+    console.log(JSON.stringify({ package_proof_verify: "ok", name: proof.name, version: proof.version, filename: proof.filename, tarball: proof.tarball, sha256: proof.sha256, proof_digest: proof.proof_digest }));
   } else if (command === "proof-bundle" && file && args.length === 2) {
     const baseDir = dirname(file);
     const bundle = JSON.parse(await readFile(file, "utf8"));
@@ -88,7 +96,7 @@ try {
     requireEqual("swarm_close_digest", bundle.swarm_close_digest, closeVerified.closeDigest);
     console.log(JSON.stringify({ proof_bundle_verify: "ok", receipt_frame: bundle.receipt_frame, trusted_zones: bundle.trusted_zones, receipt_digest: bundle.receipt_digest, artifact_count: manifests.length, artifact_uris: bundle.artifact_uris, artifact_sha256s: bundle.artifact_sha256s, artifact_manifest_hashes: bundle.artifact_manifest_hashes, transport_proof: bundle.transport_proof, reachability_scope: "local-interface", swarm_close_frame: bundle.swarm_close_frame, swarm_close_trusted_zones: bundle.swarm_close_trusted_zones, swarm_close_digest: bundle.swarm_close_digest }));
   } else {
-    throw new Error("usage: node asp-verify.mjs artifact <manifest.json> | fed-receipt <frame.json> <trusted-zones.json> [task.json] | fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] | swarm-close <frame.json> <trusted-zones.json> | proof-bundle <bundle.json>");
+    throw new Error("usage: node asp-verify.mjs artifact <manifest.json> | fed-receipt <frame.json> <trusted-zones.json> [task.json] | fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] | swarm-close <frame.json> <trusted-zones.json> | package-proof <manifest.json> | proof-bundle <bundle.json>");
   }
 } catch (error) {
   console.error(error.message);

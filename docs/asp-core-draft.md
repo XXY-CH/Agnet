@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v12.21-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v12.22-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -337,6 +337,7 @@ node asp-verify.mjs artifact <manifest.json>
 node asp-verify.mjs fed-receipt <frame.json> <trusted-zones.json> [task.json]
 node asp-verify.mjs fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json]
 node asp-verify.mjs swarm-close <frame.json> <trusted-zones.json>
+node asp-verify.mjs package-proof <manifest.json>
 node asp-verify.mjs proof-bundle <bundle.json>
 ```
 
@@ -347,6 +348,8 @@ For `proof-bundle`, the signed receipt transport proof MUST be an object and MUS
 The `proof-bundle` verifier reports `reachability_scope: "local-interface"` for the implemented public proof bundle and rejects bundle manifests that supply their own `reachability_scope`. This is verifier-owned labeling of the current proof scope, not external-host reachability.
 
 The package proof manifest includes `proof_digest`, computed as `sha256(canonical(proof without proof_digest))`. This binds the proof manifest body without choosing a package signature or SBOM format.
+
+The package proof verifier command checks the persisted package proof manifest against the generated tarball's byte SHA-256, file size, and canonical proof digest.
 
 Implemented Go checks:
 

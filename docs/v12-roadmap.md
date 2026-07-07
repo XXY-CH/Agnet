@@ -560,6 +560,38 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.22: Package Proof Verifier Command
+
+状态：complete
+目标：Let a third party verify the generated package proof manifest and tarball with the existing Node verifier CLI.
+
+新增：
+
+- `asp-verify.mjs package-proof <manifest.json>` verifies `proof_digest`, tarball `sha256`, and tarball size.
+- The command returns `package_proof_verify: "ok"` plus package name, version, filename, tarball, SHA-256, and proof digest.
+- `package-contract.test.mjs` runs the verifier against the real `state/package-proof/package-proof.json` output.
+
+不做：
+
+- 不实现 package signing。
+- 不实现 SBOM。
+- 不发布 npm package。
+- 不改变 `package.json` exports/bin/files。
+- 不改变 npm `shasum` or `integrity` handling。
+- 不改变 tarball SHA-256 calculation。
+- 不实现 relocatable package proof format。
+- 不实现 external public reachability proof。
+- 不实现 hosted public node。
+- 不增加 DNS, TLS, QUIC, NAT traversal, or remote probe infrastructure。
+- 不改变 normal `fed-receipt` verification。
+- 不改变 `proof-bundle` verifier JSON output。
+- 不实现 transport negotiation。
+- 不实现 batch verifier。
+- 不实现 JSON Schema。
+- 不实现 generic proof bundle schema。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.
