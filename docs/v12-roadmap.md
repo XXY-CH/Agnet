@@ -89,6 +89,28 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.4: Proof Bundle Path Safety
+
+状态：complete
+目标：Make proof bundle proof-file paths fail closed before reading paths outside the bundle directory.
+
+新增：
+
+- `asp-verify.mjs proof-bundle <bundle.json>` rejects empty, absolute, backslash-bearing, `.` segment, and `..` segment proof-file paths before file reads.
+- Rejections name the unsafe bundle field, such as `bundle receipt_frame path invalid`.
+- `public-node-proof.test.mjs` covers parent traversal and absolute-path tampering.
+
+不做：
+
+- 不实现 artifact byte relocation。
+- 不实现 hosted public node。
+- 不实现 external public reachability proof。
+- 不实现 package publish/signing。
+- 不实现 SBOM。
+- 不实现 batch verifier。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.

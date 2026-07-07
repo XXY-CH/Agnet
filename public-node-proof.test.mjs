@@ -127,4 +127,14 @@ test("public node proof starts a public-listen gateway", async () => {
     execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),
     /bundle proof mismatch/,
   );
+  await writeFile(tamperedBundlePath, `${JSON.stringify({ ...bundle, receipt_frame: "../README.md" }, null, 2)}\n`);
+  await assert.rejects(
+    execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),
+    /bundle receipt_frame path invalid/,
+  );
+  await writeFile(tamperedBundlePath, `${JSON.stringify({ ...bundle, receipt_frame: "/tmp/receipt.json" }, null, 2)}\n`);
+  await assert.rejects(
+    execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),
+    /bundle receipt_frame path invalid/,
+  );
 });
