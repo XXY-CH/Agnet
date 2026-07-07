@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v12.37-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v12.38-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -354,9 +354,9 @@ When `proof-bundle` receives an additional caller-supplied trusted-Zone file, it
 
 `scripts/external-reachability-observer.mjs` is the minimal implemented observer writer for that evidence shape. It reads a proof bundle, verifies the bundle's signed receipt digest and transport proof match, TCP-connects to `transport_proof.listen_host:port`, and writes an observed bundle plus observer trusted-Zone file. `scripts/docker-external-reachability-observer.sh` runs the same observer from a Docker container using Docker's host gateway and `${AGNET_NODE_BASE_IMAGE:-node:22-bookworm-slim}`. These scripts prove a TCP connection from wherever they are run; the Docker wrapper proves a container boundary, not hosted deployment or that the observer ran on a different physical host.
 
-The package proof manifest includes `proof_digest`, computed as `sha256(canonical(proof without proof_digest))`. This binds the proof manifest body without choosing a package signature or SBOM format.
+The package proof manifest includes `proof_digest`, computed as `sha256(canonical(proof without proof_digest or signature))`. It also includes a package proof signer Agent descriptor and `signature`, signed over that same proof body by the signer key.
 
-The package proof verifier command checks the persisted package proof manifest against the generated tarball's byte SHA-256, npm SHA-1 shasum, npm SHA-512 integrity string, file size, and canonical proof digest.
+The package proof verifier command checks the persisted package proof manifest against the generated tarball's byte SHA-256, npm SHA-1 shasum, npm SHA-512 integrity string, file size, canonical proof digest, signer descriptor, and package proof signature.
 
 The package proof verifier rejects `null` and array manifests before reading package proof fields.
 
@@ -372,9 +372,11 @@ The package proof verifier requires `filename` to equal `<name>-<version>.tgz` f
 
 The package proof verifier rejects malformed packaged file lists. The `files` field MUST be a non-empty array of unique safe relative paths; absolute paths, backslashes, empty segments, `.` segments, and `..` segments are invalid. This validates proof metadata shape; it is not a tarball member proof, package signature, or SBOM.
 
-The package proof verifier rejects npm `shasum` or `integrity` values that do not match the tarball bytes. This verifies npm-owned digest metadata, not package signatures.
+The package proof verifier rejects npm `shasum` or `integrity` values that do not match the tarball bytes. This verifies npm-owned digest metadata.
 
-After successful package proof verification, the verifier JSON returns the verified package name, version, filename, tarball path, size, npm shasum, npm integrity, ASP SHA-256, and proof digest.
+After successful package proof verification, the verifier JSON returns the verified package name, version, filename, tarball path, size, npm shasum, npm integrity, ASP SHA-256, proof digest, and signer Agent ID.
+
+The implemented package proof signature is an ASP object signature over local package proof metadata. It is not npm registry signing, external signer trust pinning, package publish, or SBOM.
 
 Implemented Go checks:
 

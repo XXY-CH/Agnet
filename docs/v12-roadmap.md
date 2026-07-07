@@ -991,9 +991,33 @@
 - 不实现 SBOM。
 - 不实现 A2A/ARD compatibility。
 
+## v12.38: Package Proof ASP Signature
+
+状态：complete
+目标：Sign the local package proof manifest with an ASP agent identity.
+
+新增：
+
+- `scripts/package-proof.mjs` creates or reuses `state/keys/package-proof-signer.pkcs8`.
+- `state/package-proof/package-proof.json` includes a signer Agent descriptor and package proof signature.
+- `asp-verify.mjs package-proof <manifest.json>` verifies the signer descriptor and package proof signature.
+- The verifier returns `signer_aid` in its JSON output.
+- `package-contract.test.mjs` covers valid signed package proofs plus missing and invalid package proof signatures.
+
+不做：
+
+- 不实现 npm registry signing。
+- 不实现 external signer trust pin or release transparency。
+- 不实现 SBOM。
+- 不实现 package publish。
+- 不实现 hosted public node。
+- 不实现 real outside-host reachability。
+- 不实现 scheduler-owned routing。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Run `scripts/external-reachability-observer.mjs` or the Docker wrapper from a real outside host against a hosted/public node using the v12.35 evidence shape.
-2. Add package signing or SBOM against the produced package artifact only when that signature/SBOM format is explicitly scoped.
+2. Add external signer trust pin or SBOM against the produced package artifact only when that trust/SBOM format is explicitly scoped.
 3. Keep upper-layer demo/orchestration work parked outside this repository until the core proof substrate has externally consumable hosted-node evidence.
 4. Keep compatibility work parked until the proof layer has externally consumable hosted-node evidence.

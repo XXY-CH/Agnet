@@ -3,7 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { isIP } from "node:net";
 import { basename, dirname, join } from "node:path";
-import { canonical, loadTrustedZones, publicKeyFromDescriptor, verifyFederatedReceipt, verifyLocalArtifact, verifyObject, verifySwarmClose } from "./asp-core.mjs";
+import { canonical, loadTrustedZones, publicKeyFromDescriptor, resolveAgent, verifyFederatedReceipt, verifyLocalArtifact, verifyObject, verifySwarmClose } from "./asp-core.mjs";
 
 const args = process.argv.slice(2);
 const [command, file, trustedFile, taskFile] = args;
@@ -85,10 +85,14 @@ try {
     if (!proof || typeof proof !== "object" || Array.isArray(proof)) throw new Error("package proof manifest invalid");
     if (pathUnsafe(proof.tarball)) throw new Error("package proof tarball path invalid");
     const tarballPath = join(dirname(file), proof.tarball);
-    const { proof_digest: proofDigest, ...proofBody } = proof;
+    const { proof_digest: proofDigest, signature, ...proofBody } = proof;
     const tarballBytes = await readFile(tarballPath);
     requireEqual("package_proof", proof.package_proof, "ok");
     requireEqual("proof_digest", proofDigest, createHash("sha256").update(canonical(proofBody)).digest("hex"));
+    if (!proof.signer || typeof proof.signer !== "object" || Array.isArray(proof.signer)) throw new Error("package proof signer missing");
+    if (typeof signature !== "string" || signature === "") throw new Error("package proof signature missing");
+    const signer = resolveAgent(new Map([[proof.signer.alias, proof.signer]]), proof.signer.alias);
+    if (!verifyObject(signer.publicKey, proofBody, signature)) throw new Error("package proof signature invalid");
     requireEqual("manifest", proof.manifest, basename(file));
     requireEqual("filename", proof.filename, proof.tarball.split("/").at(-1));
     requireEqual("package identity", proof.filename, `${proof.name}-${proof.version}.tgz`);
@@ -97,7 +101,7 @@ try {
     requireEqual("integrity", proof.integrity, `sha512-${createHash("sha512").update(tarballBytes).digest("base64")}`);
     requireEqual("sha256", proof.sha256, createHash("sha256").update(tarballBytes).digest("hex"));
     requireEqual("size", (await stat(tarballPath)).size, proof.size);
-    console.log(JSON.stringify({ package_proof_verify: "ok", name: proof.name, version: proof.version, filename: proof.filename, tarball: proof.tarball, size: proof.size, shasum: proof.shasum, integrity: proof.integrity, sha256: proof.sha256, proof_digest: proof.proof_digest }));
+    console.log(JSON.stringify({ package_proof_verify: "ok", name: proof.name, version: proof.version, filename: proof.filename, tarball: proof.tarball, size: proof.size, shasum: proof.shasum, integrity: proof.integrity, sha256: proof.sha256, proof_digest: proof.proof_digest, signer_aid: proof.signer.aid }));
   } else if (command === "proof-bundle" && file && (args.length === 2 || (args.length === 3 && trustedFile))) {
     const baseDir = dirname(file);
     const bundle = JSON.parse(await readFile(file, "utf8"));
