@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v12.9-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v12.10-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -338,6 +338,8 @@ node asp-verify.mjs fed-receipt-artifacts <frame.json> <trusted-zones.json> [tas
 node asp-verify.mjs swarm-close <frame.json> <trusted-zones.json>
 node asp-verify.mjs proof-bundle <bundle.json>
 ```
+
+The verifier CLI commands reject extra positional arguments. The optional task evidence commands accept only the no-task and one-task forms.
 
 Implemented Go checks:
 

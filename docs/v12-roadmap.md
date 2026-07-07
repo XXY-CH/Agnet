@@ -230,6 +230,33 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.10: Verifier CLI Exact Arity
+
+状态：complete
+目标：Make every implemented verifier CLI command reject extra positional arguments.
+
+新增：
+
+- `asp-verify.mjs artifact <manifest.json>` requires exactly one manifest path.
+- `asp-verify.mjs fed-receipt <frame.json> <trusted-zones.json> [task.json]` and `fed-receipt-artifacts` accept only their no-task and one-task forms.
+- `asp-verify.mjs swarm-close <frame.json> <trusted-zones.json>` rejects extra positional arguments.
+- `mvp-demo.test.mjs` and `test-vectors.test.mjs` cover extra positional argument rejection across the sibling verifier commands.
+
+不做：
+
+- 不增加 option parsing。
+- 不改变 verifier JSON output。
+- 不改变 command names or valid arities。
+- 不实现 batch verifier。
+- 不实现 JSON Schema。
+- 不实现 generic proof bundle schema。
+- 不实现 artifact byte relocation。
+- 不实现 hosted public node。
+- 不实现 external public reachability proof。
+- 不实现 package signing or SBOM。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.

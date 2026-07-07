@@ -45,6 +45,10 @@ test("MVP demo produces registry, artifact, and signed receipt", async () => {
     artifact_verify: "ok",
     uri: manifest.uri,
   });
+  await assert.rejects(
+    () => execFileAsync("node", ["asp-verify.mjs", "artifact", manifestPath, "extra.json"]),
+    (error) => error.stderr.includes("usage: node asp-verify.mjs"),
+  );
   await assert.rejects(() => verifyLocalArtifact(null), /artifact manifest missing/);
   await assert.rejects(() => verifyLocalArtifact(testManifest(undefined)), /artifact uri invalid/);
   await assert.rejects(() => verifyLocalArtifact(testManifest("file:///tmp/evil")), /artifact uri invalid/);

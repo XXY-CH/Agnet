@@ -472,6 +472,10 @@ test("FED_RECEIPT CLI verifies one frame in Node", async () => {
     () => execFileAsync("node", ["asp-verify.mjs", "fed-receipt", framePath, trustedPath, taskPath]),
     (error) => error.stderr.includes("receipt task_digest mismatch"),
   );
+  await assert.rejects(
+    () => execFileAsync("node", ["asp-verify.mjs", "fed-receipt", framePath, trustedPath, taskPath, "extra.json"]),
+    (error) => error.stderr.includes("usage: node asp-verify.mjs"),
+  );
 
   await writeFile(framePath, `${JSON.stringify({ ...vector.frame, receipt: { ...vector.frame.receipt, executing_zone: "zid:ed25519:bad" } }, null, 2)}\n`);
   await assert.rejects(
@@ -508,6 +512,10 @@ test("FED_RECEIPT artifact CLI verifies one frame and local artifact bytes in No
   await assert.rejects(
     () => execFileAsync("node", ["asp-verify.mjs", "fed-receipt-artifacts", framePath, trustedPath, taskPath]),
     (error) => error.stderr.includes("receipt task_digest mismatch"),
+  );
+  await assert.rejects(
+    () => execFileAsync("node", ["asp-verify.mjs", "fed-receipt-artifacts", framePath, trustedPath, taskPath, "extra.json"]),
+    (error) => error.stderr.includes("usage: node asp-verify.mjs"),
   );
 
   await writeFile("artifacts/fed_task_conformance_001/federated-summary.md", "tampered\n");
@@ -760,6 +768,13 @@ test("FED_SWARM_CLOSE CLI rejects tampered trusted Zone descriptors", async () =
   const framePath = "state/node-fed-swarm-close-frame.json";
   const trustedPath = "state/node-fed-swarm-close-trusted.json";
   await writeFile(framePath, `${JSON.stringify(vector.frame, null, 2)}\n`);
+  await writeFile(trustedPath, `${JSON.stringify({ zones: vector.trusted_zones }, null, 2)}\n`);
+
+  await assert.rejects(
+    () => execFileAsync("node", ["asp-verify.mjs", "swarm-close", framePath, trustedPath, "extra.json"]),
+    (error) => error.stderr.includes("usage: node asp-verify.mjs"),
+  );
+
   await writeFile(trustedPath, `${JSON.stringify({ zones: [{ ...vector.trusted_zones[0], zone_signature: "bad" }] }, null, 2)}\n`);
 
   await assert.rejects(

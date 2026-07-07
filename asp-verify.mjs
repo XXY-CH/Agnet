@@ -26,16 +26,16 @@ function bundlePath(baseDir, name, target) {
 }
 
 try {
-  if (command === "artifact" && file) {
+  if (command === "artifact" && file && args.length === 2) {
     const manifest = JSON.parse(await readFile(file, "utf8"));
     await verifyLocalArtifact(manifest);
     console.log(JSON.stringify({ artifact_verify: "ok", uri: manifest.uri }));
-  } else if (command === "fed-receipt" && file && trustedFile) {
+  } else if (command === "fed-receipt" && file && trustedFile && (args.length === 3 || args.length === 4)) {
     const frame = JSON.parse(await readFile(file, "utf8"));
     const task = taskFile ? JSON.parse(await readFile(taskFile, "utf8")) : undefined;
     const verified = verifyFederatedReceipt(frame, await loadTrustedZones(trustedFile), task);
     console.log(JSON.stringify({ fed_receipt_verify: "ok", task_id: verified.receipt.task_id, receipt_digest: receiptDigest(verified.signedReceipt) }));
-  } else if (command === "fed-receipt-artifacts" && file && trustedFile) {
+  } else if (command === "fed-receipt-artifacts" && file && trustedFile && (args.length === 3 || args.length === 4)) {
     const frame = JSON.parse(await readFile(file, "utf8"));
     const task = taskFile ? JSON.parse(await readFile(taskFile, "utf8")) : undefined;
     const verified = verifyFederatedReceipt(frame, await loadTrustedZones(trustedFile), task);
@@ -45,7 +45,7 @@ try {
     }
     for (const manifest of manifests) await verifyLocalArtifact(manifest);
     console.log(JSON.stringify({ fed_receipt_artifacts_verify: "ok", task_id: verified.receipt.task_id, artifact_count: manifests.length, artifact_uris: manifests.map(({ uri }) => uri), artifact_sha256s: manifests.map(({ sha256 }) => sha256), artifact_manifest_hashes: manifests.map(({ manifest_hash }) => manifest_hash), receipt_digest: receiptDigest(verified.signedReceipt) }));
-  } else if (command === "swarm-close" && file && trustedFile) {
+  } else if (command === "swarm-close" && file && trustedFile && args.length === 3) {
     const frame = JSON.parse(await readFile(file, "utf8"));
     const verified = verifySwarmClose(frame, await loadTrustedZones(trustedFile));
     console.log(JSON.stringify({ swarm_close_verify: "ok", swarm_id: verified.close.swarm_id, swarm_close_digest: verified.closeDigest }));

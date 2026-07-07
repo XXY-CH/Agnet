@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v12.9 active
-当前代码基线：`v12.9-proof-bundle-argc`
+状态：v12.10 active
+当前代码基线：`v12.10-verifier-cli-argc`
 
 ## 一句话
 
@@ -68,10 +68,10 @@ Node
   -> FED_RECEIPT verifier rejects unsafe signed receipt task ids
   -> Node-to-Go interop receipt verification compares receipt task_digest against the sent signed task
   -> local artifact byte and sidecar verification against receipt manifest
-  -> asp-verify.mjs artifact <manifest.json> CLI
-  -> asp-verify.mjs fed-receipt <frame.json> <trusted-zones.json> [task.json] CLI with receipt origin-Zone trust validation and optional task evidence check
-  -> asp-verify.mjs fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] CLI with receipt origin-Zone trust validation and optional task evidence check
-  -> asp-verify.mjs swarm-close <frame.json> <trusted-zones.json> CLI for one FED_SWARM_CLOSE signature, digest, and structural close-frame/close-zone/close-proof/close-signature/step-receipt object/identity/task-id/uniqueness/NUL check
+  -> asp-verify.mjs artifact <manifest.json> exact-arity CLI
+  -> asp-verify.mjs fed-receipt <frame.json> <trusted-zones.json> [task.json] exact-arity CLI with receipt origin-Zone trust validation and optional task evidence check
+  -> asp-verify.mjs fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] exact-arity CLI with receipt origin-Zone trust validation and optional task evidence check
+  -> asp-verify.mjs swarm-close <frame.json> <trusted-zones.json> exact-arity CLI for one FED_SWARM_CLOSE signature, digest, and structural close-frame/close-zone/close-proof/close-signature/step-receipt object/identity/task-id/uniqueness/NUL check
   -> package.json exposes local npm-facing asp-verify bin and asp-core.mjs exports
   -> scripts/proof-demo.sh one-command local proof demo with verifier-ready FED_RECEIPT/trusted-zone files and summary receipt_digest
   -> Dockerfile + scripts/docker-proof-demo.sh Docker proof demo contract with AGNET_NODE_BASE_IMAGE override
@@ -213,7 +213,7 @@ Go
 
 ## Next Boundary
 
-v12.9 makes `asp-verify.mjs proof-bundle` enforce exact argument count, so empty-string extra positional arguments are rejected too. This keeps the proof boundary narrow: it does not claim JSON Schema, relocatable artifact bytes, hosted public reachability, package signing, SBOM, scheduler ownership, batch verification, or A2A/ARD compatibility.
+v12.10 makes every implemented `asp-verify.mjs` verifier command reject extra positional CLI arguments while preserving the valid no-task and one-task receipt forms. This keeps the proof boundary narrow: it does not claim JSON Schema, relocatable artifact bytes, hosted public reachability, package signing, SBOM, scheduler ownership, batch verification, or A2A/ARD compatibility.
 
 Route detail: `docs/v12-roadmap.md`。
 
