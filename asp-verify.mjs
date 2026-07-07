@@ -48,7 +48,7 @@ try {
     const frame = JSON.parse(await readFile(file, "utf8"));
     const verified = verifySwarmClose(frame, await loadTrustedZones(trustedFile));
     console.log(JSON.stringify({ swarm_close_verify: "ok", swarm_id: verified.close.swarm_id, swarm_close_digest: verified.closeDigest }));
-  } else if (command === "proof-bundle" && file) {
+  } else if (command === "proof-bundle" && file && !trustedFile) {
     const baseDir = dirname(file);
     const bundle = JSON.parse(await readFile(file, "utf8"));
     if (!bundle || typeof bundle !== "object" || Array.isArray(bundle)) throw new Error("bundle manifest invalid");

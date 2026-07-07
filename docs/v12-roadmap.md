@@ -182,6 +182,31 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.8: Proof Bundle CLI Arity
+
+状态：complete
+目标：Make the proof bundle verifier reject extra positional CLI arguments.
+
+新增：
+
+- `asp-verify.mjs proof-bundle <bundle.json>` accepts exactly one bundle path argument.
+- Extra positional arguments fall through to the existing usage error instead of being ignored.
+- `public-node-proof.test.mjs` covers `proof-bundle <bundle.json> extra.json`.
+
+不做：
+
+- 不改变其他 verifier CLI commands。
+- 不实现 JSON Schema。
+- 不实现 generic proof bundle schema。
+- 不实现 artifact byte relocation。
+- 不实现 hosted public node。
+- 不实现 external public reachability proof。
+- 不实现 package publish/signing。
+- 不实现 SBOM。
+- 不实现 batch verifier。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.
