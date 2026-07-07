@@ -257,6 +257,31 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.11: Proof Bundle Public Transport Gate
+
+状态：complete
+目标：Make public proof bundles reject signed receipts whose transport proof is not public.
+
+新增：
+
+- `asp-verify.mjs proof-bundle <bundle.json>` requires verified receipt `transport_proof.public_transport === true`.
+- A bundle that matches a signed receipt with `public_transport: false` is rejected with `bundle public_transport proof missing`.
+- `public-node-proof.test.mjs` covers a re-signed non-public transport receipt and matching bundle.
+
+不做：
+
+- 不实现 external public reachability proof。
+- 不实现 hosted public node。
+- 不实现 DNS, TLS, QUIC, NAT traversal, or remote probe infrastructure。
+- 不改变 normal `fed-receipt` verification。
+- 不改变 verifier JSON output。
+- 不实现 batch verifier。
+- 不实现 JSON Schema。
+- 不实现 generic proof bundle schema。
+- 不实现 package signing or SBOM。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.

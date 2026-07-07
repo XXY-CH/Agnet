@@ -72,6 +72,9 @@ try {
     requireEqual("artifact_sha256s", bundle.artifact_sha256s, manifests.map(({ sha256 }) => sha256));
     requireEqual("artifact_manifest_hashes", bundle.artifact_manifest_hashes, manifests.map(({ manifest_hash }) => manifest_hash));
     requireEqual("transport_proof", bundle.transport_proof, receiptVerified.receipt.transport_proof);
+    if (!receiptVerified.receipt.transport_proof || typeof receiptVerified.receipt.transport_proof !== "object" || Array.isArray(receiptVerified.receipt.transport_proof) || receiptVerified.receipt.transport_proof.public_transport !== true) {
+      throw new Error("bundle public_transport proof missing");
+    }
     requireEqual("swarm_close_digest", bundle.swarm_close_digest, closeVerified.closeDigest);
     console.log(JSON.stringify({ proof_bundle_verify: "ok", receipt_frame: bundle.receipt_frame, trusted_zones: bundle.trusted_zones, receipt_digest: bundle.receipt_digest, artifact_count: manifests.length, artifact_uris: bundle.artifact_uris, artifact_sha256s: bundle.artifact_sha256s, artifact_manifest_hashes: bundle.artifact_manifest_hashes, transport_proof: bundle.transport_proof, swarm_close_frame: bundle.swarm_close_frame, swarm_close_trusted_zones: bundle.swarm_close_trusted_zones, swarm_close_digest: bundle.swarm_close_digest }));
   } else {

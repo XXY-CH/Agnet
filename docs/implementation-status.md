@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v12.10 active
-当前代码基线：`v12.10-verifier-cli-argc`
+状态：v12.11 active
+当前代码基线：`v12.11-proof-bundle-public-transport`
 
 ## 一句话
 
@@ -213,7 +213,7 @@ Go
 
 ## Next Boundary
 
-v12.10 makes every implemented `asp-verify.mjs` verifier command reject extra positional CLI arguments while preserving the valid no-task and one-task receipt forms. This keeps the proof boundary narrow: it does not claim JSON Schema, relocatable artifact bytes, hosted public reachability, package signing, SBOM, scheduler ownership, batch verification, or A2A/ARD compatibility.
+v12.11 makes `asp-verify.mjs proof-bundle` reject signed but non-public transport proofs by requiring verified receipt transport evidence with `public_transport: true`. This keeps the proof boundary narrow: it does not claim remote-host reachability, JSON Schema, relocatable artifact bytes, hosted public reachability, package signing, SBOM, scheduler ownership, batch verification, or A2A/ARD compatibility.
 
 Route detail: `docs/v12-roadmap.md`。
 

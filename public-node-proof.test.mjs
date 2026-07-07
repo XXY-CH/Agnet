@@ -1,12 +1,23 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, createPrivateKey } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { canonical } from "./asp-core.mjs";
+import { canonical, signObject } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
+
+function privateKeyFromSeed(seedHex) {
+  return createPrivateKey({
+    key: Buffer.concat([
+      Buffer.from("302e020100300506032b657004220420", "hex"),
+      Buffer.from(seedHex, "hex"),
+    ]),
+    format: "der",
+    type: "pkcs8",
+  });
+}
 
 test("public node proof starts a public-listen gateway", async () => {
   const { stdout } = await execFileAsync("bash", ["scripts/public-node-proof.sh"]);
@@ -139,6 +150,29 @@ test("public node proof starts a public-listen gateway", async () => {
   await assert.rejects(
     execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),
     /bundle receipt_digest mismatch/,
+  );
+  const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
+  const publicTransportFalseReceipt = {
+    ...receiptBody,
+    transport_proof: { ...receiptFrame.receipt.transport_proof, public_transport: false },
+  };
+  const publicTransportFalseFramePath = "state/public-node-proof-fed-receipt-non-public.json";
+  await writeFile(publicTransportFalseFramePath, `${JSON.stringify({
+    ...receiptFrame,
+    receipt: {
+      ...publicTransportFalseReceipt,
+      signature: signObject(privateKeyFromSeed(fixture.worker_seed_hex), publicTransportFalseReceipt),
+    },
+  }, null, 2)}\n`);
+  await writeFile(tamperedBundlePath, `${JSON.stringify({
+    ...bundle,
+    receipt_frame: "public-node-proof-fed-receipt-non-public.json",
+    receipt_digest: createHash("sha256").update(canonical(publicTransportFalseReceipt)).digest("hex"),
+    transport_proof: publicTransportFalseReceipt.transport_proof,
+  }, null, 2)}\n`);
+  await assert.rejects(
+    execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),
+    /bundle public_transport proof missing/,
   );
   await writeFile(tamperedBundlePath, `${JSON.stringify({ ...bundle, proof: "other-proof" }, null, 2)}\n`);
   await assert.rejects(
