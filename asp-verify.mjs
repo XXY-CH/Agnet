@@ -71,7 +71,7 @@ try {
     requireEqual("integrity", proof.integrity, `sha512-${createHash("sha512").update(tarballBytes).digest("base64")}`);
     requireEqual("sha256", proof.sha256, createHash("sha256").update(tarballBytes).digest("hex"));
     requireEqual("size", (await stat(tarballPath)).size, proof.size);
-    console.log(JSON.stringify({ package_proof_verify: "ok", name: proof.name, version: proof.version, filename: proof.filename, tarball: proof.tarball, sha256: proof.sha256, proof_digest: proof.proof_digest }));
+    console.log(JSON.stringify({ package_proof_verify: "ok", name: proof.name, version: proof.version, filename: proof.filename, tarball: proof.tarball, size: proof.size, shasum: proof.shasum, integrity: proof.integrity, sha256: proof.sha256, proof_digest: proof.proof_digest }));
   } else if (command === "proof-bundle" && file && args.length === 2) {
     const baseDir = dirname(file);
     const bundle = JSON.parse(await readFile(file, "utf8"));

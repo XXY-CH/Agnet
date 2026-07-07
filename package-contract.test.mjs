@@ -64,6 +64,9 @@ test("package proof creates an npm tarball artifact", async () => {
     version: proof.version,
     filename: proof.filename,
     tarball: proof.tarball,
+    size: proof.size,
+    shasum: proof.shasum,
+    integrity: proof.integrity,
     sha256: proof.sha256,
     proof_digest: proof.proof_digest,
   });

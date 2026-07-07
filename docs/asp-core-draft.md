@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v12.26-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v12.27-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -358,6 +358,8 @@ The package proof verifier rejects unsafe tarball paths before reading tarball b
 The package proof verifier resolves safe tarball paths relative to the package proof manifest file. The package proof producer writes `tarball` and `manifest` as package-directory-relative file names so the generated package proof directory can be copied and verified from another working directory. This is local directory portability, not package signing, SBOM, or a public package release.
 
 The package proof verifier rejects npm `shasum` or `integrity` values that do not match the tarball bytes. This verifies npm-owned digest metadata, not package signatures.
+
+After successful package proof verification, the verifier JSON returns the verified package name, version, filename, tarball path, size, npm shasum, npm integrity, ASP SHA-256, and proof digest.
 
 Implemented Go checks:
 
