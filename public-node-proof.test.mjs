@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash, createPrivateKey } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
+import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import { canonical, createZone, signObject } from "./asp-core.mjs";
@@ -119,6 +120,7 @@ test("public node proof starts a public-listen gateway", async () => {
   const tamperedBundlePath = "state/public-node-proof-bundle-tampered.json";
   const externalBundlePath = "state/public-node-proof-bundle-external.json";
   const externalTrustedPath = "state/public-node-proof-external-trusted-zones.json";
+  const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
   assert.deepEqual(JSON.parse(verifiedBundle.stdout), {
     proof_bundle_verify: "ok",
     receipt_frame: bundle.receipt_frame,
@@ -168,6 +170,40 @@ test("public node proof starts a public-listen gateway", async () => {
     execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", externalBundlePath, externalTrustedPath]),
     /external reachability signature invalid/,
   );
+  const observerServer = net.createServer((socket) => socket.end("ok\n"));
+  await new Promise((resolve, reject) => {
+    observerServer.once("error", reject);
+    observerServer.listen(0, result.listen_host, resolve);
+  });
+  try {
+    const observedReceipt = {
+      ...receiptBody,
+      transport_proof: { ...receiptFrame.receipt.transport_proof, port: String(observerServer.address().port) },
+    };
+    const observedReceiptFramePath = "state/public-node-proof-fed-receipt-observer-target.json";
+    const observedBundleInputPath = "state/public-node-proof-bundle-observer-target.json";
+    const observedBundlePath = "state/public-node-proof-bundle-observed.json";
+    const observedTrustedPath = "state/public-node-proof-observer-trusted-zones.json";
+    await writeFile(observedReceiptFramePath, `${JSON.stringify({
+      ...receiptFrame,
+      receipt: {
+        ...observedReceipt,
+        signature: signObject(privateKeyFromSeed(fixture.worker_seed_hex), observedReceipt),
+      },
+    }, null, 2)}\n`);
+    await writeFile(observedBundleInputPath, `${JSON.stringify({
+      ...bundle,
+      receipt_frame: "public-node-proof-fed-receipt-observer-target.json",
+      receipt_digest: createHash("sha256").update(canonical(observedReceipt)).digest("hex"),
+      transport_proof: observedReceipt.transport_proof,
+    }, null, 2)}\n`);
+    const observed = await execFileAsync(process.execPath, ["scripts/external-reachability-observer.mjs", observedBundleInputPath, observedBundlePath, observedTrustedPath]);
+    assert.equal(JSON.parse(observed.stdout).external_reachability_observer, "ok");
+    const verifiedObserved = await execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", observedBundlePath, observedTrustedPath]);
+    assert.equal(JSON.parse(verifiedObserved.stdout).reachability_scope, "external-host");
+  } finally {
+    await new Promise((resolve) => observerServer.close(resolve));
+  }
   await writeFile(tamperedBundlePath, `${JSON.stringify({ ...bundle, reachability_scope: "external-host" }, null, 2)}\n`);
   await assert.rejects(
     execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),
@@ -196,7 +232,6 @@ test("public node proof starts a public-listen gateway", async () => {
     execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),
     /bundle receipt_digest mismatch/,
   );
-  const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
   const publicTransportFalseReceipt = {
     ...receiptBody,
     transport_proof: { ...receiptFrame.receipt.transport_proof, public_transport: false },

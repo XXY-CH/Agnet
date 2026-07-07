@@ -918,8 +918,33 @@
 - 不实现 scheduler-owned routing。
 - 不实现 A2A/ARD compatibility。
 
+## v12.34: External Reachability Observer Script
+
+状态：complete
+目标：Provide a runnable observer that can create the signed external reachability evidence consumed by the v12.33 proof-bundle gate.
+
+新增：
+
+- `scripts/external-reachability-observer.mjs <bundle.json> <observed-bundle.json> <observer-trusted-zones.json>` reads a proof bundle and its receipt frame.
+- The script verifies the bundle receipt digest and transport proof against the signed receipt before observing.
+- The script TCP-connects to `transport_proof.listen_host:port`, then writes an observed bundle containing signed `external_reachability` evidence.
+- The script writes the observer trusted-Zone file separately from the bundle.
+- `public-node-proof.test.mjs` covers observer-written evidence that is accepted by `asp-verify.mjs proof-bundle <observed-bundle.json> <observer-trusted-zones.json>`.
+
+不做：
+
+- 不实现 hosted public node。
+- 不证明 observer 运行在另一台物理主机。
+- 不增加 DNS, tunnel, NAT traversal, TLS, QUIC, or remote probe infrastructure。
+- 不让 bundle 自己声明 `reachability_scope`。
+- 不把 observer trusted-Zone descriptor 嵌进 bundle。
+- 不实现 package signing。
+- 不实现 SBOM。
+- 不实现 scheduler-owned routing。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
-1. Run a real outside-host observer against a hosted/public node using the v12.33 external reachability evidence shape.
+1. Run `scripts/external-reachability-observer.mjs` from a real outside host against a hosted/public node using the v12.34 evidence shape.
 2. Add package signing or SBOM against the produced package artifact only when that signature/SBOM format is explicitly scoped.
 3. Keep compatibility work parked until the proof layer has externally consumable hosted-node evidence.
