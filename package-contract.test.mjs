@@ -291,3 +291,15 @@ test("package proof verifier rejects package identity and filename mismatches", 
     (error) => error.stderr.includes("bundle package identity mismatch"),
   );
 });
+
+test("package proof verifier rejects non-string package identities", async () => {
+  await rm("state/package-proof", { recursive: true, force: true });
+  await execFileAsync(process.execPath, ["scripts/package-proof.mjs"]);
+  const proof = JSON.parse(await readFile("state/package-proof/package-proof.json", "utf8"));
+  await writeMutatedPackageProof("state/package-proof/package-identity-array.json", proof, { name: ["agnet"] });
+
+  await assert.rejects(
+    () => execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof/package-identity-array.json"]),
+    (error) => error.stderr.includes("package proof identity invalid"),
+  );
+});

@@ -1087,6 +1087,30 @@
 - 不实现 scheduler-owned routing。
 - 不实现 A2A/ARD compatibility。
 
+## v12.42: Package Proof Identity Shape
+
+状态：complete
+目标：Reject non-string package identity metadata before string interpolation.
+
+新增：
+
+- `asp-verify.mjs package-proof <manifest.json>` rejects empty or non-string `name`, `version`, and `filename` values with `package proof identity invalid`.
+- Package identity binding now happens only after those identity fields are scalar strings.
+- `package-contract.test.mjs` covers an array-valued package `name` that previously passed through JavaScript string coercion.
+
+不做：
+
+- 不实现 JSON Schema。
+- 不实现 tarball member proof。
+- 不实现 npm registry signing。
+- 不实现 release transparency。
+- 不实现 SBOM。
+- 不实现 package publish。
+- 不实现 hosted public node。
+- 不实现 real outside-host reachability。
+- 不实现 scheduler-owned routing。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Run `scripts/external-reachability-observer.mjs` or the Docker wrapper from a real outside host against a hosted/public node using the v12.35 evidence shape.

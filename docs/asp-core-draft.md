@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v12.41-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v12.42-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -370,7 +370,7 @@ The package proof verifier requires `filename` to equal the final path segment o
 
 The package proof verifier requires `manifest` to equal the final path segment of the verifier input path. This prevents a package proof file from presenting one manifest filename while being verified through another file.
 
-The package proof verifier requires `filename` to equal `<name>-<version>.tgz` for the current local npm package proof. This binds the proof's package identity metadata to the tarball filename without reading tarball members.
+The package proof verifier requires `name`, `version`, and `filename` to be non-empty strings before package identity interpolation. It then requires `filename` to equal `<name>-<version>.tgz` for the current local npm package proof. This binds the proof's package identity metadata to the tarball filename without reading tarball members.
 
 The package proof verifier rejects malformed packaged file lists before reading tarball bytes. The `files` field MUST be a non-empty array of unique safe relative paths; absolute paths, backslashes, empty segments, `.` segments, and `..` segments are invalid. This validates proof metadata shape; it is not a tarball member proof, package signature, or SBOM.
 

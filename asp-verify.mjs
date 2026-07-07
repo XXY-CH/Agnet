@@ -108,6 +108,7 @@ try {
     if (trustedSigners && !trustedSigners.has(signer.descriptor.aid)) throw new Error("package proof signer untrusted");
     requireEqual("manifest", proof.manifest, basename(file));
     requireEqual("filename", proof.filename, proof.tarball.split("/").at(-1));
+    if (typeof proof.name !== "string" || proof.name === "" || typeof proof.version !== "string" || proof.version === "" || typeof proof.filename !== "string" || proof.filename === "") throw new Error("package proof identity invalid");
     requireEqual("package identity", proof.filename, `${proof.name}-${proof.version}.tgz`);
     if (packageFilesInvalid(proof.files)) throw new Error("package proof files invalid");
     const tarballBytes = await readFile(tarballPath);
