@@ -108,7 +108,7 @@ test("package proof verifier rejects unsafe tarball paths", async () => {
 
 test("package proof verifier resolves tarball relative to manifest", async () => {
   await mkdir("state/package-proof-relative", { recursive: true });
-  const tarball = "agnet-relative.tgz";
+  const tarball = "agnet-0.0.0.tgz";
   const tarballBytes = Buffer.from("package bytes\n");
   await writeFile(`state/package-proof-relative/${tarball}`, tarballBytes);
   const proofBody = {
@@ -192,5 +192,17 @@ test("package proof verifier rejects manifest filename mismatches", async () => 
   await assert.rejects(
     () => execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof/manifest-mismatch.json"]),
     (error) => error.stderr.includes("bundle manifest mismatch"),
+  );
+});
+
+test("package proof verifier rejects package identity and filename mismatches", async () => {
+  await rm("state/package-proof", { recursive: true, force: true });
+  await execFileAsync(process.execPath, ["scripts/package-proof.mjs"]);
+  const proof = JSON.parse(await readFile("state/package-proof/package-proof.json", "utf8"));
+  await writeMutatedPackageProof("state/package-proof/package-identity-mismatch.json", proof, { name: "not-agnet" });
+
+  await assert.rejects(
+    () => execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof/package-identity-mismatch.json"]),
+    (error) => error.stderr.includes("bundle package identity mismatch"),
   );
 });

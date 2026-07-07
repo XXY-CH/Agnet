@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v12.30 active
-当前代码基线：`v12.30-package-proof-manifest-binding`
+状态：v12.31 active
+当前代码基线：`v12.31-package-proof-identity-binding`
 
 ## 一句话
 
@@ -72,7 +72,7 @@ Node
   -> asp-verify.mjs fed-receipt <frame.json> <trusted-zones.json> [task.json] exact-arity CLI with receipt origin-Zone trust validation and optional task evidence check
   -> asp-verify.mjs fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] exact-arity CLI with receipt origin-Zone trust validation and optional task evidence check
   -> asp-verify.mjs swarm-close <frame.json> <trusted-zones.json> exact-arity CLI for one FED_SWARM_CLOSE signature, digest, and structural close-frame/close-zone/close-proof/close-signature/step-receipt object/identity/task-id/uniqueness/NUL check
-  -> asp-verify.mjs package-proof <manifest.json> verifies package proof_digest, manifest-relative tarball sha256, npm shasum, npm integrity, filename/tarball basename binding, manifest/input filename binding, packaged file list shape, and manifest-relative tarball size, returns verified package metadata, rejects non-object package proof manifests, and rejects unsafe package proof tarball paths
+  -> asp-verify.mjs package-proof <manifest.json> verifies package proof_digest, manifest-relative tarball sha256, npm shasum, npm integrity, filename/tarball basename binding, manifest/input filename binding, package identity filename binding, packaged file list shape, and manifest-relative tarball size, returns verified package metadata, rejects non-object package proof manifests, and rejects unsafe package proof tarball paths
   -> package.json exposes local npm-facing asp-verify bin and asp-core.mjs exports
   -> scripts/package-proof.mjs creates a local npm tarball artifact and package-proof.json manifest with npm shasum, integrity, SHA-256, canonical package proof digest, size, and file-list metadata
   -> scripts/proof-demo.sh one-command local proof demo with verifier-ready FED_RECEIPT/trusted-zone files and summary receipt_digest
@@ -215,7 +215,7 @@ Go
 
 ## Next Boundary
 
-v12.30 makes `asp-verify.mjs package-proof <manifest.json>` reject manifests whose `manifest` field does not match the verifier input filename. This keeps the proof boundary narrow: it does not claim tarball member proof, remote-host reachability, JSON Schema, hosted public reachability, package signing, SBOM, scheduler ownership, batch verification, or A2A/ARD compatibility.
+v12.31 makes `asp-verify.mjs package-proof <manifest.json>` reject manifests whose package `name` and `version` do not match the local npm tarball filename. This keeps the proof boundary narrow: it does not claim tarball member proof, remote-host reachability, JSON Schema, hosted public reachability, package signing, SBOM, scheduler ownership, batch verification, scoped-package filename generality, or A2A/ARD compatibility.
 
 Route detail: `docs/v12-roadmap.md`。
 

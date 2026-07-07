@@ -73,6 +73,7 @@ try {
     requireEqual("proof_digest", proofDigest, createHash("sha256").update(canonical(proofBody)).digest("hex"));
     requireEqual("manifest", proof.manifest, basename(file));
     requireEqual("filename", proof.filename, proof.tarball.split("/").at(-1));
+    requireEqual("package identity", proof.filename, `${proof.name}-${proof.version}.tgz`);
     if (packageFilesInvalid(proof.files)) throw new Error("package proof files invalid");
     requireEqual("shasum", proof.shasum, createHash("sha1").update(tarballBytes).digest("hex"));
     requireEqual("integrity", proof.integrity, `sha512-${createHash("sha512").update(tarballBytes).digest("base64")}`);
