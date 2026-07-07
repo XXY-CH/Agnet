@@ -116,6 +116,7 @@ test("package proof verifier resolves tarball relative to manifest", async () =>
     shasum: createHash("sha1").update(tarballBytes).digest("hex"),
     integrity: `sha512-${createHash("sha512").update(tarballBytes).digest("base64")}`,
     sha256: createHash("sha256").update(tarballBytes).digest("hex"),
+    files: ["README.md"],
   };
   const proof = {
     ...proofBody,
@@ -161,5 +162,27 @@ test("package proof verifier rejects filename and tarball mismatch", async () =>
   await assert.rejects(
     () => execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof/filename-mismatch.json"]),
     (error) => error.stderr.includes("bundle filename mismatch"),
+  );
+});
+
+test("package proof verifier rejects malformed packaged file lists", async () => {
+  await rm("state/package-proof", { recursive: true, force: true });
+  await execFileAsync(process.execPath, ["scripts/package-proof.mjs"]);
+  const proof = JSON.parse(await readFile("state/package-proof/package-proof.json", "utf8"));
+  const writeMutatedProof = async (path, patch) => {
+    const proofBody = { ...proof, ...patch };
+    delete proofBody.proof_digest;
+    await writeFile(path, `${JSON.stringify({ ...proofBody, proof_digest: createHash("sha256").update(canonical(proofBody)).digest("hex") }, null, 2)}\n`);
+  };
+  await writeMutatedProof("state/package-proof/files-not-array.json", { files: "README.md" });
+  await writeMutatedProof("state/package-proof/files-escape.json", { files: ["../README.md"] });
+
+  await assert.rejects(
+    () => execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof/files-not-array.json"]),
+    (error) => error.stderr.includes("package proof files invalid"),
+  );
+  await assert.rejects(
+    () => execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof/files-escape.json"]),
+    (error) => error.stderr.includes("package proof files invalid"),
   );
 });
