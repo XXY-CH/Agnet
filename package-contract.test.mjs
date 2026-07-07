@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rm, stat, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import { canonical } from "./asp-core.mjs";
@@ -30,4 +30,21 @@ test("npm package exposes the existing verifier CLI and core exports", async () 
     task_id: vector.expected.task_id,
     receipt_digest: createHash("sha256").update(canonical(receipt)).digest("hex"),
   });
+});
+
+test("package proof creates an npm tarball artifact", async () => {
+  await rm("state/package-proof", { recursive: true, force: true });
+  const { stdout } = await execFileAsync(process.execPath, ["scripts/package-proof.mjs"]);
+  const proof = JSON.parse(stdout);
+  const tarball = await stat(proof.tarball);
+
+  assert.equal(proof.package_proof, "ok");
+  assert.equal(proof.name, "agnet");
+  assert.equal(proof.version, "0.0.0");
+  assert.equal(proof.filename, "agnet-0.0.0.tgz");
+  assert.equal(proof.tarball, "state/package-proof/agnet-0.0.0.tgz");
+  assert.match(proof.shasum, /^[a-f0-9]{40}$/);
+  assert.match(proof.integrity, /^sha512-/);
+  assert.equal(tarball.size, proof.size);
+  assert.deepEqual(proof.files, ["README.md", "asp-core.mjs", "asp-verify.mjs", "package.json"]);
 });

@@ -440,8 +440,37 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.18: Package Artifact Proof
+
+状态：complete
+目标：Make the npm-facing verifier surface produce a real local package artifact with npm-owned digest metadata.
+
+新增：
+
+- `scripts/package-proof.mjs` runs `npm pack --json --pack-destination state/package-proof`.
+- The script returns `package_proof: "ok"`, package name/version, tarball path, size, unpacked size, SHA-1 shasum, SHA-512 integrity, and packaged file list.
+- `package-contract.test.mjs` covers tarball creation and the expected package file list.
+
+不做：
+
+- 不实现 package signing。
+- 不实现 SBOM。
+- 不发布 npm package。
+- 不改变 `package.json` exports/bin/files。
+- 不实现 external public reachability proof。
+- 不实现 hosted public node。
+- 不增加 DNS, TLS, QUIC, NAT traversal, or remote probe infrastructure。
+- 不改变 normal `fed-receipt` verification。
+- 不改变 `proof-bundle` verifier JSON output。
+- 不实现 transport negotiation。
+- 不实现 batch verifier。
+- 不实现 JSON Schema。
+- 不实现 generic proof bundle schema。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.
-2. Add package signing or SBOM only when a package/release artifact exists.
+2. Add package signing or SBOM against the produced package artifact only when that signature/SBOM format is explicitly scoped.
 3. Add hosted/public reachability only when the proof includes evidence from outside the same host.
