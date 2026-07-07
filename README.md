@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v12 active at `v12.1-protocol`.
+Status: research prototype, local-first, v12 active at `v12.2-protocol`.
 
 ## Why This Exists
 
@@ -50,7 +50,7 @@ The current prototype proves:
 - Node and Go receipt verifiers require `task_digest` as a compact anchor to the signed task object, Node and Go receipt verification reject unsafe receipt task ids, Node receipt verification rejects malformed artifact manifest URI/ref shapes, receipt artifact verification rejects malformed artifact manifest URIs, malformed artifact manifest SHA-256 values, non-integer or negative manifest sizes, malformed Go manifest AFP strings, malformed Go manifest media types or manifest hashes, malformed Go artifact list entries, type-coerced Go mirror index entries, null Go mirror index entries, missing Go mirror index SHA-256 values, unsafe Go mirror index SHA-256 values, unsafe Go mirror index manifest hashes, invalid Go mirror index AFP values, mismatched Go mirror index AFP strings, invalid Go mirror index sizes, invalid Go mirror index media types, and invalid Go mirror index URIs, and Node receipt/artifact CLIs, the Go receipt CLI, and bidirectional Node/Go interop checks can compare task digests against supplied or in-memory signed task evidence.
 - Minimal npm-facing package contract for the existing Node verifier CLI and `asp-core.mjs` exports.
 - One-command proof demo, Docker proof demo, and Docker public-listen proof that emit verifier-ready receipt/trust files, expose receipt digests, verified artifact counts, verified artifact URIs, verified artifact byte digests, verified artifact manifest hashes, and signed transport proof fields, verify local artifact closure, and support base-image override env vars for restricted Docker environments.
-- Public-listen proof script that starts the Go federation gateway on `0.0.0.0`, proves `public_transport: true`, completes authenticated `FED_RESOLVE`, `FED_QUERY`, `FED_TASK_OPEN`, `FED_AUDIT_QUERY`, `FED_ARTIFACT_READ`, and `FED_SWARM_OPEN` round trips, verifies fetched artifact bytes, proves out-of-receipt and post-receipt-tampered artifact reads are rejected, confirms the signed task receipt includes the gateway transport proof, writes and verifies a proof bundle manifest with `asp-verify.mjs proof-bundle`, and writes a two-step Swarm close proof frame plus trusted Zone file with a reproducible close digest and summary `swarm_close_verify` result from the Node CLI.
+- Public-listen proof script that starts the Go federation gateway on `0.0.0.0`, proves `public_transport: true`, completes authenticated `FED_RESOLVE`, `FED_QUERY`, `FED_TASK_OPEN`, `FED_AUDIT_QUERY`, `FED_ARTIFACT_READ`, and `FED_SWARM_OPEN` round trips, verifies fetched artifact bytes, proves out-of-receipt and post-receipt-tampered artifact reads are rejected, confirms the signed task receipt includes the gateway transport proof, writes and verifies a proof bundle manifest with `asp-verify.mjs proof-bundle`, returns `proof_bundle_verify`, and writes a two-step Swarm close proof frame plus trusted Zone file with a reproducible close digest and summary `swarm_close_verify` result from the Node CLI.
 - Node artifact manifests, AFP strings, sidecars, local URI/path validation, local byte verification, CLI verification, object presence validation, and manifest metadata verification; Go filesystem artifact manifests, AFP strings, strict artifact ref/manifest list entries and artifact lookup, mirror index object-entry, required SHA-256, URI, AFP, size, media type, manifest-hash digest, and exact field matching validation, SHA-256, size, media type, and manifest hash field validation before digest-addressed path or byte checks, content-addressed mirrors, and GC plan/apply.
 - Human approval evidence for direct and queued execution, with malformed receipt approval evidence list rejection, receipt policy scope list rejection, receipt policy scope scalar rejection, and worker policy approval-required list rejection.
 - Protocol-native checkpoint evidence, with malformed receipt checkpoint evidence list rejection and runtime lookup rejection.
@@ -234,7 +234,8 @@ Optional hardening flags include:
 - `docs/agent-space-architecture.md` - architecture overview.
 - `docs/asp-core-draft.md` - narrow English draft for the implemented proof layer.
 - `docs/v12-roadmap.md` - active v12 roadmap.
-- `docs/v12.1-boundary.md` - latest closed boundary.
+- `docs/v12.2-boundary.md` - latest closed boundary.
+- `docs/v12.1-boundary.md` - proof bundle verifier command boundary.
 - `docs/v12.0-boundary.md` - public proof bundle manifest boundary.
 - `docs/v11-roadmap.md` - closed v11 roadmap.
 - `docs/v11.79-boundary.md` - public transport receipt proof boundary.

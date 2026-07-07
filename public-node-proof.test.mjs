@@ -30,6 +30,7 @@ test("public node proof starts a public-listen gateway", async () => {
   assert.equal(result.receipt_frame, "state/public-node-proof-fed-receipt.json");
   assert.equal(result.trusted_zones, "state/public-node-proof-trusted-zones.json");
   assert.equal(result.bundle_manifest, "state/public-node-proof-bundle.json");
+  assert.equal(result.proof_bundle_verify, "ok");
   assert.equal(result.artifact_file, "artifacts/public_node_probe_task/go-summary.md");
   assert.equal(result.fed_receipt_artifacts_verify, "ok");
   assert.equal(result.artifact_count, 1);

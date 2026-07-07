@@ -91,6 +91,8 @@ for await (const chunk of child.stdout) {
     swarm_close_digest: swarm.closeDigest,
   };
   await writeFile(bundleManifestPath, `${JSON.stringify(bundle, null, 2)}\n`);
+  const bundleVerify = await execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", bundleManifestPath]);
+  const bundleProof = JSON.parse(bundleVerify.stdout);
   console.log(JSON.stringify({
     public_node_proof: "ok",
     listen_host: status.listen_host,
@@ -111,6 +113,7 @@ for await (const chunk of child.stdout) {
     receipt_frame: receiptFramePath,
     trusted_zones: receiptTrustedPath,
     bundle_manifest: bundleManifestPath,
+    proof_bundle_verify: bundleProof.proof_bundle_verify,
     artifact_file: artifact.file,
     fed_receipt_artifacts_verify: artifactProof.fed_receipt_artifacts_verify,
     artifact_count: artifactProof.artifact_count,

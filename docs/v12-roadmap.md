@@ -46,6 +46,27 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.2: Public Proof Summary Bundle Verification
+
+状态：complete
+目标：Make the one-command public proof summary report that its bundle was verified by the proof-bundle CLI.
+
+新增：
+
+- `scripts/public-node-proof.mjs` runs `asp-verify.mjs proof-bundle state/public-node-proof-bundle.json` after writing the bundle.
+- The public proof summary returns `proof_bundle_verify: "ok"`.
+- `public-node-proof.test.mjs` asserts the summary exposes that result.
+
+不做：
+
+- 不实现 hosted public node。
+- 不实现 external public reachability proof。
+- 不实现 package publish/signing。
+- 不实现 SBOM。
+- 不实现 batch verifier。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.
