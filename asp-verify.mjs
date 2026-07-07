@@ -67,6 +67,7 @@ try {
     const tarballBytes = await readFile(tarballPath);
     requireEqual("package_proof", proof.package_proof, "ok");
     requireEqual("proof_digest", proofDigest, createHash("sha256").update(canonical(proofBody)).digest("hex"));
+    requireEqual("filename", proof.filename, proof.tarball.split("/").at(-1));
     requireEqual("shasum", proof.shasum, createHash("sha1").update(tarballBytes).digest("hex"));
     requireEqual("integrity", proof.integrity, `sha512-${createHash("sha512").update(tarballBytes).digest("base64")}`);
     requireEqual("sha256", proof.sha256, createHash("sha256").update(tarballBytes).digest("hex"));

@@ -149,3 +149,17 @@ test("package proof verifier rejects npm digest mismatches", async () => {
     (error) => error.stderr.includes("bundle integrity mismatch"),
   );
 });
+
+test("package proof verifier rejects filename and tarball mismatch", async () => {
+  await rm("state/package-proof", { recursive: true, force: true });
+  await execFileAsync(process.execPath, ["scripts/package-proof.mjs"]);
+  const proof = JSON.parse(await readFile("state/package-proof/package-proof.json", "utf8"));
+  const proofBody = { ...proof, filename: "not-the-tarball.tgz" };
+  delete proofBody.proof_digest;
+  await writeFile("state/package-proof/filename-mismatch.json", `${JSON.stringify({ ...proofBody, proof_digest: createHash("sha256").update(canonical(proofBody)).digest("hex") }, null, 2)}\n`);
+
+  await assert.rejects(
+    () => execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof/filename-mismatch.json"]),
+    (error) => error.stderr.includes("bundle filename mismatch"),
+  );
+});
