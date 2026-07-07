@@ -968,8 +968,33 @@
 - 不实现 scheduler-owned routing。
 - 不实现 A2A/ARD compatibility。
 
+## v12.36: Upper-Layer Demo Plan
+
+状态：complete
+目标：Add a verifiable upper-layer demo skeleton with 10 specialist agents and one master agent.
+
+新增：
+
+- `upper-layer-demo.mjs` creates one demo Zone, one `agent://upper/master`, and ten specialist agents.
+- The script writes `state/upper-layer-demo-registry.json` with Zone-signed bindings for all eleven agents.
+- The script writes `state/upper-layer-demo-plan.json`, a master-agent-signed static delegation plan with ten assignments.
+- The script verifies every assignment against the registry and verifies the master plan signature before reporting success.
+- `upper-layer-demo.test.mjs` proves the generated registry, worker count, assignment count, master signature, and plan digest.
+
+不做：
+
+- 不执行 the ten assignments。
+- 不实现 automatic scheduler, semantic routing, ranking, or economy。
+- 不实现 dynamic Swarm decomposition。
+- 不实现 hosted public node。
+- 不实现 real outside-host reachability。
+- 不实现 package signing。
+- 不实现 SBOM。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
-1. Run `scripts/external-reachability-observer.mjs` or the Docker wrapper from a real outside host against a hosted/public node using the v12.35 evidence shape.
-2. Add package signing or SBOM against the produced package artifact only when that signature/SBOM format is explicitly scoped.
-3. Keep compatibility work parked until the proof layer has externally consumable hosted-node evidence.
+1. Make `upper-layer-demo.mjs` execute one or two assignments through existing signed task/receipt paths, then verify those receipts against the master plan.
+2. Run `scripts/external-reachability-observer.mjs` or the Docker wrapper from a real outside host against a hosted/public node using the v12.35 evidence shape.
+3. Add package signing or SBOM against the produced package artifact only when that signature/SBOM format is explicitly scoped.
+4. Keep compatibility work parked until the proof layer has externally consumable hosted-node evidence and the upper-layer demo has receipt-backed assignments.

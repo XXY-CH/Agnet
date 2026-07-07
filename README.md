@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v12 active at `v12.35-protocol`.
+Status: research prototype, local-first, v12 active at `v12.36-protocol`.
 
 ## Why This Exists
 
@@ -60,6 +60,7 @@ The current prototype proves:
 - Shared `FED_TASK_OPEN`, `FED_RECEIPT`, and `FED_SWARM_CLOSE` conformance fixtures, including fail-closed checks for missing-frame, missing-zone, missing-proof, missing-signature, missing-identity, malformed-step, unsafe-task-id, NUL-bearing, empty, and duplicate-step Swarm close proofs.
 - Minimal two-step `FED_SWARM_OPEN` with signed dependency evidence and malformed step dependency list rejection.
 - Swarm audit verification for declared dependency steps, delimiter-safe step identity, malformed dependency list rejection, malformed close step receipt list rejection, artifact manifests, upstream receipt digests, and single ordered complete audit-backed Zone-signed close proofs over Swarms that appeared in the same audit.
+- Upper-layer demo skeleton with one master agent, ten specialist agents, a Zone-signed registry, and a master-agent-signed static delegation plan.
 
 It is not yet a production Agent Net, public federation network, DID-native identity layer, scheduler, economic layer, or container-isolated runtime.
 
@@ -133,6 +134,14 @@ bash scripts/docker-external-reachability-observer.sh state/public-node-proof-bu
 ```
 
 This wrapper uses Docker's host gateway and proves only the containerized observer's TCP connection. It is not real outside-host reachability by itself.
+
+Run the upper-layer demo skeleton:
+
+```bash
+node upper-layer-demo.mjs
+```
+
+The script writes a 10-specialist registry and a master-agent-signed plan. It does not execute or schedule the assignments.
 
 Run the full local verification suite:
 
@@ -249,6 +258,7 @@ Optional hardening flags include:
 - `scripts/external-reachability-observer.mjs` - TCP observer that writes signed external reachability evidence for a proof bundle.
 - `scripts/docker-public-node-proof.sh` - Docker wrapper for the public-listen federation proof.
 - `scripts/docker-external-reachability-observer.sh` - Docker wrapper for the external reachability observer.
+- `upper-layer-demo.mjs` - static signed 10-agent plus master-agent upper-layer demo skeleton.
 - `package.json` - local npm-facing verifier bin and Node export contract.
 - `*.mjs` - Node prototype runtime, federation gateway, tests, and demos.
 - `test-vectors/` - shared protocol vectors.
@@ -257,7 +267,8 @@ Optional hardening flags include:
 - `docs/agent-space-architecture.md` - architecture overview.
 - `docs/asp-core-draft.md` - narrow English draft for the implemented proof layer.
 - `docs/v12-roadmap.md` - active v12 roadmap.
-- `docs/v12.35-boundary.md` - latest closed boundary.
+- `docs/v12.36-boundary.md` - latest closed boundary.
+- `docs/v12.35-boundary.md` - Docker external reachability observer wrapper boundary.
 - `docs/v12.34-boundary.md` - external reachability observer boundary.
 - `docs/v12.33-boundary.md` - external reachability evidence gate boundary.
 - `docs/v12.32-boundary.md` - Go canonical JSON HTML escape parity boundary.
@@ -380,7 +391,7 @@ Optional hardening flags include:
 
 ## Roadmap
 
-v9 and v10 are closed. v11 is also closed at `v11.79-protocol`. v12 starts from the verified proof/accountability core and makes it easier to consume externally: the public-listen proof now writes one bundle manifest over the verifier-ready receipt, trusted-Zone, artifact, signed transport, and Swarm close evidence files, and `asp-verify.mjs proof-bundle` verifies one manifest against the existing verifier outputs while rejecting non-object manifests, checking proof type, preflighting safe proof-file paths before reads, requiring signed `fed+tcp`, non-loopback non-unspecified `listen_host`, `port`, and `public_transport: true` evidence, reporting verifier-owned `reachability_scope: "local-interface"` by default, upgrading to `reachability_scope: "external-host"` only when an extra caller-supplied trusted-Zone file validates signed external reachability evidence bound to the same transport proof and receipt digest, and rejecting bundle-supplied `reachability_scope`. `scripts/external-reachability-observer.mjs` can run a TCP connect to the bundle target and write the signed observer evidence plus observer trusted-Zone file; `scripts/docker-external-reachability-observer.sh` runs that observer from a Docker container with host-gateway access. This is containerized observer tooling, not hosted deployment or real outside-host proof by itself. The verifier CLI rejects unsupported extra positional arguments across verifier CLI commands. The local package proof now creates a real npm tarball under `state/package-proof/`, writes `state/package-proof/package-proof.json` with npm-owned shasum, integrity, size, packaged file list, SHA-256, and canonical `proof_digest`, verifies it with `asp-verify.mjs package-proof`, rejects non-object package proof manifests, rejects unsafe package tarball paths before reads, resolves package tarball paths relative to the package proof manifest, binds `filename` to the tarball path basename, binds `manifest` to the verifier input filename, binds package name/version to the npm tarball filename, verifies npm shasum/integrity against the tarball bytes, rejects malformed packaged file lists, and returns verified size, shasum, and integrity fields in verifier JSON.
+v9 and v10 are closed. v11 is also closed at `v11.79-protocol`. v12 starts from the verified proof/accountability core and makes it easier to consume externally: the public-listen proof now writes one bundle manifest over the verifier-ready receipt, trusted-Zone, artifact, signed transport, and Swarm close evidence files, and `asp-verify.mjs proof-bundle` verifies one manifest against the existing verifier outputs while rejecting non-object manifests, checking proof type, preflighting safe proof-file paths before reads, requiring signed `fed+tcp`, non-loopback non-unspecified `listen_host`, `port`, and `public_transport: true` evidence, reporting verifier-owned `reachability_scope: "local-interface"` by default, upgrading to `reachability_scope: "external-host"` only when an extra caller-supplied trusted-Zone file validates signed external reachability evidence bound to the same transport proof and receipt digest, and rejecting bundle-supplied `reachability_scope`. `scripts/external-reachability-observer.mjs` can run a TCP connect to the bundle target and write the signed observer evidence plus observer trusted-Zone file; `scripts/docker-external-reachability-observer.sh` runs that observer from a Docker container with host-gateway access. This is containerized observer tooling, not hosted deployment or real outside-host proof by itself. `upper-layer-demo.mjs` now gives the final-stage demo a static signed upper layer: one master agent, ten specialists, a Zone-signed registry, and a master-agent-signed delegation plan. The verifier CLI rejects unsupported extra positional arguments across verifier CLI commands. The local package proof now creates a real npm tarball under `state/package-proof/`, writes `state/package-proof/package-proof.json` with npm-owned shasum, integrity, size, packaged file list, SHA-256, and canonical `proof_digest`, verifies it with `asp-verify.mjs package-proof`, rejects non-object package proof manifests, rejects unsafe package tarball paths before reads, resolves package tarball paths relative to the package proof manifest, binds `filename` to the tarball path basename, binds `manifest` to the verifier input filename, binds package name/version to the npm tarball filename, verifies npm shasum/integrity against the tarball bytes, rejects malformed packaged file lists, and returns verified size, shasum, and integrity fields in verifier JSON.
 
 The closed v11 proof core remains in force: task and receipt verifiers require valid `FED_TASK_OPEN` / `FED_RECEIPT` frame objects, correct frame types, required Zone descriptor objects, required payload objects, and a trusted Zone store; receipt artifact manifests now require string URI/ref evidence, real 64-hex SHA-256 values, and non-negative integer sizes in Node and Go reusable verifier paths; Go protocol signing, signature verification, and digest paths use no-HTML-escape canonical JSON for `<>&` parity with Node; Go public-listen task receipts now include signed transport proof fields for the configured federation listener; Go receipt and audit artifact verifiers also reject non-string manifest media types, non-string manifest hashes, and malformed artifact ref/manifest list entries before accepting signed metadata or serving bytes; Node local artifact verification rejects non-`artifact://local/` URIs and escaping local artifact paths before filesystem reads; Go artifact audit verification rejects non-hex manifest SHA-256 values before digest-addressed sidecar or mirror path reads and rejects malformed manifest sizes before byte checks; Node proof verifiers now return false for malformed descriptor inputs instead of leaking parser errors; Node descriptor body helpers reject missing descriptor objects before removing signature fields; Node agent resolution rejects missing registry context before reading registry entries; Node registry files reject missing agent lists, missing entries, and missing descriptors before reading registry fields; Node trusted Zone files reject missing Zone lists before reading entries and preserve raw descriptor-array inputs; Node Zone revocation verifiers reject missing revocation context/descriptor/list objects before field reads; Node Zone binding verifiers reject missing binding context/descriptor objects before field reads; Node rotation and alias rebinding proof verifiers now reject missing proof/descriptor objects before field reads; Node capability credential and credential status helpers now reject missing proof objects before field reads; Node artifact manifest helpers and local artifact verification now reject missing manifest objects before field reads; Node `did:key` bridge helpers now reject missing inputs before descriptor or string field reads; Node Zone descriptor loading now rejects missing or non-object descriptor values before reading descriptor fields; Node descriptor public keys and shared object signatures now fail closed before crypto parsing; Node task/receipt verification also requires local verifier context, signed task/receipt signatures before crypto verification, valid local worker descriptor identity, and safe signed receipt task ids, signed receipt `origin_zone` values must name a trusted Zone, `FED_TASK_OPEN` requires a requester Zone binding, Node `FED_SWARM_CLOSE` rejects missing-frame, missing-zone, missing-proof, missing-signature, missing-identity, malformed-step, unsafe-task-id, NUL-bearing, structurally empty, or duplicate-step close proofs, task ids now fail closed unless they are safe protocol tokens, receipts now carry `task_digest` to anchor the signed task body, and Node/Go verifier paths can reject supplied or in-memory task evidence whose digest does not match.
 
