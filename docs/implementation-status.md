@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v12.12 active
-当前代码基线：`v12.12-proof-bundle-transport-shape`
+状态：v12.13 active
+当前代码基线：`v12.13-proof-bundle-fed-transport`
 
 ## 一句话
 
@@ -213,7 +213,7 @@ Go
 
 ## Next Boundary
 
-v12.12 makes `asp-verify.mjs proof-bundle` reject incomplete signed transport proofs by requiring verified receipt transport evidence with `transport`, `listen_host`, decimal-string `port`, and `public_transport: true`. This keeps the proof boundary narrow: it does not claim remote-host reachability, JSON Schema, relocatable artifact bytes, hosted public reachability, package signing, SBOM, scheduler ownership, batch verification, or A2A/ARD compatibility.
+v12.13 makes `asp-verify.mjs proof-bundle` reject non-federation signed transport proofs by requiring verified receipt transport evidence with `transport: "fed+tcp"`, `listen_host`, decimal-string `port`, and `public_transport: true`. This keeps the proof boundary narrow: it does not claim remote-host reachability, JSON Schema, relocatable artifact bytes, hosted public reachability, package signing, SBOM, scheduler ownership, batch verification, or A2A/ARD compatibility.
 
 Route detail: `docs/v12-roadmap.md`。
 

@@ -196,6 +196,28 @@ test("public node proof starts a public-listen gateway", async () => {
     execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),
     /bundle transport_proof invalid/,
   );
+  const localTransportReceipt = {
+    ...receiptBody,
+    transport_proof: { ...receiptFrame.receipt.transport_proof, transport: "asp+local" },
+  };
+  const localTransportFramePath = "state/public-node-proof-fed-receipt-local-transport.json";
+  await writeFile(localTransportFramePath, `${JSON.stringify({
+    ...receiptFrame,
+    receipt: {
+      ...localTransportReceipt,
+      signature: signObject(privateKeyFromSeed(fixture.worker_seed_hex), localTransportReceipt),
+    },
+  }, null, 2)}\n`);
+  await writeFile(tamperedBundlePath, `${JSON.stringify({
+    ...bundle,
+    receipt_frame: "public-node-proof-fed-receipt-local-transport.json",
+    receipt_digest: createHash("sha256").update(canonical(localTransportReceipt)).digest("hex"),
+    transport_proof: localTransportReceipt.transport_proof,
+  }, null, 2)}\n`);
+  await assert.rejects(
+    execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),
+    /bundle transport_proof invalid/,
+  );
   await writeFile(tamperedBundlePath, `${JSON.stringify({ ...bundle, proof: "other-proof" }, null, 2)}\n`);
   await assert.rejects(
     execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),
