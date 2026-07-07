@@ -134,6 +134,30 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.6: Proof Bundle Manifest Object
+
+状态：complete
+目标：Make proof bundle verification reject non-object bundle manifests before reading proof fields.
+
+新增：
+
+- `asp-verify.mjs proof-bundle <bundle.json>` rejects `null` or array bundle manifests with `bundle manifest invalid`.
+- The manifest object check runs before the proof type check and before proof-file path reads.
+- `public-node-proof.test.mjs` covers `null` and `[]` bundle files.
+
+不做：
+
+- 不实现 JSON Schema。
+- 不实现 generic proof bundle schema。
+- 不实现 artifact byte relocation。
+- 不实现 hosted public node。
+- 不实现 external public reachability proof。
+- 不实现 package publish/signing。
+- 不实现 SBOM。
+- 不实现 batch verifier。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.

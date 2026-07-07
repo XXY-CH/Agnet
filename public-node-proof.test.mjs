@@ -117,6 +117,16 @@ test("public node proof starts a public-listen gateway", async () => {
     swarm_close_digest: result.swarm_close_digest,
   });
   const tamperedBundlePath = "state/public-node-proof-bundle-tampered.json";
+  await writeFile(tamperedBundlePath, "null\n");
+  await assert.rejects(
+    execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),
+    /bundle manifest invalid/,
+  );
+  await writeFile(tamperedBundlePath, "[]\n");
+  await assert.rejects(
+    execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),
+    /bundle manifest invalid/,
+  );
   await writeFile(tamperedBundlePath, `${JSON.stringify({ ...bundle, receipt_digest: "0".repeat(64) }, null, 2)}\n`);
   await assert.rejects(
     execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),

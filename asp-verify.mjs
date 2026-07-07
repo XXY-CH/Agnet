@@ -51,6 +51,7 @@ try {
   } else if (command === "proof-bundle" && file) {
     const baseDir = dirname(file);
     const bundle = JSON.parse(await readFile(file, "utf8"));
+    if (!bundle || typeof bundle !== "object" || Array.isArray(bundle)) throw new Error("bundle manifest invalid");
     requireEqual("proof", bundle.proof, "public-node-proof");
     const receiptFrame = JSON.parse(await readFile(bundlePath(baseDir, "receipt_frame", bundle.receipt_frame), "utf8"));
     const receiptVerified = verifyFederatedReceipt(receiptFrame, await loadTrustedZones(bundlePath(baseDir, "trusted_zones", bundle.trusted_zones)));
