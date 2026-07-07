@@ -1760,6 +1760,30 @@
 - 不实现 automatic drain。
 - 不实现 A2A/ARD compatibility。
 
+## v11.78: Node Receipt Artifact URI Shape Boundary
+
+状态：complete
+目标：Make Node receipt artifact verification reject malformed signed artifact manifest URI/ref shapes before accepting receipt metadata.
+
+新增：
+
+- Node `verifyReceiptArtifactManifests` rejects non-string or empty manifest `uri` values with `artifact manifest uri invalid`.
+- Node `verifyReceiptArtifactManifests` rejects non-string or empty `artifact_refs` entries with `artifact refs invalid`.
+- Existing manifest count, URI match, SHA-256, AFP, size, media type, manifest hash, receipt signature, and task digest checks remain unchanged.
+- The fix is scoped to signed receipt artifact metadata; it does not add generic receipt schema validation.
+
+不做：
+
+- 不实现 remote artifact fetch。
+- 不实现 object-store artifact backend。
+- 不实现 artifact retention policy。
+- 不实现 generic receipt JSON Schema validation。
+- 不改变 valid artifact URI format。
+- 不改变 artifact byte verification semantics。
+- 不实现 scheduler-owned routing。
+- 不实现 automatic drain。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.

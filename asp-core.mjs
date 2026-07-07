@@ -462,6 +462,8 @@ export function verifyReceiptArtifactManifests(receipt) {
   }
   for (const [index, manifest] of receipt.artifact_manifests.entries()) {
     if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) throw new Error("artifact manifest missing");
+    if (typeof manifest.uri !== "string" || manifest.uri === "") throw new Error("artifact manifest uri invalid");
+    if (typeof receipt.artifact_refs[index] !== "string" || receipt.artifact_refs[index] === "") throw new Error("artifact refs invalid");
     if (manifest.uri !== receipt.artifact_refs[index]) throw new Error("artifact manifest uri mismatch");
     for (const field of ["sha256", "media_type", "manifest_hash"]) {
       if (typeof manifest[field] !== "string" || manifest[field] === "") throw new Error(`artifact manifest ${field} missing`);

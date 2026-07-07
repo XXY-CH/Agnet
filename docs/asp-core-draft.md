@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v11.77-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v11.78-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -235,11 +235,11 @@ Local artifact byte verification MUST reject missing, non-`artifact://local/`, o
 
 Filesystem audit artifact verification MUST reject malformed manifest `sha256` values before constructing digest-addressed sidecar or mirror paths.
 
-Receipt artifact manifest verification MUST reject malformed manifest `sha256` values before accepting signed artifact metadata.
+Receipt artifact manifest verification MUST reject malformed manifest `uri` and `sha256` values before accepting signed artifact metadata.
 
 Receipt and audit artifact manifest verification MUST reject negative or non-integer manifest `size` values before accepting signed artifact metadata or comparing local bytes.
 
-Go receipt and audit artifact manifest verification MUST reject non-string manifest `uri` values before comparing artifact refs or reading local bytes. Node already enforces string manifest fields in the shared artifact manifest helper.
+Node and Go receipt artifact manifest verification MUST reject non-string manifest `uri` values before accepting signed artifact metadata. Go audit artifact verification applies the same URI shape check before reading local bytes.
 
 Go receipt and audit artifact manifest verification MUST reject present non-string manifest `afp` values before comparing AFP strings. When present, `afp` MUST equal `afp:sha256:<sha256>`.
 
@@ -247,7 +247,7 @@ Go receipt and audit artifact manifest verification MUST reject non-string manif
 
 Go receipt and audit artifact manifest verification MUST reject non-string manifest `manifest_hash` values before accepting signed artifact metadata or comparing local bytes. Node already enforces string manifest fields in the shared artifact manifest helper.
 
-Go receipt and audit artifact manifest verification MUST reject malformed `artifact_refs` and `artifact_manifests` list entries instead of silently filtering non-string refs or non-object manifests. This is an artifact verifier boundary, not a generic list parsing rule for every Go helper.
+Node and Go receipt artifact manifest verification MUST reject malformed `artifact_refs` and `artifact_manifests` list entries instead of silently accepting non-string refs or non-object manifests. Go audit artifact verification applies the same list-shape checks before reading local bytes. This is an artifact verifier boundary, not a generic list parsing rule for every helper.
 
 Go filesystem artifact mirror index verification MUST match index fields against receipt artifact manifest fields without string coercion. A mirror `objects.ndjson` entry with `"size":"7"` MUST NOT satisfy a manifest with numeric `size: 7`.
 
@@ -281,6 +281,7 @@ An artifact manifest binds:
 Verifiers MUST reject:
 
 - Missing required manifest fields.
+- Malformed manifest URI fields.
 - Manifest URI mismatch.
 - Manifest count mismatch.
 - AFP mismatch when `afp` is present.
