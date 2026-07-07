@@ -255,6 +255,19 @@ test("package proof verifier rejects malformed packaged file lists", async () =>
   );
 });
 
+test("package proof verifier rejects malformed file lists before tarball reads", async () => {
+  await rm("state/package-proof", { recursive: true, force: true });
+  await execFileAsync(process.execPath, ["scripts/package-proof.mjs"]);
+  const proof = JSON.parse(await readFile("state/package-proof/package-proof.json", "utf8"));
+  await writeMutatedPackageProof("state/package-proof/files-invalid-missing-tarball.json", proof, { files: ["../README.md"] });
+  await rm(`state/package-proof/${proof.tarball}`);
+
+  await assert.rejects(
+    () => execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof/files-invalid-missing-tarball.json"]),
+    (error) => error.stderr.includes("package proof files invalid"),
+  );
+});
+
 test("package proof verifier rejects manifest filename mismatches", async () => {
   await rm("state/package-proof", { recursive: true, force: true });
   await execFileAsync(process.execPath, ["scripts/package-proof.mjs"]);

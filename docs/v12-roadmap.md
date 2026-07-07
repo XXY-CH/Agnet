@@ -1063,6 +1063,30 @@
 - 不实现 scheduler-owned routing。
 - 不实现 A2A/ARD compatibility。
 
+## v12.41: Package Proof Metadata Preflight
+
+状态：complete
+目标：Validate package proof metadata before reading tarball bytes.
+
+新增：
+
+- `asp-verify.mjs package-proof <manifest.json>` checks package proof type, proof digest, signer signature, trusted signer pin, manifest filename, tarball filename, package identity, and packaged file list shape before reading the tarball.
+- Malformed packaged file lists fail with `package proof files invalid` even when the referenced tarball is missing.
+- `package-contract.test.mjs` covers malformed file-list rejection before tarball reads.
+
+不做：
+
+- 不实现 JSON Schema。
+- 不实现 tarball member proof。
+- 不实现 npm registry signing。
+- 不实现 release transparency。
+- 不实现 SBOM。
+- 不实现 package publish。
+- 不实现 hosted public node。
+- 不实现 real outside-host reachability。
+- 不实现 scheduler-owned routing。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Run `scripts/external-reachability-observer.mjs` or the Docker wrapper from a real outside host against a hosted/public node using the v12.35 evidence shape.

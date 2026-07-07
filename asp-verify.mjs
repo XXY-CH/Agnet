@@ -98,7 +98,6 @@ try {
     if (pathUnsafe(proof.tarball)) throw new Error("package proof tarball path invalid");
     const tarballPath = join(dirname(file), proof.tarball);
     const { proof_digest: proofDigest, signature, ...proofBody } = proof;
-    const tarballBytes = await readFile(tarballPath);
     requireEqual("package_proof", proof.package_proof, "ok");
     requireEqual("proof_digest", proofDigest, createHash("sha256").update(canonical(proofBody)).digest("hex"));
     if (!proof.signer || typeof proof.signer !== "object" || Array.isArray(proof.signer)) throw new Error("package proof signer missing");
@@ -111,6 +110,7 @@ try {
     requireEqual("filename", proof.filename, proof.tarball.split("/").at(-1));
     requireEqual("package identity", proof.filename, `${proof.name}-${proof.version}.tgz`);
     if (packageFilesInvalid(proof.files)) throw new Error("package proof files invalid");
+    const tarballBytes = await readFile(tarballPath);
     requireEqual("shasum", proof.shasum, createHash("sha1").update(tarballBytes).digest("hex"));
     requireEqual("integrity", proof.integrity, `sha512-${createHash("sha512").update(tarballBytes).digest("base64")}`);
     requireEqual("sha256", proof.sha256, createHash("sha256").update(tarballBytes).digest("hex"));
