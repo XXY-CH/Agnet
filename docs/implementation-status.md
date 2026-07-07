@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v12.16 active
-当前代码基线：`v12.16-proof-bundle-reachability-scope`
+状态：v12.17 active
+当前代码基线：`v12.17-proof-bundle-reachability-scope-ownership`
 
 ## 一句话
 
@@ -213,7 +213,7 @@ Go
 
 ## Next Boundary
 
-v12.16 makes `asp-verify.mjs proof-bundle` report verifier-owned `reachability_scope: "local-interface"` and makes `scripts/public-node-proof.mjs` forward that value. This keeps the proof boundary narrow: it does not claim remote-host reachability, JSON Schema, relocatable artifact bytes, hosted public reachability, package signing, SBOM, scheduler ownership, batch verification, or A2A/ARD compatibility.
+v12.17 makes `asp-verify.mjs proof-bundle` reject bundle manifests that supply their own `reachability_scope`, keeping that field verifier-owned after v12.16 introduced `reachability_scope: "local-interface"`. This keeps the proof boundary narrow: it does not claim remote-host reachability, JSON Schema, relocatable artifact bytes, hosted public reachability, package signing, SBOM, scheduler ownership, batch verification, or A2A/ARD compatibility.
 
 Route detail: `docs/v12-roadmap.md`。
 

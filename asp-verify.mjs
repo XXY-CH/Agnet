@@ -59,6 +59,7 @@ try {
     const bundle = JSON.parse(await readFile(file, "utf8"));
     if (!bundle || typeof bundle !== "object" || Array.isArray(bundle)) throw new Error("bundle manifest invalid");
     requireEqual("proof", bundle.proof, "public-node-proof");
+    if (Object.prototype.hasOwnProperty.call(bundle, "reachability_scope")) throw new Error("bundle reachability_scope is verifier-owned");
     const receiptFramePath = bundlePath(baseDir, "receipt_frame", bundle.receipt_frame);
     const trustedZonesPath = bundlePath(baseDir, "trusted_zones", bundle.trusted_zones);
     const swarmCloseFramePath = bundlePath(baseDir, "swarm_close_frame", bundle.swarm_close_frame);

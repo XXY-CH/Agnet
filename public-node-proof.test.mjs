@@ -116,6 +116,7 @@ test("public node proof starts a public-listen gateway", async () => {
   const verifiedSwarmClose = await execFileAsync(process.execPath, ["asp-verify.mjs", "swarm-close", result.swarm_close_frame, result.swarm_close_trusted_zones]);
   assert.deepEqual(JSON.parse(verifiedSwarmClose.stdout), { swarm_close_verify: "ok", swarm_id: result.swarm_id, swarm_close_digest: result.swarm_close_digest });
   const verifiedBundle = await execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", result.bundle_manifest]);
+  const tamperedBundlePath = "state/public-node-proof-bundle-tampered.json";
   assert.deepEqual(JSON.parse(verifiedBundle.stdout), {
     proof_bundle_verify: "ok",
     receipt_frame: bundle.receipt_frame,
@@ -131,6 +132,11 @@ test("public node proof starts a public-listen gateway", async () => {
     swarm_close_trusted_zones: bundle.swarm_close_trusted_zones,
     swarm_close_digest: result.swarm_close_digest,
   });
+  await writeFile(tamperedBundlePath, `${JSON.stringify({ ...bundle, reachability_scope: "external-host" }, null, 2)}\n`);
+  await assert.rejects(
+    execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),
+    /bundle reachability_scope is verifier-owned/,
+  );
   await assert.rejects(
     execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", result.bundle_manifest, "extra.json"]),
     /usage: node asp-verify\.mjs/,
@@ -139,7 +145,6 @@ test("public node proof starts a public-listen gateway", async () => {
     execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", result.bundle_manifest, ""]),
     /usage: node asp-verify\.mjs/,
   );
-  const tamperedBundlePath = "state/public-node-proof-bundle-tampered.json";
   await writeFile(tamperedBundlePath, "null\n");
   await assert.rejects(
     execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),

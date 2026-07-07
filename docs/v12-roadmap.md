@@ -414,6 +414,32 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.17: Proof Bundle Reachability Scope Ownership
+
+状态：complete
+目标：Make public proof bundle verification reject manifest-supplied reachability scope claims.
+
+新增：
+
+- `asp-verify.mjs proof-bundle <bundle.json>` rejects bundle manifests that include `reachability_scope`.
+- `public-node-proof.test.mjs` covers a manifest trying to self-claim `reachability_scope: "external-host"`.
+- `docs/asp-core-draft.md` documents `reachability_scope` as verifier-owned output.
+
+不做：
+
+- 不实现 external public reachability proof。
+- 不实现 hosted public node。
+- 不增加 DNS, TLS, QUIC, NAT traversal, or remote probe infrastructure。
+- 不改变 normal `fed-receipt` verification。
+- 不改变 successful `proof-bundle` verifier JSON output。
+- 不实现 transport negotiation。
+- 不实现 batch verifier。
+- 不实现 JSON Schema。
+- 不实现 generic proof bundle schema。
+- 不实现 package signing or SBOM。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.
