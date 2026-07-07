@@ -56,6 +56,10 @@ type Fixture struct {
 	QueueActorPolicy    map[string][]string `json:"-"`
 	ApprovalActorPolicy map[string][]string `json:"-"`
 	ApprovalSessions    map[string]string   `json:"-"`
+	ListenHost          string              `json:"-"`
+	ListenPort          string              `json:"-"`
+	Transport           string              `json:"-"`
+	PublicTransport     bool                `json:"-"`
 }
 
 const requesterRegistryPath = "state/go-fed-discovery-requester-registry.json"
@@ -326,6 +330,10 @@ func serve(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath
 	if addr, ok := listener.Addr().(*net.TCPAddr); ok {
 		listenPort = strconv.Itoa(addr.Port)
 	}
+	fixture.ListenHost = listenHost
+	fixture.ListenPort = listenPort
+	fixture.Transport = transport
+	fixture.PublicTransport = isPublicListenHost(listenHost)
 	var wsListener net.Listener
 	if wsPort != "" {
 		wsListener, err = net.Listen("tcp", "127.0.0.1:"+wsPort)
@@ -342,7 +350,7 @@ func serve(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath
 		go serveHumanGateway(humanListener, auditPath, fixture, humanToken, listenHost)
 	}
 	if wsPort != "" || humanPort != "" {
-		status := map[string]any{"go_fed_discovery": "listening", "listen_host": listenHost, "port": listenPort, "public_transport": isPublicListenHost(listenHost), "transport": transport}
+		status := map[string]any{"go_fed_discovery": "listening", "listen_host": listenHost, "port": listenPort, "public_transport": fixture.PublicTransport, "transport": transport}
 		if wsPort != "" {
 			status["ws_port"] = wsPort
 		}
@@ -352,7 +360,7 @@ func serve(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath
 		data, _ := json.Marshal(status)
 		fmt.Println(string(data))
 	} else {
-		status := map[string]any{"go_fed_discovery": "listening", "listen_host": listenHost, "port": listenPort, "public_transport": isPublicListenHost(listenHost), "transport": transport}
+		status := map[string]any{"go_fed_discovery": "listening", "listen_host": listenHost, "port": listenPort, "public_transport": fixture.PublicTransport, "transport": transport}
 		data, _ := json.Marshal(status)
 		fmt.Println(string(data))
 	}
@@ -2470,6 +2478,18 @@ func (f Fixture) credentialStatus(credential map[string]any, status string) map[
 	}, "status_signature")
 }
 
+func (f Fixture) transportProof() map[string]any {
+	if f.Transport == "" {
+		return nil
+	}
+	return map[string]any{
+		"transport":        f.Transport,
+		"listen_host":      f.ListenHost,
+		"port":             f.ListenPort,
+		"public_transport": f.PublicTransport,
+	}
+}
+
 func (f Fixture) queueActionGrant(action, taskID string, task map[string]any) map[string]any {
 	return signBodyWithKey(f.AuthorityPrivateKey, map[string]any{
 		"action":               action,
@@ -2696,6 +2716,9 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		"sandbox_proof":      sandboxProof,
 		"tool":               toolName,
 	}
+	if transportProof := f.transportProof(); transportProof != nil {
+		receipt["transport_proof"] = transportProof
+	}
 	if sandboxClaim != "" {
 		receipt["sandbox_claim"] = sandboxClaim
 	}
@@ -2885,6 +2908,9 @@ func (f Fixture) cancelTask(send sendFunc, origin map[string]any, worker *Worker
 		"sandbox":            sandbox,
 		"sandbox_proof":      f.sandboxProof(taskID, worker, sandbox, policyDigest, ""),
 		"tool":               "none",
+	}
+	if transportProof := f.transportProof(); transportProof != nil {
+		receipt["transport_proof"] = transportProof
 	}
 	signedReceipt := signBody(worker.PrivateKey, receipt)
 	receiptRecord := map[string]any{

@@ -73,6 +73,12 @@ test("public node proof starts a public-listen gateway", async () => {
   assert.deepEqual(result.artifact_sha256s, [artifactSha256]);
   assert.deepEqual(result.artifact_manifest_hashes, [artifactManifestHash]);
   assert.equal(result.receipt_digest, receiptDigest);
+  assert.deepEqual(receiptFrame.receipt.transport_proof, {
+    transport: result.transport,
+    listen_host: result.listen_host,
+    port: result.port,
+    public_transport: result.public_transport,
+  });
   const verified = await execFileAsync(process.execPath, ["asp-verify.mjs", "fed-receipt", result.receipt_frame, result.trusted_zones]);
   assert.deepEqual(JSON.parse(verified.stdout), { fed_receipt_verify: "ok", task_id: "public_node_probe_task", receipt_digest: receiptDigest });
   const verifiedArtifacts = await execFileAsync(process.execPath, ["asp-verify.mjs", "fed-receipt-artifacts", result.receipt_frame, result.trusted_zones]);

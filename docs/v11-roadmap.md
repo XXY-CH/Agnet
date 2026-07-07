@@ -1784,9 +1784,31 @@
 - 不实现 automatic drain。
 - 不实现 A2A/ARD compatibility。
 
+## v11.79: Public Transport Receipt Proof Boundary
+
+状态：complete
+目标：Make the local public-listen proof bind the configured federation transport evidence into the signed Go receipt body.
+
+新增：
+
+- Go server-mode task receipts include `transport_proof` when the gateway has a configured federation listener.
+- The proof binds `transport`, `listen_host`, `port`, and `public_transport` into the worker-signed receipt body.
+- `public-node-proof.test.mjs` asserts the verifier-ready receipt frame carries the same transport proof as the startup status JSON.
+- Existing receipt signature, task digest, artifact closure, Swarm close, and public-listen proof checks remain unchanged.
+
+不做：
+
+- 不实现 hosted public node。
+- 不实现 external public reachability proof。
+- 不实现 TLS/QUIC transport upgrade。
+- 不实现 endpoint discovery or DID service routing。
+- 不实现 scheduler-owned routing。
+- 不实现 automatic drain。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
-1. Add real public reachability proof only with external network evidence, not same-host `0.0.0.0` proof.
-2. Continue Phase A trust-boundary bug closure only where the current code still contradicts verified claims.
+1. Close v11 after transport-proof verification if the full suite stays green.
+2. Start v12 with either real public reachability proof or a consumable release surface, not compatibility work.
 3. Continue Swarm proof work only where it adds verifiable accountability without dynamic decomposition, scheduler ownership, parallel execution, cross-Zone Swarm, or a Node audit verifier.
 4. Keep compatibility work parked until the proof layer has an externally consumable release surface.
