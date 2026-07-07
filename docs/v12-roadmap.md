@@ -207,6 +207,29 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.9: Proof Bundle Exact CLI Arity
+
+状态：complete
+目标：Make proof bundle CLI arity count positional arguments exactly.
+
+新增：
+
+- `asp-verify.mjs proof-bundle <bundle.json>` requires exactly two CLI tokens after the script name: `proof-bundle` and one bundle path.
+- Empty-string extra positional arguments are rejected by the same usage path as non-empty extras.
+- `public-node-proof.test.mjs` covers `proof-bundle <bundle.json> ""`.
+
+不做：
+
+- 不改变其他 verifier CLI commands。
+- 不实现 batch verifier。
+- 不实现 JSON Schema。
+- 不实现 generic proof bundle schema。
+- 不实现 artifact byte relocation。
+- 不实现 hosted public node。
+- 不实现 external public reachability proof。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.

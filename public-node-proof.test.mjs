@@ -120,6 +120,10 @@ test("public node proof starts a public-listen gateway", async () => {
     execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", result.bundle_manifest, "extra.json"]),
     /usage: node asp-verify\.mjs/,
   );
+  await assert.rejects(
+    execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", result.bundle_manifest, ""]),
+    /usage: node asp-verify\.mjs/,
+  );
   const tamperedBundlePath = "state/public-node-proof-bundle-tampered.json";
   await writeFile(tamperedBundlePath, "null\n");
   await assert.rejects(
