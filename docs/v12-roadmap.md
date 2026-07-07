@@ -1,6 +1,6 @@
 # Agent Space v12 Roadmap
 
-状态：active
+状态：closed at v12.45
 目标：把 v11 已闭合的 proof/accountability core 推向外部可消费的 proof surface，同时继续避免 A2A/ARD compatibility、scheduler、经济层和产品平台漂移。
 
 ## v12.0: Public Proof Bundle Manifest
@@ -1161,9 +1161,39 @@
 - 不实现 upper-layer demo/master-agent orchestration。
 - 不实现 A2A/ARD compatibility。
 
+## v12.45: V12 Closeout Alignment
+
+状态：complete
+目标：Close v12 as the externally consumable proof-surface milestone without adding another runtime surface.
+
+新增：
+
+- README marks v12 closed at `v12.45-protocol`.
+- This roadmap marks v12 closed and records v12.45 as the closeout slice.
+- `docs/asp-core-draft.md` points to the current closed prototype tag.
+- `docs/implementation-status.md` names the closed v12 baseline and summarizes the closed v12 proof surface.
+- `docs-contract.test.mjs` guards the public closeout wording.
+- `docs/v12.45-boundary.md` records the closeout boundary and remaining v13+ candidates.
+
+不做：
+
+- 不实现新的协议字段。
+- 不实现新的 verifier CLI。
+- 不实现 hosted public node。
+- 不实现 real outside-host reachability。
+- 不实现 npm registry signing。
+- 不实现 release transparency。
+- 不实现 SBOM。
+- 不实现 package publish。
+- 不实现 scheduler-owned routing。
+- 不实现 upper-layer demo/master-agent orchestration。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Run `scripts/external-reachability-observer.mjs` or the Docker wrapper from a real outside host against a hosted/public node using the v12.35 evidence shape.
 2. Add release transparency or SBOM against the produced package artifact only when that trust/SBOM format is explicitly scoped.
 3. Keep upper-layer demo/orchestration work parked outside this repository until the core proof substrate has externally consumable hosted-node evidence.
 4. Keep compatibility work parked until the proof layer has externally consumable hosted-node evidence.
+
+v12 到此收尾。下一轮应进入 v13+，继续围绕 Ultimate 的 external proof, hosted reachability, release trust, or core runtime gaps 选一个窄边界；上层 demo/master-agent orchestration 仍保持在本仓库之外。

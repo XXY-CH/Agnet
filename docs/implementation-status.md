@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v12.44 active
-当前代码基线：`v12.44-package-proof-signer-capability`
+状态：v12 closed at v12.45
+当前代码基线：`v12.45-closeout-alignment`
 
 ## 一句话
 
@@ -217,9 +217,9 @@ Go
   -> FED_QUEUE_DRAIN explicit queued execution gated by Human Gateway approval
 ```
 
-## Next Boundary
+## Current Boundary
 
-v12.44 rejects package proof signers that do not declare `package.proof.sign`. `asp-verify.mjs package-proof <manifest.json>` now requires the verified signer descriptor to carry that capability, and trusted package signer descriptors must carry it too when a trusted signer file is supplied. This is signer authorization binding for local package proofs, not JSON Schema, npm registry signing, release transparency, SBOM, package publish, hosted reachability, scheduler ownership, batch verification, upper-layer demo orchestration, or A2A/ARD compatibility.
+v12 is closed at `v12.45-protocol`. The closed v12 proof surface covers proof-bundle manifests, verifier-owned reachability scope, optional trusted external reachability evidence, Docker observer wrappers, exact verifier CLI arity, local npm package proof manifests, package tarball byte verification, package proof digest/signature verification, trusted signer pinning, metadata preflight, and signer capability binding. This is a local-first proof substrate, not hosted reachability, release transparency, SBOM, package publish, scheduler ownership, upper-layer demo orchestration, or A2A/ARD compatibility.
 
 Route detail: `docs/v12-roadmap.md`。
 
