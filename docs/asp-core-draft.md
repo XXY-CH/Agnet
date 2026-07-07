@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v11.76-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v11.77-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -135,7 +135,7 @@ Verifiers MUST check:
 - Go `FED_TASK_OPEN` policy enforcement rejects malformed worker policy `approval_required` list entries before tool approval gates can be skipped.
 - Go receipt verification rejects malformed `policy_scope` `write`, `tools`, `data_domains`, and `approval_required` list entries before accepting signed policy evidence.
 - Go receipt verification rejects malformed `policy_scope.network` and `policy_scope.expires_at` scalar fields before accepting signed policy evidence.
-- Go receipt verification rejects unsafe signed receipt `task_id` values before accepting receipt evidence.
+- Node and Go receipt verification reject unsafe signed receipt `task_id` values before accepting receipt evidence.
 
 ## FED_TASK_OPEN
 
@@ -212,6 +212,7 @@ Verifiers MUST check:
 - The receipt signature is present as a string.
 - The Zone binding resolves the worker alias and Agent ID.
 - `receipt.executing_zone` matches the signing Zone.
+- `receipt.task_id` matches the implemented token format.
 - `receipt.task_digest` is a 64-hex digest and matches supplied signed task evidence when present.
 - `receipt.to` matches the worker Agent ID.
 - The worker receipt signature is valid.

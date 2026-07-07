@@ -336,6 +336,19 @@ test("FED_RECEIPT verification rejects missing task digests in Node", async () =
   );
 });
 
+test("FED_RECEIPT verification rejects unsafe task ids in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
+  const workerPrivateKey = privateKeyFromSeed(vector.worker_seed_hex);
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  const { signature, ...receipt } = vector.frame.receipt;
+  const badReceipt = { ...receipt, task_id: "../bad/task" };
+
+  assert.throws(
+    () => verifyFederatedReceipt({ ...vector.frame, receipt: { ...badReceipt, signature: signObject(workerPrivateKey, badReceipt) } }, trustedZones),
+    /task_id invalid/,
+  );
+});
+
 test("FED_RECEIPT verification rejects signed artifact manifest hash mismatch in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
   const workerPrivateKey = privateKeyFromSeed(vector.worker_seed_hex);

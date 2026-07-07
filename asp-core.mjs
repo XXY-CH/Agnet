@@ -400,6 +400,7 @@ export function verifyFederatedReceipt(frame, trustedZones, signedTask) {
     throw new Error(`receipt worker invalid: ${error.message}`);
   }
   const { signature, ...receipt } = frame.receipt;
+  validateTaskId(receipt.task_id);
   if (receipt.executing_zone !== zone.zid) throw new Error("receipt executing_zone mismatch");
   if (!trustedZones.has(receipt.origin_zone)) throw new Error(`untrusted receipt origin zone: ${receipt.origin_zone}`);
   if (typeof receipt.task_digest !== "string" || !/^[0-9a-f]{64}$/.test(receipt.task_digest)) throw new Error("receipt task_digest missing");
