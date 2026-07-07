@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import { canonical } from "./asp-core.mjs";
@@ -36,26 +36,28 @@ test("package proof creates an npm tarball artifact", async () => {
   await rm("state/package-proof", { recursive: true, force: true });
   const { stdout } = await execFileAsync(process.execPath, ["scripts/package-proof.mjs"]);
   const proof = JSON.parse(stdout);
-  const tarball = await stat(proof.tarball);
+  const tarballPath = `state/package-proof/${proof.tarball}`;
+  const manifestPath = `state/package-proof/${proof.manifest}`;
+  const tarball = await stat(tarballPath);
 
   assert.equal(proof.package_proof, "ok");
   assert.equal(proof.name, "agnet");
   assert.equal(proof.version, "0.0.0");
   assert.equal(proof.filename, "agnet-0.0.0.tgz");
-  assert.equal(proof.tarball, "state/package-proof/agnet-0.0.0.tgz");
-  assert.equal(proof.manifest, "state/package-proof/package-proof.json");
+  assert.equal(proof.tarball, "agnet-0.0.0.tgz");
+  assert.equal(proof.manifest, "package-proof.json");
   assert.match(proof.shasum, /^[a-f0-9]{40}$/);
   assert.match(proof.integrity, /^sha512-/);
   assert.match(proof.sha256, /^[a-f0-9]{64}$/);
-  assert.equal(proof.sha256, createHash("sha256").update(await readFile(proof.tarball)).digest("hex"));
+  assert.equal(proof.sha256, createHash("sha256").update(await readFile(tarballPath)).digest("hex"));
   assert.match(proof.proof_digest, /^[a-f0-9]{64}$/);
   const { proof_digest, ...proofBody } = proof;
   assert.equal(proof_digest, createHash("sha256").update(canonical(proofBody)).digest("hex"));
   assert.equal(tarball.size, proof.size);
   assert.deepEqual(proof.files, ["README.md", "asp-core.mjs", "asp-verify.mjs", "package.json"]);
-  assert.deepEqual(JSON.parse(await readFile(proof.manifest, "utf8")), proof);
+  assert.deepEqual(JSON.parse(await readFile(manifestPath, "utf8")), proof);
 
-  const verified = JSON.parse((await execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", proof.manifest])).stdout);
+  const verified = JSON.parse((await execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", manifestPath])).stdout);
   assert.deepEqual(verified, {
     package_proof_verify: "ok",
     name: proof.name,
@@ -93,4 +95,30 @@ test("package proof verifier rejects unsafe tarball paths", async () => {
     () => execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof-escape.json"]),
     (error) => error.stderr.includes("package proof tarball path invalid"),
   );
+});
+
+test("package proof verifier resolves tarball relative to manifest", async () => {
+  await mkdir("state/package-proof-relative", { recursive: true });
+  const tarball = "agnet-relative.tgz";
+  const tarballBytes = Buffer.from("package bytes\n");
+  await writeFile(`state/package-proof-relative/${tarball}`, tarballBytes);
+  const proofBody = {
+    package_proof: "ok",
+    name: "agnet",
+    version: "0.0.0",
+    filename: tarball,
+    tarball,
+    manifest: "package-proof.json",
+    size: tarballBytes.length,
+    sha256: createHash("sha256").update(tarballBytes).digest("hex"),
+  };
+  const proof = {
+    ...proofBody,
+    proof_digest: createHash("sha256").update(canonical(proofBody)).digest("hex"),
+  };
+  await writeFile("state/package-proof-relative/package-proof.json", `${JSON.stringify(proof, null, 2)}\n`);
+
+  const verified = JSON.parse((await execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof-relative/package-proof.json"])).stdout);
+  assert.equal(verified.package_proof_verify, "ok");
+  assert.equal(verified.tarball, tarball);
 });

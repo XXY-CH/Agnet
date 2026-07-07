@@ -655,6 +655,37 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.25: Package Proof Manifest-Relative Tarball
+
+状态：complete
+目标：Make the generated package proof directory copyable by resolving safe tarball paths relative to the package proof manifest.
+
+新增：
+
+- `asp-verify.mjs package-proof <manifest.json>` resolves safe tarball paths relative to the manifest file before checking tarball SHA-256 and size.
+- `scripts/package-proof.mjs` writes `tarball` and `manifest` as package-directory-relative file names.
+- `package-contract.test.mjs` covers a manifest in a nested proof directory with a sibling tarball.
+
+不做：
+
+- 不实现 package signing。
+- 不实现 SBOM。
+- 不发布 npm package。
+- 不改变 `package.json` exports/bin/files。
+- 不改变 npm `shasum` or `integrity` handling。
+- 不改变 tarball SHA-256 calculation。
+- 不实现 external public reachability proof。
+- 不实现 hosted public node。
+- 不增加 DNS, TLS, QUIC, NAT traversal, or remote probe infrastructure。
+- 不改变 normal `fed-receipt` verification。
+- 不改变 `proof-bundle` verifier JSON output。
+- 不实现 transport negotiation。
+- 不实现 batch verifier。
+- 不实现 JSON Schema。
+- 不实现 generic proof bundle schema。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.

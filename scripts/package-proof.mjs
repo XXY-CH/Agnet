@@ -12,21 +12,21 @@ const outDir = "state/package-proof";
 await mkdir(outDir, { recursive: true });
 const { stdout } = await execFileAsync("npm", ["pack", "--json", "--pack-destination", outDir]);
 const [packed] = JSON.parse(stdout);
-const tarball = join(outDir, packed.filename);
-const manifest = join(outDir, "package-proof.json");
+const tarballPath = join(outDir, packed.filename);
+const manifestPath = join(outDir, "package-proof.json");
 
 const proofBody = {
   package_proof: "ok",
   name: packed.name,
   version: packed.version,
   filename: packed.filename,
-  tarball,
-  manifest,
+  tarball: packed.filename,
+  manifest: "package-proof.json",
   size: packed.size,
   unpacked_size: packed.unpackedSize,
   shasum: packed.shasum,
   integrity: packed.integrity,
-  sha256: createHash("sha256").update(await readFile(tarball)).digest("hex"),
+  sha256: createHash("sha256").update(await readFile(tarballPath)).digest("hex"),
   files: packed.files.map(({ path }) => path),
 };
 const proof = {
@@ -34,5 +34,5 @@ const proof = {
   proof_digest: createHash("sha256").update(canonical(proofBody)).digest("hex"),
 };
 
-await writeFile(manifest, `${JSON.stringify(proof, null, 2)}\n`);
+await writeFile(manifestPath, `${JSON.stringify(proof, null, 2)}\n`);
 console.log(JSON.stringify(proof));

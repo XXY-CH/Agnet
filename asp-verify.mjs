@@ -62,11 +62,12 @@ try {
     const proof = JSON.parse(await readFile(file, "utf8"));
     if (!proof || typeof proof !== "object" || Array.isArray(proof)) throw new Error("package proof manifest invalid");
     if (pathUnsafe(proof.tarball)) throw new Error("package proof tarball path invalid");
+    const tarballPath = join(dirname(file), proof.tarball);
     const { proof_digest: proofDigest, ...proofBody } = proof;
     requireEqual("package_proof", proof.package_proof, "ok");
     requireEqual("proof_digest", proofDigest, createHash("sha256").update(canonical(proofBody)).digest("hex"));
-    requireEqual("sha256", proof.sha256, createHash("sha256").update(await readFile(proof.tarball)).digest("hex"));
-    requireEqual("size", (await stat(proof.tarball)).size, proof.size);
+    requireEqual("sha256", proof.sha256, createHash("sha256").update(await readFile(tarballPath)).digest("hex"));
+    requireEqual("size", (await stat(tarballPath)).size, proof.size);
     console.log(JSON.stringify({ package_proof_verify: "ok", name: proof.name, version: proof.version, filename: proof.filename, tarball: proof.tarball, sha256: proof.sha256, proof_digest: proof.proof_digest }));
   } else if (command === "proof-bundle" && file && args.length === 2) {
     const baseDir = dirname(file);
