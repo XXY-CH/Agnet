@@ -64,9 +64,12 @@ try {
     if (pathUnsafe(proof.tarball)) throw new Error("package proof tarball path invalid");
     const tarballPath = join(dirname(file), proof.tarball);
     const { proof_digest: proofDigest, ...proofBody } = proof;
+    const tarballBytes = await readFile(tarballPath);
     requireEqual("package_proof", proof.package_proof, "ok");
     requireEqual("proof_digest", proofDigest, createHash("sha256").update(canonical(proofBody)).digest("hex"));
-    requireEqual("sha256", proof.sha256, createHash("sha256").update(await readFile(tarballPath)).digest("hex"));
+    requireEqual("shasum", proof.shasum, createHash("sha1").update(tarballBytes).digest("hex"));
+    requireEqual("integrity", proof.integrity, `sha512-${createHash("sha512").update(tarballBytes).digest("base64")}`);
+    requireEqual("sha256", proof.sha256, createHash("sha256").update(tarballBytes).digest("hex"));
     requireEqual("size", (await stat(tarballPath)).size, proof.size);
     console.log(JSON.stringify({ package_proof_verify: "ok", name: proof.name, version: proof.version, filename: proof.filename, tarball: proof.tarball, sha256: proof.sha256, proof_digest: proof.proof_digest }));
   } else if (command === "proof-bundle" && file && args.length === 2) {

@@ -686,6 +686,36 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.26: Package Proof npm Digest Verification
+
+状态：complete
+目标：Make the package proof verifier reject npm `shasum` and `integrity` values that do not match the tarball bytes.
+
+新增：
+
+- `asp-verify.mjs package-proof <manifest.json>` checks `shasum` as SHA-1 over the manifest-relative tarball bytes.
+- `asp-verify.mjs package-proof <manifest.json>` checks `integrity` as the npm `sha512-<base64>` string over the manifest-relative tarball bytes.
+- `package-contract.test.mjs` covers mismatched `shasum` and `integrity` fields while keeping `proof_digest` self-consistent.
+
+不做：
+
+- 不实现 package signing。
+- 不实现 SBOM。
+- 不发布 npm package。
+- 不改变 `package.json` exports/bin/files。
+- 不改变 tarball SHA-256 calculation。
+- 不实现 external public reachability proof。
+- 不实现 hosted public node。
+- 不增加 DNS, TLS, QUIC, NAT traversal, or remote probe infrastructure。
+- 不改变 normal `fed-receipt` verification。
+- 不改变 `proof-bundle` verifier JSON output。
+- 不实现 transport negotiation。
+- 不实现 batch verifier。
+- 不实现 JSON Schema。
+- 不实现 generic proof bundle schema。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.

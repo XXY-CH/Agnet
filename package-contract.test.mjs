@@ -110,6 +110,8 @@ test("package proof verifier resolves tarball relative to manifest", async () =>
     tarball,
     manifest: "package-proof.json",
     size: tarballBytes.length,
+    shasum: createHash("sha1").update(tarballBytes).digest("hex"),
+    integrity: `sha512-${createHash("sha512").update(tarballBytes).digest("base64")}`,
     sha256: createHash("sha256").update(tarballBytes).digest("hex"),
   };
   const proof = {
@@ -121,4 +123,26 @@ test("package proof verifier resolves tarball relative to manifest", async () =>
   const verified = JSON.parse((await execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof-relative/package-proof.json"])).stdout);
   assert.equal(verified.package_proof_verify, "ok");
   assert.equal(verified.tarball, tarball);
+});
+
+test("package proof verifier rejects npm digest mismatches", async () => {
+  await rm("state/package-proof", { recursive: true, force: true });
+  await execFileAsync(process.execPath, ["scripts/package-proof.mjs"]);
+  const proof = JSON.parse(await readFile("state/package-proof/package-proof.json", "utf8"));
+  const writeMutatedProof = async (path, patch) => {
+    const proofBody = { ...proof, ...patch };
+    delete proofBody.proof_digest;
+    await writeFile(path, `${JSON.stringify({ ...proofBody, proof_digest: createHash("sha256").update(canonical(proofBody)).digest("hex") }, null, 2)}\n`);
+  };
+  await writeMutatedProof("state/package-proof/shasum-mismatch.json", { shasum: "0".repeat(40) });
+  await writeMutatedProof("state/package-proof/integrity-mismatch.json", { integrity: "sha512-invalid" });
+
+  await assert.rejects(
+    () => execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof/shasum-mismatch.json"]),
+    (error) => error.stderr.includes("bundle shasum mismatch"),
+  );
+  await assert.rejects(
+    () => execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof/integrity-mismatch.json"]),
+    (error) => error.stderr.includes("bundle integrity mismatch"),
+  );
 });
