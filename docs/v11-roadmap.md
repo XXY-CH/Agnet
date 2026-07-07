@@ -1,6 +1,6 @@
 # Agent Space v11 Roadmap
 
-状态：active
+状态：closed at v11.79
 目标：v11 从 Ultimate 的 Trust & Verification 缺口继续推进，但只补能被当前 verifier/test vectors 证明的窄边界。
 
 ## v11.0: Receipt Origin Zone Trust Validation
@@ -1808,7 +1808,7 @@
 
 ## Next Candidates
 
-1. Close v11 after transport-proof verification if the full suite stays green.
-2. Start v12 with either real public reachability proof or a consumable release surface, not compatibility work.
+1. Start v12 with either real public reachability proof or a consumable release surface, not compatibility work.
+2. Keep v11 closed unless a verifier/accountability regression is found.
 3. Continue Swarm proof work only where it adds verifiable accountability without dynamic decomposition, scheduler ownership, parallel execution, cross-Zone Swarm, or a Node audit verifier.
 4. Keep compatibility work parked until the proof layer has an externally consumable release surface.

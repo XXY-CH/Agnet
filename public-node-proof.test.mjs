@@ -29,6 +29,7 @@ test("public node proof starts a public-listen gateway", async () => {
   assert.equal(result.audit_close, true);
   assert.equal(result.receipt_frame, "state/public-node-proof-fed-receipt.json");
   assert.equal(result.trusted_zones, "state/public-node-proof-trusted-zones.json");
+  assert.equal(result.bundle_manifest, "state/public-node-proof-bundle.json");
   assert.equal(result.artifact_file, "artifacts/public_node_probe_task/go-summary.md");
   assert.equal(result.fed_receipt_artifacts_verify, "ok");
   assert.equal(result.artifact_count, 1);
@@ -48,6 +49,7 @@ test("public node proof starts a public-listen gateway", async () => {
   assert.equal(result.swarm_close_trusted_zones, "state/public-node-proof-swarm-close-trusted-zones.json");
 
   const receiptFrame = JSON.parse(await readFile(result.receipt_frame, "utf8"));
+  const bundle = JSON.parse(await readFile(result.bundle_manifest, "utf8"));
   const closeFrame = JSON.parse(await readFile(result.swarm_close_frame, "utf8"));
   const closeTrustedZones = JSON.parse(await readFile(result.swarm_close_trusted_zones, "utf8"));
   assert.equal(closeFrame.type, "FED_SWARM_CLOSE");
@@ -78,6 +80,19 @@ test("public node proof starts a public-listen gateway", async () => {
     listen_host: result.listen_host,
     port: result.port,
     public_transport: result.public_transport,
+  });
+  assert.deepEqual(bundle, {
+    proof: "public-node-proof",
+    receipt_frame: result.receipt_frame,
+    trusted_zones: result.trusted_zones,
+    receipt_digest: result.receipt_digest,
+    artifact_uris: result.artifact_uris,
+    artifact_sha256s: result.artifact_sha256s,
+    artifact_manifest_hashes: result.artifact_manifest_hashes,
+    transport_proof: receiptFrame.receipt.transport_proof,
+    swarm_close_frame: result.swarm_close_frame,
+    swarm_close_trusted_zones: result.swarm_close_trusted_zones,
+    swarm_close_digest: result.swarm_close_digest,
   });
   const verified = await execFileAsync(process.execPath, ["asp-verify.mjs", "fed-receipt", result.receipt_frame, result.trusted_zones]);
   assert.deepEqual(JSON.parse(verified.stdout), { fed_receipt_verify: "ok", task_id: "public_node_probe_task", receipt_digest: receiptDigest });

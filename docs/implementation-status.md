@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v11.79 active
-当前代码基线：`v11.79-public-transport-receipt-proof`
+状态：v12.0 active
+当前代码基线：`v12.0-public-proof-bundle-manifest`
 
 ## 一句话
 
@@ -213,8 +213,8 @@ Go
 
 ## Next Boundary
 
-v11.79 makes the local public-listen proof bind configured federation transport evidence into the signed Go receipt body. This keeps the proof boundary narrow: it does not claim hosted public reachability, endpoint discovery, TLS/QUIC upgrade, scheduler ownership, automatic drain, or A2A/ARD compatibility. The next natural boundary is v11 closeout followed by v12: either real external public reachability evidence or a consumable release surface.
+v12.0 makes the local public-listen proof emit one verifier-facing proof bundle manifest over existing receipt, trust, artifact, transport, and Swarm close proof files. This keeps the proof boundary narrow: it does not claim hosted public reachability, package signing, SBOM, scheduler ownership, batch verification, or A2A/ARD compatibility.
 
-Route detail: `docs/v11-roadmap.md`。
+Route detail: `docs/v12-roadmap.md`。
 
 Skipped until later: DID-native resolver/document/service routing, browser multi-key manager, requester selector UI, alias delete/disable, server-side rotation registry, encrypted key store, passphrase-protected export, public transport/QUIC, full login/session system, token rotation/storage, dynamic policy service, policy UI, distributed nonce service, package signature verification, SBOM, long-running MCP sessions, container namespace sandbox, object-store artifact backend, Git/worktree/merge operations, scheduler queues, dynamic Swarm decomposition, parallel Swarm execution, semantic routing, A2A/ARD compatibility.
