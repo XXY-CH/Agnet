@@ -2477,3 +2477,37 @@ test("v12 public docs agree that the proof-surface milestone is closed", async (
   assert.match(boundary, /Close v12 as the externally consumable proof-surface milestone/);
   assert.match(boundary, /upper-layer demo\/master-agent orchestration/);
 });
+
+test("v13 public docs open the Ultimate-facing protocol milestone without scope drift", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v13-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v13.0-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v13 active at `v13\.0-protocol`/);
+  assert.match(readme, /`docs\/v13-roadmap\.md` - active v13 roadmap\./);
+  assert.match(readme, /`docs\/v13\.0-boundary\.md` - v13 opening boundary\./);
+  assert.match(roadmap, /状态：active at v13\.0/);
+  assert.match(roadmap, /v13 uses larger evidence gates instead of many tiny versions/);
+  assert.match(roadmap, /## v13\.1: Hosted Public Reachability Evidence/);
+  assert.match(roadmap, /## v13\.2: Release Trust and SBOM/);
+  assert.match(roadmap, /## v13\.3: Strong Sandbox and Remote Attestation/);
+  assert.match(roadmap, /## v13\.4: Semantic Discovery and Reputation Ranking/);
+  assert.match(roadmap, /## v13\.5: Dynamic Swarm Scheduling/);
+  assert.match(roadmap, /upper-layer demo\/master-agent orchestration stays outside this repository/);
+  assert.match(roadmap, /A2A\/ARD compatibility stays parked/);
+  assert.match(draft, /local-first prototype at `v13\.0-protocol`/);
+  assert.match(status, /状态：v13 active at v13\.0/);
+  assert.match(status, /v13.0-opening-alignment/);
+  assert.match(status, /v13 is open but has not yet added hosted reachability, semantic ranking, dynamic scheduling, remote attestation, or SBOM runtime capability/);
+  assert.match(boundary, /Open v13 as the Ultimate-facing protocol milestone/);
+  assert.match(boundary, /real hosted\/public reachability/);
+  assert.match(boundary, /semantic discovery\/reputation ranking/);
+  assert.match(boundary, /dynamic Swarm scheduling/);
+  assert.match(boundary, /strong sandbox\/remote attestation/);
+  assert.match(boundary, /release trust\/SBOM/);
+  assert.match(boundary, /no fake public reachability without external-host evidence/);
+});
