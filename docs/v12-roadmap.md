@@ -1040,6 +1040,29 @@
 - 不实现 scheduler-owned routing。
 - 不实现 A2A/ARD compatibility。
 
+## v12.40: Trusted Signer List Shape
+
+状态：complete
+目标：Make trusted package signer files reject missing signer lists without leaking JavaScript type errors.
+
+新增：
+
+- `asp-verify.mjs package-proof <manifest.json> <trusted-signers.json>` rejects `null` trusted signer files with `trusted package signer list missing`.
+- The trusted signer loader checks the parsed trust file is an object or array before reading `signers`.
+- `package-contract.test.mjs` covers null trusted signer list rejection.
+
+不做：
+
+- 不实现 JSON Schema。
+- 不实现 npm registry signing。
+- 不实现 release transparency。
+- 不实现 SBOM。
+- 不实现 package publish。
+- 不实现 hosted public node。
+- 不实现 real outside-host reachability。
+- 不实现 scheduler-owned routing。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Run `scripts/external-reachability-observer.mjs` or the Docker wrapper from a real outside host against a hosted/public node using the v12.35 evidence shape.

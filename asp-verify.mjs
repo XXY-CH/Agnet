@@ -40,6 +40,7 @@ function packageFilesInvalid(files) {
 
 async function loadTrustedPackageSigners(file) {
   const trust = JSON.parse(await readFile(file, "utf8"));
+  if (!trust || typeof trust !== "object") throw new Error("trusted package signer list missing");
   const signers = Array.isArray(trust) ? trust : trust.signers;
   if (!Array.isArray(signers)) throw new Error("trusted package signer list missing");
   return new Map(signers.map((descriptor) => {

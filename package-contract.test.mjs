@@ -198,6 +198,17 @@ test("package proof verifier rejects untrusted package signers", async () => {
   );
 });
 
+test("package proof verifier rejects null trusted package signer lists", async () => {
+  await rm("state/package-proof", { recursive: true, force: true });
+  await execFileAsync(process.execPath, ["scripts/package-proof.mjs"]);
+  await writeFile("state/package-proof/null-trusted-signers.json", "null\n");
+
+  await assert.rejects(
+    () => execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof/package-proof.json", "state/package-proof/null-trusted-signers.json"]),
+    (error) => error.stderr.includes("trusted package signer list missing"),
+  );
+});
+
 test("package proof verifier rejects npm digest mismatches", async () => {
   await rm("state/package-proof", { recursive: true, force: true });
   await execFileAsync(process.execPath, ["scripts/package-proof.mjs"]);

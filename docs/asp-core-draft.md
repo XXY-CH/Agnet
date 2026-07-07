@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v12.39-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v12.40-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -357,6 +357,8 @@ When `proof-bundle` receives an additional caller-supplied trusted-Zone file, it
 The package proof manifest includes `proof_digest`, computed as `sha256(canonical(proof without proof_digest or signature))`. It also includes a package proof signer Agent descriptor and `signature`, signed over that same proof body by the signer key.
 
 The package proof verifier command accepts `package-proof <manifest.json> [trusted-signers.json]` and checks the persisted package proof manifest against the generated tarball's byte SHA-256, npm SHA-1 shasum, npm SHA-512 integrity string, file size, canonical proof digest, signer descriptor, and package proof signature.
+
+When a trusted signer file is supplied, it MUST be either a raw descriptor array or an object with a `signers` array. Null files and objects without signer lists fail with `trusted package signer list missing`.
 
 The package proof verifier rejects `null` and array manifests before reading package proof fields.
 
