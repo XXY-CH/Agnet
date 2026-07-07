@@ -53,15 +53,19 @@ try {
     const bundle = JSON.parse(await readFile(file, "utf8"));
     if (!bundle || typeof bundle !== "object" || Array.isArray(bundle)) throw new Error("bundle manifest invalid");
     requireEqual("proof", bundle.proof, "public-node-proof");
-    const receiptFrame = JSON.parse(await readFile(bundlePath(baseDir, "receipt_frame", bundle.receipt_frame), "utf8"));
-    const receiptVerified = verifyFederatedReceipt(receiptFrame, await loadTrustedZones(bundlePath(baseDir, "trusted_zones", bundle.trusted_zones)));
+    const receiptFramePath = bundlePath(baseDir, "receipt_frame", bundle.receipt_frame);
+    const trustedZonesPath = bundlePath(baseDir, "trusted_zones", bundle.trusted_zones);
+    const swarmCloseFramePath = bundlePath(baseDir, "swarm_close_frame", bundle.swarm_close_frame);
+    const swarmCloseTrustedZonesPath = bundlePath(baseDir, "swarm_close_trusted_zones", bundle.swarm_close_trusted_zones);
+    const receiptFrame = JSON.parse(await readFile(receiptFramePath, "utf8"));
+    const receiptVerified = verifyFederatedReceipt(receiptFrame, await loadTrustedZones(trustedZonesPath));
     const manifests = receiptVerified.receipt.artifact_manifests ?? [];
     if ((receiptVerified.receipt.artifact_refs?.length ?? 0) > 0 && manifests.length === 0) {
       throw new Error("receipt artifact manifests missing");
     }
     for (const manifest of manifests) await verifyLocalArtifact(manifest);
-    const closeFrame = JSON.parse(await readFile(bundlePath(baseDir, "swarm_close_frame", bundle.swarm_close_frame), "utf8"));
-    const closeVerified = verifySwarmClose(closeFrame, await loadTrustedZones(bundlePath(baseDir, "swarm_close_trusted_zones", bundle.swarm_close_trusted_zones)));
+    const closeFrame = JSON.parse(await readFile(swarmCloseFramePath, "utf8"));
+    const closeVerified = verifySwarmClose(closeFrame, await loadTrustedZones(swarmCloseTrustedZonesPath));
     requireEqual("receipt_digest", bundle.receipt_digest, receiptDigest(receiptVerified.signedReceipt));
     requireEqual("artifact_uris", bundle.artifact_uris, manifests.map(({ uri }) => uri));
     requireEqual("artifact_sha256s", bundle.artifact_sha256s, manifests.map(({ sha256 }) => sha256));

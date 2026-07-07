@@ -158,6 +158,30 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.7: Proof Bundle Path Preflight
+
+状态：complete
+目标：Make proof bundle verification validate every proof-file path before opening any proof files.
+
+新增：
+
+- `asp-verify.mjs proof-bundle <bundle.json>` resolves and validates `receipt_frame`, `trusted_zones`, `swarm_close_frame`, and `swarm_close_trusted_zones` before reading any of them.
+- Unsafe later path fields fail with their own field-specific error even if an earlier path is safe but missing.
+- `public-node-proof.test.mjs` covers an escaping `swarm_close_frame` masked by a missing `receipt_frame`.
+
+不做：
+
+- 不实现 JSON Schema。
+- 不实现 generic proof bundle schema。
+- 不实现 artifact byte relocation。
+- 不实现 hosted public node。
+- 不实现 external public reachability proof。
+- 不实现 package publish/signing。
+- 不实现 SBOM。
+- 不实现 batch verifier。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.
