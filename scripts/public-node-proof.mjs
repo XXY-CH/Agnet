@@ -1,7 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import net from "node:net";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { basename, dirname } from "node:path";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 import { canonical, createAgent, createZone, publicKeyFromDescriptor, signObject, verifyObject, zoneBinding } from "../asp-core.mjs";
@@ -79,15 +79,15 @@ for await (const chunk of child.stdout) {
   child.kill("SIGTERM");
   const bundle = {
     proof: "public-node-proof",
-    receipt_frame: receiptFramePath,
-    trusted_zones: receiptTrustedPath,
+    receipt_frame: basename(receiptFramePath),
+    trusted_zones: basename(receiptTrustedPath),
     receipt_digest: artifactProof.receipt_digest,
     artifact_uris: artifactProof.artifact_uris,
     artifact_sha256s: artifactProof.artifact_sha256s,
     artifact_manifest_hashes: artifactProof.artifact_manifest_hashes,
     transport_proof: receiptFrame.receipt.transport_proof,
-    swarm_close_frame: swarmCloseFramePath,
-    swarm_close_trusted_zones: swarmCloseTrustedPath,
+    swarm_close_frame: basename(swarmCloseFramePath),
+    swarm_close_trusted_zones: basename(swarmCloseTrustedPath),
     swarm_close_digest: swarm.closeDigest,
   };
   await writeFile(bundleManifestPath, `${JSON.stringify(bundle, null, 2)}\n`);

@@ -84,15 +84,15 @@ test("public node proof starts a public-listen gateway", async () => {
   });
   assert.deepEqual(bundle, {
     proof: "public-node-proof",
-    receipt_frame: result.receipt_frame,
-    trusted_zones: result.trusted_zones,
+    receipt_frame: "public-node-proof-fed-receipt.json",
+    trusted_zones: "public-node-proof-trusted-zones.json",
     receipt_digest: result.receipt_digest,
     artifact_uris: result.artifact_uris,
     artifact_sha256s: result.artifact_sha256s,
     artifact_manifest_hashes: result.artifact_manifest_hashes,
     transport_proof: receiptFrame.receipt.transport_proof,
-    swarm_close_frame: result.swarm_close_frame,
-    swarm_close_trusted_zones: result.swarm_close_trusted_zones,
+    swarm_close_frame: "public-node-proof-swarm-close.json",
+    swarm_close_trusted_zones: "public-node-proof-swarm-close-trusted-zones.json",
     swarm_close_digest: result.swarm_close_digest,
   });
   const verified = await execFileAsync(process.execPath, ["asp-verify.mjs", "fed-receipt", result.receipt_frame, result.trusted_zones]);
@@ -104,16 +104,16 @@ test("public node proof starts a public-listen gateway", async () => {
   const verifiedBundle = await execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", result.bundle_manifest]);
   assert.deepEqual(JSON.parse(verifiedBundle.stdout), {
     proof_bundle_verify: "ok",
-    receipt_frame: result.receipt_frame,
-    trusted_zones: result.trusted_zones,
+    receipt_frame: bundle.receipt_frame,
+    trusted_zones: bundle.trusted_zones,
     receipt_digest: receiptDigest,
     artifact_count: 1,
     artifact_uris: result.artifact_uris,
     artifact_sha256s: [artifactSha256],
     artifact_manifest_hashes: [artifactManifestHash],
     transport_proof: receiptFrame.receipt.transport_proof,
-    swarm_close_frame: result.swarm_close_frame,
-    swarm_close_trusted_zones: result.swarm_close_trusted_zones,
+    swarm_close_frame: bundle.swarm_close_frame,
+    swarm_close_trusted_zones: bundle.swarm_close_trusted_zones,
     swarm_close_digest: result.swarm_close_digest,
   });
   const tamperedBundlePath = "state/public-node-proof-bundle-tampered.json";

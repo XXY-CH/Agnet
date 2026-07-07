@@ -67,6 +67,28 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.3: Bundle-Relative Proof File Paths
+
+状态：complete
+目标：Make the proof bundle's proof file paths resolve relative to the bundle manifest file.
+
+新增：
+
+- `scripts/public-node-proof.mjs` writes proof file references like `public-node-proof-fed-receipt.json` inside the bundle instead of `state/...`.
+- `asp-verify.mjs proof-bundle <bundle.json>` resolves relative proof file paths from the bundle directory.
+- `public-node-proof.test.mjs` asserts the bundle contains self-relative proof file paths.
+
+不做：
+
+- 不实现 artifact byte relocation。
+- 不实现 hosted public node。
+- 不实现 external public reachability proof。
+- 不实现 package publish/signing。
+- 不实现 SBOM。
+- 不实现 batch verifier。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.

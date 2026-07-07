@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v12.2 active
-当前代码基线：`v12.2-public-proof-summary-bundle-verify`
+状态：v12.3 active
+当前代码基线：`v12.3-bundle-relative-proof-paths`
 
 ## 一句话
 
@@ -213,7 +213,7 @@ Go
 
 ## Next Boundary
 
-v12.2 makes the local public-listen proof summary include `proof_bundle_verify: "ok"` from `asp-verify.mjs proof-bundle`, so the one-command public proof reports that its verifier-facing bundle is already consumable. This keeps the proof boundary narrow: it does not claim hosted public reachability, package signing, SBOM, scheduler ownership, batch verification, or A2A/ARD compatibility.
+v12.3 makes the public proof bundle's proof file paths relative to the bundle manifest file and makes `asp-verify.mjs proof-bundle` resolve those paths from the bundle directory. This keeps the proof boundary narrow: it does not claim relocatable artifact bytes, hosted public reachability, package signing, SBOM, scheduler ownership, batch verification, or A2A/ARD compatibility.
 
 Route detail: `docs/v12-roadmap.md`。
 

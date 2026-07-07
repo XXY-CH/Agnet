@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { dirname, isAbsolute, join } from "node:path";
 import { canonical, loadTrustedZones, verifyFederatedReceipt, verifyLocalArtifact, verifySwarmClose } from "./asp-core.mjs";
 
 const [command, file, trustedFile, taskFile] = process.argv.slice(2);
@@ -14,6 +15,10 @@ function requireEqual(name, actual, expected) {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
     throw new Error(`bundle ${name} mismatch`);
   }
+}
+
+function bundlePath(baseDir, target) {
+  return isAbsolute(target) ? target : join(baseDir, target);
 }
 
 try {
@@ -41,16 +46,17 @@ try {
     const verified = verifySwarmClose(frame, await loadTrustedZones(trustedFile));
     console.log(JSON.stringify({ swarm_close_verify: "ok", swarm_id: verified.close.swarm_id, swarm_close_digest: verified.closeDigest }));
   } else if (command === "proof-bundle" && file) {
+    const baseDir = dirname(file);
     const bundle = JSON.parse(await readFile(file, "utf8"));
-    const receiptFrame = JSON.parse(await readFile(bundle.receipt_frame, "utf8"));
-    const receiptVerified = verifyFederatedReceipt(receiptFrame, await loadTrustedZones(bundle.trusted_zones));
+    const receiptFrame = JSON.parse(await readFile(bundlePath(baseDir, bundle.receipt_frame), "utf8"));
+    const receiptVerified = verifyFederatedReceipt(receiptFrame, await loadTrustedZones(bundlePath(baseDir, bundle.trusted_zones)));
     const manifests = receiptVerified.receipt.artifact_manifests ?? [];
     if ((receiptVerified.receipt.artifact_refs?.length ?? 0) > 0 && manifests.length === 0) {
       throw new Error("receipt artifact manifests missing");
     }
     for (const manifest of manifests) await verifyLocalArtifact(manifest);
-    const closeFrame = JSON.parse(await readFile(bundle.swarm_close_frame, "utf8"));
-    const closeVerified = verifySwarmClose(closeFrame, await loadTrustedZones(bundle.swarm_close_trusted_zones));
+    const closeFrame = JSON.parse(await readFile(bundlePath(baseDir, bundle.swarm_close_frame), "utf8"));
+    const closeVerified = verifySwarmClose(closeFrame, await loadTrustedZones(bundlePath(baseDir, bundle.swarm_close_trusted_zones)));
     requireEqual("proof", bundle.proof, "public-node-proof");
     requireEqual("receipt_digest", bundle.receipt_digest, receiptDigest(receiptVerified.signedReceipt));
     requireEqual("artifact_uris", bundle.artifact_uris, manifests.map(({ uri }) => uri));
