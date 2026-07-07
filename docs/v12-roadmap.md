@@ -1015,9 +1015,34 @@
 - 不实现 scheduler-owned routing。
 - 不实现 A2A/ARD compatibility。
 
+## v12.39: Package Proof Trusted Signer Pin
+
+状态：complete
+目标：Let package proof verification pin the signer to a caller-supplied trusted signer file.
+
+新增：
+
+- `asp-verify.mjs package-proof <manifest.json> [trusted-signers.json]` accepts an optional trusted signer file.
+- Trusted signer files may be `{ "signers": [...] }` or raw descriptor arrays.
+- Trusted signer descriptors are validated through the existing Agent descriptor path.
+- When supplied, the trusted signer set must include the package proof signer `aid`.
+- Successful trusted verification returns `signer_trusted: true`.
+- `package-contract.test.mjs` covers trusted signer acceptance and untrusted signer rejection.
+
+不做：
+
+- 不实现 npm registry signing。
+- 不实现 release transparency。
+- 不实现 SBOM。
+- 不实现 package publish。
+- 不实现 hosted public node。
+- 不实现 real outside-host reachability。
+- 不实现 scheduler-owned routing。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Run `scripts/external-reachability-observer.mjs` or the Docker wrapper from a real outside host against a hosted/public node using the v12.35 evidence shape.
-2. Add external signer trust pin or SBOM against the produced package artifact only when that trust/SBOM format is explicitly scoped.
+2. Add release transparency or SBOM against the produced package artifact only when that trust/SBOM format is explicitly scoped.
 3. Keep upper-layer demo/orchestration work parked outside this repository until the core proof substrate has externally consumable hosted-node evidence.
 4. Keep compatibility work parked until the proof layer has externally consumable hosted-node evidence.

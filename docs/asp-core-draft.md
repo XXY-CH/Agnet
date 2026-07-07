@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v12.38-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v12.39-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -356,7 +356,7 @@ When `proof-bundle` receives an additional caller-supplied trusted-Zone file, it
 
 The package proof manifest includes `proof_digest`, computed as `sha256(canonical(proof without proof_digest or signature))`. It also includes a package proof signer Agent descriptor and `signature`, signed over that same proof body by the signer key.
 
-The package proof verifier command checks the persisted package proof manifest against the generated tarball's byte SHA-256, npm SHA-1 shasum, npm SHA-512 integrity string, file size, canonical proof digest, signer descriptor, and package proof signature.
+The package proof verifier command accepts `package-proof <manifest.json> [trusted-signers.json]` and checks the persisted package proof manifest against the generated tarball's byte SHA-256, npm SHA-1 shasum, npm SHA-512 integrity string, file size, canonical proof digest, signer descriptor, and package proof signature.
 
 The package proof verifier rejects `null` and array manifests before reading package proof fields.
 
@@ -376,7 +376,7 @@ The package proof verifier rejects npm `shasum` or `integrity` values that do no
 
 After successful package proof verification, the verifier JSON returns the verified package name, version, filename, tarball path, size, npm shasum, npm integrity, ASP SHA-256, proof digest, and signer Agent ID.
 
-The implemented package proof signature is an ASP object signature over local package proof metadata. It is not npm registry signing, external signer trust pinning, package publish, or SBOM.
+The implemented package proof signature is an ASP object signature over local package proof metadata. It is not npm registry signing, release transparency, package publish, or SBOM.
 
 Implemented Go checks:
 

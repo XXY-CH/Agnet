@@ -38,6 +38,17 @@ function packageFilesInvalid(files) {
   return !Array.isArray(files) || files.length === 0 || files.some(pathUnsafe) || new Set(files).size !== files.length;
 }
 
+async function loadTrustedPackageSigners(file) {
+  const trust = JSON.parse(await readFile(file, "utf8"));
+  const signers = Array.isArray(trust) ? trust : trust.signers;
+  if (!Array.isArray(signers)) throw new Error("trusted package signer list missing");
+  return new Map(signers.map((descriptor) => {
+    if (!descriptor || typeof descriptor !== "object" || Array.isArray(descriptor)) throw new Error("trusted package signer descriptor missing");
+    const signer = resolveAgent(new Map([[descriptor.alias, descriptor]]), descriptor.alias);
+    return [signer.descriptor.aid, signer.descriptor];
+  }));
+}
+
 async function verifyExternalReachability(bundle, transportProof, receiptDigest, trustedFile) {
   if (trustedFile && !bundle.external_reachability) throw new Error("external reachability missing");
   if (!bundle.external_reachability) return null;
@@ -80,7 +91,7 @@ try {
     const frame = JSON.parse(await readFile(file, "utf8"));
     const verified = verifySwarmClose(frame, await loadTrustedZones(trustedFile));
     console.log(JSON.stringify({ swarm_close_verify: "ok", swarm_id: verified.close.swarm_id, swarm_close_digest: verified.closeDigest }));
-  } else if (command === "package-proof" && file && args.length === 2) {
+  } else if (command === "package-proof" && file && (args.length === 2 || (args.length === 3 && trustedFile))) {
     const proof = JSON.parse(await readFile(file, "utf8"));
     if (!proof || typeof proof !== "object" || Array.isArray(proof)) throw new Error("package proof manifest invalid");
     if (pathUnsafe(proof.tarball)) throw new Error("package proof tarball path invalid");
@@ -93,6 +104,8 @@ try {
     if (typeof signature !== "string" || signature === "") throw new Error("package proof signature missing");
     const signer = resolveAgent(new Map([[proof.signer.alias, proof.signer]]), proof.signer.alias);
     if (!verifyObject(signer.publicKey, proofBody, signature)) throw new Error("package proof signature invalid");
+    const trustedSigners = trustedFile ? await loadTrustedPackageSigners(trustedFile) : null;
+    if (trustedSigners && !trustedSigners.has(signer.descriptor.aid)) throw new Error("package proof signer untrusted");
     requireEqual("manifest", proof.manifest, basename(file));
     requireEqual("filename", proof.filename, proof.tarball.split("/").at(-1));
     requireEqual("package identity", proof.filename, `${proof.name}-${proof.version}.tgz`);
@@ -101,7 +114,7 @@ try {
     requireEqual("integrity", proof.integrity, `sha512-${createHash("sha512").update(tarballBytes).digest("base64")}`);
     requireEqual("sha256", proof.sha256, createHash("sha256").update(tarballBytes).digest("hex"));
     requireEqual("size", (await stat(tarballPath)).size, proof.size);
-    console.log(JSON.stringify({ package_proof_verify: "ok", name: proof.name, version: proof.version, filename: proof.filename, tarball: proof.tarball, size: proof.size, shasum: proof.shasum, integrity: proof.integrity, sha256: proof.sha256, proof_digest: proof.proof_digest, signer_aid: proof.signer.aid }));
+    console.log(JSON.stringify({ package_proof_verify: "ok", name: proof.name, version: proof.version, filename: proof.filename, tarball: proof.tarball, size: proof.size, shasum: proof.shasum, integrity: proof.integrity, sha256: proof.sha256, proof_digest: proof.proof_digest, signer_aid: signer.descriptor.aid, ...(trustedSigners ? { signer_trusted: true } : {}) }));
   } else if (command === "proof-bundle" && file && (args.length === 2 || (args.length === 3 && trustedFile))) {
     const baseDir = dirname(file);
     const bundle = JSON.parse(await readFile(file, "utf8"));
@@ -140,7 +153,7 @@ try {
     if (externalObserverZid) output.external_observer_zid = externalObserverZid;
     console.log(JSON.stringify(output));
   } else {
-    throw new Error("usage: node asp-verify.mjs artifact <manifest.json> | fed-receipt <frame.json> <trusted-zones.json> [task.json] | fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] | swarm-close <frame.json> <trusted-zones.json> | package-proof <manifest.json> | proof-bundle <bundle.json> [external-trusted-zones.json]");
+    throw new Error("usage: node asp-verify.mjs artifact <manifest.json> | fed-receipt <frame.json> <trusted-zones.json> [task.json] | fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] | swarm-close <frame.json> <trusted-zones.json> | package-proof <manifest.json> [trusted-signers.json] | proof-bundle <bundle.json> [external-trusted-zones.json]");
   }
 } catch (error) {
   console.error(error.message);

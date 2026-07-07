@@ -169,6 +169,35 @@ test("package proof verifier rejects invalid ASP signatures", async () => {
   );
 });
 
+test("package proof verifier accepts trusted package signers", async () => {
+  await rm("state/package-proof", { recursive: true, force: true });
+  await execFileAsync(process.execPath, ["scripts/package-proof.mjs"]);
+  const proof = JSON.parse(await readFile("state/package-proof/package-proof.json", "utf8"));
+  await writeFile("state/package-proof/trusted-signers.json", `${JSON.stringify({ signers: [proof.signer] }, null, 2)}\n`);
+
+  const verified = JSON.parse((await execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof/package-proof.json", "state/package-proof/trusted-signers.json"])).stdout);
+
+  assert.equal(verified.package_proof_verify, "ok");
+  assert.equal(verified.signer_aid, proof.signer.aid);
+  assert.equal(verified.signer_trusted, true);
+
+  await writeFile("state/package-proof/trusted-signers-array.json", `${JSON.stringify([proof.signer], null, 2)}\n`);
+  const rawArrayVerified = JSON.parse((await execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof/package-proof.json", "state/package-proof/trusted-signers-array.json"])).stdout);
+  assert.equal(rawArrayVerified.signer_trusted, true);
+});
+
+test("package proof verifier rejects untrusted package signers", async () => {
+  await rm("state/package-proof", { recursive: true, force: true });
+  await execFileAsync(process.execPath, ["scripts/package-proof.mjs"]);
+  const other = await loadOrCreateAgent("agent://package-proof/other-signer", "state/keys/package-proof-other-signer.pkcs8", {}, ["asp+local://package-proof"], ["package.proof.sign"]);
+  await writeFile("state/package-proof/untrusted-signers.json", `${JSON.stringify({ signers: [other.descriptor] }, null, 2)}\n`);
+
+  await assert.rejects(
+    () => execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof/package-proof.json", "state/package-proof/untrusted-signers.json"]),
+    (error) => error.stderr.includes("package proof signer untrusted"),
+  );
+});
+
 test("package proof verifier rejects npm digest mismatches", async () => {
   await rm("state/package-proof", { recursive: true, force: true });
   await execFileAsync(process.execPath, ["scripts/package-proof.mjs"]);
