@@ -117,6 +117,7 @@ for await (const chunk of child.stdout) {
     trusted_zones: receiptTrustedPath,
     bundle_manifest: bundleManifestPath,
     proof_bundle_verify: bundleProof.proof_bundle_verify,
+    reachability_scope: bundleProof.reachability_scope,
     artifact_file: artifact.file,
     fed_receipt_artifacts_verify: artifactProof.fed_receipt_artifacts_verify,
     artifact_count: artifactProof.artifact_count,

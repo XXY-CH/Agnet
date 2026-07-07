@@ -44,6 +44,7 @@ test("public node proof starts a public-listen gateway", async () => {
   assert.equal(result.trusted_zones, "state/public-node-proof-trusted-zones.json");
   assert.equal(result.bundle_manifest, "state/public-node-proof-bundle.json");
   assert.equal(result.proof_bundle_verify, "ok");
+  assert.equal(result.reachability_scope, "local-interface");
   assert.equal(result.artifact_file, "artifacts/public_node_probe_task/go-summary.md");
   assert.equal(result.fed_receipt_artifacts_verify, "ok");
   assert.equal(result.artifact_count, 1);
@@ -125,6 +126,7 @@ test("public node proof starts a public-listen gateway", async () => {
     artifact_sha256s: [artifactSha256],
     artifact_manifest_hashes: [artifactManifestHash],
     transport_proof: receiptFrame.receipt.transport_proof,
+    reachability_scope: "local-interface",
     swarm_close_frame: bundle.swarm_close_frame,
     swarm_close_trusted_zones: bundle.swarm_close_trusted_zones,
     swarm_close_digest: result.swarm_close_digest,

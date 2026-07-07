@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v12.15 active
-当前代码基线：`v12.15-proof-bundle-unspecified-host`
+状态：v12.16 active
+当前代码基线：`v12.16-proof-bundle-reachability-scope`
 
 ## 一句话
 
@@ -213,7 +213,7 @@ Go
 
 ## Next Boundary
 
-v12.15 makes `asp-verify.mjs proof-bundle` and Go `public_transport` reject unspecified signed transport proofs by requiring verified receipt transport evidence with `transport: "fed+tcp"`, non-loopback non-unspecified `listen_host`, decimal-string `port`, and `public_transport: true`. This keeps the proof boundary narrow: it does not claim remote-host reachability, JSON Schema, relocatable artifact bytes, hosted public reachability, package signing, SBOM, scheduler ownership, batch verification, or A2A/ARD compatibility.
+v12.16 makes `asp-verify.mjs proof-bundle` report verifier-owned `reachability_scope: "local-interface"` and makes `scripts/public-node-proof.mjs` forward that value. This keeps the proof boundary narrow: it does not claim remote-host reachability, JSON Schema, relocatable artifact bytes, hosted public reachability, package signing, SBOM, scheduler ownership, batch verification, or A2A/ARD compatibility.
 
 Route detail: `docs/v12-roadmap.md`。
 
