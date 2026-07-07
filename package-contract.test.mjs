@@ -66,3 +66,17 @@ test("package proof creates an npm tarball artifact", async () => {
     proof_digest: proof.proof_digest,
   });
 });
+
+test("package proof verifier rejects non-object manifests", async () => {
+  await writeFile("state/package-proof-null.json", "null\n");
+  await writeFile("state/package-proof-array.json", "[]\n");
+
+  await assert.rejects(
+    () => execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof-null.json"]),
+    (error) => error.stderr.includes("package proof manifest invalid"),
+  );
+  await assert.rejects(
+    () => execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof-array.json"]),
+    (error) => error.stderr.includes("package proof manifest invalid"),
+  );
+});

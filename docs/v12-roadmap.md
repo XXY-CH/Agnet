@@ -592,6 +592,37 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.23: Package Proof Manifest Object Gate
+
+状态：complete
+目标：Make the package proof verifier fail closed before reading fields from non-object manifests.
+
+新增：
+
+- `asp-verify.mjs package-proof <manifest.json>` rejects `null` and array package proof manifests with `package proof manifest invalid`.
+- `package-contract.test.mjs` covers both non-object manifest shapes.
+
+不做：
+
+- 不实现 package signing。
+- 不实现 SBOM。
+- 不发布 npm package。
+- 不改变 `package.json` exports/bin/files。
+- 不改变 npm `shasum` or `integrity` handling。
+- 不改变 tarball SHA-256 calculation。
+- 不实现 relocatable package proof format。
+- 不实现 external public reachability proof。
+- 不实现 hosted public node。
+- 不增加 DNS, TLS, QUIC, NAT traversal, or remote probe infrastructure。
+- 不改变 normal `fed-receipt` verification。
+- 不改变 `proof-bundle` verifier JSON output。
+- 不实现 transport negotiation。
+- 不实现 batch verifier。
+- 不实现 JSON Schema。
+- 不实现 generic proof bundle schema。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.

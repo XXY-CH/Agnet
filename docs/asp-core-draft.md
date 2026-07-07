@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v12.22-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v12.23-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -350,6 +350,8 @@ The `proof-bundle` verifier reports `reachability_scope: "local-interface"` for 
 The package proof manifest includes `proof_digest`, computed as `sha256(canonical(proof without proof_digest))`. This binds the proof manifest body without choosing a package signature or SBOM format.
 
 The package proof verifier command checks the persisted package proof manifest against the generated tarball's byte SHA-256, file size, and canonical proof digest.
+
+The package proof verifier rejects `null` and array manifests before reading package proof fields.
 
 Implemented Go checks:
 

@@ -56,6 +56,7 @@ try {
     console.log(JSON.stringify({ swarm_close_verify: "ok", swarm_id: verified.close.swarm_id, swarm_close_digest: verified.closeDigest }));
   } else if (command === "package-proof" && file && args.length === 2) {
     const proof = JSON.parse(await readFile(file, "utf8"));
+    if (!proof || typeof proof !== "object" || Array.isArray(proof)) throw new Error("package proof manifest invalid");
     const { proof_digest: proofDigest, ...proofBody } = proof;
     requireEqual("package_proof", proof.package_proof, "ok");
     requireEqual("proof_digest", proofDigest, createHash("sha256").update(canonical(proofBody)).digest("hex"));
