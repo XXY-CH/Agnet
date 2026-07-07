@@ -226,6 +226,19 @@ test("package proof verifier rejects npm digest mismatches", async () => {
   );
 });
 
+test("package proof verifier rejects malformed byte metadata before tarball reads", async () => {
+  await rm("state/package-proof", { recursive: true, force: true });
+  await execFileAsync(process.execPath, ["scripts/package-proof.mjs"]);
+  const proof = JSON.parse(await readFile("state/package-proof/package-proof.json", "utf8"));
+  await writeMutatedPackageProof("state/package-proof/byte-metadata-invalid-missing-tarball.json", proof, { shasum: ["not-a-shasum"] });
+  await rm(`state/package-proof/${proof.tarball}`);
+
+  await assert.rejects(
+    () => execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof/byte-metadata-invalid-missing-tarball.json"]),
+    (error) => error.stderr.includes("package proof byte metadata invalid"),
+  );
+});
+
 test("package proof verifier rejects filename and tarball mismatch", async () => {
   await rm("state/package-proof", { recursive: true, force: true });
   await execFileAsync(process.execPath, ["scripts/package-proof.mjs"]);

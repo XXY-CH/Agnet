@@ -1111,6 +1111,32 @@
 - 不实现 scheduler-owned routing。
 - 不实现 A2A/ARD compatibility。
 
+## v12.43: Package Proof Byte Metadata Shape
+
+状态：complete
+目标：Reject malformed package byte metadata before tarball reads.
+
+新增：
+
+- `asp-verify.mjs package-proof <manifest.json>` rejects empty or non-string `shasum`, `integrity`, and `sha256` values with `package proof byte metadata invalid`.
+- It also rejects missing, negative, or non-integer `size` values with the same error.
+- Byte metadata shape validation runs before reading tarball bytes.
+- `package-contract.test.mjs` covers malformed byte metadata rejection before tarball reads.
+
+不做：
+
+- 不实现 JSON Schema。
+- 不实现 digest regex preflight。
+- 不实现 tarball member proof。
+- 不实现 npm registry signing。
+- 不实现 release transparency。
+- 不实现 SBOM。
+- 不实现 package publish。
+- 不实现 hosted public node。
+- 不实现 real outside-host reachability。
+- 不实现 scheduler-owned routing。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Run `scripts/external-reachability-observer.mjs` or the Docker wrapper from a real outside host against a hosted/public node using the v12.35 evidence shape.

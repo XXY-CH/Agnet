@@ -111,6 +111,7 @@ try {
     if (typeof proof.name !== "string" || proof.name === "" || typeof proof.version !== "string" || proof.version === "" || typeof proof.filename !== "string" || proof.filename === "") throw new Error("package proof identity invalid");
     requireEqual("package identity", proof.filename, `${proof.name}-${proof.version}.tgz`);
     if (packageFilesInvalid(proof.files)) throw new Error("package proof files invalid");
+    if (typeof proof.shasum !== "string" || proof.shasum === "" || typeof proof.integrity !== "string" || proof.integrity === "" || typeof proof.sha256 !== "string" || proof.sha256 === "" || !Number.isSafeInteger(proof.size) || proof.size < 0) throw new Error("package proof byte metadata invalid");
     const tarballBytes = await readFile(tarballPath);
     requireEqual("shasum", proof.shasum, createHash("sha1").update(tarballBytes).digest("hex"));
     requireEqual("integrity", proof.integrity, `sha512-${createHash("sha512").update(tarballBytes).digest("base64")}`);

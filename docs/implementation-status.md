@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v12.42 active
-当前代码基线：`v12.42-package-proof-identity-shape`
+状态：v12.43 active
+当前代码基线：`v12.43-package-proof-byte-metadata-shape`
 
 ## 一句话
 
@@ -75,7 +75,7 @@ Node
   -> Go protocol signing, signature verification, and digest paths use no-HTML-escape canonical JSON for `<>&` parity with Node signed/digested objects
   -> asp-verify.mjs proof-bundle <bundle.json> [external-trusted-zones.json] keeps reachability_scope verifier-owned and only upgrades to external-host when trusted signed external reachability evidence binds the same transport proof and receipt digest
   -> scripts/external-reachability-observer.mjs TCP-connects to a proof bundle target and writes an observed bundle plus observer trusted-Zone file for verifier consumption
-  -> asp-verify.mjs package-proof <manifest.json> verifies package proof_digest, ASP package proof signature, optional trusted signer pin, trusted signer list shape, package proof metadata preflight before tarball reads, package identity scalar shape, manifest-relative tarball sha256, npm shasum, npm integrity, filename/tarball basename binding, manifest/input filename binding, package identity filename binding, packaged file list shape, and manifest-relative tarball size, returns verified package metadata including signer_aid and signer_trusted, rejects non-object package proof manifests, and rejects unsafe package proof tarball paths
+  -> asp-verify.mjs package-proof <manifest.json> verifies package proof_digest, ASP package proof signature, optional trusted signer pin, trusted signer list shape, package proof metadata preflight before tarball reads, package identity scalar shape, package byte metadata scalar shape, manifest-relative tarball sha256, npm shasum, npm integrity, filename/tarball basename binding, manifest/input filename binding, package identity filename binding, packaged file list shape, and manifest-relative tarball size, returns verified package metadata including signer_aid and signer_trusted, rejects non-object package proof manifests, and rejects unsafe package proof tarball paths
   -> package.json exposes local npm-facing asp-verify bin and asp-core.mjs exports
   -> scripts/package-proof.mjs creates a local npm tarball artifact and package-proof.json manifest with npm shasum, integrity, SHA-256, canonical package proof digest, ASP signer descriptor, ASP package proof signature, size, and file-list metadata
   -> scripts/proof-demo.sh one-command local proof demo with verifier-ready FED_RECEIPT/trusted-zone files and summary receipt_digest
@@ -219,7 +219,7 @@ Go
 
 ## Next Boundary
 
-v12.42 rejects non-string package identity metadata before JavaScript string interpolation. `asp-verify.mjs package-proof <manifest.json>` now requires `name`, `version`, and `filename` to be non-empty strings before binding `filename` to `<name>-<version>.tgz`, so array or object identity values cannot pass through coercion. This is package identity shape validation for local package proofs, not JSON Schema, tarball member proof, npm registry signing, release transparency, SBOM, package publish, hosted reachability, scheduler ownership, batch verification, or A2A/ARD compatibility.
+v12.43 rejects malformed package byte metadata before tarball reads. `asp-verify.mjs package-proof <manifest.json>` now requires `shasum`, `integrity`, and `sha256` to be non-empty strings and `size` to be a non-negative safe integer before reading tarball bytes, so missing package files cannot mask malformed signed byte metadata. This is package byte metadata shape validation for local package proofs, not JSON Schema, digest regex preflight, tarball member proof, npm registry signing, release transparency, SBOM, package publish, hosted reachability, scheduler ownership, batch verification, or A2A/ARD compatibility.
 
 Route detail: `docs/v12-roadmap.md`。
 
