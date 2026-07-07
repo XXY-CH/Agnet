@@ -48,6 +48,9 @@ test("package proof creates an npm tarball artifact", async () => {
   assert.match(proof.integrity, /^sha512-/);
   assert.match(proof.sha256, /^[a-f0-9]{64}$/);
   assert.equal(proof.sha256, createHash("sha256").update(await readFile(proof.tarball)).digest("hex"));
+  assert.match(proof.proof_digest, /^[a-f0-9]{64}$/);
+  const { proof_digest, ...proofBody } = proof;
+  assert.equal(proof_digest, createHash("sha256").update(canonical(proofBody)).digest("hex"));
   assert.equal(tarball.size, proof.size);
   assert.deepEqual(proof.files, ["README.md", "asp-core.mjs", "asp-verify.mjs", "package.json"]);
   assert.deepEqual(JSON.parse(await readFile(proof.manifest, "utf8")), proof);

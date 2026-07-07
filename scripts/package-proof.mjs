@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { canonical } from "../asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 const outDir = "state/package-proof";
@@ -14,7 +15,7 @@ const [packed] = JSON.parse(stdout);
 const tarball = join(outDir, packed.filename);
 const manifest = join(outDir, "package-proof.json");
 
-const proof = {
+const proofBody = {
   package_proof: "ok",
   name: packed.name,
   version: packed.version,
@@ -27,6 +28,10 @@ const proof = {
   integrity: packed.integrity,
   sha256: createHash("sha256").update(await readFile(tarball)).digest("hex"),
   files: packed.files.map(({ path }) => path),
+};
+const proof = {
+  ...proofBody,
+  proof_digest: createHash("sha256").update(canonical(proofBody)).digest("hex"),
 };
 
 await writeFile(manifest, `${JSON.stringify(proof, null, 2)}\n`);
