@@ -111,6 +111,29 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.5: Proof Bundle Type Gate
+
+状态：complete
+目标：Make proof bundle type validation fail closed before following bundle proof-file paths.
+
+新增：
+
+- `asp-verify.mjs proof-bundle <bundle.json>` checks `proof === "public-node-proof"` immediately after parsing the bundle manifest.
+- Wrong proof types are rejected before receipt, trusted-Zone, or Swarm proof-file path reads.
+- `public-node-proof.test.mjs` covers wrong proof type plus escaping path tampering.
+
+不做：
+
+- 不实现 generic proof bundle schema。
+- 不实现 artifact byte relocation。
+- 不实现 hosted public node。
+- 不实现 external public reachability proof。
+- 不实现 package publish/signing。
+- 不实现 SBOM。
+- 不实现 batch verifier。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.

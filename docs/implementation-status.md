@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v12.4 active
-当前代码基线：`v12.4-proof-bundle-path-safety`
+状态：v12.5 active
+当前代码基线：`v12.5-proof-bundle-type-gate`
 
 ## 一句话
 
@@ -213,7 +213,7 @@ Go
 
 ## Next Boundary
 
-v12.4 makes the public proof bundle's proof file paths relative to the bundle manifest file and makes `asp-verify.mjs proof-bundle` reject unsafe proof-file paths before reads. This keeps the proof boundary narrow: it does not claim relocatable artifact bytes, hosted public reachability, package signing, SBOM, scheduler ownership, batch verification, or A2A/ARD compatibility.
+v12.5 makes `asp-verify.mjs proof-bundle` reject unsupported proof types before following bundle proof-file paths, while preserving v12.4 path safety. This keeps the proof boundary narrow: it does not claim relocatable artifact bytes, hosted public reachability, package signing, SBOM, scheduler ownership, batch verification, or A2A/ARD compatibility.
 
 Route detail: `docs/v12-roadmap.md`。
 

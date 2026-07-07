@@ -51,6 +51,7 @@ try {
   } else if (command === "proof-bundle" && file) {
     const baseDir = dirname(file);
     const bundle = JSON.parse(await readFile(file, "utf8"));
+    requireEqual("proof", bundle.proof, "public-node-proof");
     const receiptFrame = JSON.parse(await readFile(bundlePath(baseDir, "receipt_frame", bundle.receipt_frame), "utf8"));
     const receiptVerified = verifyFederatedReceipt(receiptFrame, await loadTrustedZones(bundlePath(baseDir, "trusted_zones", bundle.trusted_zones)));
     const manifests = receiptVerified.receipt.artifact_manifests ?? [];
@@ -60,7 +61,6 @@ try {
     for (const manifest of manifests) await verifyLocalArtifact(manifest);
     const closeFrame = JSON.parse(await readFile(bundlePath(baseDir, "swarm_close_frame", bundle.swarm_close_frame), "utf8"));
     const closeVerified = verifySwarmClose(closeFrame, await loadTrustedZones(bundlePath(baseDir, "swarm_close_trusted_zones", bundle.swarm_close_trusted_zones)));
-    requireEqual("proof", bundle.proof, "public-node-proof");
     requireEqual("receipt_digest", bundle.receipt_digest, receiptDigest(receiptVerified.signedReceipt));
     requireEqual("artifact_uris", bundle.artifact_uris, manifests.map(({ uri }) => uri));
     requireEqual("artifact_sha256s", bundle.artifact_sha256s, manifests.map(({ sha256 }) => sha256));
