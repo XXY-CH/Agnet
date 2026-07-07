@@ -1,6 +1,13 @@
 package verifier
 
 import (
+	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -70,6 +77,96 @@ func TestVerifyFederatedReceiptVector(t *testing.T) {
 	if err := VerifyFederatedReceipt(vector.Frame, trusted); err == nil || !strings.Contains(err.Error(), "receipt executing_zone mismatch") {
 		t.Fatalf("got %v, want receipt executing_zone mismatch", err)
 	}
+}
+
+func TestVerifyFederatedReceiptAcceptsNodeCanonicalSpecialChars(t *testing.T) {
+	zonePub, zoneKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workerPub, workerKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zone := signedDescriptor(t, zoneKey, "zone_signature", map[string]any{"zid": zidFromSPKI(spkiBytes(t, zonePub)), "public_key_spki": spki(t, zonePub)})
+	worker := signedDescriptor(t, workerKey, "descriptor_signature", map[string]any{"aid": aidFromSPKI(spkiBytes(t, workerPub)), "alias": "worker", "public_key_spki": spki(t, workerPub)})
+	binding := signNodeCanonical(t, zoneKey, "signature", map[string]any{"zone": zone["zid"], "alias": worker["alias"], "aid": worker["aid"]})
+	signedTask := signNodeCanonical(t, workerKey, "signature", map[string]any{"task_id": "html_chars_task", "intent": "a<b & c>d"})
+	receipt := signNodeCanonical(t, workerKey, "signature", map[string]any{
+		"task_id":        "html_chars_task",
+		"task_digest":    digestNodeCanonical(signedTask),
+		"origin_zone":    zone["zid"],
+		"executing_zone": zone["zid"],
+		"to":             worker["aid"],
+		"note":           "a<b & c>d",
+	})
+
+	err = VerifyFederatedReceipt(map[string]any{"type": "FED_RECEIPT", "zone": zone, "worker": worker, "zone_binding": binding, "receipt": receipt}, map[string]map[string]any{zone["zid"].(string): zone}, signedTask)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func signedDescriptor(t *testing.T, key ed25519.PrivateKey, signatureKey string, body map[string]any) map[string]any {
+	t.Helper()
+	return signNodeCanonical(t, key, signatureKey, body)
+}
+
+func signNodeCanonical(t *testing.T, key ed25519.PrivateKey, signatureKey string, body map[string]any) map[string]any {
+	t.Helper()
+	out := map[string]any{}
+	for k, v := range body {
+		out[k] = v
+	}
+	out[signatureKey] = base64.RawURLEncoding.EncodeToString(ed25519.Sign(key, nodeCanonicalJSON(t, body)))
+	return out
+}
+
+func digestNodeCanonical(value any) string {
+	data := nodeCanonicalJSONNoTest(value)
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:])
+}
+
+func nodeCanonicalJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	data, err := nodeCanonicalJSONBytes(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+func nodeCanonicalJSONNoTest(value any) []byte {
+	data, err := nodeCanonicalJSONBytes(value)
+	if err != nil {
+		panic(err)
+	}
+	return data
+}
+
+func nodeCanonicalJSONBytes(value any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(value); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
+}
+
+func spki(t *testing.T, key ed25519.PublicKey) string {
+	t.Helper()
+	return base64.RawURLEncoding.EncodeToString(spkiBytes(t, key))
+}
+
+func spkiBytes(t *testing.T, key ed25519.PublicKey) []byte {
+	t.Helper()
+	der, err := x509.MarshalPKIXPublicKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return der
 }
 
 func TestArtifactManifestAFPMatchesSHA256(t *testing.T) {

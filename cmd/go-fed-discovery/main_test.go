@@ -2,12 +2,16 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -22,6 +26,42 @@ import (
 	"testing"
 	"time"
 )
+
+func TestProtocolCanonicalJSONDoesNotEscapeHTMLCharacters(t *testing.T) {
+	_, key, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := map[string]any{"intent": "a<b & c>d", "task_id": "html_chars_task"}
+	signed := signBodyWithKey(key, body, "signature")
+	signature, err := base64.RawURLEncoding.DecodeString(signed["signature"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ed25519.Verify(key.Public().(ed25519.PublicKey), testNodeCanonicalJSON(t, body), signature) {
+		t.Fatal("signature does not match no-HTML canonical JSON")
+	}
+	nodeCanonicalSigned := map[string]any{"intent": body["intent"], "task_id": body["task_id"]}
+	nodeCanonicalSigned["signature"] = base64.RawURLEncoding.EncodeToString(ed25519.Sign(key, testNodeCanonicalJSON(t, body)))
+	if err := verifyMapSignature(key.Public().(ed25519.PublicKey), nodeCanonicalSigned, "signature"); err != nil {
+		t.Fatalf("verifyMapSignature rejected no-HTML canonical JSON signature: %v", err)
+	}
+	hash := sha256.Sum256(testNodeCanonicalJSON(t, body))
+	if digestHex(body) != hex.EncodeToString(hash[:]) {
+		t.Fatalf("digestHex escaped HTML characters")
+	}
+}
+
+func testNodeCanonicalJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(value); err != nil {
+		t.Fatal(err)
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n"))
+}
 
 func TestReadAuditEntriesAcceptsLargeLines(t *testing.T) {
 	record := map[string]any{

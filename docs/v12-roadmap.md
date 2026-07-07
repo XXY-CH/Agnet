@@ -871,6 +871,29 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.32: Go Protocol Canonical JSON HTML-Escape Parity
+
+状态：complete
+目标：Make Go protocol signing, signature verification, and digest paths match Node canonical JSON for signed and digested values containing `<`, `>`, and `&`.
+
+新增：
+
+- `agnet/verifier.VerifyFederatedReceipt` verifies a receipt and supplied signed task evidence containing `<>&` when signed/digested with Node canonical bytes.
+- `cmd/go-fed-discovery` protocol `signBodyWithKey`, `verifyMapSignature`, and `digestHex` use `json.Encoder.SetEscapeHTML(false)` and trim the encoder newline.
+- Focused Go tests cover reusable verifier acceptance and Go runtime signing/digest no-HTML-escape behavior.
+
+不做：
+
+- 不改变 JSON key ordering beyond Go's existing deterministic encoding.
+- 不实现 full RFC/JCS canonicalization。
+- 不改变 verifier CLI command shapes。
+- 不实现 external public reachability proof。
+- 不实现 hosted public node。
+- 不实现 package signing。
+- 不实现 SBOM。
+- 不实现 scheduler-owned routing。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.

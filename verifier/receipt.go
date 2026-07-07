@@ -1,6 +1,7 @@
 package verifier
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"crypto/x509"
@@ -281,7 +282,7 @@ func verifyMapSignature(key ed25519.PublicKey, value map[string]any, signatureKe
 			body[k] = v
 		}
 	}
-	data, err := json.Marshal(body)
+	data, err := canonicalJSON(body)
 	if err != nil {
 		return err
 	}
@@ -326,9 +327,19 @@ func optionalString(value any) string {
 }
 
 func digestHex(value any) string {
-	data, _ := json.Marshal(value)
+	data, _ := canonicalJSON(value)
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
+}
+
+func canonicalJSON(value any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(value); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
 }
 
 func aidFromSPKI(der []byte) string {

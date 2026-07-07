@@ -4553,7 +4553,7 @@ func verifyAuditEntry(entry map[string]any, prev string) error {
 
 func auditEntry(prev string, record map[string]any) (map[string]any, error) {
 	body := map[string]any{"prev_hash": prev, "record": record}
-	data, err := json.Marshal(body)
+	data, err := canonicalJSON(body)
 	if err != nil {
 		return nil, err
 	}
@@ -5510,8 +5510,18 @@ func signBody(key ed25519.PrivateKey, body map[string]any) map[string]any {
 }
 
 func digestHex(value any) string {
-	data, _ := json.Marshal(value)
+	data, _ := canonicalJSON(value)
 	return digestBytesHex(data)
+}
+
+func canonicalJSON(value any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(value); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
 }
 
 func digestBytesHex(data []byte) string {
@@ -5524,7 +5534,7 @@ func signBodyWithKey(key ed25519.PrivateKey, body map[string]any, signatureKey s
 	for k, v := range body {
 		out[k] = v
 	}
-	data, _ := json.Marshal(body)
+	data, _ := canonicalJSON(body)
 	out[signatureKey] = base64.RawURLEncoding.EncodeToString(ed25519.Sign(key, data))
 	return out
 }
@@ -5802,7 +5812,7 @@ func verifyMapSignature(key ed25519.PublicKey, value map[string]any, signatureKe
 			body[k] = v
 		}
 	}
-	data, err := json.Marshal(body)
+	data, err := canonicalJSON(body)
 	if err != nil {
 		return err
 	}
