@@ -80,3 +80,17 @@ test("package proof verifier rejects non-object manifests", async () => {
     (error) => error.stderr.includes("package proof manifest invalid"),
   );
 });
+
+test("package proof verifier rejects unsafe tarball paths", async () => {
+  await writeFile("state/package-proof-absolute.json", JSON.stringify({ package_proof: "ok", tarball: "/tmp/agnet.tgz" }));
+  await writeFile("state/package-proof-escape.json", JSON.stringify({ package_proof: "ok", tarball: "../agnet.tgz" }));
+
+  await assert.rejects(
+    () => execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof-absolute.json"]),
+    (error) => error.stderr.includes("package proof tarball path invalid"),
+  );
+  await assert.rejects(
+    () => execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof-escape.json"]),
+    (error) => error.stderr.includes("package proof tarball path invalid"),
+  );
+});

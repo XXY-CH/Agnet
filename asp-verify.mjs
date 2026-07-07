@@ -20,10 +20,14 @@ function requireEqual(name, actual, expected) {
 }
 
 function bundlePath(baseDir, name, target) {
-  if (typeof target !== "string" || !target || target.includes("\\") || target.split("/").some((part) => !part || part === "." || part === "..") || target.startsWith("/")) {
+  if (pathUnsafe(target)) {
     throw new Error(`bundle ${name} path invalid`);
   }
   return join(baseDir, target);
+}
+
+function pathUnsafe(target) {
+  return typeof target !== "string" || !target || target.includes("\\") || target.split("/").some((part) => !part || part === "." || part === "..") || target.startsWith("/");
 }
 
 function isLocalOnlyListenHost(host) {
@@ -57,6 +61,7 @@ try {
   } else if (command === "package-proof" && file && args.length === 2) {
     const proof = JSON.parse(await readFile(file, "utf8"));
     if (!proof || typeof proof !== "object" || Array.isArray(proof)) throw new Error("package proof manifest invalid");
+    if (pathUnsafe(proof.tarball)) throw new Error("package proof tarball path invalid");
     const { proof_digest: proofDigest, ...proofBody } = proof;
     requireEqual("package_proof", proof.package_proof, "ok");
     requireEqual("proof_digest", proofDigest, createHash("sha256").update(canonical(proofBody)).digest("hex"));

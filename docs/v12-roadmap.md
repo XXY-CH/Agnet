@@ -623,6 +623,38 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.24: Package Proof Tarball Path Safety
+
+状态：complete
+目标：Make the package proof verifier reject unsafe tarball paths before reading package bytes.
+
+新增：
+
+- `asp-verify.mjs package-proof <manifest.json>` rejects absolute and parent-directory tarball paths with `package proof tarball path invalid`.
+- The package proof tarball path gate reuses the same non-empty, no-backslash, no-dot-segment path shape used by proof bundle file paths.
+- `package-contract.test.mjs` covers absolute and `..` tarball paths.
+
+不做：
+
+- 不实现 package signing。
+- 不实现 SBOM。
+- 不发布 npm package。
+- 不改变 `package.json` exports/bin/files。
+- 不改变 npm `shasum` or `integrity` handling。
+- 不改变 tarball SHA-256 calculation。
+- 不实现 relocatable package proof format。
+- 不实现 external public reachability proof。
+- 不实现 hosted public node。
+- 不增加 DNS, TLS, QUIC, NAT traversal, or remote probe infrastructure。
+- 不改变 normal `fed-receipt` verification。
+- 不改变 `proof-bundle` verifier JSON output。
+- 不实现 transport negotiation。
+- 不实现 batch verifier。
+- 不实现 JSON Schema。
+- 不实现 generic proof bundle schema。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.
