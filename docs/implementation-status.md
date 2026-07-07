@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v12.0 active
-当前代码基线：`v12.0-public-proof-bundle-manifest`
+状态：v12.1 active
+当前代码基线：`v12.1-proof-bundle-verifier`
 
 ## 一句话
 
@@ -213,7 +213,7 @@ Go
 
 ## Next Boundary
 
-v12.0 makes the local public-listen proof emit one verifier-facing proof bundle manifest over existing receipt, trust, artifact, transport, and Swarm close proof files. This keeps the proof boundary narrow: it does not claim hosted public reachability, package signing, SBOM, scheduler ownership, batch verification, or A2A/ARD compatibility.
+v12.1 makes the local public-listen proof bundle consumable through `asp-verify.mjs proof-bundle`, which verifies the manifest against existing receipt artifact and Swarm close verifier paths. This keeps the proof boundary narrow: it does not claim hosted public reachability, package signing, SBOM, scheduler ownership, batch verification, or A2A/ARD compatibility.
 
 Route detail: `docs/v12-roadmap.md`。
 

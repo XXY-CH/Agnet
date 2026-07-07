@@ -10,6 +10,12 @@ function receiptDigest(receipt) {
   return createHash("sha256").update(canonical(body)).digest("hex");
 }
 
+function requireEqual(name, actual, expected) {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(`bundle ${name} mismatch`);
+  }
+}
+
 try {
   if (command === "artifact" && file) {
     const manifest = JSON.parse(await readFile(file, "utf8"));
@@ -34,8 +40,27 @@ try {
     const frame = JSON.parse(await readFile(file, "utf8"));
     const verified = verifySwarmClose(frame, await loadTrustedZones(trustedFile));
     console.log(JSON.stringify({ swarm_close_verify: "ok", swarm_id: verified.close.swarm_id, swarm_close_digest: verified.closeDigest }));
+  } else if (command === "proof-bundle" && file) {
+    const bundle = JSON.parse(await readFile(file, "utf8"));
+    const receiptFrame = JSON.parse(await readFile(bundle.receipt_frame, "utf8"));
+    const receiptVerified = verifyFederatedReceipt(receiptFrame, await loadTrustedZones(bundle.trusted_zones));
+    const manifests = receiptVerified.receipt.artifact_manifests ?? [];
+    if ((receiptVerified.receipt.artifact_refs?.length ?? 0) > 0 && manifests.length === 0) {
+      throw new Error("receipt artifact manifests missing");
+    }
+    for (const manifest of manifests) await verifyLocalArtifact(manifest);
+    const closeFrame = JSON.parse(await readFile(bundle.swarm_close_frame, "utf8"));
+    const closeVerified = verifySwarmClose(closeFrame, await loadTrustedZones(bundle.swarm_close_trusted_zones));
+    requireEqual("proof", bundle.proof, "public-node-proof");
+    requireEqual("receipt_digest", bundle.receipt_digest, receiptDigest(receiptVerified.signedReceipt));
+    requireEqual("artifact_uris", bundle.artifact_uris, manifests.map(({ uri }) => uri));
+    requireEqual("artifact_sha256s", bundle.artifact_sha256s, manifests.map(({ sha256 }) => sha256));
+    requireEqual("artifact_manifest_hashes", bundle.artifact_manifest_hashes, manifests.map(({ manifest_hash }) => manifest_hash));
+    requireEqual("transport_proof", bundle.transport_proof, receiptVerified.receipt.transport_proof);
+    requireEqual("swarm_close_digest", bundle.swarm_close_digest, closeVerified.closeDigest);
+    console.log(JSON.stringify({ proof_bundle_verify: "ok", receipt_frame: bundle.receipt_frame, trusted_zones: bundle.trusted_zones, receipt_digest: bundle.receipt_digest, artifact_count: manifests.length, artifact_uris: bundle.artifact_uris, artifact_sha256s: bundle.artifact_sha256s, artifact_manifest_hashes: bundle.artifact_manifest_hashes, transport_proof: bundle.transport_proof, swarm_close_frame: bundle.swarm_close_frame, swarm_close_trusted_zones: bundle.swarm_close_trusted_zones, swarm_close_digest: bundle.swarm_close_digest }));
   } else {
-    throw new Error("usage: node asp-verify.mjs artifact <manifest.json> | fed-receipt <frame.json> <trusted-zones.json> [task.json] | fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] | swarm-close <frame.json> <trusted-zones.json>");
+    throw new Error("usage: node asp-verify.mjs artifact <manifest.json> | fed-receipt <frame.json> <trusted-zones.json> [task.json] | fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] | swarm-close <frame.json> <trusted-zones.json> | proof-bundle <bundle.json>");
   }
 } catch (error) {
   console.error(error.message);

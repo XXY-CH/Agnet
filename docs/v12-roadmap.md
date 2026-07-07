@@ -25,8 +25,29 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.1: Proof Bundle Verifier Command
+
+状态：complete
+目标：Make one public proof bundle verifiable through the existing Node verifier CLI.
+
+新增：
+
+- `asp-verify.mjs proof-bundle <bundle.json>` verifies the receipt, artifact bytes, signed transport proof fields, and Swarm close digest named by the bundle.
+- The command rejects manifest fields that do not match the existing verifier-owned receipt/artifact/Swarm close outputs.
+- `public-node-proof.test.mjs` covers a successful bundle verification and a tampered `receipt_digest` rejection.
+
+不做：
+
+- 不实现 hosted public node。
+- 不实现 external public reachability proof。
+- 不实现 package publish/signing。
+- 不实现 SBOM。
+- 不实现 batch verifier。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.
 2. Add package signing or SBOM only when a package/release artifact exists.
-3. Add a small verifier command for proof bundles only if consumers need one; the current bundle is just a manifest over existing verifier-ready files.
+3. Add hosted/public reachability only when the proof includes evidence from outside the same host.

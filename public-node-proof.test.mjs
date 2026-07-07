@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import { canonical } from "./asp-core.mjs";
@@ -100,4 +100,30 @@ test("public node proof starts a public-listen gateway", async () => {
   assert.deepEqual(JSON.parse(verifiedArtifacts.stdout), { fed_receipt_artifacts_verify: "ok", task_id: "public_node_probe_task", artifact_count: 1, artifact_uris: result.artifact_uris, artifact_sha256s: [artifactSha256], artifact_manifest_hashes: [artifactManifestHash], receipt_digest: receiptDigest });
   const verifiedSwarmClose = await execFileAsync(process.execPath, ["asp-verify.mjs", "swarm-close", result.swarm_close_frame, result.swarm_close_trusted_zones]);
   assert.deepEqual(JSON.parse(verifiedSwarmClose.stdout), { swarm_close_verify: "ok", swarm_id: result.swarm_id, swarm_close_digest: result.swarm_close_digest });
+  const verifiedBundle = await execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", result.bundle_manifest]);
+  assert.deepEqual(JSON.parse(verifiedBundle.stdout), {
+    proof_bundle_verify: "ok",
+    receipt_frame: result.receipt_frame,
+    trusted_zones: result.trusted_zones,
+    receipt_digest: receiptDigest,
+    artifact_count: 1,
+    artifact_uris: result.artifact_uris,
+    artifact_sha256s: [artifactSha256],
+    artifact_manifest_hashes: [artifactManifestHash],
+    transport_proof: receiptFrame.receipt.transport_proof,
+    swarm_close_frame: result.swarm_close_frame,
+    swarm_close_trusted_zones: result.swarm_close_trusted_zones,
+    swarm_close_digest: result.swarm_close_digest,
+  });
+  const tamperedBundlePath = "state/public-node-proof-bundle-tampered.json";
+  await writeFile(tamperedBundlePath, `${JSON.stringify({ ...bundle, receipt_digest: "0".repeat(64) }, null, 2)}\n`);
+  await assert.rejects(
+    execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),
+    /bundle receipt_digest mismatch/,
+  );
+  await writeFile(tamperedBundlePath, `${JSON.stringify({ ...bundle, proof: "other-proof" }, null, 2)}\n`);
+  await assert.rejects(
+    execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),
+    /bundle proof mismatch/,
+  );
 });
