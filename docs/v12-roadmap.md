@@ -808,6 +808,37 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.30: Package Proof Manifest Filename Binding
+
+状态：complete
+目标：Make the package proof verifier reject manifests whose `manifest` field does not match the verifier input filename.
+
+新增：
+
+- `asp-verify.mjs package-proof <manifest.json>` requires `manifest` to equal the final path segment of the verifier input path.
+- `package-contract.test.mjs` covers a self-consistent proof digest whose `manifest` field names a different manifest file.
+
+不做：
+
+- 不实现 package signing。
+- 不实现 SBOM。
+- 不实现 tarball member proof。
+- 不发布 npm package。
+- 不改变 `package.json` exports/bin/files。
+- 不改变 tarball SHA-256 calculation。
+- 不改变 package proof verification inputs。
+- 不实现 external public reachability proof。
+- 不实现 hosted public node。
+- 不增加 DNS, TLS, QUIC, NAT traversal, or remote probe infrastructure。
+- 不改变 normal `fed-receipt` verification。
+- 不改变 `proof-bundle` verifier JSON output。
+- 不实现 transport negotiation。
+- 不实现 batch verifier。
+- 不实现 JSON Schema。
+- 不实现 generic proof bundle schema。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.

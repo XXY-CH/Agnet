@@ -2,7 +2,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { isIP } from "node:net";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { canonical, loadTrustedZones, verifyFederatedReceipt, verifyLocalArtifact, verifySwarmClose } from "./asp-core.mjs";
 
 const args = process.argv.slice(2);
@@ -71,6 +71,7 @@ try {
     const tarballBytes = await readFile(tarballPath);
     requireEqual("package_proof", proof.package_proof, "ok");
     requireEqual("proof_digest", proofDigest, createHash("sha256").update(canonical(proofBody)).digest("hex"));
+    requireEqual("manifest", proof.manifest, basename(file));
     requireEqual("filename", proof.filename, proof.tarball.split("/").at(-1));
     if (packageFilesInvalid(proof.files)) throw new Error("package proof files invalid");
     requireEqual("shasum", proof.shasum, createHash("sha1").update(tarballBytes).digest("hex"));
