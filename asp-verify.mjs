@@ -3,7 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { isIP } from "node:net";
 import { basename, dirname, join } from "node:path";
-import { canonical, loadTrustedZones, verifyFederatedReceipt, verifyLocalArtifact, verifySwarmClose } from "./asp-core.mjs";
+import { canonical, loadTrustedZones, publicKeyFromDescriptor, verifyFederatedReceipt, verifyLocalArtifact, verifyObject, verifySwarmClose } from "./asp-core.mjs";
 
 const args = process.argv.slice(2);
 const [command, file, trustedFile, taskFile] = args;
@@ -36,6 +36,24 @@ function isLocalOnlyListenHost(host) {
 
 function packageFilesInvalid(files) {
   return !Array.isArray(files) || files.length === 0 || files.some(pathUnsafe) || new Set(files).size !== files.length;
+}
+
+async function verifyExternalReachability(bundle, transportProof, receiptDigest, trustedFile) {
+  if (trustedFile && !bundle.external_reachability) throw new Error("external reachability missing");
+  if (!bundle.external_reachability) return null;
+  if (!trustedFile) throw new Error("external reachability trust required");
+  const evidence = bundle.external_reachability;
+  if (!evidence || typeof evidence !== "object" || Array.isArray(evidence)) throw new Error("external reachability invalid");
+  const { signature, ...body } = evidence;
+  requireEqual("external reachability proof", body.proof, "external-reachability");
+  requireEqual("external reachability transport_proof", body.transport_proof, transportProof);
+  requireEqual("external reachability receipt_digest", body.receipt_digest, receiptDigest);
+  requireEqual("external reachability reached", body.reached, true);
+  const trustedZones = await loadTrustedZones(trustedFile);
+  const observer = trustedZones.get(body.observer_zid);
+  if (!observer) throw new Error("external reachability observer untrusted");
+  if (!verifyObject(publicKeyFromDescriptor(observer), body, signature)) throw new Error("external reachability signature invalid");
+  return body.observer_zid;
 }
 
 try {
@@ -80,7 +98,7 @@ try {
     requireEqual("sha256", proof.sha256, createHash("sha256").update(tarballBytes).digest("hex"));
     requireEqual("size", (await stat(tarballPath)).size, proof.size);
     console.log(JSON.stringify({ package_proof_verify: "ok", name: proof.name, version: proof.version, filename: proof.filename, tarball: proof.tarball, size: proof.size, shasum: proof.shasum, integrity: proof.integrity, sha256: proof.sha256, proof_digest: proof.proof_digest }));
-  } else if (command === "proof-bundle" && file && args.length === 2) {
+  } else if (command === "proof-bundle" && file && (args.length === 2 || (args.length === 3 && trustedFile))) {
     const baseDir = dirname(file);
     const bundle = JSON.parse(await readFile(file, "utf8"));
     if (!bundle || typeof bundle !== "object" || Array.isArray(bundle)) throw new Error("bundle manifest invalid");
@@ -111,10 +129,14 @@ try {
     if (transportProof.public_transport !== true) {
       throw new Error("bundle public_transport proof missing");
     }
+    const receiptDigestValue = receiptDigest(receiptVerified.signedReceipt);
+    const externalObserverZid = await verifyExternalReachability(bundle, transportProof, receiptDigestValue, trustedFile);
     requireEqual("swarm_close_digest", bundle.swarm_close_digest, closeVerified.closeDigest);
-    console.log(JSON.stringify({ proof_bundle_verify: "ok", receipt_frame: bundle.receipt_frame, trusted_zones: bundle.trusted_zones, receipt_digest: bundle.receipt_digest, artifact_count: manifests.length, artifact_uris: bundle.artifact_uris, artifact_sha256s: bundle.artifact_sha256s, artifact_manifest_hashes: bundle.artifact_manifest_hashes, transport_proof: bundle.transport_proof, reachability_scope: "local-interface", swarm_close_frame: bundle.swarm_close_frame, swarm_close_trusted_zones: bundle.swarm_close_trusted_zones, swarm_close_digest: bundle.swarm_close_digest }));
+    const output = { proof_bundle_verify: "ok", receipt_frame: bundle.receipt_frame, trusted_zones: bundle.trusted_zones, receipt_digest: bundle.receipt_digest, artifact_count: manifests.length, artifact_uris: bundle.artifact_uris, artifact_sha256s: bundle.artifact_sha256s, artifact_manifest_hashes: bundle.artifact_manifest_hashes, transport_proof: bundle.transport_proof, reachability_scope: externalObserverZid ? "external-host" : "local-interface", swarm_close_frame: bundle.swarm_close_frame, swarm_close_trusted_zones: bundle.swarm_close_trusted_zones, swarm_close_digest: bundle.swarm_close_digest };
+    if (externalObserverZid) output.external_observer_zid = externalObserverZid;
+    console.log(JSON.stringify(output));
   } else {
-    throw new Error("usage: node asp-verify.mjs artifact <manifest.json> | fed-receipt <frame.json> <trusted-zones.json> [task.json] | fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] | swarm-close <frame.json> <trusted-zones.json> | package-proof <manifest.json> | proof-bundle <bundle.json>");
+    throw new Error("usage: node asp-verify.mjs artifact <manifest.json> | fed-receipt <frame.json> <trusted-zones.json> [task.json] | fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] | swarm-close <frame.json> <trusted-zones.json> | package-proof <manifest.json> | proof-bundle <bundle.json> [external-trusted-zones.json]");
   }
 } catch (error) {
   console.error(error.message);

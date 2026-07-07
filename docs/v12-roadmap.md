@@ -894,8 +894,32 @@
 - 不实现 scheduler-owned routing。
 - 不实现 A2A/ARD compatibility。
 
+## v12.33: External Reachability Evidence Gate
+
+状态：complete
+目标：Let the proof-bundle verifier upgrade `reachability_scope` to `external-host` only when it receives caller-supplied trusted observer evidence.
+
+新增：
+
+- `asp-verify.mjs proof-bundle <bundle.json> [external-trusted-zones.json]` accepts an optional external observer trusted-Zone file.
+- `bundle.external_reachability` must be signed by a trusted observer Zone and bind `proof: "external-reachability"`, `observer_zid`, the verified `transport_proof`, the verified `receipt_digest`, and `reached: true`.
+- Bundles that include external reachability evidence without the extra trust input fail closed.
+- `public-node-proof.test.mjs` covers local default scope, trusted external-host upgrade, missing external trust rejection, and invalid external signature rejection.
+
+不做：
+
+- 不实现 hosted public node。
+- 不运行真实 outside-host probe。
+- 不增加 DNS, tunnel, NAT traversal, TLS, QUIC, or remote probe infrastructure。
+- 不让 bundle 自己声明 `reachability_scope`。
+- 不改变 normal `fed-receipt` verification。
+- 不实现 package signing。
+- 不实现 SBOM。
+- 不实现 scheduler-owned routing。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
-1. Add real external public reachability proof only with external network evidence.
+1. Run a real outside-host observer against a hosted/public node using the v12.33 external reachability evidence shape.
 2. Add package signing or SBOM against the produced package artifact only when that signature/SBOM format is explicitly scoped.
-3. Add hosted/public reachability only when the proof includes evidence from outside the same host.
+3. Keep compatibility work parked until the proof layer has externally consumable hosted-node evidence.

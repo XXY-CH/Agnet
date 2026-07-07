@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v12.32-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v12.33-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -338,16 +338,18 @@ node asp-verify.mjs fed-receipt <frame.json> <trusted-zones.json> [task.json]
 node asp-verify.mjs fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json]
 node asp-verify.mjs swarm-close <frame.json> <trusted-zones.json>
 node asp-verify.mjs package-proof <manifest.json>
-node asp-verify.mjs proof-bundle <bundle.json>
+node asp-verify.mjs proof-bundle <bundle.json> [external-trusted-zones.json]
 ```
 
-The verifier CLI commands reject extra positional arguments. The optional task evidence commands accept only the no-task and one-task forms.
+The verifier CLI commands reject unsupported extra positional arguments. The optional task evidence commands accept only the no-task and one-task forms.
 
 Go protocol signing, signature verification, and digest paths MUST use canonical JSON without HTML escaping for `<`, `>`, and `&`, matching the Node `canonical()` behavior for signed and digested protocol objects. The Go verifier MUST accept receipts and supplied signed task evidence containing these characters when the evidence was signed with the Node canonical byte string.
 
 For `proof-bundle`, the signed receipt transport proof MUST be an object and MUST carry `transport: "fed+tcp"`, non-loopback non-unspecified `listen_host`, decimal-string `port`, and `public_transport: true`. This is local federation-listener evidence, not a remote reachability proof from another host.
 
 The `proof-bundle` verifier reports `reachability_scope: "local-interface"` for the implemented public proof bundle and rejects bundle manifests that supply their own `reachability_scope`. This is verifier-owned labeling of the current proof scope, not external-host reachability.
+
+When `proof-bundle` receives an additional caller-supplied trusted-Zone file, it MAY accept `bundle.external_reachability` evidence signed by a trusted observer Zone. The evidence MUST bind `proof: "external-reachability"`, `observer_zid`, `transport_proof`, `receipt_digest`, and `reached: true`; the verifier returns `reachability_scope: "external-host"` only when that signature verifies and the transport proof and receipt digest match the verified bundle. A bundle that carries external reachability evidence without the extra trust input MUST fail closed. This is a verifier-owned evidence gate, not hosted-node deployment or NAT traversal.
 
 The package proof manifest includes `proof_digest`, computed as `sha256(canonical(proof without proof_digest))`. This binds the proof manifest body without choosing a package signature or SBOM format.
 
