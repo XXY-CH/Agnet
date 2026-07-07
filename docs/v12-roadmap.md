@@ -968,22 +968,21 @@
 - 不实现 scheduler-owned routing。
 - 不实现 A2A/ARD compatibility。
 
-## v12.36: Upper-Layer Demo Plan
+## v12.37: Core Substrate Recenter
 
 状态：complete
-目标：Add a verifiable upper-layer demo skeleton with 10 specialist agents and one master agent.
+目标：Remove the upper-layer demo detour from the core proof-substrate line.
 
 新增：
 
-- `upper-layer-demo.mjs` creates one demo Zone, one `agent://upper/master`, and ten specialist agents.
-- The script writes `state/upper-layer-demo-registry.json` with Zone-signed bindings for all eleven agents.
-- The script writes `state/upper-layer-demo-plan.json`, a master-agent-signed static delegation plan with ten assignments.
-- The script verifies every assignment against the registry and verifies the master plan signature before reporting success.
-- `upper-layer-demo.test.mjs` proves the generated registry, worker count, assignment count, master signature, and plan digest.
+- `upper-layer-demo.mjs` is removed from the core repository surface.
+- `upper-layer-demo.test.mjs` is removed from the core verification suite.
+- `docs/v12.36-boundary.md` is removed because the v12.36 upper-layer demo plan is no longer part of the core v12 line.
+- Public docs now present v12 as a proof-substrate/release-surface line again.
 
 不做：
 
-- 不执行 the ten assignments。
+- 不实现 upper-layer demo, master-agent orchestration, or specialist-agent assignment execution。
 - 不实现 automatic scheduler, semantic routing, ranking, or economy。
 - 不实现 dynamic Swarm decomposition。
 - 不实现 hosted public node。
@@ -994,7 +993,7 @@
 
 ## Next Candidates
 
-1. Make `upper-layer-demo.mjs` execute one or two assignments through existing signed task/receipt paths, then verify those receipts against the master plan.
-2. Run `scripts/external-reachability-observer.mjs` or the Docker wrapper from a real outside host against a hosted/public node using the v12.35 evidence shape.
-3. Add package signing or SBOM against the produced package artifact only when that signature/SBOM format is explicitly scoped.
-4. Keep compatibility work parked until the proof layer has externally consumable hosted-node evidence and the upper-layer demo has receipt-backed assignments.
+1. Run `scripts/external-reachability-observer.mjs` or the Docker wrapper from a real outside host against a hosted/public node using the v12.35 evidence shape.
+2. Add package signing or SBOM against the produced package artifact only when that signature/SBOM format is explicitly scoped.
+3. Keep upper-layer demo/orchestration work parked outside this repository until the core proof substrate has externally consumable hosted-node evidence.
+4. Keep compatibility work parked until the proof layer has externally consumable hosted-node evidence.

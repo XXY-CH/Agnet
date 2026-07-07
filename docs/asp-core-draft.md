@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v12.36-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v12.37-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -340,7 +340,6 @@ node asp-verify.mjs swarm-close <frame.json> <trusted-zones.json>
 node asp-verify.mjs package-proof <manifest.json>
 node asp-verify.mjs proof-bundle <bundle.json> [external-trusted-zones.json]
 bash scripts/docker-external-reachability-observer.sh <bundle.json> <observed-bundle.json> <observer-trusted-zones.json>
-node upper-layer-demo.mjs
 ```
 
 The verifier CLI commands reject unsupported extra positional arguments. The optional task evidence commands accept only the no-task and one-task forms.
@@ -354,8 +353,6 @@ The `proof-bundle` verifier reports `reachability_scope: "local-interface"` for 
 When `proof-bundle` receives an additional caller-supplied trusted-Zone file, it MAY accept `bundle.external_reachability` evidence signed by a trusted observer Zone. The evidence MUST bind `proof: "external-reachability"`, `observer_zid`, `transport_proof`, `receipt_digest`, and `reached: true`; the verifier returns `reachability_scope: "external-host"` only when that signature verifies and the transport proof and receipt digest match the verified bundle. A bundle that carries external reachability evidence without the extra trust input MUST fail closed. This is a verifier-owned evidence gate, not hosted-node deployment or NAT traversal.
 
 `scripts/external-reachability-observer.mjs` is the minimal implemented observer writer for that evidence shape. It reads a proof bundle, verifies the bundle's signed receipt digest and transport proof match, TCP-connects to `transport_proof.listen_host:port`, and writes an observed bundle plus observer trusted-Zone file. `scripts/docker-external-reachability-observer.sh` runs the same observer from a Docker container using Docker's host gateway and `${AGNET_NODE_BASE_IMAGE:-node:22-bookworm-slim}`. These scripts prove a TCP connection from wherever they are run; the Docker wrapper proves a container boundary, not hosted deployment or that the observer ran on a different physical host.
-
-`upper-layer-demo.mjs` is a demo consumer of the implemented identity, registry, Zone binding, signature, and canonical digest primitives. It writes one master agent, ten specialist agents, a Zone-signed registry, and a master-agent-signed static delegation plan. It does not define scheduler semantics or execute the assignments.
 
 The package proof manifest includes `proof_digest`, computed as `sha256(canonical(proof without proof_digest))`. This binds the proof manifest body without choosing a package signature or SBOM format.
 
