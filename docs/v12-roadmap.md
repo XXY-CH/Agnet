@@ -334,6 +334,33 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.14: Proof Bundle Listen Host Gate
+
+状态：complete
+目标：Make public proof bundles reject loopback transport proofs.
+
+新增：
+
+- `asp-verify.mjs proof-bundle <bundle.json>` rejects verified receipt transport proofs whose `listen_host` is `localhost`, `::1`, or IPv4 `127.*`.
+- A bundle that matches a signed receipt with `listen_host: "127.0.0.1"` and `public_transport: true` is rejected with `bundle transport_proof invalid`.
+- `public-node-proof.test.mjs` covers a re-signed loopback-listen receipt and matching bundle.
+
+不做：
+
+- 不实现 external public reachability proof。
+- 不实现 hosted public node。
+- 不增加 DNS, TLS, QUIC, NAT traversal, or remote probe infrastructure。
+- 不改变 Go receipt transport proof field shape。
+- 不改变 normal `fed-receipt` verification。
+- 不改变 verifier JSON output。
+- 不实现 transport negotiation。
+- 不实现 batch verifier。
+- 不实现 JSON Schema。
+- 不实现 generic proof bundle schema。
+- 不实现 package signing or SBOM。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.

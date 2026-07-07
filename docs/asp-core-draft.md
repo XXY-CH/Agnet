@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v12.13-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v12.14-protocol`. It is not a full Agent Space product spec.
 
 ## Scope
 
@@ -341,7 +341,7 @@ node asp-verify.mjs proof-bundle <bundle.json>
 
 The verifier CLI commands reject extra positional arguments. The optional task evidence commands accept only the no-task and one-task forms.
 
-For `proof-bundle`, the signed receipt transport proof MUST be an object and MUST carry `transport: "fed+tcp"`, non-empty `listen_host`, decimal-string `port`, and `public_transport: true`. This is local federation-listener evidence, not a remote reachability proof from another host.
+For `proof-bundle`, the signed receipt transport proof MUST be an object and MUST carry `transport: "fed+tcp"`, non-loopback `listen_host`, decimal-string `port`, and `public_transport: true`. This is local federation-listener evidence, not a remote reachability proof from another host.
 
 Implemented Go checks:
 

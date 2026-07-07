@@ -218,6 +218,28 @@ test("public node proof starts a public-listen gateway", async () => {
     execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),
     /bundle transport_proof invalid/,
   );
+  const loopbackTransportReceipt = {
+    ...receiptBody,
+    transport_proof: { ...receiptFrame.receipt.transport_proof, listen_host: "127.0.0.1" },
+  };
+  const loopbackTransportFramePath = "state/public-node-proof-fed-receipt-loopback-transport.json";
+  await writeFile(loopbackTransportFramePath, `${JSON.stringify({
+    ...receiptFrame,
+    receipt: {
+      ...loopbackTransportReceipt,
+      signature: signObject(privateKeyFromSeed(fixture.worker_seed_hex), loopbackTransportReceipt),
+    },
+  }, null, 2)}\n`);
+  await writeFile(tamperedBundlePath, `${JSON.stringify({
+    ...bundle,
+    receipt_frame: "public-node-proof-fed-receipt-loopback-transport.json",
+    receipt_digest: createHash("sha256").update(canonical(loopbackTransportReceipt)).digest("hex"),
+    transport_proof: loopbackTransportReceipt.transport_proof,
+  }, null, 2)}\n`);
+  await assert.rejects(
+    execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),
+    /bundle transport_proof invalid/,
+  );
   await writeFile(tamperedBundlePath, `${JSON.stringify({ ...bundle, proof: "other-proof" }, null, 2)}\n`);
   await assert.rejects(
     execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),
