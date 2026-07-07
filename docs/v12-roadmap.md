@@ -943,8 +943,33 @@
 - 不实现 scheduler-owned routing。
 - 不实现 A2A/ARD compatibility。
 
+## v12.35: Docker External Reachability Observer Wrapper
+
+状态：complete
+目标：Run the external reachability observer from a Docker container without claiming real outside-host reachability.
+
+新增：
+
+- `scripts/docker-external-reachability-observer.sh <bundle.json> <observed-bundle.json> <observer-trusted-zones.json>` runs the existing observer script inside Docker.
+- The wrapper uses `${AGNET_NODE_BASE_IMAGE:-node:22-bookworm-slim}` for constrained Docker environments.
+- The wrapper mounts the repo at `/app`, adds `host.docker.internal` through Docker's host gateway, and delegates directly to `node scripts/external-reachability-observer.mjs "$@"`.
+- `docker-demo.test.mjs` covers the wrapper contract without making Docker a required full-suite dependency.
+
+不做：
+
+- 不实现 hosted public node。
+- 不证明 observer 运行在另一台物理主机。
+- 不把 Docker bridge 证明描述成公网可达证明。
+- 不增加 DNS, tunnel, NAT traversal, TLS, QUIC, or remote probe infrastructure。
+- 不让 bundle 自己声明 `reachability_scope`。
+- 不把 observer trusted-Zone descriptor 嵌进 bundle。
+- 不实现 package signing。
+- 不实现 SBOM。
+- 不实现 scheduler-owned routing。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
-1. Run `scripts/external-reachability-observer.mjs` from a real outside host against a hosted/public node using the v12.34 evidence shape.
+1. Run `scripts/external-reachability-observer.mjs` or the Docker wrapper from a real outside host against a hosted/public node using the v12.35 evidence shape.
 2. Add package signing or SBOM against the produced package artifact only when that signature/SBOM format is explicitly scoped.
 3. Keep compatibility work parked until the proof layer has externally consumable hosted-node evidence.

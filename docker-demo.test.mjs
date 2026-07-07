@@ -30,3 +30,12 @@ test("Docker public node proof delegates to the public-listen proof", async () =
   assert.match(script, /docker build[\s\S]*-f Dockerfile\.public-node-proof[\s\S]*-t agnet-public-node-proof[\s\S]*\./);
   assert.match(script, /docker run --rm agnet-public-node-proof/);
 });
+
+test("Docker external reachability observer delegates to the observer script", async () => {
+  const script = await readFile("scripts/docker-external-reachability-observer.sh", "utf8");
+
+  assert.match(script, /AGNET_NODE_BASE_IMAGE:-node:22-bookworm-slim/);
+  assert.match(script, /--add-host=host\.docker\.internal:host-gateway/);
+  assert.match(script, /-v "\$PWD:\/app"/);
+  assert.match(script, /node scripts\/external-reachability-observer\.mjs "\$@"/);
+});
