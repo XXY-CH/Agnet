@@ -1137,6 +1137,30 @@
 - 不实现 scheduler-owned routing。
 - 不实现 A2A/ARD compatibility。
 
+## v12.44: Package Proof Signer Capability
+
+状态：complete
+目标：Require package proof signers to declare the package proof signing capability.
+
+新增：
+
+- `asp-verify.mjs package-proof <manifest.json>` rejects verified signer descriptors that do not declare `package.proof.sign` with `package proof signer capability missing`.
+- Trusted package signer descriptors must also declare `package.proof.sign` before they can be used as a package proof trust root.
+- `package-contract.test.mjs` covers a valid ASP signer descriptor and package proof signature that previously passed without the package proof signing capability.
+
+不做：
+
+- 不实现 JSON Schema。
+- 不实现 npm registry signing。
+- 不实现 release transparency。
+- 不实现 SBOM。
+- 不实现 package publish。
+- 不实现 hosted public node。
+- 不实现 real outside-host reachability。
+- 不实现 scheduler-owned routing。
+- 不实现 upper-layer demo/master-agent orchestration。
+- 不实现 A2A/ARD compatibility。
+
 ## Next Candidates
 
 1. Run `scripts/external-reachability-observer.mjs` or the Docker wrapper from a real outside host against a hosted/public node using the v12.35 evidence shape.

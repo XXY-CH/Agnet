@@ -15,6 +15,10 @@ async function writeMutatedPackageProof(path, proof, patch) {
 
 async function signPackageProofBody(proofBody) {
   const signer = await loadOrCreateAgent("agent://package-proof/signer", "state/keys/package-proof-signer.pkcs8", {}, ["asp+local://package-proof"], ["package.proof.sign"]);
+  return signPackageProofBodyWithSigner(proofBody, signer);
+}
+
+function signPackageProofBodyWithSigner(proofBody, signer) {
   const { proof_digest, signature, ...body } = proofBody;
   const signedBody = { ...body, signer: signer.descriptor };
   return {
@@ -166,6 +170,20 @@ test("package proof verifier rejects invalid ASP signatures", async () => {
   await assert.rejects(
     () => execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof/signature-invalid.json"]),
     (error) => error.stderr.includes("package proof signature invalid"),
+  );
+});
+
+test("package proof verifier rejects signers without package proof capability", async () => {
+  await rm("state/package-proof", { recursive: true, force: true });
+  await execFileAsync(process.execPath, ["scripts/package-proof.mjs"]);
+  const proof = JSON.parse(await readFile("state/package-proof/package-proof.json", "utf8"));
+  const signer = await loadOrCreateAgent("agent://package-proof/no-capability", "state/keys/package-proof-no-capability.pkcs8", {}, ["asp+local://package-proof"], []);
+  const noCapabilityProof = signPackageProofBodyWithSigner({ ...proof, manifest: "signer-capability-missing.json" }, signer);
+  await writeFile("state/package-proof/signer-capability-missing.json", `${JSON.stringify(noCapabilityProof, null, 2)}\n`);
+
+  await assert.rejects(
+    () => execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", "state/package-proof/signer-capability-missing.json"]),
+    (error) => error.stderr.includes("package proof signer capability missing"),
   );
 });
 

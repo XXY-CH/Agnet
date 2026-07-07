@@ -7,6 +7,7 @@ import { canonical, loadTrustedZones, publicKeyFromDescriptor, resolveAgent, ver
 
 const args = process.argv.slice(2);
 const [command, file, trustedFile, taskFile] = args;
+const PACKAGE_PROOF_CAPABILITY = "package.proof.sign";
 
 function receiptDigest(receipt) {
   const { signature, ...body } = receipt;
@@ -38,6 +39,10 @@ function packageFilesInvalid(files) {
   return !Array.isArray(files) || files.length === 0 || files.some(pathUnsafe) || new Set(files).size !== files.length;
 }
 
+function hasPackageProofCapability(descriptor) {
+  return Array.isArray(descriptor.capabilities) && descriptor.capabilities.includes(PACKAGE_PROOF_CAPABILITY);
+}
+
 async function loadTrustedPackageSigners(file) {
   const trust = JSON.parse(await readFile(file, "utf8"));
   if (!trust || typeof trust !== "object") throw new Error("trusted package signer list missing");
@@ -46,6 +51,7 @@ async function loadTrustedPackageSigners(file) {
   return new Map(signers.map((descriptor) => {
     if (!descriptor || typeof descriptor !== "object" || Array.isArray(descriptor)) throw new Error("trusted package signer descriptor missing");
     const signer = resolveAgent(new Map([[descriptor.alias, descriptor]]), descriptor.alias);
+    if (!hasPackageProofCapability(signer.descriptor)) throw new Error("trusted package signer capability missing");
     return [signer.descriptor.aid, signer.descriptor];
   }));
 }
@@ -103,6 +109,7 @@ try {
     if (!proof.signer || typeof proof.signer !== "object" || Array.isArray(proof.signer)) throw new Error("package proof signer missing");
     if (typeof signature !== "string" || signature === "") throw new Error("package proof signature missing");
     const signer = resolveAgent(new Map([[proof.signer.alias, proof.signer]]), proof.signer.alias);
+    if (!hasPackageProofCapability(signer.descriptor)) throw new Error("package proof signer capability missing");
     if (!verifyObject(signer.publicKey, proofBody, signature)) throw new Error("package proof signature invalid");
     const trustedSigners = trustedFile ? await loadTrustedPackageSigners(trustedFile) : null;
     if (trustedSigners && !trustedSigners.has(signer.descriptor.aid)) throw new Error("package proof signer untrusted");
