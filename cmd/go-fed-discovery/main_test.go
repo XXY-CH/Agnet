@@ -1121,8 +1121,8 @@ func TestPublicListenHostFlag(t *testing.T) {
 		"::1":       false,
 		"localhost": false,
 		"LOCALHOST": false,
-		"0.0.0.0":   true,
-		"::":        true,
+		"0.0.0.0":   false,
+		"::":        false,
 		"fed.local": true,
 	}
 	for host, want := range cases {

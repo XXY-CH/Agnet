@@ -416,7 +416,7 @@ func isPublicListenHost(host string) bool {
 	if ip == nil {
 		return true
 	}
-	return !ip.IsLoopback()
+	return !ip.IsLoopback() && !ip.IsUnspecified()
 }
 
 func handle(conn net.Conn, fixture Fixture, trusted map[string]map[string]any) {

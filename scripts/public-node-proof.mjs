@@ -1,5 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import net from "node:net";
+import { networkInterfaces } from "node:os";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname } from "node:path";
 import { promisify } from "node:util";
@@ -25,9 +26,11 @@ await rm(bundleManifestPath, { force: true });
 await rm("artifacts/public_node_probe_task", { force: true, recursive: true });
 
 const binary = process.argv[2] ?? "state/public-node-proof-go";
+const listenHost = publicListenHost();
+const gatewayHost = listenHost;
 const child = spawn(binary, [
   "--listen-host",
-  "0.0.0.0",
+  listenHost,
   "--port",
   "0",
   "--trusted",
@@ -136,6 +139,15 @@ for await (const chunk of child.stdout) {
     swarm_close_trusted_zones: swarmCloseTrustedPath,
   }));
   process.exit(0);
+}
+
+function publicListenHost() {
+  for (const entries of Object.values(networkInterfaces())) {
+    for (const entry of entries ?? []) {
+      if (entry.family === "IPv4" && !entry.internal) return entry.address;
+    }
+  }
+  throw new Error("no non-loopback IPv4 listen host available");
 }
 
 clearTimeout(timer);
@@ -340,7 +352,7 @@ function artifactFilePath(uri) {
 
 function exchangeFrame(port, zone, request, closeType, collect) {
   return new Promise((resolve, reject) => {
-    const socket = net.createConnection(Number(port), "127.0.0.1");
+    const socket = net.createConnection(Number(port), gatewayHost);
     let buffer = "";
     socket.on("error", reject);
     socket.on("connect", () => {

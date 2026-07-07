@@ -26,8 +26,8 @@ function bundlePath(baseDir, name, target) {
   return join(baseDir, target);
 }
 
-function isLoopbackListenHost(host) {
-  return host.toLowerCase() === "localhost" || host === "::1" || (isIP(host) === 4 && host.startsWith("127."));
+function isLocalOnlyListenHost(host) {
+  return host.toLowerCase() === "localhost" || host === "::1" || host === "::" || host === "0.0.0.0" || (isIP(host) === 4 && host.startsWith("127."));
 }
 
 try {
@@ -78,7 +78,7 @@ try {
     requireEqual("artifact_manifest_hashes", bundle.artifact_manifest_hashes, manifests.map(({ manifest_hash }) => manifest_hash));
     requireEqual("transport_proof", bundle.transport_proof, receiptVerified.receipt.transport_proof);
     const transportProof = receiptVerified.receipt.transport_proof;
-    if (!transportProof || typeof transportProof !== "object" || Array.isArray(transportProof) || transportProof.transport !== "fed+tcp" || typeof transportProof.listen_host !== "string" || transportProof.listen_host === "" || isLoopbackListenHost(transportProof.listen_host) || typeof transportProof.port !== "string" || !/^[1-9][0-9]{0,4}$/.test(transportProof.port)) {
+    if (!transportProof || typeof transportProof !== "object" || Array.isArray(transportProof) || transportProof.transport !== "fed+tcp" || typeof transportProof.listen_host !== "string" || transportProof.listen_host === "" || isLocalOnlyListenHost(transportProof.listen_host) || typeof transportProof.port !== "string" || !/^[1-9][0-9]{0,4}$/.test(transportProof.port)) {
       throw new Error("bundle transport_proof invalid");
     }
     if (transportProof.public_transport !== true) {

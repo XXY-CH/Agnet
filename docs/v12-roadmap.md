@@ -361,6 +361,33 @@
 - 不实现 A2A/ARD compatibility。
 - 不实现 scheduler-owned routing。
 
+## v12.15: Proof Bundle Unspecified Host Gate
+
+状态：complete
+目标：Make public proof bundles and Go public transport status reject unspecified listener hosts.
+
+新增：
+
+- Go `isPublicListenHost` rejects `0.0.0.0` and `::` instead of treating unspecified bind addresses as public.
+- `scripts/public-node-proof.mjs` binds the proof gateway to the first non-loopback IPv4 address instead of `0.0.0.0`.
+- `asp-verify.mjs proof-bundle <bundle.json>` rejects signed receipt transport proofs whose `listen_host` is `0.0.0.0` or `::`.
+- `public-node-proof.test.mjs` covers a re-signed unspecified-listen receipt and matching bundle.
+
+不做：
+
+- 不实现 external public reachability proof。
+- 不实现 hosted public node。
+- 不增加 DNS, TLS, QUIC, NAT traversal, or remote probe infrastructure。
+- 不改变 normal `fed-receipt` verification。
+- 不改变 verifier JSON output。
+- 不实现 transport negotiation。
+- 不实现 batch verifier。
+- 不实现 JSON Schema。
+- 不实现 generic proof bundle schema。
+- 不实现 package signing or SBOM。
+- 不实现 A2A/ARD compatibility。
+- 不实现 scheduler-owned routing。
+
 ## Next Candidates
 
 1. Add real external public reachability proof only with external network evidence.

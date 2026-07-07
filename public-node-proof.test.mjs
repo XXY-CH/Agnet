@@ -24,7 +24,9 @@ test("public node proof starts a public-listen gateway", async () => {
   const result = JSON.parse(stdout);
 
   assert.equal(result.public_node_proof, "ok");
-  assert.equal(result.listen_host, "0.0.0.0");
+  assert.match(result.listen_host, /^(?:\d{1,3}\.){3}\d{1,3}$/);
+  assert.notEqual(result.listen_host, "0.0.0.0");
+  assert.ok(!result.listen_host.startsWith("127."));
   assert.equal(result.public_transport, true);
   assert.equal(result.transport, "fed+tcp");
   assert.equal(result.resolve_alias, "agent://zone-b/summarizer");
@@ -235,6 +237,28 @@ test("public node proof starts a public-listen gateway", async () => {
     receipt_frame: "public-node-proof-fed-receipt-loopback-transport.json",
     receipt_digest: createHash("sha256").update(canonical(loopbackTransportReceipt)).digest("hex"),
     transport_proof: loopbackTransportReceipt.transport_proof,
+  }, null, 2)}\n`);
+  await assert.rejects(
+    execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),
+    /bundle transport_proof invalid/,
+  );
+  const unspecifiedTransportReceipt = {
+    ...receiptBody,
+    transport_proof: { ...receiptFrame.receipt.transport_proof, listen_host: "0.0.0.0" },
+  };
+  const unspecifiedTransportFramePath = "state/public-node-proof-fed-receipt-unspecified-transport.json";
+  await writeFile(unspecifiedTransportFramePath, `${JSON.stringify({
+    ...receiptFrame,
+    receipt: {
+      ...unspecifiedTransportReceipt,
+      signature: signObject(privateKeyFromSeed(fixture.worker_seed_hex), unspecifiedTransportReceipt),
+    },
+  }, null, 2)}\n`);
+  await writeFile(tamperedBundlePath, `${JSON.stringify({
+    ...bundle,
+    receipt_frame: "public-node-proof-fed-receipt-unspecified-transport.json",
+    receipt_digest: createHash("sha256").update(canonical(unspecifiedTransportReceipt)).digest("hex"),
+    transport_proof: unspecifiedTransportReceipt.transport_proof,
   }, null, 2)}\n`);
   await assert.rejects(
     execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),
