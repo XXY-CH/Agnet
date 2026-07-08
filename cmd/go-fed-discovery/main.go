@@ -714,15 +714,17 @@ func (f Fixture) auditProof(taskID string) (map[string]any, error) {
 	return nil, errors.New("audit proof not found: " + taskID)
 }
 
-func (f Fixture) countCompletedReceipts(workerAID string) int {
+func (f Fixture) countCompletedReceipts(workerAID string) (int, string) {
 	if f.Audit == nil || f.Audit.Path == "" {
-		return 0
+		return 0, ""
 	}
 	entries, err := readAuditEntries(f.Audit.Path)
 	if err != nil {
-		return 0
+		return 0, ""
 	}
 	count := 0
+	lastCompletedAt := ""
+	var lastCompletedTime time.Time
 	for _, entry := range entries {
 		record, _ := entry["record"].(map[string]any)
 		if record["kind"] != "go_fed_receipt" {
@@ -733,11 +735,30 @@ func (f Fixture) countCompletedReceipts(workerAID string) int {
 			continue
 		}
 		count++
+		if completedAt := receiptTimestamp(record, receipt); completedAt != "" {
+			completedTime, err := time.Parse(time.RFC3339Nano, completedAt)
+			if err == nil && (lastCompletedAt == "" || completedTime.After(lastCompletedTime)) {
+				lastCompletedAt = completedAt
+				lastCompletedTime = completedTime
+			}
+		}
 		if count >= 1000 {
-			return 1000
+			return 1000, lastCompletedAt
 		}
 	}
-	return count
+	return count, lastCompletedAt
+}
+
+func receiptTimestamp(record, receipt map[string]any) string {
+	for _, key := range []string{"completed_at", "timestamp"} {
+		if value := optionalString(record[key]); value != "" {
+			return value
+		}
+		if value := optionalString(receipt[key]); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (f Fixture) artifactReadProof(taskID, uri string) (map[string]any, error) {
@@ -2550,6 +2571,59 @@ func isRevoked(revocations []any, workerAID string, zoneDescriptor map[string]an
 	return false
 }
 
+func countRevocationsForWorker(revocations []any, workerAID, alias string, zoneDescriptor map[string]any) int {
+	count := 0
+	for _, item := range revocations {
+		revocation, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		subject := optionalString(revocation["subject"])
+		if subject != workerAID && subject != alias {
+			continue
+		}
+		if verifyZoneRevocation(revocation, zoneDescriptor) {
+			count++
+		}
+	}
+	return count
+}
+
+func computeAgentScore(completedReceipts int, lastCompletedAt string, revocationCount int, active bool) map[string]any {
+	receiptScore := min(completedReceipts, 20) * 2
+	credentialScore := 0
+	if active {
+		credentialScore = 30
+	}
+	freshnessScore := 0
+	if lastCompletedAt != "" {
+		completedAt, err := time.Parse(time.RFC3339Nano, lastCompletedAt)
+		if err == nil {
+			delta := time.Since(completedAt)
+			if delta <= time.Hour {
+				freshnessScore = 10
+			} else if delta <= 24*time.Hour {
+				freshnessScore = 5
+			}
+		}
+	}
+	revocationPenalty := min(revocationCount*10, receiptScore+credentialScore+freshnessScore)
+	total := receiptScore + credentialScore + freshnessScore - revocationPenalty
+	if total < 0 {
+		total = 0
+	}
+	if total > 100 {
+		total = 100
+	}
+	return map[string]any{
+		"total":              total,
+		"receipt_score":      receiptScore,
+		"credential_score":   credentialScore,
+		"freshness_score":    freshnessScore,
+		"revocation_penalty": revocationPenalty,
+	}
+}
+
 func (f Fixture) credentialStatus(credential map[string]any, status string) map[string]any {
 	return signBodyWithKey(f.AuthorityPrivateKey, map[string]any{
 		"issuer":        f.Authority["zid"],
@@ -2568,17 +2642,17 @@ func (f Fixture) queryMatch(worker *Worker, capability, intent string) map[strin
 	credentials := []any{}
 	statuses := []any{}
 	completedReceipts := 0
+	lastCompletedAt := ""
 	active := false
+	workerAID := optionalString(worker.Descriptor["aid"])
+	workerAlias := optionalString(worker.Descriptor["alias"])
+	revocationCount := countRevocationsForWorker(f.Revocations, workerAID, workerAlias, f.Authority)
 	if exact {
 		credential := f.capabilityCredential(worker, capability)
 		credentials = append(credentials, credential)
 		statuses = append(statuses, f.credentialStatus(credential, "active"))
-		completedReceipts = f.countCompletedReceipts(optionalString(worker.Descriptor["aid"]))
-		active = isCredentialActive(credential) && !isRevoked(
-			f.Revocations,
-			optionalString(worker.Descriptor["aid"]),
-			f.Authority,
-		)
+		completedReceipts, lastCompletedAt = f.countCompletedReceipts(workerAID)
+		active = isCredentialActive(credential) && revocationCount == 0
 	}
 	reasons := []string{}
 	if exact {
@@ -2593,14 +2667,11 @@ func (f Fixture) queryMatch(worker *Worker, capability, intent string) map[strin
 	if completedReceipts > 0 {
 		reasons = append(reasons, "reputation_receipts")
 	}
-	score := semantic
+	agentScore := computeAgentScore(completedReceipts, lastCompletedAt, revocationCount, active)
+	score := intFromMap(agentScore, "total") + semantic
 	if exact {
 		score += 50
 	}
-	if active {
-		score += 30
-	}
-	score += min(completedReceipts, 10)
 	return map[string]any{
 		"worker":              worker.Descriptor,
 		"zone_binding":        f.zoneBinding(worker),
@@ -2614,7 +2685,7 @@ func (f Fixture) queryMatch(worker *Worker, capability, intent string) map[strin
 			},
 			"capability": map[string]any{"exact": exact, "semantic": semantic > 0},
 			"credential": map[string]any{"trusted": len(credentials) > 0, "active": active},
-			"reputation": map[string]any{"completed_receipts": completedReceipts},
+			"reputation": map[string]any{"completed_receipts": completedReceipts, "last_completed_at": lastCompletedAt, "revocation_count": revocationCount, "agent_score": agentScore},
 		},
 		"ranking": map[string]any{"score": score, "reasons": reasons},
 	}
