@@ -491,22 +491,31 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 		})
 		send(map[string]any{"type": "FED_RESOLVE_CLOSE", "alias": frame["alias"]})
 	case "FED_QUERY":
-		matches := []any{}
+		matches := []map[string]any{}
 		capability := fmt.Sprint(frame["capability"])
-		for _, worker := range fixture.workersByCapability(capability) {
-			credential := fixture.capabilityCredential(&worker, capability)
-			matches = append(matches, map[string]any{
-				"worker":              worker.Descriptor,
-				"zone_binding":        fixture.zoneBinding(&worker),
-				"credentials":         []any{credential},
-				"credential_statuses": []any{fixture.credentialStatus(credential, "active")},
-			})
+		intent := optionalString(frame["intent"])
+		for i := range fixture.Workers {
+			if match := fixture.queryMatch(&fixture.Workers[i], capability, intent); match != nil {
+				matches = append(matches, match)
+			}
+		}
+		sort.Slice(matches, func(i, j int) bool {
+			left := intFromMap(matches[i]["ranking"], "score")
+			right := intFromMap(matches[j]["ranking"], "score")
+			if left != right {
+				return left > right
+			}
+			return optionalString(matches[i]["worker"].(map[string]any)["alias"]) < optionalString(matches[j]["worker"].(map[string]any)["alias"])
+		})
+		items := make([]any, 0, len(matches))
+		for _, match := range matches {
+			items = append(items, match)
 		}
 		send(map[string]any{
 			"type":       "FED_QUERY_RESULT",
 			"zone":       fixture.Authority,
 			"capability": frame["capability"],
-			"matches":    matches,
+			"matches":    items,
 		})
 		send(map[string]any{"type": "FED_QUERY_CLOSE", "capability": frame["capability"]})
 	case "FED_AUDIT_QUERY":
@@ -2443,16 +2452,6 @@ func (f Fixture) appendRequesterRebindingHistory(proof map[string]any) error {
 	return writeJSONStateFile(requesterRebindingHistoryPath, rebindings)
 }
 
-func (f Fixture) workersByCapability(capability string) []Worker {
-	workers := []Worker{}
-	for _, worker := range f.Workers {
-		if hasCapability(worker.Descriptor, capability) {
-			workers = append(workers, worker)
-		}
-	}
-	return workers
-}
-
 func (f Fixture) zoneBinding(worker *Worker) map[string]any {
 	return f.zoneBindingForDescriptor(worker.Descriptor)
 }
@@ -2481,6 +2480,61 @@ func (f Fixture) credentialStatus(credential map[string]any, status string) map[
 		"subject":       credential["subject"],
 		"status":        status,
 	}, "status_signature")
+}
+
+func (f Fixture) queryMatch(worker *Worker, capability, intent string) map[string]any {
+	exact := hasCapability(worker.Descriptor, capability)
+	semantic := semanticScore(intent, worker.Descriptor)
+	if !exact && semantic == 0 {
+		return nil
+	}
+	credentials := []any{}
+	statuses := []any{}
+	completedReceipts := 0
+	if exact {
+		credential := f.capabilityCredential(worker, capability)
+		credentials = append(credentials, credential)
+		statuses = append(statuses, f.credentialStatus(credential, "active"))
+		completedReceipts = 3
+	}
+	reasons := []string{}
+	if exact {
+		reasons = append(reasons, "capability_exact")
+	}
+	if semantic > 0 {
+		reasons = append(reasons, "semantic_match")
+	}
+	if len(credentials) > 0 {
+		reasons = append(reasons, "credential_active")
+	}
+	if completedReceipts > 0 {
+		reasons = append(reasons, "reputation_receipts")
+	}
+	score := semantic
+	if exact {
+		score += 50
+	}
+	if len(credentials) > 0 {
+		score += 30
+	}
+	score += min(completedReceipts, 10)
+	return map[string]any{
+		"worker":              worker.Descriptor,
+		"zone_binding":        f.zoneBinding(worker),
+		"credentials":         credentials,
+		"credential_statuses": statuses,
+		"discovery_evidence": map[string]any{
+			"identity": map[string]any{
+				"zone":  f.Authority["zid"],
+				"aid":   worker.Descriptor["aid"],
+				"alias": worker.Descriptor["alias"],
+			},
+			"capability": map[string]any{"exact": exact, "semantic": semantic > 0},
+			"credential": map[string]any{"trusted": len(credentials) > 0, "active": len(credentials) > 0},
+			"reputation": map[string]any{"completed_receipts": completedReceipts},
+		},
+		"ranking": map[string]any{"score": score, "reasons": reasons},
+	}
 }
 
 func (f Fixture) transportProof() map[string]any {
@@ -5500,13 +5554,17 @@ func policyStringList(value any, message string) ([]string, error) {
 }
 
 func stringsFromAny(value any) []string {
-	items, _ := value.([]any)
 	out := []string{}
-	for _, item := range items {
-		text, ok := item.(string)
-		if ok {
-			out = append(out, text)
+	switch items := value.(type) {
+	case []any:
+		for _, item := range items {
+			text, ok := item.(string)
+			if ok {
+				out = append(out, text)
+			}
 		}
+	case []string:
+		out = append(out, items...)
 	}
 	return out
 }
@@ -5522,6 +5580,47 @@ func stringsAny(items []string) []any {
 func optionalString(value any) string {
 	text, _ := value.(string)
 	return text
+}
+
+func intFromMap(value any, key string) int {
+	body, _ := value.(map[string]any)
+	switch item := body[key].(type) {
+	case int:
+		return item
+	case float64:
+		return int(item)
+	default:
+		return 0
+	}
+}
+
+func tokenize(value string) map[string]bool {
+	items := map[string]bool{}
+	for _, item := range strings.FieldsFunc(strings.ToLower(value), func(r rune) bool {
+		return (r < 'a' || r > 'z') && (r < '0' || r > '9')
+	}) {
+		items[item] = true
+	}
+	return items
+}
+
+func semanticScore(intent string, descriptor map[string]any) int {
+	intentTokens := tokenize(intent)
+	if len(intentTokens) == 0 {
+		return 0
+	}
+	candidate := optionalString(descriptor["alias"])
+	for _, item := range stringsFromAny(descriptor["capabilities"]) {
+		candidate += " " + item
+	}
+	candidateTokens := tokenize(candidate)
+	score := 0
+	for token := range intentTokens {
+		if candidateTokens[token] {
+			score++
+		}
+	}
+	return score
 }
 
 func validateTaskID(taskID string) error {

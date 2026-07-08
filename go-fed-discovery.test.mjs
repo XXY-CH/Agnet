@@ -500,6 +500,14 @@ test("Go discovery gateway serves FED_RESOLVE, FED_QUERY, and FED_TASK_OPEN to N
       policy: { allow_network: false },
     },
     {
+      key_file: "state/go-fed-discovery-semantic-summarizer.seed",
+      alias: "agent://zone-b/semantic-summarize-text-fast",
+      tool: "summarize.mock",
+      transports: ["fed+tcp://127.0.0.1:8997"],
+      capabilities: ["semantic.summarize.text.fast"],
+      policy: { allow_network: false },
+    },
+    {
       key_file: "state/go-fed-discovery-strict-translator.seed",
       alias: "agent://zone-b/strict-translator",
       tool: "mcp.stdio",
@@ -547,6 +555,7 @@ test("Go discovery gateway serves FED_RESOLVE, FED_QUERY, and FED_TASK_OPEN to N
   await writeFile("state/go-fed-discovery-worker.seed", `${fixture.worker_seed_hex}\n`);
   await writeFile("state/go-fed-discovery-translator.seed", "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f\n");
   await writeFile("state/go-fed-discovery-mock-translator.seed", "909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeaf\n");
+  await writeFile("state/go-fed-discovery-semantic-summarizer.seed", "b0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecf\n");
   await writeFile("state/go-fed-discovery-strict-translator.seed", "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf\n");
   await writeFile("state/go-fed-discovery-slow.seed", "c0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf\n");
   await writeFile("state/go-fed-discovery-container-claimed.seed", "d0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeef\n");
@@ -690,6 +699,27 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
       queriedResult.matches[0].credential_statuses[0].credential_id,
       capabilityCredentialId(queriedResult.matches[0].credentials[0]),
     );
+
+    const semanticQuery = await execFileAsync(process.execPath, [
+      "federation-gateway.mjs",
+      "query",
+      String(port),
+      "state/node-trusts-go-discovery.json",
+      "summarize.text",
+      "summarize text fast",
+    ]);
+    const semanticResult = JSON.parse(semanticQuery.stdout);
+    assert.deepEqual(semanticResult.matches.slice(0, 2).map((match) => match.alias), [
+      "agent://zone-b/summarizer",
+      "agent://zone-b/semantic-summarize-text-fast",
+    ]);
+    assert.deepEqual(semanticResult.matches[0].discovery_evidence.capability, { exact: true, semantic: true });
+    assert.deepEqual(semanticResult.matches[0].discovery_evidence.credential, { trusted: true, active: true });
+    assert.equal(semanticResult.matches[0].discovery_evidence.reputation.completed_receipts, 3);
+    assert.deepEqual(semanticResult.matches[1].discovery_evidence.credential, { trusted: false, active: false });
+    assert.ok(semanticResult.matches[0].ranking.score > semanticResult.matches[1].ranking.score);
+    assert.ok(semanticResult.matches[0].ranking.reasons.includes("credential_active"));
+    assert.ok(semanticResult.matches[0].ranking.reasons.includes("reputation_receipts"));
 
     const translated = await execFileAsync(process.execPath, [
       "federation-gateway.mjs",
