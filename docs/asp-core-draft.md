@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v14.4-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v14.5-protocol`. It is not a full Agent Space product spec.
 Previous public draft baseline: local-first prototype at `v13.15-protocol`; v12 public baseline: local-first prototype at `v12.45-protocol`.
 
 ## Scope
@@ -320,11 +320,19 @@ Each append links to the previous audit head. Verifiers check that entries prese
 
 The audit hash chain is accountability evidence, not a global consensus layer.
 
+## Swarm Plan
+
+`FED_SWARM_PLAN` records Swarm lifecycle step 2, intent decomposition, before `FED_SWARM_OPEN`. `swarmPlan(zone, swarmId, intent, steps, policyDigest)` emits a signed plan where the lead Zone maps the original `intent` to ordered step specs with `step_id`, `capability`, optional `constraint`, and optional `depends_on` fields. The `plan_digest` is the SHA-256 digest of canonical `{ intent, steps }`, and `plan_signature` is the Zone Ed25519 signature over the plan body. `verifySwarmPlan` validates the Zone descriptor, local Zone trust, non-empty steps, required `step_id` and `capability`, NUL-free `step_id`, 64-hex `policy_digest`, recomputed `plan_digest`, and `plan_signature`.
+
+`FED_SWARM_PLAN` is decomposition evidence, not LLM orchestration, candidate selection, policy synthesis, or full DAG execution.
+
 ## Swarm Close
 
 `FED_SWARM_CLOSE` binds a Swarm id to a signed list of completed step receipts. In the v14.1 Swarm micro-contract proof surface, closes may also carry `micro_contracts`: one signed worker commitment per step over declared cost, latency seconds, capability proof, policy digest, and worker descriptor.
 
 In the v14.4 task failure migration surface, closes carry `migration_log`: an array of migration entries with `step_id`, `original_worker_aid`, `reason`, `migrated_to_worker_aid`, and `migration_at`. The `migration_log` array is part of the close body covered by `close_signature`; individual migration log entries do not require separate signatures. `migrated_to_worker_aid` names the replacement worker that produced the final successful step receipt.
+
+In the v14.5 intent decomposition surface, closes may carry `plan_digest` copied from `FED_SWARM_OPEN.swarm.plan_digest` so callers can link the signed close proof back to a verified `FED_SWARM_PLAN`. The implemented Node `verifySwarmClose` validates a present `plan_digest` as a 64-hex digest; it does not fetch or cross-reference the plan frame.
 
 The implemented Node verifier checks the close frame object and type, trusted Zone store presence, signing Zone object and descriptor, close proof object, close signature presence and verification, the signed Swarm id, the frame/body Swarm id match, and the structure of `step_receipts`. It requires at least one step receipt, requires each step receipt to be an object with `step_id`, a safe `task_id` token, and a 64-hex `receipt_digest`, and rejects duplicate or NUL-bearing Swarm identities. When `migration_log` is present, it requires an array of objects, validates `step_id`, `original_worker_aid`, `migrated_to_worker_aid`, `reason`, and ISO UTC `migration_at`, and rejects entries whose `step_id` does not reference a real step receipt. When `micro_contracts` are present, it requires one contract per step, recomputes each `contract_digest`, matches each contract worker to the worker descriptor carried in the signed step receipt, and verifies the worker Ed25519 signature.
 
