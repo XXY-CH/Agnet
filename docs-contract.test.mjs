@@ -2490,7 +2490,7 @@ test("v13 public docs open the Ultimate-facing protocol milestone without scope 
   assert.match(readme, /v13 active at `v13\.0-protocol`/);
   assert.match(readme, /`docs\/v13-roadmap\.md` - active v13 roadmap\./);
   assert.match(readme, /`docs\/v13\.0-boundary\.md` - v13 opening boundary\./);
-  assert.match(roadmap, /状态：active at v13\.0/);
+  assert.match(roadmap, /状态：active at v13\.1/);
   assert.match(roadmap, /v13 uses larger evidence gates instead of many tiny versions/);
   assert.match(roadmap, /## v13\.1: Hosted Public Reachability Evidence/);
   assert.match(roadmap, /## v13\.2: Release Trust and SBOM/);
@@ -2500,9 +2500,9 @@ test("v13 public docs open the Ultimate-facing protocol milestone without scope 
   assert.match(roadmap, /upper-layer demo\/master-agent orchestration stays outside this repository/);
   assert.match(roadmap, /A2A\/ARD compatibility stays parked/);
   assert.match(draft, /local-first prototype at `v13\.0-protocol`/);
-  assert.match(status, /状态：v13 active at v13\.0/);
-  assert.match(status, /v13.0-opening-alignment/);
-  assert.match(status, /v13 is open but has not yet added hosted reachability, semantic ranking, dynamic scheduling, remote attestation, or SBOM runtime capability/);
+  assert.match(status, /状态：v13 active at v13\.1/);
+  assert.match(status, /v13.1-reachability-scope/);
+  assert.match(status, /v13\.1 reachability evidence gates are active: verifier-owned scope classes and observer evidence binding landed with tests; real hosted external-host evidence is still pending/);
   assert.match(boundary, /Open v13 as the Ultimate-facing protocol milestone/);
   assert.match(boundary, /real hosted\/public reachability/);
   assert.match(boundary, /semantic discovery\/reputation ranking/);
@@ -2510,4 +2510,34 @@ test("v13 public docs open the Ultimate-facing protocol milestone without scope 
   assert.match(boundary, /strong sandbox\/remote attestation/);
   assert.match(boundary, /release trust\/SBOM/);
   assert.match(boundary, /no fake public reachability without external-host evidence/);
+});
+
+test("v13.1 public docs describe active reachability scope without hosted exit drift", async () => {
+  const [readme, roadmap, draft, status, boundary] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v13-roadmap.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v13.1-boundary.md", "utf8"),
+  ]);
+
+  assert.match(readme, /v13\.1 reachability evidence gates are active: verifier-owned scope classes and observer evidence binding landed with tests; real hosted external-host evidence is still pending/);
+  assert.match(readme, /`local-interface` without observer evidence, `container-observer` when trusted observer evidence has `vantage: "container"`, and `external-host` only when trusted observer evidence has `vantage: "external-host"` and a globally routable literal-IP `listen_host`/);
+  assert.match(readme, /returns `reachability_observer_zid`/);
+  assert.match(roadmap, /状态：active at v13\.1/);
+  assert.match(roadmap, /状态：active\n目标：把 v12 的 local-interface proof 推进到 verifier-owned reachability scope classes/);
+  assert.match(roadmap, /Valid trusted observer evidence returns `reachability_observer_zid` for both `container-observer` and `external-host` scopes/);
+  assert.match(roadmap, /hostname listen hosts are out of scope for this slice/);
+  assert.match(draft, /reports `reachability_scope: "container-observer"` for `vantage: "container"`/);
+  assert.match(draft, /`reachability_scope: "external-host"` for `vantage: "external-host"` only when the signed receipt `listen_host` is a globally routable literal IP/);
+  assert.match(draft, /Observer-backed scopes return `reachability_observer_zid`/);
+  assert.match(status, /状态：v13 active at v13\.1/);
+  assert.match(status, /v13\.1 reachability evidence gates are active: verifier-owned scope classes and observer evidence binding landed with tests; real hosted external-host evidence is still pending as the remaining v13\.1 exit criterion/);
+  assert.match(status, /`external-host` requires a globally routable literal-IP listen host; hostname listen hosts are out of scope for this slice/);
+  assert.match(boundary, /状态：active/);
+  assert.match(boundary, /It is active, not complete: the mechanism and negative gates are in place, but the hosted external-host observer run has not happened yet and remains the remaining v13\.1 exit criterion/);
+  assert.match(boundary, /`container-observer` proves a containerized observer boundary only; it is not hosted external-host reachability/);
+  assert.match(boundary, /Remaining exit criterion: run the observer from a real hosted external host against a globally routable literal-IP listener/);
+  const oldObserverField = new RegExp("external_" + "observer_zid");
+  for (const doc of [readme, roadmap, draft, status, boundary]) assert.doesNotMatch(doc, oldObserverField);
 });
