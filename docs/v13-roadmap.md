@@ -1,6 +1,6 @@
 # Agent Space v13 Roadmap
 
-状态：active at v13.10
+状态：active at v13.11
 目标：从 v12 已闭合的 proof surface 继续向 Ultimate 推进，集中处理真实 hosted/public reachability、release trust/SBOM、strong sandbox/remote attestation、semantic discovery/reputation ranking、dynamic Swarm scheduling 五个大门槛。
 
 v13 uses larger evidence gates instead of many tiny versions. 每个 v13 slice 都必须能用测试、脚本、外部证据或 verifier 输出证明边界已经收住；没有证据的能力只作为 planned，不写成 current capability。
@@ -176,6 +176,27 @@ Remaining exit criterion:
 
 - No vector database, no global reputation coin, no public marketplace, and no scheduler integration.
 - No Go query parity for the semantic-only edge cases beyond what the Node side already specifies.
+
+## v13.11: Audit-Backed Receipt-Count Reputation
+
+状态：complete
+目标：Replace semantic discovery reputation's hardcoded completed-receipt demo value with counts read from the persisted audit log in Node and Go.
+
+新增：
+
+- Node federation gateway reputation counts completed `fed_receipt` audit records for each worker AID from the persisted audit log.
+- Go FED_QUERY reputation counts completed `go_fed_receipt` audit records for each worker AID from `f.Audit.Path`.
+- Missing, empty, unreadable, or partially malformed audit logs fail safe to zero counted receipts instead of inventing reputation.
+- `discovery_evidence.reputation.completed_receipts` remains inspectable, and receipt counts come from the persisted audit log.
+- `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs`, and `docs-contract.test.mjs` cover the audit-backed receipt-count boundary.
+
+不做：
+
+- No cross-session ML.
+- No global graph.
+- No third-party reputation oracle.
+- No global reputation coin.
+- not a hardcoded demo value, not cross-session ML, not a global reputation oracle.
 
 ## v13 非目标
 

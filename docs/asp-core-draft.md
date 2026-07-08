@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v13.10-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v13.11-protocol`. It is not a full Agent Space product spec.
 Previous public draft baseline: local-first prototype at `v12.45-protocol`.
 
 ## Scope
@@ -362,7 +362,7 @@ When `proof-bundle` receives an additional caller-supplied trusted-Zone file, it
 
 `scripts/public-node-proof.sh` can pass `AGNET_PUBLIC_LISTEN_HOST` through to the public-listen proof so a caller can bind an explicit globally routable literal IP, and `AGNET_PUBLIC_PROOF_KEEPALIVE_MS` can keep the listener alive after local proof generation while a hosted observer attempts the TCP connection. The `.github/workflows/hosted-reachability-observer.yml` Hosted Reachability Observer workflow decodes caller-supplied verifier-ready bundle files, runs the observer with `external-host`, and verifies the observed bundle. A recorded GitHub-hosted attempt, workflow run `28916288568`, failed with `ENETUNREACH` against the current IPv6 listener; the real hosted external-host observer run is still pending.
 
-`FED_QUERY` may carry an `intent` string for semantic discovery. Ranking is deterministic and evidence-first: exact capability match, trusted capability credential, signed credential claims, receipt-count evidence, and semantic token overlap are exposed as inspectable evidence. The Go federation gateway FED_QUERY now accepts `intent` and returns ranked matches with `discovery_evidence` and `ranking` fields, mirroring the Node surface. The current implementation is token-overlap semantic discovery, not a vector database, not global reputation, not a public marketplace, and not scheduler integration.
+`FED_QUERY` may carry an `intent` string for semantic discovery. Ranking is deterministic and evidence-first: exact capability match, trusted capability credential, signed credential claims, receipt-count evidence, and semantic token overlap are exposed as inspectable evidence. The Go federation gateway FED_QUERY now accepts `intent` and returns ranked matches with `discovery_evidence` and `ranking` fields, mirroring the Node surface. For receipt-count reputation, receipt counts come from the persisted audit log; this is not a hardcoded demo value, not cross-session ML, not a global reputation oracle. The current implementation is token-overlap semantic discovery, not a vector database, not global reputation, not a public marketplace, and not scheduler integration.
 
 The package proof manifest includes `proof_digest`, computed as `sha256(canonical(proof without proof_digest or signature))`. It also includes a package proof signer Agent descriptor and `signature`, signed over that same proof body by the signer key.
 
