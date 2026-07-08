@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v13.4-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v13.5-protocol`. It is not a full Agent Space product spec.
 Previous public draft baseline: local-first prototype at `v12.45-protocol`.
 
 ## Scope
@@ -44,7 +44,7 @@ Agent resolution requires registry context with a lookup surface before reading 
 
 ASP Core does not cover:
 
-- Scheduling.
+- Automatic scheduling and decomposition.
 - Opaque semantic routing.
 - Global reputation.
 - Payments.
@@ -325,6 +325,8 @@ Go audit-backed Swarm dependency verification MUST reject malformed `after` and 
 Go `FED_SWARM_OPEN` execution MUST reject malformed step `after` list entries before executing dependent steps.
 
 Go audit-backed Swarm close proof verification MUST reject malformed `step_receipts` list entries instead of silently filtering them before close step count, order, task, and digest checks.
+
+`FED_SWARM_SCHEDULE` accepts a signed Swarm DAG and executes steps in deterministic ready order. Each scheduled step reuses `FED_TASK_OPEN` task verification and the existing Swarm receipt dependency evidence. The close proof may include signed scheduler evidence with `mode: "ready-dag"` and the executed `step_order`. This is scheduler-owned DAG execution only, not automatic task decomposition, not parallel execution, not upper-layer master-agent orchestration, and not economic settlement.
 
 ## Verification Commands
 

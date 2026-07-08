@@ -547,6 +547,11 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(err))
 			return false
 		}
+	case "FED_SWARM_SCHEDULE":
+		if err := fixture.executeScheduledSwarm(send, origin, frame); err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
 	case "FED_TASK_ENQUEUE":
 		taskID, workerID, err := fixture.enqueueQueueItem(origin, frame)
 		if err != nil {
@@ -2765,6 +2770,14 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 }
 
 func (f Fixture) executeSwarm(send sendFunc, origin, frame map[string]any) error {
+	return f.executeSwarmWithScheduler(send, origin, frame, nil)
+}
+
+func (f Fixture) executeScheduledSwarm(send sendFunc, origin, frame map[string]any) error {
+	return f.executeSwarmWithScheduler(send, origin, frame, map[string]any{"mode": "ready-dag"})
+}
+
+func (f Fixture) executeSwarmWithScheduler(send sendFunc, origin, frame map[string]any, scheduler map[string]any) error {
 	requester, ok := frame["requester"].(map[string]any)
 	if !ok {
 		return errors.New("swarm requester missing")
@@ -2790,6 +2803,15 @@ func (f Fixture) executeSwarm(send sendFunc, origin, frame map[string]any) error
 	steps, ok := swarm["steps"].([]any)
 	if !ok || len(steps) == 0 {
 		return errors.New("swarm steps missing")
+	}
+	var err error
+	if scheduler != nil {
+		var stepOrder []string
+		steps, stepOrder, err = scheduleSwarmSteps(steps)
+		if err != nil {
+			return err
+		}
+		scheduler["step_order"] = stepOrder
 	}
 	completed := map[string]map[string]any{}
 	stepReceipts := []map[string]any{}
@@ -2856,12 +2878,79 @@ func (f Fixture) executeSwarm(send sendFunc, origin, frame map[string]any) error
 			return err
 		}
 	}
-	closeProof := signBodyWithKey(f.AuthorityPrivateKey, map[string]any{"swarm_id": swarmID, "step_receipts": stepReceipts}, "close_signature")
+	closeBody := map[string]any{"swarm_id": swarmID, "step_receipts": stepReceipts}
+	if scheduler != nil {
+		closeBody["scheduler"] = scheduler
+	}
+	closeProof := signBodyWithKey(f.AuthorityPrivateKey, closeBody, "close_signature")
 	if err := f.appendAudit(map[string]any{"kind": "go_swarm_close", "zone": f.Authority, "close": closeProof}); err != nil {
 		return err
 	}
 	send(map[string]any{"type": "FED_SWARM_CLOSE", "swarm_id": swarmID, "close": closeProof})
 	return nil
+}
+
+func scheduleSwarmSteps(items []any) ([]any, []string, error) {
+	pending := map[string]map[string]any{}
+	afterByStep := map[string][]string{}
+	inputOrder := []string{}
+	for _, item := range items {
+		step, ok := item.(map[string]any)
+		if !ok {
+			return nil, nil, errors.New("swarm step invalid")
+		}
+		stepID := optionalString(step["step_id"])
+		if stepID == "" {
+			return nil, nil, errors.New("swarm step_id missing")
+		}
+		if hasSwarmDelimiter(stepID) {
+			return nil, nil, errors.New("swarm identity contains NUL")
+		}
+		if _, exists := pending[stepID]; exists {
+			return nil, nil, errors.New("duplicate swarm step: " + stepID)
+		}
+		after, err := swarmAfterSteps(step["after"])
+		if err != nil {
+			return nil, nil, err
+		}
+		pending[stepID] = step
+		afterByStep[stepID] = after
+		inputOrder = append(inputOrder, stepID)
+	}
+	done := map[string]bool{}
+	ordered := []any{}
+	stepOrder := []string{}
+	for len(pending) > 0 {
+		progressed := false
+		for _, stepID := range inputOrder {
+			step, ok := pending[stepID]
+			if !ok {
+				continue
+			}
+			ready := true
+			for _, dependency := range afterByStep[stepID] {
+				if hasSwarmDelimiter(dependency) {
+					return nil, nil, errors.New("swarm identity contains NUL")
+				}
+				if !done[dependency] {
+					ready = false
+					break
+				}
+			}
+			if !ready {
+				continue
+			}
+			ordered = append(ordered, step)
+			stepOrder = append(stepOrder, stepID)
+			done[stepID] = true
+			delete(pending, stepID)
+			progressed = true
+		}
+		if !progressed {
+			return nil, nil, errors.New("swarm schedule dependency unresolved")
+		}
+	}
+	return ordered, stepOrder, nil
 }
 
 func (f Fixture) cancelTask(send sendFunc, origin map[string]any, worker *Worker, requester, cancel map[string]any) error {

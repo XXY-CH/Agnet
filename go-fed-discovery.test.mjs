@@ -797,6 +797,47 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     const { close_signature, ...swarmCloseBody } = swarmClose;
     assert.equal(verifyObject(swarmAuthorityPublicKey, swarmCloseBody, close_signature), true);
 
+    const scheduledSummaryTask = {
+      ...swarmSummaryTask,
+      task_id: "go_fed_swarm_scheduled_summary",
+      intent: "Summarize as the scheduler-ready Swarm DAG step.",
+    };
+    const scheduledTranslateTask = {
+      ...swarmTranslateTask,
+      task_id: "go_fed_swarm_scheduled_translate",
+      intent: "Translate after scheduler resolves the dependency.",
+    };
+    const scheduledSwarmFrames = await exchangeFrames(port, {
+      type: "FED_SWARM_SCHEDULE",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      swarm: {
+        swarm_id: "swarm://local/go_fed_swarm_scheduled",
+        steps: [
+          {
+            step_id: "translation",
+            after: ["summary"],
+            task: { ...scheduledTranslateTask, signature: signObject(requester.privateKey, scheduledTranslateTask) },
+          },
+          {
+            step_id: "summary",
+            task: { ...scheduledSummaryTask, signature: signObject(requester.privateKey, scheduledSummaryTask) },
+          },
+        ],
+      },
+    }, "FED_SWARM_CLOSE");
+    assert.notEqual(scheduledSwarmFrames.at(-1).type, "FED_TASK_ERROR", scheduledSwarmFrames.at(-1).error);
+    const scheduledSummaryReceipt = scheduledSwarmFrames.find((frame) => frame.type === "FED_RECEIPT" && frame.receipt.task_id === scheduledSummaryTask.task_id).receipt;
+    const scheduledTranslationReceipt = scheduledSwarmFrames.find((frame) => frame.type === "FED_RECEIPT" && frame.receipt.task_id === scheduledTranslateTask.task_id).receipt;
+    const scheduledClose = scheduledSwarmFrames.at(-1).close;
+    assert.equal(scheduledClose.scheduler.mode, "ready-dag");
+    assert.deepEqual(scheduledClose.scheduler.step_order, ["summary", "translation"]);
+    assert.deepEqual(scheduledClose.step_receipts, [
+      { step_id: "summary", task_id: "go_fed_swarm_scheduled_summary", receipt_digest: createHash("sha256").update(JSON.stringify(scheduledSummaryReceipt)).digest("hex") },
+      { step_id: "translation", task_id: "go_fed_swarm_scheduled_translate", receipt_digest: createHash("sha256").update(JSON.stringify(scheduledTranslationReceipt)).digest("hex") },
+    ]);
+    assert.deepEqual(scheduledTranslationReceipt.swarm.after, ["summary"]);
+
     const badSwarmSummaryTask = {
       ...swarmSummaryTask,
       task_id: "go_fed_swarm_bad_after_summary",

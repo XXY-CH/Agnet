@@ -1,6 +1,6 @@
 # Agent Space v13 Roadmap
 
-状态：active at v13.4
+状态：active at v13.5
 目标：从 v12 已闭合的 proof surface 继续向 Ultimate 推进，集中处理真实 hosted/public reachability、release trust/SBOM、strong sandbox/remote attestation、semantic discovery/reputation ranking、dynamic Swarm scheduling 五个大门槛。
 
 v13 uses larger evidence gates instead of many tiny versions. 每个 v13 slice 都必须能用测试、脚本、外部证据或 verifier 输出证明边界已经收住；没有证据的能力只作为 planned，不写成 current capability。
@@ -120,18 +120,21 @@ Remaining exit criterion:
 
 ## v13.5: Dynamic Swarm Scheduling
 
-状态：planned
-目标：把 v9/v10 的 explicit two-step Swarm proof 推进到 scheduler-owned task DAG execution.
+状态：complete
+目标：把 explicit two-step Swarm proof 推进到 scheduler-owned ready-DAG execution primitive.
 
-验收边界：
+新增：
 
-- A scheduler can build or accept a DAG, assign steps to workers, execute ready steps, and produce audit-backed receipts for every completed step.
-- Close proof remains complete, ordered, deduplicated, digest-checked, and tied to the same audit.
-- Failure, retry, dependency, conflict, and approval boundaries are explicit in receipt/audit evidence.
-- Tests cover ready-step ordering, parallel-safe dependencies, failed-step blocking, retry lineage, duplicate-step rejection, and close proof completeness.
+- `FED_SWARM_SCHEDULE` accepts a signed Swarm DAG in the Go federation gateway.
+- The scheduler accepts out-of-order input steps and executes them in deterministic dependency-ready order.
+- Every scheduled step still uses the existing signed task execution path and produces audit-backed receipts.
+- `FED_SWARM_CLOSE` remains complete, ordered, deduplicated, digest-checked, and tied to the same audit.
+- Close proof carries signed scheduler evidence with `mode: "ready-dag"` and the executed `step_order`.
+- `go-fed-discovery.test.mjs` covers out-of-order ready-DAG execution, dependency artifact binding, and close proof scheduler evidence.
 
 不做：
 
+- No automatic task decomposition, no parallel worker pool, no upper-layer master-agent orchestration, and no economic settlement in this slice.
 - 不做 upper-layer demo/master-agent orchestration。
 - 不做 agent chat room。
 - 不做 economic settlement。
