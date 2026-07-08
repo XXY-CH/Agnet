@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v13.5-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v13.6-protocol`. It is not a full Agent Space product spec.
 Previous public draft baseline: local-first prototype at `v12.45-protocol`.
 
 ## Scope
@@ -398,6 +398,10 @@ The release trust verifier command accepts `release-trust <release-trust.json> [
 Release trust staleness means `package_proof_digest` no longer matches the verified referenced package proof. Releases do not expire by elapsed time; `released_at` MUST be a valid UTC timestamp with the same ISO 8601 shape used by observed reachability evidence and MUST NOT be beyond the verifier's future skew allowance.
 
 Trusted release signer pinning applies to the release signer only. It does not pin or replace the embedded package proof signer trust decision, because the release trust verifier verifies the referenced package proof as package proof evidence and then separately checks the release signer.
+
+The sandbox proof verifier command is `node asp-verify.mjs sandbox-proof <frame.json> <trusted-zones.json> [required-sandbox-class]`. It first verifies the input as a trusted `FED_RECEIPT` frame, then verifies the embedded `local.sandbox.v1` proof signature using the receipt signing Zone, and checks task id, authority Zone, worker, policy digest, sandbox claim, and sandbox evidence binding.
+
+The current sandbox proof verifier returns `sandbox_class: "local-process"` only for local-process sandbox evidence. It requires mode, isolation level, network surface, command digest, binary digest, and transcript digest evidence before accepting the proof. Passing `remote-attestation` as the required sandbox class fails closed unless future signed attestation evidence is implemented. This is not hardware remote attestation, not container namespace execution, and not a VM/TEE claim.
 
 Implemented Go checks:
 

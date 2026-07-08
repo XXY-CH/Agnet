@@ -158,6 +158,32 @@ async function verifyExternalReachability(bundle, transportProof, receiptDigest,
   return { reachability_scope: body.vantage === "container" ? "container-observer" : "external-host", reachability_observer_zid: body.observer_zid };
 }
 
+function verifySandboxProof(receiptVerified, requiredClass) {
+  const proof = receiptVerified.receipt.sandbox_proof;
+  if (!proof || typeof proof !== "object" || Array.isArray(proof)) throw new Error("sandbox proof missing");
+  if (typeof proof.sandbox_signature !== "string" || proof.sandbox_signature === "") throw new Error("sandbox proof signature missing");
+  requireEqual("sandbox proof_type", proof.proof_type, "local.sandbox.v1");
+  requireEqual("sandbox task_id", proof.task_id, receiptVerified.receipt.task_id);
+  requireEqual("sandbox authority", proof.authority, receiptVerified.zone.zid);
+  requireEqual("sandbox worker", proof.worker, receiptVerified.worker.aid);
+  requireEqual("sandbox policy_digest", proof.policy_digest, receiptVerified.receipt.policy_digest);
+  requireEqual("sandbox claim", proof.sandbox_claim, receiptVerified.receipt.sandbox_claim);
+  requireEqual("sandbox evidence", proof.sandbox, receiptVerified.receipt.sandbox);
+  const { sandbox_signature: signature, ...proofBody } = proof;
+  if (!verifyObject(publicKeyFromDescriptor(receiptVerified.zone), proofBody, signature)) throw new Error("sandbox proof signature invalid");
+  const sandbox = receiptVerified.receipt.sandbox;
+  if (!sandbox || typeof sandbox !== "object" || Array.isArray(sandbox)) throw new Error("sandbox evidence missing");
+  if (typeof sandbox.mode !== "string" || sandbox.mode === "") throw new Error("sandbox evidence mode missing");
+  if (typeof sandbox.isolation_level !== "string" || sandbox.isolation_level === "") throw new Error("sandbox evidence isolation_level missing");
+  if (typeof sandbox.network !== "string" || sandbox.network === "") throw new Error("sandbox evidence network missing");
+  if (typeof sandbox.tool_command_digest !== "string" || !/^[0-9a-f]{64}$/.test(sandbox.tool_command_digest)) throw new Error("sandbox evidence command digest missing");
+  if (typeof sandbox.tool_binary_digest !== "string" || !/^[0-9a-f]{64}$/.test(sandbox.tool_binary_digest)) throw new Error("sandbox evidence binary digest missing");
+  if (typeof sandbox.tool_transcript_digest !== "string" || !/^[0-9a-f]{64}$/.test(sandbox.tool_transcript_digest)) throw new Error("sandbox evidence transcript digest missing");
+  const sandboxClass = sandbox.isolation_level === "local-process" ? "local-process" : "unknown";
+  if (requiredClass && requiredClass !== sandboxClass) throw new Error(`sandbox class unavailable: ${requiredClass}`);
+  return { sandboxClass, sandbox };
+}
+
 try {
   if (command === "artifact" && file && args.length === 2) {
     const manifest = JSON.parse(await readFile(file, "utf8"));
@@ -182,6 +208,11 @@ try {
     const frame = JSON.parse(await readFile(file, "utf8"));
     const verified = verifySwarmClose(frame, await loadTrustedZones(trustedFile));
     console.log(JSON.stringify({ swarm_close_verify: "ok", swarm_id: verified.close.swarm_id, swarm_close_digest: verified.closeDigest }));
+  } else if (command === "sandbox-proof" && file && trustedFile && (args.length === 3 || args.length === 4)) {
+    const frame = JSON.parse(await readFile(file, "utf8"));
+    const verified = verifyFederatedReceipt(frame, await loadTrustedZones(trustedFile));
+    const { sandboxClass, sandbox } = verifySandboxProof(verified, taskFile);
+    console.log(JSON.stringify({ sandbox_proof_verify: "ok", task_id: verified.receipt.task_id, sandbox_claim: verified.receipt.sandbox_claim, sandbox_class: sandboxClass, remote_attestation: false, runtime_identity: sandbox.runtime ?? sandbox.kind ?? sandbox.mode, network: sandbox.network, receipt_digest: receiptDigest(verified.signedReceipt) }));
   } else if (command === "package-proof" && file && (args.length === 2 || (args.length === 3 && trustedFile))) {
     const { proof, signer, trustedSigners } = await verifyPackageProof(file, trustedFile);
     console.log(JSON.stringify({ package_proof_verify: "ok", name: proof.name, version: proof.version, filename: proof.filename, tarball: proof.tarball, size: proof.size, shasum: proof.shasum, integrity: proof.integrity, sha256: proof.sha256, proof_digest: proof.proof_digest, signer_aid: signer.descriptor.aid, ...(trustedSigners ? { signer_trusted: true } : {}) }));
@@ -254,7 +285,7 @@ try {
     if (reachability) output.reachability_observer_zid = reachability.reachability_observer_zid;
     console.log(JSON.stringify(output));
   } else {
-    throw new Error("usage: node asp-verify.mjs artifact <manifest.json> | fed-receipt <frame.json> <trusted-zones.json> [task.json] | fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] | swarm-close <frame.json> <trusted-zones.json> | package-proof <manifest.json> [trusted-signers.json] | release-trust <release-trust.json> [trusted-release-signers.json] | proof-bundle <bundle.json> [external-trusted-zones.json]");
+    throw new Error("usage: node asp-verify.mjs artifact <manifest.json> | fed-receipt <frame.json> <trusted-zones.json> [task.json] | fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] | swarm-close <frame.json> <trusted-zones.json> | sandbox-proof <frame.json> <trusted-zones.json> [required-sandbox-class] | package-proof <manifest.json> [trusted-signers.json] | release-trust <release-trust.json> [trusted-release-signers.json] | proof-bundle <bundle.json> [external-trusted-zones.json]");
   }
 } catch (error) {
   console.error(error.message);
