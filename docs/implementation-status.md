@@ -1,14 +1,17 @@
 # Agent Space Implementation Status
 
-状态：v13 active at v13.15
-当前代码基线：`v13.15-node-receipt-checkpoint-verification`
+状态：v14 active at v14.0
+当前代码基线：`v14.0-opening-boundary`
 历史状态：v12 closed at v12.45
 上一代码基线：`v12.45-closeout-alignment`
 历史代码基线：`v13.1-reachability-scope`
 
+v13 关闭基线：`v13.15-node-receipt-checkpoint-verification`
 ## 一句话
 
-v13.15 Node receipt checkpoint verification is complete: `verifyFederatedReceipt` and `asp-verify.mjs fed-receipt` verify optional receipt-carried `checkpoint_refs` and `checkpoints` list shape, count, task binding, parent chain, ref matching, and worker `checkpoint_signature` before accepting checkpoint evidence.
+v14.0 opens the next local-first milestone above the v13 proof core: deeper Agent Overlay Network, stronger Agent Swarm Layer, and Multi-signal routing. v14 stays local-first: no P2P DHT, no token economy, no public marketplace, and no production global Agent Net claim.
+
+v14.1 Swarm micro-contract implementation is active in Node and Go: before each Swarm step executes, the selected worker emits a signed `micro_contract: "ok"` commitment with declared token/seconds cost estimate, capability proof, policy digest, contract digest, and worker signature; `FED_SWARM_CLOSE.close.micro_contracts` carries one contract per step and Node `verifySwarmClose` rejects tampered micro-contract signatures.
 
 v13.14 multi-signal agent score reputation is complete: Node and Go `FED_QUERY` enrich `discovery_evidence.reputation` with `last_completed_at`, `revocation_count`, and labelled `agent_score` components: `receipt_score`, `credential_score`, `freshness_score`, and `revocation_penalty`. `ranking.score` now uses `agent_score.total` plus exact capability and semantic intent scores.
 
@@ -25,7 +28,7 @@ v13.8 pinned external observer identity is complete: `scripts/external-reachabil
 
 v13.7 sandbox attestation verification is complete: `asp-verify.mjs sandbox-attestation <frame.json> <trusted-zones.json> <attestation.json> <trusted-attestors.json>` verifies signed `asp-sandbox-attestation/v1` evidence from a trusted `sandbox.attest` attestor and binds it to the receipt digest, task id, sandbox digest, sandbox claim, policy digest, sandbox class, runtime identity, and freshness window while still reporting `hardware_attestation: false`. v13.6 sandbox proof verification is complete: `asp-verify.mjs sandbox-proof <frame.json> <trusted-zones.json> [required-sandbox-class]` verifies a signed `local.sandbox.v1` proof inside a trusted `FED_RECEIPT`, checks task/authority/worker/policy/claim/sandbox binding, requires command/binary/transcript digest evidence, reports verifier-owned `sandbox_class: "local-process"`, and rejects `remote-attestation` as unavailable without signed attestation evidence. v13.5 Go `FED_SWARM_SCHEDULE` scheduler-owned ready-DAG execution is complete: out-of-order signed DAG steps execute in dependency-ready order and the signed close proof records `scheduler.mode: "ready-dag"` plus `scheduler.step_order`. v13.4 Node federation gateway evidence-first semantic discovery/reputation ranking is complete: `FED_QUERY` may carry intent, returns inspectable discovery/ranking evidence, and keeps exact capability plus trusted credential plus receipt-count evidence ahead of semantic-only candidates. v13.2 release trust/SBOM is complete: the local release trust producer verifies the package proof, signs `asp-release-trust/v1` evidence over the produced tarball, and the verifier rejects stale, mismatched, unsigned, wrong-signer, untrusted-signer, unsafe-path, and invalid timestamp evidence. v13.1 reachability evidence gates are active: verifier-owned scope classes and observer evidence binding landed with tests; real hosted external-host evidence is still pending as the remaining v13.1 exit criterion.
 
-The active protocol tag is `v13.15-protocol`: Node receipt checkpoint verification is the latest complete slice, while the v13.1 hosted external-host observer run and hardware remote attestation remain pending exit criteria.
+The active protocol tag is `v14.0-protocol`: v14.0 opens the local-first overlay/swarm/routing milestone, while v13.1 hosted external-host observer evidence, hardware remote attestation, cross-zone trust chains, failure migration, conflict resolution, cost/latency/availability FED_QUERY routing, P2P DHT, and token economy remain out of current complete scope.
 
 还不是可产品化的 Agent Net。
 
