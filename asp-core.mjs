@@ -8,6 +8,7 @@ const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 const ED25519_MULTIKEY_PREFIX = Buffer.from([0xed, 0x01]);
 const BASE58BTC = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const TASK_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+export const CREDENTIAL_VALID_UNTIL_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 
 export function b64url(bytes) {
   return Buffer.from(bytes).toString("base64url");
@@ -637,11 +638,16 @@ export function verifyCapabilityCredential(credential, authorityDescriptor, subj
       capability: credential.capability,
       claims: credential.claims,
     };
-    return (
-      credential.issuer === authorityDescriptor.zid &&
-      credential.subject === subjectDescriptor.aid &&
-      verifyObject(authorityPublicKey, body, credential.signature)
-    );
+    const valid = credential.issuer === authorityDescriptor.zid && credential.subject === subjectDescriptor.aid && verifyObject(authorityPublicKey, body, credential.signature);
+    if (!valid) return false;
+    const validUntil = credential.claims?.valid_until;
+    if (validUntil !== undefined) {
+      if (typeof validUntil !== "string" || !CREDENTIAL_VALID_UNTIL_PATTERN.test(validUntil)) return false;
+      const validUntilMs = Date.parse(validUntil);
+      if (!Number.isFinite(validUntilMs) || Date.now() > validUntilMs) return false;
+    }
+    return true;
+
   } catch {
     return false;
   }
