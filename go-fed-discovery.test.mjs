@@ -5,7 +5,7 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { canonical, capabilityCredentialId, createAgent, loadOrCreateAgent, loadOrCreateZone, loadRegistry, publicKeyFromDescriptor, resolveAgent, rotationProof, signObject, verifyAliasRebindingProof, verifyCredentialStatus, verifyObject, writeTrustedZones, zoneBinding, zoneRevocation } from "./asp-core.mjs";
+import { canonical, capabilityCredentialId, createAgent, loadOrCreateAgent, loadOrCreateZone, loadRegistry, publicKeyFromDescriptor, resolveAgent, rotationProof, signObject, verifyAliasRebindingProof, verifyCredentialStatus, verifyObject, verifySwarmClose, writeTrustedZones, zoneBinding, zoneRevocation } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -878,8 +878,10 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
       "FED_TASK_EVENT",
       "FED_TASK_EVENT",
       "FED_TASK_EVENT",
+      "FED_TASK_EVENT",
       "FED_RECEIPT",
       "FED_TASK_CLOSE",
+      "FED_TASK_EVENT",
       "FED_TASK_EVENT",
       "FED_TASK_EVENT",
       "FED_TASK_EVENT",
@@ -889,8 +891,8 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
       "FED_TASK_CLOSE",
       "FED_SWARM_CLOSE",
     ]);
-    const summaryReceipt = swarmFrames[5].receipt;
-    const translationReceipt = swarmFrames[12].receipt;
+    const summaryReceipt = swarmFrames[6].receipt;
+    const translationReceipt = swarmFrames[14].receipt;
     const summaryReceiptDigest = createHash("sha256").update(JSON.stringify(summaryReceipt)).digest("hex");
     assert.equal(summaryReceipt.task_id, swarmSummaryTask.task_id);
     assert.equal(translationReceipt.task_id, swarmTranslateTask.task_id);
@@ -908,10 +910,35 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     }]);
     const swarmClose = swarmFrames.at(-1).close;
     assert.equal(swarmClose.swarm_id, "swarm://local/go_fed_swarm_two_step");
-    assert.deepEqual(swarmClose.step_receipts, [
+    assert.deepEqual(swarmClose.step_receipts.map(({ step_id, task_id, receipt_digest }) => ({ step_id, task_id, receipt_digest })), [
       { step_id: "summary", task_id: "go_fed_swarm_summary", receipt_digest: summaryReceiptDigest },
       { step_id: "translation", task_id: "go_fed_swarm_translate", receipt_digest: createHash("sha256").update(JSON.stringify(translationReceipt)).digest("hex") },
     ]);
+    assert.equal(swarmClose.step_receipts[0].worker.aid, summaryReceipt.to);
+    assert.equal(swarmClose.step_receipts[1].worker.aid, translationReceipt.to);
+    assert.equal(swarmClose.micro_contracts.length, 2);
+    assert.deepEqual(swarmClose.micro_contracts.map((contract) => contract.step_id), ["summary", "translation"]);
+    for (const contract of swarmClose.micro_contracts) {
+      assert.equal(contract.micro_contract, "ok");
+      assert.equal(contract.swarm_id, "swarm://local/go_fed_swarm_two_step");
+      assert.equal(contract.worker.aid, swarmClose.step_receipts.find((step) => step.step_id === contract.step_id).worker.aid);
+      assert.equal(typeof contract.cost_estimate.tokens, "number");
+      assert.equal(typeof contract.cost_estimate.seconds, "number");
+      assert.match(contract.capability_proof, /text|mock/);
+      assert.match(contract.policy_digest, /^[0-9a-f]{64}$/);
+      assert.match(contract.contract_digest, /^[0-9a-f]{64}$/);
+      assert.equal(typeof contract.signature, "string");
+      const { contract_digest, signature, ...contractBody } = contract;
+      assert.equal(contract_digest, createHash("sha256").update(canonical(contractBody)).digest("hex"));
+      assert.equal(verifyObject(publicKeyFromDescriptor(contract.worker), contractBody, signature), true);
+    }
+    assert.equal(verifySwarmClose(swarmFrames.at(-1), new Map([[fixture.authority.zid, fixture.authority]])).close.swarm_id, "swarm://local/go_fed_swarm_two_step");
+    const tamperedSwarmFrame = structuredClone(swarmFrames.at(-1));
+    tamperedSwarmFrame.close.micro_contracts[0].signature = "bad";
+    assert.throws(
+      () => verifySwarmClose(tamperedSwarmFrame, new Map([[fixture.authority.zid, fixture.authority]])),
+      /micro-contract signature verification failed/,
+    );
     const swarmAuthorityPublicKey = publicKeyFromDescriptor(fixture.authority);
     const { close_signature, ...swarmCloseBody } = swarmClose;
     assert.equal(verifyObject(swarmAuthorityPublicKey, swarmCloseBody, close_signature), true);
@@ -951,10 +978,11 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     const scheduledClose = scheduledSwarmFrames.at(-1).close;
     assert.equal(scheduledClose.scheduler.mode, "ready-dag");
     assert.deepEqual(scheduledClose.scheduler.step_order, ["summary", "translation"]);
-    assert.deepEqual(scheduledClose.step_receipts, [
+    assert.deepEqual(scheduledClose.step_receipts.map(({ step_id, task_id, receipt_digest }) => ({ step_id, task_id, receipt_digest })), [
       { step_id: "summary", task_id: "go_fed_swarm_scheduled_summary", receipt_digest: createHash("sha256").update(JSON.stringify(scheduledSummaryReceipt)).digest("hex") },
       { step_id: "translation", task_id: "go_fed_swarm_scheduled_translate", receipt_digest: createHash("sha256").update(JSON.stringify(scheduledTranslationReceipt)).digest("hex") },
     ]);
+    assert.equal(scheduledClose.micro_contracts.length, 2);
     assert.deepEqual(scheduledTranslationReceipt.swarm.after, ["summary"]);
 
     const badSwarmSummaryTask = {

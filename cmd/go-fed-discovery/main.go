@@ -2977,6 +2977,46 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	return nil
 }
 
+func (f Fixture) swarmMicroContract(worker *Worker, swarmID, stepID string, task map[string]any) map[string]any {
+	policyDigest := digestHex(taskPolicyScope(worker.Profile, worker.Descriptor, task))
+	taskJSON, _ := canonicalJSON(task)
+	tokenEstimate := (len(taskJSON) + 3) / 4
+	if tokenEstimate < 1 {
+		tokenEstimate = 1
+	}
+	seconds := 30
+	if budget, ok := task["budget"].(map[string]any); ok {
+		if value, ok := budget["time_seconds"].(float64); ok && value >= 0 {
+			seconds = int(value)
+		}
+	}
+	capabilityProof := ""
+	switch capabilities := worker.Descriptor["capabilities"].(type) {
+	case []string:
+		capabilityProof = strings.Join(capabilities, ",")
+	case []any:
+		parts := make([]string, 0, len(capabilities))
+		for _, capability := range capabilities {
+			if value, ok := capability.(string); ok {
+				parts = append(parts, value)
+			}
+		}
+		capabilityProof = strings.Join(parts, ",")
+	}
+	body := map[string]any{
+		"micro_contract":   "ok",
+		"swarm_id":         swarmID,
+		"step_id":          stepID,
+		"worker":           worker.Descriptor,
+		"capability_proof": capabilityProof,
+		"policy_digest":    policyDigest,
+		"cost_estimate":    map[string]any{"tokens": float64(tokenEstimate), "seconds": float64(seconds)},
+	}
+	signed := signBody(worker.PrivateKey, body)
+	signed["contract_digest"] = digestHex(body)
+	return signed
+}
+
 func (f Fixture) executeSwarm(send sendFunc, origin, frame map[string]any) error {
 	return f.executeSwarmWithScheduler(send, origin, frame, nil)
 }
@@ -3023,6 +3063,7 @@ func (f Fixture) executeSwarmWithScheduler(send sendFunc, origin, frame map[stri
 	}
 	completed := map[string]map[string]any{}
 	stepReceipts := []map[string]any{}
+	microContracts := []map[string]any{}
 	for _, item := range steps {
 		step, ok := item.(map[string]any)
 		if !ok {
@@ -3072,6 +3113,11 @@ func (f Fixture) executeSwarmWithScheduler(send sendFunc, origin, frame map[stri
 		if err != nil {
 			return err
 		}
+		microContract := f.swarmMicroContract(worker, swarmID, stepID, task)
+		microContracts = append(microContracts, microContract)
+		if err := f.sendTaskEvent(send, microContract); err != nil {
+			return err
+		}
 		proof := map[string]any{
 			"swarm_id":        swarmID,
 			"step_id":         stepID,
@@ -3080,13 +3126,13 @@ func (f Fixture) executeSwarmWithScheduler(send sendFunc, origin, frame map[stri
 		}
 		if err := f.executeTask(send, origin, worker, task, nil, "", nil, false, map[string]any{"swarm": proof}, func(receipt map[string]any) error {
 			completed[stepID] = receipt
-			stepReceipts = append(stepReceipts, map[string]any{"step_id": stepID, "task_id": receipt["task_id"], "receipt_digest": digestHex(receipt)})
+			stepReceipts = append(stepReceipts, map[string]any{"step_id": stepID, "task_id": receipt["task_id"], "receipt_digest": digestHex(receipt), "worker": worker.Descriptor})
 			return nil
 		}); err != nil {
 			return err
 		}
 	}
-	closeBody := map[string]any{"swarm_id": swarmID, "step_receipts": stepReceipts}
+	closeBody := map[string]any{"swarm_id": swarmID, "step_receipts": stepReceipts, "micro_contracts": microContracts}
 	if scheduler != nil {
 		closeBody["scheduler"] = scheduler
 	}
@@ -3094,7 +3140,7 @@ func (f Fixture) executeSwarmWithScheduler(send sendFunc, origin, frame map[stri
 	if err := f.appendAudit(map[string]any{"kind": "go_swarm_close", "zone": f.Authority, "close": closeProof}); err != nil {
 		return err
 	}
-	send(map[string]any{"type": "FED_SWARM_CLOSE", "swarm_id": swarmID, "close": closeProof})
+	send(map[string]any{"type": "FED_SWARM_CLOSE", "swarm_id": swarmID, "zone": f.Authority, "close": closeProof})
 	return nil
 }
 
