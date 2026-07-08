@@ -30,6 +30,45 @@ function digestHex(value) {
   return createHash("sha256").update(canonical(value)).digest("hex");
 }
 
+function tokenize(value) {
+  return String(value ?? "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+function semanticScore(intent, descriptor) {
+  const intentTokens = new Set(tokenize(intent));
+  if (intentTokens.size === 0) return 0;
+  const candidateTokens = new Set(tokenize(`${descriptor.alias} ${descriptor.capabilities.join(" ")}`));
+  return [...intentTokens].filter((token) => candidateTokens.has(token)).length;
+}
+
+function queryMatch(zone, worker, capability, intent, credentialClaims = null) {
+  const exact = worker.descriptor.capabilities.includes(capability);
+  const semantic = semanticScore(intent, worker.descriptor);
+  if (!exact && semantic === 0) return null;
+  const credentials = exact && credentialClaims ? [
+    capabilityCredential(zone, worker.descriptor, capability, credentialClaims),
+  ] : [];
+  const completedReceipts = Number.isSafeInteger(credentialClaims?.completed_receipts) ? credentialClaims.completed_receipts : 0;
+  const reasons = [];
+  if (exact) reasons.push("capability_exact");
+  if (semantic > 0) reasons.push("semantic_match");
+  if (credentials.length > 0) reasons.push("credential_active");
+  if (completedReceipts > 0) reasons.push("reputation_receipts");
+  const score = (exact ? 50 : 0) + (credentials.length > 0 ? 30 : 0) + Math.min(completedReceipts, 10) + semantic;
+  return {
+    worker: worker.descriptor,
+    zone_binding: zoneBinding(zone, worker.descriptor),
+    credentials,
+    discovery_evidence: {
+      identity: { zone: zone.zid, aid: worker.aid, alias: worker.alias },
+      capability: { exact, semantic: semantic > 0 },
+      credential: { trusted: credentials.length > 0, active: credentials.length > 0 },
+      reputation: { completed_receipts: completedReceipts },
+    },
+    ranking: { score, reasons },
+  };
+}
+
 function readFrames(socket, onFrame) {
   let buffer = "";
   socket.on("data", (chunk) => {
@@ -129,6 +168,13 @@ async function serve(port, trustedZonesFile) {
     [`fed+tcp://127.0.0.1:${port}`],
     ["summarize.text"],
   );
+  const semanticWorker = await loadOrCreateAgent(
+    "agent://zone-b/semantic-summarize-text-fast",
+    "state/keys/fed-zone-b-semantic-summarizer.pkcs8",
+    { allow_network: false, approval_required: ["write"], write_prefixes: ["artifact://local/"] },
+    [`fed+tcp://127.0.0.1:${port}`],
+    ["summarize.text.fast"],
+  );
 
   const server = net.createServer((socket) => {
     const session = serverSessionHandler(socket, trustedZones, zone);
@@ -149,18 +195,14 @@ async function serve(port, trustedZonesFile) {
         }
         if (frame.type === "FED_QUERY") {
           verifyTrustedZone(trustedZones, frame.origin_zone);
-          const matches = worker.descriptor.capabilities.includes(frame.capability)
-            ? [{
-                worker: worker.descriptor,
-                zone_binding: zoneBinding(zone, worker.descriptor),
-                credentials: [
-                  capabilityCredential(zone, worker.descriptor, frame.capability, {
-                    level: "L1",
-                    evidence: ["zone-b-local-worker"],
-                  }),
-                ],
-              }]
-            : [];
+          const matches = [
+            queryMatch(zone, worker, frame.capability, frame.intent, {
+              level: "L1",
+              evidence: ["zone-b-local-worker"],
+              completed_receipts: 3,
+            }),
+            queryMatch(zone, semanticWorker, frame.capability, frame.intent),
+          ].filter(Boolean).sort((a, b) => b.ranking.score - a.ranking.score || a.worker.alias.localeCompare(b.worker.alias));
           send(socket, { type: "FED_QUERY_RESULT", zone: zone.descriptor, capability: frame.capability, matches });
           send(socket, { type: "FED_QUERY_CLOSE", capability: frame.capability });
           return;
@@ -296,7 +338,7 @@ async function resolveRemote(port, trustedZonesFile, alias = "agent://zone-b/sum
   console.log(JSON.stringify(result, null, 2));
 }
 
-async function queryRemote(port, trustedZonesFile, capability = "summarize.text", print = true) {
+async function queryRemote(port, trustedZonesFile, capability = "summarize.text", print = true, intent) {
   const trustedZones = await loadTrustedZones(trustedZonesFile);
   const zone = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
   const socket = net.createConnection(port, "127.0.0.1");
@@ -304,7 +346,7 @@ async function queryRemote(port, trustedZonesFile, capability = "summarize.text"
   const done = new Promise((resolve, reject) => {
     socket.on("error", reject);
     const session = clientSessionHandler(socket, trustedZones, zone, () => {
-      send(socket, { type: "FED_QUERY", origin_zone: zone.descriptor, capability });
+      send(socket, { type: "FED_QUERY", origin_zone: zone.descriptor, capability, ...(intent ? { intent } : {}) });
     });
     readFrames(socket, (frame) => {
       if (session(frame)) return;
@@ -336,6 +378,8 @@ async function queryRemote(port, trustedZonesFile, capability = "summarize.text"
             capabilities: resolved.descriptor.capabilities,
             credentials,
             credential_statuses: credentialStatuses,
+            discovery_evidence: match.discovery_evidence,
+            ranking: match.ranking,
           };
         });
         result = { zone: remoteZone.zid, capability: frame.capability, matches };
@@ -398,7 +442,7 @@ async function requestCapability(port, trustedZonesFile, capability = "summarize
 }
 
 async function main() {
-  const [mode, portArg, trustedZonesFile, value] = process.argv.slice(2);
+  const [mode, portArg, trustedZonesFile, value, ...rest] = process.argv.slice(2);
   if (mode === "serve") {
     await serve(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json");
   } else if (mode === "request") {
@@ -406,7 +450,7 @@ async function main() {
   } else if (mode === "resolve") {
     await resolveRemote(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value);
   } else if (mode === "query") {
-    await queryRemote(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value);
+    await queryRemote(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value, true, rest.join(" ") || undefined);
   } else if (mode === "audit") {
     await auditRemote(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value);
   } else if (mode === "request-capability") {

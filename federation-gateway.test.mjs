@@ -192,6 +192,46 @@ test("Federation Gateway queries exact remote capabilities", async () => {
   }
 });
 
+test("Federation Gateway ranks semantic discovery by verifiable evidence first", async () => {
+  const port = 8996;
+  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  await writeTrustedZones("state/zone-a-semantic-query-trust.json", [zoneB]);
+  await writeTrustedZones("state/zone-b-semantic-query-trust.json", [zoneA]);
+
+  const gateway = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-semantic-query-trust.json"], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  try {
+    await waitForGateway(gateway);
+
+    const { stdout } = await execFileAsync(process.execPath, [
+      "federation-gateway.mjs",
+      "query",
+      String(port),
+      "state/zone-a-semantic-query-trust.json",
+      "summarize.text",
+      "summarize text quickly",
+    ]);
+    const result = JSON.parse(stdout);
+
+    assert.equal(result.matches.length, 2);
+    assert.equal(result.matches[0].alias, "agent://zone-b/summarizer");
+    assert.equal(result.matches[1].alias, "agent://zone-b/semantic-summarize-text-fast");
+    assert.deepEqual(result.matches[0].discovery_evidence.capability, { exact: true, semantic: true });
+    assert.deepEqual(result.matches[0].discovery_evidence.credential, { trusted: true, active: true });
+    assert.equal(result.matches[0].discovery_evidence.reputation.completed_receipts, 3);
+    assert.deepEqual(result.matches[1].discovery_evidence.credential, { trusted: false, active: false });
+    assert.ok(result.matches[0].ranking.score > result.matches[1].ranking.score);
+    assert.ok(result.matches[0].ranking.reasons.includes("credential_active"));
+    assert.ok(result.matches[0].ranking.reasons.includes("reputation_receipts"));
+  } finally {
+    gateway.kill("SIGINT");
+  }
+});
+
 test("Federation Gateway hands off task from capability query result", async () => {
   const port = 8995;
   const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");

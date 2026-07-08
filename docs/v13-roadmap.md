@@ -1,6 +1,6 @@
 # Agent Space v13 Roadmap
 
-状态：active at v13.2
+状态：active at v13.4
 目标：从 v12 已闭合的 proof surface 继续向 Ultimate 推进，集中处理真实 hosted/public reachability、release trust/SBOM、strong sandbox/remote attestation、semantic discovery/reputation ranking、dynamic Swarm scheduling 五个大门槛。
 
 v13 uses larger evidence gates instead of many tiny versions. 每个 v13 slice 都必须能用测试、脚本、外部证据或 verifier 输出证明边界已经收住；没有证据的能力只作为 planned，不写成 current capability。
@@ -101,21 +101,22 @@ Remaining exit criterion:
 
 ## v13.4: Semantic Discovery and Reputation Ranking
 
-状态：planned
-目标：在现有 identity/capability query 上增加语义发现和信誉排序，但保持身份、凭证、策略和 receipt evidence 优先。
+状态：complete
+目标：在 Node federation gateway 上增加证据优先的 semantic discovery/reputation ranking primitive
 
-验收边界：
+新增：
 
-- Candidate discovery returns inspectable candidate sets with identity, capability, credential, policy, availability, and evidence fields.
-- Ranking output is deterministic for a fixed input and explains score components instead of hiding behind an opaque vector score.
-- Reputation inputs come from signed/audited receipts or explicitly scoped local evidence.
-- Negative tests prove untrusted, missing-evidence, policy-incompatible, or identity-mismatched candidates cannot outrank valid candidates just by semantic similarity.
+- `FED_QUERY` may carry an `intent` string in the Node federation gateway.
+- Candidate results expose `discovery_evidence` for identity, exact/semantic capability match, trusted credential state, and receipt-count reputation input.
+- Ranking output is deterministic for a fixed input and explains score components through `ranking.score` and `ranking.reasons`.
+- The exact capability candidate with trusted credential and receipt-count evidence outranks the semantic-only candidate.
+- `federation-gateway.test.mjs` covers the evidence-first ranking boundary; `docs-contract.test.mjs` guards the public wording.
 
 不做：
 
-- 不做 global reputation coin。
+- No vector database, no global reputation coin, no public marketplace, and no Go query parity in this slice.
 - 不做 opaque vector-only routing。
-- 不做 public marketplace。
+- 不做 scheduler integration。
 
 ## v13.5: Dynamic Swarm Scheduling
 

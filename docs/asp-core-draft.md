@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v13.2-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v13.4-protocol`. It is not a full Agent Space product spec.
 Previous public draft baseline: local-first prototype at `v12.45-protocol`.
 
 ## Scope
@@ -45,8 +45,8 @@ Agent resolution requires registry context with a lookup surface before reading 
 ASP Core does not cover:
 
 - Scheduling.
-- Semantic routing.
-- Reputation.
+- Opaque semantic routing.
+- Global reputation.
 - Payments.
 - Public discovery.
 - DID document resolution.
@@ -356,6 +356,8 @@ The `proof-bundle` verifier reports `reachability_scope: "local-interface"` when
 When `proof-bundle` receives an additional caller-supplied trusted-Zone file, it MAY accept `bundle.external_reachability` evidence signed by a trusted observer Zone. The evidence MUST bind `proof: "external-reachability"`, `observer_zid`, `vantage`, `observed_host`, `observed_port`, `observed_at`, `transport_proof`, `receipt_digest`, and `reached: true`; the verifier rejects stale, future, wrong-endpoint, wrong-digest, invalid-vantage, untrusted-observer, unsigned, and non-routable external-host evidence. A bundle that carries external reachability evidence without the extra trust input MUST fail closed. This is a verifier-owned evidence gate, not hosted-node deployment, NAT traversal, or completion of the real hosted external-host observer run.
 
 `scripts/external-reachability-observer.mjs` is the minimal implemented observer writer for that evidence shape. It reads a proof bundle, verifies the bundle's signed receipt digest and transport proof match, TCP-connects to `transport_proof.listen_host:port`, records the requested vantage plus observed endpoint and freshness, and writes an observed bundle plus observer trusted-Zone file. `scripts/docker-external-reachability-observer.sh` runs the same observer from a Docker container using Docker's host gateway and `${AGNET_NODE_BASE_IMAGE:-node:22-bookworm-slim}` with container vantage. These scripts prove a TCP connection from wherever they are run; the Docker wrapper proves a container boundary, not hosted deployment, and specifically not hosted external-host reachability.
+
+`FED_QUERY` may carry an `intent` string for semantic discovery. Ranking is deterministic and evidence-first: exact capability match, trusted capability credential, signed credential claims, and semantic token overlap are exposed as inspectable evidence. The current implementation is a Node federation gateway primitive only: not a vector database, not global reputation, not a public marketplace, and not Go query parity.
 
 The package proof manifest includes `proof_digest`, computed as `sha256(canonical(proof without proof_digest or signature))`. It also includes a package proof signer Agent descriptor and `signature`, signed over that same proof body by the signer key.
 
