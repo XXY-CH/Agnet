@@ -2,11 +2,11 @@
 
 Agnet is the proof layer for agent work.
 
-[![Protocol](https://img.shields.io/badge/protocol-v14.5--protocol-blue)](docs/v14-roadmap.md) [![Tests](https://img.shields.io/badge/tests-green-brightgreen)](#quick-start)
+[![Protocol](https://img.shields.io/badge/protocol-v14.6--protocol-blue)](docs/v14-roadmap.md) [![Tests](https://img.shields.io/badge/tests-310-brightgreen)](#quick-start) [![Go](https://img.shields.io/badge/go-1.26.1-00ADD8)](go.mod)
 
-Status: research prototype, local-first, v14 active at `v14.5-protocol`. Historical baseline: v14.4 task failure migration, v13 active-through `v13.15-protocol`, and v12 closed at `v12.45-protocol`.
+Status: research prototype, local-first, v14 active at `v14.6-protocol`. Historical baseline: v14.5 intent decomposition, v13 active-through `v13.15-protocol`, and v12 closed at `v12.45-protocol`.
 
-v14.5 adds signed Swarm intent decomposition plans: see `docs/v14.5-boundary.md` for the `swarmPlan` / `FED_SWARM_PLAN` / `plan_digest` proof boundary.
+v14.6 adds the Knowledge Gateway proto: see `docs/v14.6-boundary.md` for the `knowledgeQuery` / `FED_KNOWLEDGE_QUERY` / `verifyKnowledgeResponse` proof boundary. It is not a web crawler, semantic cache, vector store, or RAG pipeline.
 
 ## What ASP is
 
@@ -47,6 +47,20 @@ Internet Underlay
 
 This repository implements proof-layer primitives across Trust & Verification, Agent Task Fabric, Discovery, and local/federated gateway paths. It does not implement the full economy, global overlay network, or production security boundary.
 
+## Proof flow
+
+```mermaid
+flowchart LR
+  R[Requester] --> T[FED_TASK_OPEN]
+  T -->|Task signed| G[Gateway]
+  G --> E[Execute]
+  E --> W[Worker]
+  W --> F[FED_RECEIPT]
+  F -->|Receipt signed| R
+  R --> V[asp-verify]
+  V --> OK[Verified ✓]
+```
+
 ## Quick start
 
 ```bash
@@ -57,16 +71,27 @@ node --test --test-concurrency=1 *.test.mjs
 go test ./...
 ```
 
-## Manual
+## What's new in v14
 
-- [Architecture](docs/manual/architecture.md) — proof layers, data flow, and how Node/Go pieces relate.
-- [Protocol](docs/manual/protocol.md) — ASP frame reference for `FED_TASK_OPEN`, `FED_RECEIPT`, `FED_SWARM_*`, `FED_SWARM_PLAN`, discovery, audit, and artifact frames.
-- [Verifier CLI](docs/manual/verifier-cli.md) — complete `asp-verify.mjs` command reference.
-- [Federation](docs/manual/federation.md) — gateway setup, trusted Zones, TLS/mTLS, cross-zone usage.
-- [Trust model](docs/manual/trust-model.md) — identity, credentials, revocation, sandbox proof, attestation.
-- [Reputation](docs/manual/reputation.md) — `agent_score`, routing signals, and discovery evidence.
-- [Development](docs/manual/development.md) — local tests, Go build, contribution workflow.
-- [Changelog](docs/CHANGELOG.md) — concise v13.0 through v14.4 history.
+- Micro-contracts: signed cost, latency, and capability commitments per Swarm step.
+- Multi-signal routing: cost, latency, availability, and reputation labels travel with discovery evidence.
+- Trust chains: Zone delegation records make cross-zone provenance inspectable.
+- Failure migration: failed steps retry once on same-capability replacement workers with signed migration logs.
+- Intent decomposition: `FED_SWARM_PLAN` binds generated Swarm plans to a signed `plan_digest`.
+- Knowledge Gateway: `FED_KNOWLEDGE_QUERY` and `FED_KNOWLEDGE_RESPONSE` bind cited freshness/license results to a signed query digest.
+
+## Repo map quicklinks
+
+| Read | For |
+| --- | --- |
+| [Architecture](docs/manual/architecture.md) | Proof layers, data flow, and how Node/Go pieces relate. |
+| [Protocol](docs/manual/protocol.md) | ASP frames: `FED_TASK_OPEN`, `FED_RECEIPT`, `FED_SWARM_*`, `FED_SWARM_PLAN`, discovery, audit, artifacts. |
+| [Verifier CLI](docs/manual/verifier-cli.md) | Full `asp-verify.mjs` command syntax and failure modes. |
+| [Federation](docs/manual/federation.md) | Gateway setup, trusted Zones, TLS/mTLS, cross-zone usage. |
+| [Trust model](docs/manual/trust-model.md) | Identity, credentials, revocation, sandbox proof, attestation. |
+| [Reputation](docs/manual/reputation.md) | `agent_score`, routing signals, and discovery evidence. |
+| [Development](docs/manual/development.md) | Local tests, Go build, contribution workflow. |
+| [Changelog](docs/CHANGELOG.md) | Concise v13.0 through v14.4 history. |
 
 ## Roadmap status
 
@@ -80,7 +105,8 @@ go test ./...
 | v14.2 multi-signal routing | Complete | `discovery_evidence.routing` with cost, latency, availability, and `signals_used` | Not opaque ML routing or remote reputation scoring. |
 | v14.3 cross-zone trust chains | Complete | Signed Zone delegation records and `zone_trust_chain` discovery provenance | Not global PKI, DID-native universal resolution, or universal trust. |
 | v14.4 task failure migration | Complete | Node and Go retry failed Swarm steps once on same-capability replacement workers and sign `migration_log` in close proof | Not invisible retry loops, distributed worker pools, or automatic decomposition. |
-| v14.5 Swarm plan digest | In-flight / boundary draft | `docs/v14.5-boundary.md` is expected to document `swarmPlan`, `FED_SWARM_PLAN`, and `plan_digest` evidence | Not part of the requested v14.4 baseline until that boundary and tests land. |
+| v14.5 Swarm plan digest | Complete | `swarmPlan`, `FED_SWARM_PLAN`, and `plan_digest` evidence are documented in `docs/v14.5-boundary.md` | Not LLM orchestration, automatic candidate selection, or full DAG execution. |
+| v14.6 Knowledge Gateway proto | Complete | `knowledgeQuery`, `FED_KNOWLEDGE_QUERY`, `FED_KNOWLEDGE_RESPONSE`, and `verifyKnowledgeResponse` are documented in `docs/v14.6-boundary.md` | Not a web crawler, semantic cache, vector store, or RAG pipeline. |
 
 ## Non-claims
 
@@ -136,10 +162,15 @@ Detailed milestone history lives in the roadmap and boundary docs; this README k
 
 ## Verifier and proof commands
 
-The manual documents full usage; notable verifier and proof surfaces include:
-- asp-verify.mjs proof-bundle; proof-bundle <bundle.json> [external-trusted-zones.json]; scripts/package-proof.mjs; asp-verify.mjs package-proof.
-- scripts/external-reachability-observer.mjs; scripts/docker-external-reachability-observer.sh; `asp-verify.mjs sandbox-proof <frame.json> <trusted-zones.json> [required-sandbox-class]`; `asp-verify.mjs sandbox-attestation <frame.json> <trusted-zones.json> <attestation.json> <trusted-attestors.json>`.
-- `AGNET_REACHABILITY_OBSERVER_SEED_HEX`; AGNET_PUBLIC_LISTEN_HOST; AGNET_PUBLIC_PROOF_KEEPALIVE_MS.
+| Command | Verifies |
+| --- | --- |
+| `asp-verify.mjs fed-receipt` | Signed `FED_RECEIPT` Zone trust, worker identity, and task digest. |
+| `asp-verify.mjs fed-receipt-artifacts` | Receipt task binding plus artifact manifest closure and byte digests. |
+| `asp-verify.mjs proof-bundle` / `proof-bundle <bundle.json> [external-trusted-zones.json]` | Public-listen gateway proof, transport proof, reachability scope, and bundle-relative proof file paths. |
+| `scripts/package-proof.mjs` + `asp-verify.mjs package-proof` | Package proof digest, ASP signature, trusted signer pin, metadata, and package proof tarball path safety. |
+| `asp-verify.mjs sandbox-proof <frame.json> <trusted-zones.json> [required-sandbox-class]` | Signed sandbox class, Zone trust, and fail-closed sandbox claim shape. |
+| `asp-verify.mjs sandbox-attestation <frame.json> <trusted-zones.json> <attestation.json> <trusted-attestors.json>` | Sandbox attestation signer trust, target frame binding, and attestor allow-list. |
+| `scripts/external-reachability-observer.mjs` / `scripts/docker-external-reachability-observer.sh` | External reachability evidence using `AGNET_REACHABILITY_OBSERVER_SEED_HEX`, `AGNET_PUBLIC_LISTEN_HOST`, and `AGNET_PUBLIC_PROOF_KEEPALIVE_MS`. |
 
 ## Contributing and license
 
