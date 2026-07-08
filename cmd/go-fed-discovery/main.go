@@ -714,13 +714,13 @@ func (f Fixture) auditProof(taskID string) (map[string]any, error) {
 	return nil, errors.New("audit proof not found: " + taskID)
 }
 
-func (f Fixture) countCompletedReceipts(workerAID string) (int, string) {
+func (f Fixture) countCompletedReceipts(workerAID string) (int, string, int, int, bool) {
 	if f.Audit == nil || f.Audit.Path == "" {
-		return 0, ""
+		return 0, "", 0, 0, false
 	}
 	entries, err := readAuditEntries(f.Audit.Path)
 	if err != nil {
-		return 0, ""
+		return 0, "", 0, 0, false
 	}
 	count := 0
 	lastCompletedAt := ""
@@ -743,10 +743,64 @@ func (f Fixture) countCompletedReceipts(workerAID string) (int, string) {
 			}
 		}
 		if count >= 1000 {
-			return 1000, lastCompletedAt
+			break
 		}
 	}
-	return count, lastCompletedAt
+	availabilityStarted := 0
+	availabilityCompleted := 0
+	availabilityHasAuditData := false
+	lastEntries := entries
+	if len(lastEntries) > 50 {
+		lastEntries = lastEntries[len(lastEntries)-50:]
+	}
+	for _, entry := range lastEntries {
+		record, _ := entry["record"].(map[string]any)
+		if !auditRecordForWorker(record, workerAID) {
+			continue
+		}
+		if auditRecordIsStarted(record) {
+			availabilityStarted++
+		}
+		if auditRecordIsCompleted(record) {
+			availabilityCompleted++
+		}
+		availabilityHasAuditData = true
+	}
+	return count, lastCompletedAt, availabilityStarted, availabilityCompleted, availabilityHasAuditData
+}
+
+func auditRecordForWorker(record map[string]any, workerAID string) bool {
+	switch optionalString(record["kind"]) {
+	case "go_fed_receipt":
+		receipt, _ := record["receipt"].(map[string]any)
+		return optionalString(receipt["to"]) == workerAID
+	case "go_fed_event":
+		event, _ := record["event"].(map[string]any)
+		return optionalString(event["by"]) == workerAID
+	default:
+		return false
+	}
+}
+
+func auditRecordIsStarted(record map[string]any) bool {
+	if optionalString(record["kind"]) != "go_fed_event" {
+		return false
+	}
+	event, _ := record["event"].(map[string]any)
+	return optionalString(event["type"]) == "task.started"
+}
+
+func auditRecordIsCompleted(record map[string]any) bool {
+	switch optionalString(record["kind"]) {
+	case "go_fed_receipt":
+		receipt, _ := record["receipt"].(map[string]any)
+		return optionalString(receipt["status"]) == "completed"
+	case "go_fed_event":
+		event, _ := record["event"].(map[string]any)
+		return optionalString(event["type"]) == "task.completed"
+	default:
+		return false
+	}
 }
 
 func receiptTimestamp(record, receipt map[string]any) string {
@@ -2589,7 +2643,71 @@ func countRevocationsForWorker(revocations []any, workerAID, alias string, zoneD
 	return count
 }
 
-func computeAgentScore(completedReceipts int, lastCompletedAt string, revocationCount int, active bool) map[string]any {
+func costSignal(policy map[string]any) (int, bool) {
+	cost, ok := intSignal(policy["cost_tokens_per_task"])
+	if !ok {
+		return 5, false
+	}
+	return max(0, min(10, 10-int(math.Floor(float64(cost)/100)))), true
+}
+
+func latencySignal(policy map[string]any) (int, bool) {
+	latency, ok := intSignal(policy["latency_ms_p95"])
+	if !ok {
+		return 5, false
+	}
+	if latency <= 100 {
+		return 10, true
+	}
+	if latency <= 500 {
+		return 7, true
+	}
+	if latency <= 2000 {
+		return 4, true
+	}
+	return 1, true
+}
+
+func availabilitySignal(started, completed int, hasAuditData bool) (int, bool) {
+	if !hasAuditData {
+		return 5, false
+	}
+	denominator := started
+	if denominator <= 0 {
+		denominator = 1
+	}
+	if completed < 0 {
+		completed = 0
+	}
+	return max(0, min(10, int(math.Floor((float64(completed)/float64(denominator))*10)))), true
+}
+
+func routingSignals(worker *Worker, availabilityStarted, availabilityCompleted int, availabilityHasAuditData bool) map[string]any {
+	costScore, costUsed := costSignal(worker.Profile.Policy)
+	latencyScore, latencyUsed := latencySignal(worker.Profile.Policy)
+	availabilityScore, availabilityUsed := availabilitySignal(availabilityStarted, availabilityCompleted, availabilityHasAuditData)
+	signalsUsed := 0
+	for _, used := range []bool{costUsed, latencyUsed, availabilityUsed} {
+		if used {
+			signalsUsed++
+		}
+	}
+	return map[string]any{"cost_score": costScore, "latency_score": latencyScore, "availability_score": availabilityScore, "signals_used": signalsUsed}
+}
+
+func intSignal(value any) (int, bool) {
+	switch item := value.(type) {
+	case int:
+		return item, true
+	case float64:
+		if math.Trunc(item) == item {
+			return int(item), true
+		}
+	}
+	return 0, false
+}
+
+func computeAgentScore(completedReceipts int, lastCompletedAt string, revocationCount int, active bool, costScore, latencyScore, availabilityScore int) map[string]any {
 	receiptScore := min(completedReceipts, 20) * 2
 	credentialScore := 0
 	if active {
@@ -2608,7 +2726,7 @@ func computeAgentScore(completedReceipts int, lastCompletedAt string, revocation
 		}
 	}
 	revocationPenalty := min(revocationCount*10, receiptScore+credentialScore+freshnessScore)
-	total := receiptScore + credentialScore + freshnessScore - revocationPenalty
+	total := receiptScore + credentialScore + freshnessScore + costScore + latencyScore + availabilityScore - revocationPenalty
 	if total < 0 {
 		total = 0
 	}
@@ -2620,6 +2738,9 @@ func computeAgentScore(completedReceipts int, lastCompletedAt string, revocation
 		"receipt_score":      receiptScore,
 		"credential_score":   credentialScore,
 		"freshness_score":    freshnessScore,
+		"cost_score":         costScore,
+		"latency_score":      latencyScore,
+		"availability_score": availabilityScore,
 		"revocation_penalty": revocationPenalty,
 	}
 }
@@ -2643,6 +2764,9 @@ func (f Fixture) queryMatch(worker *Worker, capability, intent string) map[strin
 	statuses := []any{}
 	completedReceipts := 0
 	lastCompletedAt := ""
+	availabilityStarted := 0
+	availabilityCompleted := 0
+	availabilityHasAuditData := false
 	active := false
 	workerAID := optionalString(worker.Descriptor["aid"])
 	workerAlias := optionalString(worker.Descriptor["alias"])
@@ -2651,7 +2775,7 @@ func (f Fixture) queryMatch(worker *Worker, capability, intent string) map[strin
 		credential := f.capabilityCredential(worker, capability)
 		credentials = append(credentials, credential)
 		statuses = append(statuses, f.credentialStatus(credential, "active"))
-		completedReceipts, lastCompletedAt = f.countCompletedReceipts(workerAID)
+		completedReceipts, lastCompletedAt, availabilityStarted, availabilityCompleted, availabilityHasAuditData = f.countCompletedReceipts(workerAID)
 		active = isCredentialActive(credential) && revocationCount == 0
 	}
 	reasons := []string{}
@@ -2667,7 +2791,8 @@ func (f Fixture) queryMatch(worker *Worker, capability, intent string) map[strin
 	if completedReceipts > 0 {
 		reasons = append(reasons, "reputation_receipts")
 	}
-	agentScore := computeAgentScore(completedReceipts, lastCompletedAt, revocationCount, active)
+	routing := routingSignals(worker, availabilityStarted, availabilityCompleted, availabilityHasAuditData)
+	agentScore := computeAgentScore(completedReceipts, lastCompletedAt, revocationCount, active, intFromMap(routing, "cost_score"), intFromMap(routing, "latency_score"), intFromMap(routing, "availability_score"))
 	score := intFromMap(agentScore, "total") + semantic
 	if exact {
 		score += 50
@@ -2686,6 +2811,7 @@ func (f Fixture) queryMatch(worker *Worker, capability, intent string) map[strin
 			"capability": map[string]any{"exact": exact, "semantic": semantic > 0},
 			"credential": map[string]any{"trusted": len(credentials) > 0, "active": active},
 			"reputation": map[string]any{"completed_receipts": completedReceipts, "last_completed_at": lastCompletedAt, "revocation_count": revocationCount, "agent_score": agentScore},
+			"routing":    routing,
 		},
 		"ranking": map[string]any{"score": score, "reasons": reasons},
 	}

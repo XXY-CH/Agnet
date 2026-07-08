@@ -805,6 +805,19 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     assert.equal(semanticResult.matches[0].discovery_evidence.credential.active, true);
     assert.ok(semanticResult.matches[0].discovery_evidence.reputation.completed_receipts >= 4);
     assert.ok(semanticResult.matches[0].discovery_evidence.reputation.agent_score.total > 0);
+    const semanticRouting = semanticResult.matches[0].discovery_evidence.routing;
+    assert.deepEqual(
+      {
+        cost_score: Number.isFinite(semanticRouting?.cost_score),
+        latency_score: Number.isFinite(semanticRouting?.latency_score),
+        availability_score: Number.isFinite(semanticRouting?.availability_score),
+      },
+      {
+        cost_score: true,
+        latency_score: true,
+        availability_score: true,
+      },
+    );
     assert.deepEqual(semanticResult.matches[1].discovery_evidence.credential, { trusted: false, active: false });
     assert.ok(semanticResult.matches[0].ranking.score > semanticResult.matches[1].ranking.score);
     assert.ok(semanticResult.matches[0].ranking.reasons.includes("credential_active"));
