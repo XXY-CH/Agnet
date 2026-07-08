@@ -1,6 +1,6 @@
 # Agent Space v13 Roadmap
 
-状态：active at v13.9
+状态：active at v13.10
 目标：从 v12 已闭合的 proof surface 继续向 Ultimate 推进，集中处理真实 hosted/public reachability、release trust/SBOM、strong sandbox/remote attestation、semantic discovery/reputation ranking、dynamic Swarm scheduling 五个大门槛。
 
 v13 uses larger evidence gates instead of many tiny versions. 每个 v13 slice 都必须能用测试、脚本、外部证据或 verifier 输出证明边界已经收住；没有证据的能力只作为 planned，不写成 current capability。
@@ -158,6 +158,24 @@ Remaining exit criterion:
 - 不做 upper-layer demo/master-agent orchestration。
 - 不做 agent chat room。
 - 不做 economic settlement。
+
+## v13.10: Go FED_QUERY Semantic Discovery Parity
+
+状态：complete
+目标：Add Go-side semantic intent scoring and evidence-first ranking to FED_QUERY, closing the Go parity gap deferred in v13.4.
+
+新增：
+
+- `cmd/go-fed-discovery/main.go` `FED_QUERY` now accepts an `intent` string and calls `queryMatch`.
+- `queryMatch` returns `discovery_evidence` with `capability`, `credential`, and `reputation` fields, plus `ranking.score` and `ranking.reasons` — mirroring the Node federation-gateway.mjs surface from v13.4.
+- `semanticScore` and `tokenize` helpers compute token-overlap intent scoring over alias and capabilities.
+- Results are sorted by ranking score descending (alias ascending as a tiebreaker).
+- `go-fed-discovery.test.mjs` covers semantic intent query, discovery_evidence shape, ranking score comparison, and ranking reasons.
+
+不做：
+
+- No vector database, no global reputation coin, no public marketplace, and no scheduler integration.
+- No Go query parity for the semantic-only edge cases beyond what the Node side already specifies.
 
 ## v13 非目标
 
