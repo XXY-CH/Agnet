@@ -168,6 +168,14 @@ test("public node proof starts a public-listen gateway", async () => {
   const untrustedTrustedPath = "state/public-node-proof-untrusted-external-trusted-zones.json";
   const externalReachability = reachabilityEvidence(observer, receiptFrame.receipt.transport_proof, result.receipt_digest);
   await writeFile(externalTrustedPath, `${JSON.stringify({ zones: [observer.descriptor] }, null, 2)}\n`);
+  await assert.rejects(
+    execFileAsync(process.execPath, ["scripts/external-reachability-observer.mjs", result.bundle_manifest, externalBundlePath, externalTrustedPath, "mars"]),
+    /usage: node scripts\/external-reachability-observer\.mjs/,
+  );
+  await assert.rejects(
+    execFileAsync(process.execPath, ["scripts/external-reachability-observer.mjs", result.bundle_manifest, externalBundlePath, externalTrustedPath]),
+    /usage: node scripts\/external-reachability-observer\.mjs/,
+  );
   await writeFile(untrustedTrustedPath, `${JSON.stringify({ zones: [untrustedObserver.descriptor] }, null, 2)}\n`);
   await writeReachabilityBundle(externalBundlePath, bundle, signedReachabilityEvidence(observer, externalReachability));
   await assert.rejects(
@@ -223,6 +231,39 @@ test("public node proof starts a public-listen gateway", async () => {
   assert.equal(verifiedExternal.reachability_scope, "external-host");
   assert.equal(verifiedExternal.reachability_observer_zid, observer.zid);
   assert.ok(!("external_observer_zid" in verifiedExternal));
+  await writeReachabilityBundle(externalBundlePath, syntheticBundle, signedReachabilityEvidence(observer, reachabilityEvidence(observer, syntheticTransportProof, syntheticReceiptDigest, { observed_at: new Date().toUTCString() })));
+  await assert.rejects(
+    execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", externalBundlePath, externalTrustedPath]),
+    /external reachability observed_at invalid/,
+  );
+  const ipv4CompatibleTransportProof = { ...syntheticTransportProof, listen_host: "::10.0.0.1" };
+  const ipv4CompatibleReceipt = {
+    ...receiptBody,
+    transport_proof: ipv4CompatibleTransportProof,
+  };
+  const ipv4CompatibleReceiptDigest = createHash("sha256").update(canonical(ipv4CompatibleReceipt)).digest("hex");
+  const ipv4CompatibleReceiptFrame = {
+    ...receiptFrame,
+    receipt: {
+      ...ipv4CompatibleReceipt,
+      signature: signObject(workerPrivateKey, ipv4CompatibleReceipt),
+    },
+  };
+  assert.equal(verifyFederatedReceipt(ipv4CompatibleReceiptFrame, await loadTrustedZones(result.trusted_zones)).receipt.transport_proof.listen_host, "::10.0.0.1");
+  const ipv4CompatibleReceiptFramePath = "state/public-node-proof-fed-receipt-ipv4-compatible.json";
+  const ipv4CompatibleBundlePath = "state/public-node-proof-bundle-ipv4-compatible.json";
+  const ipv4CompatibleBundle = {
+    ...bundle,
+    receipt_frame: "public-node-proof-fed-receipt-ipv4-compatible.json",
+    receipt_digest: ipv4CompatibleReceiptDigest,
+    transport_proof: ipv4CompatibleTransportProof,
+  };
+  await writeFile(ipv4CompatibleReceiptFramePath, `${JSON.stringify(ipv4CompatibleReceiptFrame, null, 2)}\n`);
+  await writeReachabilityBundle(ipv4CompatibleBundlePath, ipv4CompatibleBundle, signedReachabilityEvidence(observer, reachabilityEvidence(observer, ipv4CompatibleTransportProof, ipv4CompatibleReceiptDigest)));
+  await assert.rejects(
+    execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", ipv4CompatibleBundlePath, externalTrustedPath]),
+    /external reachability listen host not globally routable/,
+  );
   await writeReachabilityBundle(externalBundlePath, syntheticBundle, signedReachabilityEvidence(observer, reachabilityEvidence(observer, syntheticTransportProof, syntheticReceiptDigest, { observed_at: new Date(Date.now() - 61 * 60 * 1000).toISOString() })));
   await assert.rejects(
     execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", externalBundlePath, externalTrustedPath]),
