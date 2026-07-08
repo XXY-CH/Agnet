@@ -1,6 +1,6 @@
 # Agent Space v13 Roadmap
 
-状态：active at v13.11
+状态：active at v13.12
 目标：从 v12 已闭合的 proof surface 继续向 Ultimate 推进，集中处理真实 hosted/public reachability、release trust/SBOM、strong sandbox/remote attestation、semantic discovery/reputation ranking、dynamic Swarm scheduling 五个大门槛。
 
 v13 uses larger evidence gates instead of many tiny versions. 每个 v13 slice 都必须能用测试、脚本、外部证据或 verifier 输出证明边界已经收住；没有证据的能力只作为 planned，不写成 current capability。
@@ -197,6 +197,26 @@ Remaining exit criterion:
 - No third-party reputation oracle.
 - No global reputation coin.
 - not a hardcoded demo value, not cross-session ML, not a global reputation oracle.
+
+## v13.12: Credential Validity Window
+
+状态：complete
+目标：Add optional `valid_until` expiry to capability credentials so discovery evidence can distinguish trusted-but-expired credentials from active credentials.
+
+新增：
+
+- Capability credentials may carry a `valid_until` ISO UTC expiry in claims; expired credentials lower discovery score and report `active: false` in discovery evidence.
+- Node credential verification rejects malformed, non-string, unparseable, or past `valid_until` claims before treating a credential as active.
+- Node and Go `FED_QUERY` ranking only adds the credential score boost and `credential_active` reason when the credential is active.
+- Credentials without `valid_until` keep the existing active behavior.
+- `capability-credential.test.mjs`, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs`, and `docs-contract.test.mjs` cover the credential validity window boundary.
+
+不做：
+
+- No credential lifecycle service.
+- No key custody changes.
+- No inter-zone credential transport protocol.
+- No distributed credential registry.
 
 ## v13 非目标
 
