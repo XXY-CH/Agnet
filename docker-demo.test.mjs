@@ -37,5 +37,5 @@ test("Docker external reachability observer delegates to the observer script", a
   assert.match(script, /AGNET_NODE_BASE_IMAGE:-node:22-bookworm-slim/);
   assert.match(script, /--add-host=host\.docker\.internal:host-gateway/);
   assert.match(script, /-v "\$PWD:\/app"/);
-  assert.match(script, /node scripts\/external-reachability-observer\.mjs "\$@"/);
+  assert.equal(script.trimEnd().split("\n").at(-1).trim(), 'node scripts/external-reachability-observer.mjs "$@" container');
 });
