@@ -1,5 +1,6 @@
 import net from "node:net";
 import { createHash, randomBytes } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import {
   appendAudit,
   approvalReasons,
@@ -40,6 +41,29 @@ function semanticScore(intent, descriptor) {
   const candidateTokens = new Set(tokenize(`${descriptor.alias} ${descriptor.capabilities.join(" ")}`));
   return [...intentTokens].filter((token) => candidateTokens.has(token)).length;
 }
+async function countCompletedReceiptsFromAudit(auditPath, aid) {
+  let text;
+  try {
+    text = await readFile(auditPath, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return 0;
+    return 0;
+  }
+  let count = 0;
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const record = entry?.record;
+    if (record?.kind === "fed_receipt" && record.to === aid && record.status === "completed") count++;
+  }
+  return count;
+}
+
 
 function queryMatch(zone, worker, capability, intent, credentialClaims = null) {
   const exact = worker.descriptor.capabilities.includes(capability);
@@ -175,6 +199,11 @@ async function serve(port, trustedZonesFile) {
     [`fed+tcp://127.0.0.1:${port}`],
     ["summarize.text.fast"],
   );
+  const knownWorkers = [worker, semanticWorker];
+  const receiptCounts = new Map(await Promise.all(
+    knownWorkers.map(async (knownWorker) => [knownWorker.aid, await countCompletedReceiptsFromAudit("state/audit.log", knownWorker.aid)]),
+  ));
+
 
   const server = net.createServer((socket) => {
     const session = serverSessionHandler(socket, trustedZones, zone);
@@ -199,7 +228,7 @@ async function serve(port, trustedZonesFile) {
             queryMatch(zone, worker, frame.capability, frame.intent, {
               level: "L1",
               evidence: ["zone-b-local-worker"],
-              completed_receipts: 3,
+              completed_receipts: receiptCounts.get(worker.aid) ?? 0,
             }),
             queryMatch(zone, semanticWorker, frame.capability, frame.intent),
           ].filter(Boolean).sort((a, b) => b.ranking.score - a.ranking.score || a.worker.alias.localeCompare(b.worker.alias));
@@ -236,6 +265,7 @@ async function serve(port, trustedZonesFile) {
           origin_zone: originZone.zid,
           executing_zone: zone.zid,
           to: worker.aid,
+          status: "completed",
           artifact_refs: [artifactUri],
           artifact_manifests: [artifact.manifest],
           event_count: approvals.length > 0 ? 7 : 5,

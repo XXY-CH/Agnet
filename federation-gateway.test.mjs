@@ -1,12 +1,25 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { loadOrCreateAgent, loadOrCreateZone, signObject, writeTrustedZones, zoneBinding } from "./asp-core.mjs";
+import { AUDIT_ZERO_HASH, auditEntry, loadOrCreateAgent, loadOrCreateZone, signObject, writeTrustedZones, zoneBinding } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
+async function writeAuditLog(records) {
+  await mkdir("state", { recursive: true });
+  let prevHash = AUDIT_ZERO_HASH;
+  const lines = records.map((record) => {
+    if (typeof record === "string") return record;
+    const entry = auditEntry(prevHash, record);
+    prevHash = entry.hash;
+    return JSON.stringify(entry);
+  });
+  await writeFile("state/audit.log", lines.join("\n") + "\n");
+  await writeFile("state/audit.head", `${prevHash}\n`);
+}
+
 
 function waitForGateway(child) {
   return new Promise((resolve, reject) => {
@@ -191,6 +204,47 @@ test("Federation Gateway queries exact remote capabilities", async () => {
     gateway.kill("SIGINT");
   }
 });
+test("Federation Gateway reports audit-backed completed receipt reputation", async () => {
+  const port = 9001;
+  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  const worker = await loadOrCreateAgent("agent://zone-b/summarizer", "state/keys/fed-zone-b-summarizer.pkcs8");
+  await writeTrustedZones("state/zone-a-audit-backed-query-trust.json", [zoneB]);
+  await writeTrustedZones("state/zone-b-audit-backed-query-trust.json", [zoneA]);
+  await writeAuditLog([
+    { kind: "fed_receipt", to: worker.aid, status: "completed", task_id: "audit_backed_1" },
+    { kind: "fed_receipt", to: worker.aid, status: "completed", task_id: "audit_backed_2" },
+    { kind: "fed_receipt", to: worker.aid, status: "completed", task_id: "audit_backed_3" },
+    { kind: "fed_receipt", to: worker.aid, status: "completed", task_id: "audit_backed_4" },
+    { kind: "fed_receipt", to: worker.aid, status: "pending", task_id: "audit_backed_pending" },
+    { kind: "fed_receipt", to: "aid:other", status: "completed", task_id: "audit_backed_other" },
+    "malformed audit line",
+  ]);
+
+  const gateway = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-audit-backed-query-trust.json"], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  try {
+    await waitForGateway(gateway);
+
+    const { stdout } = await execFileAsync(process.execPath, [
+      "federation-gateway.mjs",
+      "query",
+      String(port),
+      "state/zone-a-audit-backed-query-trust.json",
+      "summarize.text",
+    ]);
+    const result = JSON.parse(stdout);
+
+    assert.equal(result.matches[0].alias, "agent://zone-b/summarizer");
+    assert.equal(result.matches[0].discovery_evidence.reputation.completed_receipts, 4);
+  } finally {
+    gateway.kill("SIGINT");
+  }
+});
+
 
 test("Federation Gateway ranks semantic discovery by verifiable evidence first", async () => {
   const port = 8996;
@@ -198,6 +252,13 @@ test("Federation Gateway ranks semantic discovery by verifiable evidence first",
   const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
   await writeTrustedZones("state/zone-a-semantic-query-trust.json", [zoneB]);
   await writeTrustedZones("state/zone-b-semantic-query-trust.json", [zoneA]);
+  const worker = await loadOrCreateAgent("agent://zone-b/summarizer", "state/keys/fed-zone-b-summarizer.pkcs8");
+  await writeAuditLog([
+    { kind: "fed_receipt", to: worker.aid, status: "completed", task_id: "semantic_query_1" },
+    { kind: "fed_receipt", to: worker.aid, status: "completed", task_id: "semantic_query_2" },
+    { kind: "fed_receipt", to: worker.aid, status: "completed", task_id: "semantic_query_3" },
+  ]);
+
 
   const gateway = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-semantic-query-trust.json"], {
     cwd: process.cwd(),
