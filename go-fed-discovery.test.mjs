@@ -614,6 +614,23 @@ writeFileSync(${JSON.stringify(`${process.cwd()}/state/go-fed-container-claim-ra
 process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" }));
 `);
   await rm("state/go-fed-discovery-audit.log", { force: true });
+  const completedReceiptAuditEntries = [];
+  let completedReceiptPrevHash = "0".repeat(64);
+  for (let index = 0; index < 4; index += 1) {
+    const record = {
+      kind: "go_fed_receipt",
+      receipt: {
+        task_id: `go_fed_discovery_seeded_receipt_${index}`,
+        to: fixture.worker.aid,
+        status: "completed",
+      },
+    };
+    const body = { prev_hash: completedReceiptPrevHash, record };
+    const entry = { ...body, hash: createHash("sha256").update(canonical(body)).digest("hex") };
+    completedReceiptAuditEntries.push(entry);
+    completedReceiptPrevHash = entry.hash;
+  }
+  await writeFile("state/go-fed-discovery-audit.log", `${completedReceiptAuditEntries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
   await rm("state/go-fed-discovery-audit-tasks", { recursive: true, force: true });
   await rm("state/go-fed-discovery-audit-queue", { recursive: true, force: true });
   await rm("state/go-fed-discovery-audit-approvals", { recursive: true, force: true });
@@ -715,7 +732,7 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     ]);
     assert.deepEqual(semanticResult.matches[0].discovery_evidence.capability, { exact: true, semantic: true });
     assert.deepEqual(semanticResult.matches[0].discovery_evidence.credential, { trusted: true, active: true });
-    assert.equal(semanticResult.matches[0].discovery_evidence.reputation.completed_receipts, 3);
+    assert.ok(semanticResult.matches[0].discovery_evidence.reputation.completed_receipts >= 4);
     assert.deepEqual(semanticResult.matches[1].discovery_evidence.credential, { trusted: false, active: false });
     assert.ok(semanticResult.matches[0].ranking.score > semanticResult.matches[1].ranking.score);
     assert.ok(semanticResult.matches[0].ranking.reasons.includes("credential_active"));
@@ -2118,6 +2135,20 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     assert.equal(malformedApprovalPolicyFrames[0].type, "FED_TASK_ERROR");
     assert.equal(malformedApprovalPolicyFrames[0].code, "policy.approval_required_invalid");
     assert.match(malformedApprovalPolicyFrames[0].error, /policy approval required invalid/);
+
+    const auditEntriesWithoutSeededReceipts = (await readFile("state/go-fed-discovery-audit.log", "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+      .filter((entry) => !String(entry.record?.receipt?.task_id ?? "").startsWith("go_fed_discovery_seeded_receipt_"));
+    let auditPrevHash = "0".repeat(64);
+    const rehashedAuditEntries = auditEntriesWithoutSeededReceipts.map((entry) => {
+      const body = { prev_hash: auditPrevHash, record: entry.record };
+      const rehashedEntry = { ...body, hash: createHash("sha256").update(canonical(body)).digest("hex") };
+      auditPrevHash = rehashedEntry.hash;
+      return rehashedEntry;
+    });
+    await writeFile("state/go-fed-discovery-audit.log", `${rehashedAuditEntries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
 
     const verifiedAudit = await execFileAsync("go", [
       "run",

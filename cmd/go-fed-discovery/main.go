@@ -710,6 +710,32 @@ func (f Fixture) auditProof(taskID string) (map[string]any, error) {
 	return nil, errors.New("audit proof not found: " + taskID)
 }
 
+func (f Fixture) countCompletedReceipts(workerAID string) int {
+	if f.Audit == nil || f.Audit.Path == "" {
+		return 0
+	}
+	entries, err := readAuditEntries(f.Audit.Path)
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, entry := range entries {
+		record, _ := entry["record"].(map[string]any)
+		if record["kind"] != "go_fed_receipt" {
+			continue
+		}
+		receipt, _ := record["receipt"].(map[string]any)
+		if receipt["to"] != workerAID || receipt["status"] != "completed" {
+			continue
+		}
+		count++
+		if count >= 1000 {
+			return 1000
+		}
+	}
+	return count
+}
+
 func (f Fixture) artifactReadProof(taskID, uri string) (map[string]any, error) {
 	if taskID == "" || uri == "" {
 		return nil, errors.New("artifact read task_id and uri required")
@@ -2495,7 +2521,7 @@ func (f Fixture) queryMatch(worker *Worker, capability, intent string) map[strin
 		credential := f.capabilityCredential(worker, capability)
 		credentials = append(credentials, credential)
 		statuses = append(statuses, f.credentialStatus(credential, "active"))
-		completedReceipts = 3
+		completedReceipts = f.countCompletedReceipts(optionalString(worker.Descriptor["aid"]))
 	}
 	reasons := []string{}
 	if exact {
