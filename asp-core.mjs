@@ -192,6 +192,70 @@ export function verifyZoneDescriptor(zoneDescriptor) {
   return { descriptor: zoneDescriptor, publicKey: zonePublicKey };
 }
 
+function assertTrustedZoneDescriptor(zone, trustedZones, label) {
+  assertTrustedZones(trustedZones);
+  const trusted = trustedZones.get(zone.zid);
+  if (!trusted || trusted.public_key_spki !== zone.public_key_spki) {
+    throw new Error(`untrusted zone: ${zone.zid}`);
+  }
+  return zone;
+}
+
+function validateSwarmPlanSteps(steps) {
+  if (!Array.isArray(steps) || steps.length === 0) throw new Error("swarm plan steps missing");
+  for (const step of steps) {
+    if (!step || typeof step !== "object" || Array.isArray(step)) throw new Error("swarm plan step invalid");
+    if (typeof step.step_id !== "string" || step.step_id === "" || step.step_id.includes("\0")) throw new Error("swarm plan step invalid");
+    if (typeof step.capability !== "string" || step.capability === "") throw new Error("swarm plan step capability invalid");
+    if (step.constraint !== undefined && (!step.constraint || typeof step.constraint !== "object" || Array.isArray(step.constraint))) {
+      throw new Error("swarm plan step constraint invalid");
+    }
+    if (step.depends_on !== undefined) {
+      if (!Array.isArray(step.depends_on)) throw new Error("swarm plan step depends_on invalid");
+      for (const dependency of step.depends_on) {
+        if (typeof dependency !== "string" || dependency === "" || dependency.includes("\0")) throw new Error("swarm plan step depends_on invalid");
+      }
+    }
+  }
+}
+
+function swarmPlanDigest(intent, steps) {
+  return createHash("sha256").update(canonical({ intent, steps })).digest("hex");
+}
+
+export function swarmPlan(zone, swarmId, intent, steps, policyDigest) {
+  if (!zone || !zone.descriptor || !zone.privateKey) throw new Error("swarm plan zone missing");
+  if (typeof swarmId !== "string" || swarmId === "" || swarmId.includes("\0")) throw new Error("swarm plan swarm_id invalid");
+  if (typeof intent !== "string" || intent === "") throw new Error("swarm plan intent invalid");
+  validateSwarmPlanSteps(steps);
+  if (typeof policyDigest !== "string" || !/^[0-9a-f]{64}$/.test(policyDigest)) throw new Error("swarm plan policy digest invalid");
+  const plan_digest = swarmPlanDigest(intent, steps);
+  const planBody = { swarm_id: swarmId, intent, steps, policy_digest: policyDigest, plan_digest };
+  return {
+    type: "FED_SWARM_PLAN",
+    zone: zone.descriptor,
+    plan: { ...planBody, plan_signature: signObject(zone.privateKey, planBody) },
+  };
+}
+
+export function verifySwarmPlan(frame, trustedZones) {
+  if (!frame || typeof frame !== "object" || Array.isArray(frame) || frame.type !== "FED_SWARM_PLAN") throw new Error("expected FED_SWARM_PLAN frame");
+  if (!frame.zone || typeof frame.zone !== "object" || Array.isArray(frame.zone)) throw new Error("swarm plan zone missing");
+  const zone = assertTrustedZoneDescriptor(verifyZoneDescriptor(frame.zone).descriptor, trustedZones, "swarm plan");
+  if (!frame.plan || typeof frame.plan !== "object" || Array.isArray(frame.plan)) throw new Error("swarm plan body missing");
+  const { plan_signature, ...planBody } = frame.plan;
+  if (typeof planBody.swarm_id !== "string" || planBody.swarm_id === "" || planBody.swarm_id.includes("\0")) throw new Error("swarm plan swarm_id invalid");
+  if (typeof planBody.intent !== "string" || planBody.intent === "") throw new Error("swarm plan intent invalid");
+  validateSwarmPlanSteps(planBody.steps);
+  if (typeof planBody.policy_digest !== "string" || !/^[0-9a-f]{64}$/.test(planBody.policy_digest)) throw new Error("swarm plan policy digest invalid");
+  if (typeof planBody.plan_digest !== "string" || planBody.plan_digest !== swarmPlanDigest(planBody.intent, planBody.steps)) throw new Error("swarm plan digest invalid");
+  if (typeof plan_signature !== "string" || plan_signature === "") throw new Error("swarm plan signature missing");
+  if (!verifyObject(publicKeyFromDescriptor(zone), planBody, plan_signature)) {
+    throw new Error("swarm plan signature verification failed");
+  }
+  return { zone, plan: frame.plan };
+}
+
 export async function writeTrustedZones(file, zones) {
   await writeJson(file, { zones: zones.map((zone) => zone.descriptor ?? zone) });
 }
@@ -541,6 +605,9 @@ export function verifySwarmClose(frame, trustedZones) {
   if (typeof closeBody.swarm_id !== "string" || closeBody.swarm_id === "") throw new Error("swarm close identity missing");
   if (closeBody.swarm_id.includes("\0")) throw new Error("swarm close identity contains NUL");
   if (frame.swarm_id !== closeBody.swarm_id) throw new Error("swarm close frame id mismatch");
+  if (closeBody.plan_digest !== undefined && (typeof closeBody.plan_digest !== "string" || !/^[0-9a-f]{64}$/.test(closeBody.plan_digest))) {
+    throw new Error("swarm close plan digest invalid");
+  }
   if (!Array.isArray(closeBody.step_receipts) || closeBody.step_receipts.length === 0) {
     throw new Error("swarm close step receipts missing");
   }

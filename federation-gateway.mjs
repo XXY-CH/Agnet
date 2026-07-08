@@ -392,6 +392,8 @@ async function executeSwarm(socket, trustedZones, zone, workers, frame) {
   const swarmId = frame.swarm.swarm_id;
   if (typeof swarmId !== "string" || swarmId === "" || swarmId.includes("\0")) throw new Error("swarm_id missing");
   if (!Array.isArray(frame.swarm.steps) || frame.swarm.steps.length === 0) throw new Error("swarm steps missing");
+  const planDigest = frame.swarm.plan_digest;
+  if (planDigest !== undefined && typeof planDigest !== "string") throw new Error("swarm plan_digest invalid");
 
   const completed = new Map();
   const stepReceipts = [];
@@ -459,7 +461,7 @@ async function executeSwarm(socket, trustedZones, zone, workers, frame) {
       migration_at: new Date().toISOString(),
     });
   }
-  const closeBody = { swarm_id: swarmId, step_receipts: stepReceipts, micro_contracts: microContracts, migration_log: migrationLog };
+  const closeBody = { swarm_id: swarmId, step_receipts: stepReceipts, micro_contracts: microContracts, migration_log: migrationLog, ...(planDigest !== undefined ? { plan_digest: planDigest } : {}) };
   const closeProof = { ...closeBody, close_signature: signObject(zone.privateKey, closeBody) };
   await appendAudit({ kind: "fed_swarm_close", zone: zone.descriptor, close: closeProof });
   send(socket, { type: "FED_SWARM_CLOSE", swarm_id: swarmId, zone: zone.descriptor, close: closeProof });

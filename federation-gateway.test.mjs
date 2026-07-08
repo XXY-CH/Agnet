@@ -5,7 +5,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { AUDIT_ZERO_HASH, auditEntry, canonical, createZone, loadOrCreateAgent, loadOrCreateZone, publicKeyFromDescriptor, signObject, verifyObject, verifySwarmClose, verifyZoneTrustDelegation, writeTrustedZones, zoneBinding, zoneRevocation, zoneTrustDelegation } from "./asp-core.mjs";
+import { AUDIT_ZERO_HASH, auditEntry, canonical, createZone, loadOrCreateAgent, loadOrCreateZone, publicKeyFromDescriptor, signObject, swarmPlan, verifyObject, verifySwarmClose, verifySwarmPlan, verifyZoneTrustDelegation, writeTrustedZones, zoneBinding, zoneRevocation, zoneTrustDelegation } from "./asp-core.mjs";
 import { queryMatch } from "./federation-gateway.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -312,6 +312,93 @@ test("Federation Gateway completes a cross-Zone task", async () => {
     assert.equal(result.receipt.event_count, result.events.length);
   } finally {
     gateway.kill("SIGINT");
+  }
+});
+
+test("Swarm decomposition plan verifies and links to close plan digest", async () => {
+  const port = 9021;
+  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/fed-zone-a-requester.pkcs8");
+  await writeTrustedZones("state/fed-trusted-zones.json", [zoneA]);
+  const child = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/fed-trusted-zones.json"], { stdio: ["ignore", "pipe", "inherit"] });
+  try {
+    await waitForGateway(child);
+    const steps = [
+      { step_id: "1", capability: "summarize.text", constraint: { max_tokens: 500 }, depends_on: [] },
+      { step_id: "2", capability: "summarize.text", constraint: { max_tokens: 250 }, depends_on: ["1"] },
+    ];
+    const planFrame = swarmPlan(zoneA, "swarm://local/node_swarm_plan", "Summarize text then produce a shorter follow-up.", steps, "a".repeat(64));
+    assert.equal(planFrame.type, "FED_SWARM_PLAN");
+    assert.equal(verifySwarmPlan(planFrame, new Map([[zoneA.zid, zoneA.descriptor]])).plan.plan_digest, planFrame.plan.plan_digest);
+
+    const tamperedSignature = structuredClone(planFrame);
+    tamperedSignature.plan.plan_signature = "bad";
+    assert.throws(
+      () => verifySwarmPlan(tamperedSignature, new Map([[zoneA.zid, zoneA.descriptor]])),
+      /swarm plan signature verification failed/,
+    );
+
+    const emptySteps = structuredClone(planFrame);
+    emptySteps.plan.steps = [];
+    assert.throws(
+      () => verifySwarmPlan(emptySteps, new Map([[zoneA.zid, zoneA.descriptor]])),
+      /swarm plan steps missing/,
+    );
+
+    const nulStep = structuredClone(planFrame);
+    nulStep.plan.steps[0].step_id = "bad\0step";
+    assert.throws(
+      () => verifySwarmPlan(nulStep, new Map([[zoneA.zid, zoneA.descriptor]])),
+      /swarm plan step invalid/,
+    );
+
+    const summaryTask = {
+      task_id: "node_swarm_plan_summary",
+      from: requester.aid,
+      to: "agent://zone-b/summarizer",
+      intent: "Summarize after a signed Swarm plan.",
+      scope: { network: false },
+      budget: { time_seconds: 30 },
+    };
+    const followupTask = {
+      task_id: "node_swarm_plan_followup",
+      from: requester.aid,
+      to: "agent://zone-b/summarizer",
+      intent: "Use the planned dependency artifact.",
+      scope: { network: false },
+      budget: { time_seconds: 30 },
+    };
+    const frames = await exchangeFramesUntil(port, {
+      type: "FED_SWARM_OPEN",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      requester_zone_binding: zoneBinding(zoneA, requester.descriptor),
+      swarm: {
+        swarm_id: "swarm://local/node_swarm_plan",
+        plan_digest: planFrame.plan.plan_digest,
+        steps: [
+          { step_id: "1", task: { ...summaryTask, signature: signObject(requester.privateKey, summaryTask) } },
+          { step_id: "2", after: ["1"], task: { ...followupTask, signature: signObject(requester.privateKey, followupTask) } },
+        ],
+      },
+    }, zoneA, "FED_SWARM_CLOSE");
+    assert.notEqual(frames.at(-1).type, "FED_TASK_ERROR", frames.at(-1).error);
+
+    const closeFrame = frames.at(-1);
+    assert.equal(closeFrame.close.plan_digest, planFrame.plan.plan_digest);
+    assert.equal(verifySwarmClose(closeFrame, new Map([[zoneB.zid, zoneB.descriptor]])).close.plan_digest, planFrame.plan.plan_digest);
+
+    const malformedPlanDigest = structuredClone(closeFrame);
+    malformedPlanDigest.close.plan_digest = "not-hex";
+    const { close_signature, ...malformedCloseBody } = malformedPlanDigest.close;
+    malformedPlanDigest.close.close_signature = signObject(zoneB.privateKey, malformedCloseBody);
+    assert.throws(
+      () => verifySwarmClose(malformedPlanDigest, new Map([[zoneB.zid, zoneB.descriptor]])),
+      /swarm close plan digest invalid/,
+    );
+  } finally {
+    child.kill();
   }
 });
 
