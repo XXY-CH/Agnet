@@ -1,13 +1,15 @@
-# Agnet
+# Agnet — Agent Space Protocol (ASP)
 
 Agnet is an accountability layer for agent work.
 
-MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
+Agent Space Protocol (ASP) is the narrow proof layer for agent task execution: it signs tasks, receipts, artifacts, audit entries, sandbox claims, and federation evidence so another verifier can inspect what happened without trusting the original runtime.
 
 Status: research prototype, local-first, v13 active at `v13.15-protocol`.
 Historical baseline: v12 closed at `v12.45-protocol`.
 
-## Why This Exists
+## What ASP Is For
+
+MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
 Agent systems are starting to coordinate across tools, runtimes, and organizations. Coordination is not enough. The hard question is accountability:
 
@@ -21,14 +23,49 @@ Agent systems are starting to coordinate across tools, runtimes, and organizatio
 
 Agnet is the narrow proof layer for those questions.
 
-## Current Shape
+## Architecture Overview
 
-Agnet currently includes two implementations:
+ASP sits inside the larger Agent Space vision as the proof/accountability narrow waist. The long-range stack in `docs/agent-space-ultimate-vision.md` has seven Agent-facing layers above the Internet underlay:
+
+```text
+Human Society
+  goals, approvals, governance, legal responsibility
+
+Semantic OS
+  personal lead agents, organizational entry points, task boards
+
+Agent Economy
+  service markets, reputation, quotas, settlement, liability
+
+Agent Swarm Layer
+  dynamic teams, roles, collaboration topology, task DAGs
+
+Trust & Verification Layer
+  identity, credentials, sandbox claims, attestation, audit, verification
+
+Agent Task Fabric
+  signed tasks, event streams, artifacts, receipts, checkpoints
+
+Agent Discovery Layer
+  Agent IDs, capability addressing, semantic recall, reputation ranking
+
+Agent Overlay Network
+  Zones, federation, P2P relay, DHT, edge gateways
+
+Internet Underlay
+  TCP/IP, QUIC, TLS, WebSocket, HTTP, cloud and edge networks
+```
+
+The current repository implements proof-layer primitives across the Trust & Verification Layer, Agent Task Fabric, Discovery Layer, and local/federated gateway pieces. It does not implement the full economy, global overlay network, or production security boundary.
+
+### Implementations in this repo
 
 - Node prototype runtime and federation gateway.
 - Go gateway with Human Gateway UI, task execution, receipts, artifact verification, queue actions, sandbox evidence, TLS/mTLS, and audit verification.
 
-The current prototype proves:
+## What the Current Prototype Proves
+
+The current prototype proves the following capability surface. The list is intentionally evidence-heavy because these phrases are guarded by `docs-contract.test.mjs` and by boundary documentation.
 
 - Ed25519 `aid:` agent identity and Zone identity with descriptor body object presence validation, registry file shape validation, Zone descriptor object presence validation, Zone binding object presence validation, Zone revocation object presence validation, descriptor public key presence validation, and object signature type validation before crypto parsing.
 - Ed25519 `did:key` bridge fields for descriptors, with missing-input validation and without replacing `aid:`.
@@ -94,6 +131,7 @@ Prerequisites:
 
 - Node.js with the built-in `node:test` runner.
 - Go matching `go.mod`.
+- Docker only for the Docker proof paths.
 
 Run the smallest Node proof:
 
@@ -109,43 +147,11 @@ bash scripts/proof-demo.sh
 
 The script writes `state/proof-demo-fed-receipt.json` and `state/proof-demo-trusted-zones.json`, then verifies the receipt plus local artifact bytes with `asp-verify.mjs fed-receipt-artifacts`.
 
-Run the Docker proof demo when Docker is available:
-
-```bash
-bash scripts/docker-proof-demo.sh
-```
-
-If Docker Hub access is flaky or restricted, override the base image:
-
-```bash
-AGNET_NODE_BASE_IMAGE=node:22-bookworm-slim bash scripts/docker-proof-demo.sh
-```
-
 Run the local public-listen proof:
 
 ```bash
 bash scripts/public-node-proof.sh
 ```
-
-Run the Docker public-listen proof when Docker is available:
-
-```bash
-bash scripts/docker-public-node-proof.sh
-```
-
-Its build-stage base images can be overridden with:
-
-```bash
-AGNET_GO_BASE_IMAGE=golang:1.26.1-bookworm AGNET_NODE_BASE_IMAGE=node:22-bookworm-slim bash scripts/docker-public-node-proof.sh
-```
-
-Run the external reachability observer in Docker against an existing proof bundle:
-
-```bash
-bash scripts/docker-external-reachability-observer.sh state/public-node-proof-bundle.json state/public-node-proof-observed-bundle.json state/public-node-proof-observer-trusted-zones.json
-```
-
-This wrapper uses Docker's host gateway and proves only the `container-observer` scope. It is not real hosted external-host reachability by itself; `external-host` also requires a globally routable literal-IP listen host, and hostname listen hosts are out of scope for this slice.
 
 Run the full local verification suite:
 
@@ -170,88 +176,283 @@ go run ./cmd/go-fed-discovery --sandbox-probe container-namespace
 
 The probe is expected to report unsupported container isolation unless a future container runtime slice implements it. The point is honest evidence, not overclaiming.
 
-## Important Commands
+## Verifier CLI Reference
 
-Verify one receipt JSON record:
+`asp-verify.mjs` is the Node verifier CLI. It exits non-zero and prints the rejection reason on invalid evidence.
 
-```bash
-go run ./cmd/go-fed-discovery --verify-receipt path/to/receipt.json --verify-task path/to/task.json
-```
-
-Verify one Node `FED_RECEIPT` frame:
+### Local artifact manifest
 
 ```bash
-node asp-verify.mjs fed-receipt frame.json trusted-zones.json
-```
-
-Run the same verifier through the local npm package contract:
-
-```bash
-npm exec --package . -- asp-verify fed-receipt frame.json trusted-zones.json
-```
-
-Create a local npm package artifact proof:
-
-```bash
-node scripts/package-proof.mjs
-```
-
-Verify the local npm package artifact proof:
-
-```bash
-node asp-verify.mjs package-proof state/package-proof/package-proof.json
-```
-
-Verify one Node `FED_RECEIPT` frame plus its local artifact bytes:
-
-```bash
-node asp-verify.mjs fed-receipt-artifacts frame.json trusted-zones.json task.json
-```
-
-Verify one Node `FED_SWARM_CLOSE` frame signature and digest:
-
-```bash
-node asp-verify.mjs swarm-close frame.json trusted-zones.json
-```
-
-Verify one public proof bundle manifest:
-
-```bash
-node asp-verify.mjs proof-bundle state/public-node-proof-bundle.json
-```
-
-Verify one Node local artifact manifest:
-
-```bash
+node asp-verify.mjs artifact <manifest.json>
 node asp-verify.mjs artifact artifacts/task_001/summary.md.manifest.json
 ```
 
-Verify an audit log:
+Verifies one local artifact manifest and its bytes.
+
+### Federated receipt
 
 ```bash
-go run ./cmd/go-fed-discovery --verify-audit --audit state/go-fed-audit.log
+node asp-verify.mjs fed-receipt <frame.json> <trusted-zones.json> [task.json]
+node asp-verify.mjs fed-receipt state/proof-demo-fed-receipt.json state/proof-demo-trusted-zones.json
 ```
 
-Start the Go federation gateway:
+Verifies one `FED_RECEIPT` frame, Zone trust, receipt signature, worker identity, receipt digest, optional task evidence, and receipt-carried checkpoint evidence.
+
+### Federated receipt plus artifacts
+
+```bash
+node asp-verify.mjs fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json]
+node asp-verify.mjs fed-receipt-artifacts state/proof-demo-fed-receipt.json state/proof-demo-trusted-zones.json
+```
+
+Verifies the receipt and every local artifact manifest referenced by the receipt.
+
+### Swarm close proof
+
+```bash
+node asp-verify.mjs swarm-close <frame.json> <trusted-zones.json>
+node asp-verify.mjs swarm-close state/public-node-proof-swarm-close.json state/public-node-proof-swarm-close-trusted-zones.json
+```
+
+Verifies one `FED_SWARM_CLOSE` frame signature, close digest, step identity constraints, and structural close proof checks.
+
+### Sandbox proof
+
+```bash
+node asp-verify.mjs sandbox-proof <frame.json> <trusted-zones.json> [required-sandbox-class]
+node asp-verify.mjs sandbox-proof state/proof-demo-fed-receipt.json state/proof-demo-trusted-zones.json local-process
+```
+
+Verifies a signed `local.sandbox.v1` proof embedded in a trusted receipt. Stronger required classes such as `remote-attestation` fail closed unless matching signed evidence exists.
+
+### Sandbox attestation
+
+```bash
+node asp-verify.mjs sandbox-attestation <frame.json> <trusted-zones.json> <attestation.json> <trusted-attestors.json>
+```
+
+Verifies signed `asp-sandbox-attestation/v1` evidence from a trusted `sandbox.attest` signer. This is signed attestation evidence, not hardware attestation.
+
+### Package proof
+
+```bash
+node scripts/package-proof.mjs
+node asp-verify.mjs package-proof state/package-proof/package-proof.json
+node asp-verify.mjs package-proof state/package-proof/package-proof.json state/package-proof/trusted-package-signers.json
+npm exec --package . -- asp-verify package-proof state/package-proof/package-proof.json
+```
+
+Verifies the local npm tarball proof, including tarball bytes, npm shasum/integrity, ASP SHA-256, canonical `proof_digest`, package proof signer capability, optional trusted signer pin, and packaged file list.
+
+### Release trust
+
+```bash
+node scripts/release-trust.mjs
+node asp-verify.mjs release-trust state/package-proof/release-trust.json
+node asp-verify.mjs release-trust state/package-proof/release-trust.json state/package-proof/trusted-release-signers.json
+```
+
+Verifies `asp-release-trust/v1` release trust evidence against the referenced package proof and tarball bytes.
+
+### Public proof bundle
+
+```bash
+node asp-verify.mjs proof-bundle <bundle.json> [external-trusted-zones.json]
+node asp-verify.mjs proof-bundle state/public-node-proof-bundle.json
+node asp-verify.mjs proof-bundle state/public-node-proof-observed-bundle.json state/public-node-proof-observer-trusted-zones.json
+```
+
+Verifies one public-listen proof bundle manifest, receipt frame, trusted Zone file, local artifact bytes, transport proof, Swarm close proof, and optional observer-backed reachability evidence.
+
+### Full usage string
+
+```text
+node asp-verify.mjs artifact <manifest.json> |
+  fed-receipt <frame.json> <trusted-zones.json> [task.json] |
+  fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] |
+  swarm-close <frame.json> <trusted-zones.json> |
+  sandbox-proof <frame.json> <trusted-zones.json> [required-sandbox-class] |
+  sandbox-attestation <frame.json> <trusted-zones.json> <attestation.json> <trusted-attestors.json> |
+  package-proof <manifest.json> [trusted-signers.json] |
+  release-trust <release-trust.json> [trusted-release-signers.json] |
+  proof-bundle <bundle.json> [external-trusted-zones.json]
+```
+
+## Release and Package Proof
+
+The release trust flow is intentionally narrow:
+
+```text
+package.json + README + verifier sources
+  -> npm pack artifact
+  -> scripts/package-proof.mjs
+  -> state/package-proof/package-proof.json
+  -> scripts/release-trust.mjs
+  -> state/package-proof/release-trust.json
+  -> asp-verify.mjs release-trust
+```
+
+Commands:
+
+```bash
+node scripts/package-proof.mjs
+node asp-verify.mjs package-proof state/package-proof/package-proof.json
+node scripts/release-trust.mjs
+node asp-verify.mjs release-trust state/package-proof/release-trust.json
+```
+
+The release trust/SBOM format is ASP-native `asp-release-trust/v1`. It binds package name, version, filename, tarball path, tarball SHA-256, tarball size, package proof digest, release signer identity, and packaged file list. It is not CycloneDX, not SPDX, not SLSA provenance, not npm registry signing, not package publish, not release transparency, and not a generic supply-chain platform.
+
+## Docker
+
+Run the Docker proof demo:
+
+```bash
+bash scripts/docker-proof-demo.sh
+```
+
+Override the Node base image when Docker Hub access is flaky or restricted:
+
+```bash
+AGNET_NODE_BASE_IMAGE=node:22-bookworm-slim bash scripts/docker-proof-demo.sh
+```
+
+Run the Docker public-listen proof:
+
+```bash
+bash scripts/docker-public-node-proof.sh
+```
+
+Override build-stage base images:
+
+```bash
+AGNET_GO_BASE_IMAGE=golang:1.26.1-bookworm AGNET_NODE_BASE_IMAGE=node:22-bookworm-slim bash scripts/docker-public-node-proof.sh
+```
+
+Run the external reachability observer in Docker against an existing proof bundle:
+
+```bash
+bash scripts/docker-external-reachability-observer.sh \
+  state/public-node-proof-bundle.json \
+  state/public-node-proof-observed-bundle.json \
+  state/public-node-proof-observer-trusted-zones.json
+```
+
+This wrapper uses Docker's host gateway and proves only the `container-observer` scope. It is not real hosted external-host reachability by itself; `external-host` also requires a globally routable literal-IP listen host, and hostname listen hosts are out of scope for this slice.
+
+## Go Federation Gateway
+
+Start the Go federation gateway with TCP federation, optional WebSocket, and optional Human Gateway HTTP UI:
 
 ```bash
 go run ./cmd/go-fed-discovery \
+  --listen-host 127.0.0.1 \
   --port 9090 \
   --ws-port 9091 \
   --human-port 8080
 ```
 
-Optional hardening flags include:
+The default federation transport is local TCP. Optional TLS and mTLS are available for the main federation TCP listener:
 
-- `--listen-host`
-- `--tls-cert`
-- `--tls-key`
-- `--tls-client-ca`
-- `--human-token`
-- `--human-actor-policy`
-- `--artifact-store`
+```bash
+go run ./cmd/go-fed-discovery \
+  --listen-host 0.0.0.0 \
+  --port 9090 \
+  --tls-cert path/to/server.crt \
+  --tls-key path/to/server.key \
+  --tls-client-ca path/to/client-ca.crt
+```
 
-## Repository Map
+Common verification and maintenance commands:
+
+```bash
+# Verify one receipt record and optional signed task evidence.
+go run ./cmd/go-fed-discovery --verify-receipt path/to/receipt.json --verify-task path/to/task.json
+
+# Verify a hash-chained audit JSONL file.
+go run ./cmd/go-fed-discovery --verify-audit --audit state/go-fed-audit.log
+
+# Print the authority Zone descriptor.
+go run ./cmd/go-fed-discovery --print-zone
+
+# Probe or require a sandbox runtime claim.
+go run ./cmd/go-fed-discovery --sandbox-probe container-namespace
+go run ./cmd/go-fed-discovery --sandbox-require container-namespace
+
+# Plan or apply filesystem artifact mirror garbage collection.
+go run ./cmd/go-fed-discovery --artifact-store state/artifact-mirror --artifact-store-gc-plan
+go run ./cmd/go-fed-discovery --artifact-store state/artifact-mirror --artifact-store-gc-apply
+
+# Send one interop FED_TASK_OPEN request to a Node federation gateway port.
+go run ./cmd/go-fed-discovery --interop-request 9090
+```
+
+### Go gateway flags
+
+| Flag | Purpose |
+| --- | --- |
+| `--listen-host` | Main federation TCP listen host. Defaults to `127.0.0.1`. |
+| `--port` | Main federation TCP port. Defaults to `9090`. |
+| `--ws-port` | Optional WebSocket listen port. |
+| `--human-port` | Optional Human Gateway HTTP port. |
+| `--human-token` | Optional Human Gateway bearer token for write actions. |
+| `--human-actor-policy` | Optional local actor policy JSON file for Human Gateway actions. |
+| `--tls-cert` / `--tls-key` | Optional TLS certificate and private key for the federation listener. |
+| `--tls-client-ca` | Optional mTLS client certificate CA file. |
+| `--artifact-store` | Optional filesystem artifact mirror directory. |
+| `--fixture` | Signed descriptor fixture path. |
+| `--trusted` | Trusted origin Zones file. |
+| `--authority-key` | Authority seed key file. |
+| `--worker-key` | Worker seed key file. |
+| `--audit` | Audit JSONL file. |
+| `--verify-audit` | Verify the audit JSONL file and exit. |
+| `--verify-receipt` | Verify one receipt record JSON file and exit. |
+| `--verify-task` | Optional signed task JSON file for `--verify-receipt` task digest checks. |
+| `--artifact-store-gc-plan` | Print filesystem artifact mirror GC plan and exit. |
+| `--artifact-store-gc-apply` | Delete orphaned filesystem artifact mirror objects and exit. |
+| `--sandbox-probe` | Print sandbox runtime support probe JSON and exit. |
+| `--sandbox-require` | Require sandbox runtime support and exit non-zero if unavailable. |
+| `--print-zone` | Print the authority Zone descriptor and exit. |
+| `--interop-request` | Send one `FED_TASK_OPEN` request to a Node federation gateway port and exit. |
+
+## v13 Implementation Gates
+
+v13 uses five larger Ultimate-facing evidence gates. Current status:
+
+| Gate | Status | Current evidence | Still pending |
+| --- | --- | --- | --- |
+| Real hosted/public reachability | Active / pending exit criterion | v13.1 verifier-owned reachability scopes, v13.8 pinned observer identity, v13.9 hosted observer runner support | A successful real hosted external-host observer run against a globally routable literal-IP listener. Workflow run `28916288568` failed with `ENETUNREACH`. |
+| Release trust/SBOM | Complete | v13.2 `asp-release-trust/v1`, `scripts/package-proof.mjs`, `scripts/release-trust.mjs`, `asp-verify.mjs release-trust` | Ecosystem formats and registry signing remain non-goals. |
+| Strong sandbox / remote attestation | Active / partially complete | v13.6 local-process sandbox proof verifier, v13.7 signed sandbox attestation verifier | Hardware remote attestation and real container namespace/VM/TEE isolation remain unimplemented and fail-closed. |
+| Semantic discovery / reputation ranking | Complete for current local evidence surface | v13.4 Node discovery ranking, v13.10 Go parity, v13.11 audit-backed receipt counts, v13.12 credential expiry, v13.13 revocation, v13.14 labelled agent score | No global reputation graph, public marketplace, remote feed, or token-weighted scoring. |
+| Dynamic Swarm scheduling | Complete for ready-DAG primitive | v13.5 `FED_SWARM_SCHEDULE` executes out-of-order signed DAG steps in deterministic dependency-ready order and signs scheduler evidence | No automatic task decomposition, parallel worker pool, upper-layer master-agent orchestration, or economic settlement. |
+
+## Repo Map
+
+### Primary source files
+
+- `asp-core.mjs` - Node verifier/runtime core exports.
+- `asp-verify.mjs` - Node verifier CLI.
+- `agent-runtime.mjs` - minimal local Node runtime.
+- `federation-gateway.mjs` - Node federation gateway prototype.
+- `cmd/go-fed-discovery/main.go` - Go gateway, CLI verifier, Human Gateway, queue, Swarm seed.
+- `verifier/` - reusable Go `FED_RECEIPT` frame verifier package.
+- `test-vectors/` - shared protocol vectors.
+- `package.json` - local npm-facing verifier bin and Node export contract.
+
+### Scripts
+
+- `scripts/proof-demo.sh` - one-command local proof demo.
+- `scripts/docker-proof-demo.sh` - Docker wrapper for the local proof demo.
+- `scripts/package-proof.mjs` - local npm tarball artifact proof.
+- `scripts/release-trust.mjs` - ASP-native release trust/SBOM manifest over the local package proof artifact.
+- `scripts/public-node-proof.sh` - local public-listen federation proof.
+- `scripts/public-node-proof.mjs` - public-listen proof implementation.
+- `scripts/external-reachability-observer.mjs` - TCP observer that writes signed external reachability evidence for a proof bundle.
+- `scripts/docker-public-node-proof.sh` - Docker wrapper for the public-listen federation proof.
+- `scripts/docker-external-reachability-observer.sh` - Docker wrapper for the external reachability observer.
+
+### Boundary docs and roadmap links
 
 - `cmd/go-fed-discovery/main.go` - Go gateway, CLI verifier, Human Gateway, queue, Swarm seed.
 - `verifier/` - reusable Go `FED_RECEIPT` frame verifier package.
@@ -417,6 +618,44 @@ Optional hardening flags include:
 - `docs/v10.47-boundary.md` - v10 closeout boundary.
 - `docs/v9-roadmap.md` - closed v9 roadmap.
 
+## Development
+
+Run focused contract verification after README or boundary-doc changes:
+
+```bash
+node --test --test-concurrency=1 docs-contract.test.mjs
+```
+
+Run the full Node test suite:
+
+```bash
+node --test --test-concurrency=1 *.test.mjs
+```
+
+Run Go tests:
+
+```bash
+go test ./...
+```
+
+Run the current acceptance set from `docs/v13-roadmap.md`:
+
+```bash
+node --test --test-concurrency=1 docs-contract.test.mjs
+gofmt -l .
+git diff --check
+go test ./...
+node --test --test-concurrency=1 *.test.mjs
+```
+
+Contribution notes:
+
+- Keep changes boundary-first.
+- Add a failing test before changing behavior.
+- Prefer verifier evidence over broader framework code.
+- Do not claim a capability until a test or command proves it.
+- Do not loosen immutable boundary docs to make a test pass.
+
 ## Roadmap
 
 v9 and v10 are closed. v11 is closed at `v11.79-protocol`, v12 is closed at `v12.45-protocol`, and v13 is active at `v13.15-protocol`. V13 is aimed at five larger Ultimate-facing evidence gates: real hosted/public reachability, release trust/SBOM, strong sandbox/remote attestation, semantic discovery/reputation ranking, and dynamic Swarm scheduling.
@@ -471,7 +710,7 @@ Highest-value next directions:
 4. Extend semantic discovery/reputation ranking beyond the current Node primitive only with inspectable evidence inputs.
 5. Extend Swarm scheduling beyond the current ready-DAG primitive while preserving complete close proof accountability.
 
-## Current Boundaries
+## Non-Claims
 
 Agnet is deliberately not claiming:
 
@@ -485,6 +724,7 @@ Agnet is deliberately not claiming:
 - Real hosted external-host observer evidence and hardware remote attestation remain pending v13 gates.
 
 Those may become later work, but they are not current capabilities.
+
 
 ## Contributing
 
