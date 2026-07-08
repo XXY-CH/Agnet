@@ -44,17 +44,65 @@ function semanticScore(intent, descriptor) {
   const candidateTokens = new Set(tokenize(`${descriptor.alias} ${descriptor.capabilities.join(" ")}`));
   return [...intentTokens].filter((token) => candidateTokens.has(token)).length;
 }
+
+function costSignal(policy) {
+  const cost = policy?.cost_tokens_per_task;
+  if (!Number.isSafeInteger(cost)) return { score: 5, used: false };
+  return { score: Math.max(0, Math.min(10, 10 - Math.floor(cost / 100))), used: true };
+}
+
+function latencySignal(policy) {
+  const latency = policy?.latency_ms_p95;
+  if (!Number.isSafeInteger(latency)) return { score: 5, used: false };
+  if (latency <= 100) return { score: 10, used: true };
+  if (latency <= 500) return { score: 7, used: true };
+  if (latency <= 2000) return { score: 4, used: true };
+  return { score: 1, used: true };
+}
+
+function availabilitySignal(started, completed, hasAuditData) {
+  if (!hasAuditData) return { score: 5, used: false };
+  const safeStarted = Number.isSafeInteger(started) && started > 0 ? started : 0;
+  const safeCompleted = Number.isSafeInteger(completed) && completed > 0 ? completed : 0;
+  const denominator = safeStarted > 0 ? safeStarted : 1;
+  return { score: Math.max(0, Math.min(10, Math.floor((safeCompleted / denominator) * 10))), used: true };
+}
+
+function routingSignals(worker, credentialClaims) {
+  const cost = costSignal(worker.descriptor.policy);
+  const latency = latencySignal(worker.descriptor.policy);
+  const availability = availabilitySignal(
+    credentialClaims?.availability_started,
+    credentialClaims?.availability_completed,
+    credentialClaims?.availability_has_audit_data === true,
+  );
+  const signals_used = [cost.used, latency.used, availability.used].filter(Boolean).length;
+  return { cost_score: cost.score, latency_score: latency.score, availability_score: availability.score, signals_used };
+}
+
+function auditRecordForWorker(record, aid) {
+  if (record?.kind === "fed_receipt" && record.to === aid) return true;
+  if (record?.kind === "fed_event" && record.by === aid) return true;
+  return false;
+}
+
+function auditRecordIsCompleted(record) {
+  if (record?.kind === "fed_receipt" && record.status === "completed") return true;
+  if (record?.kind === "fed_event" && record.type === "task.completed") return true;
+  return false;
+}
 async function countCompletedReceiptsFromAudit(auditPath, aid) {
   let text;
   try {
     text = await readFile(auditPath, "utf8");
   } catch (error) {
-    if (error.code === "ENOENT") return { count: 0, lastCompletedAt: null };
-    return { count: 0, lastCompletedAt: null };
+    if (error.code === "ENOENT") return { count: 0, lastCompletedAt: null, availabilityStarted: 0, availabilityCompleted: 0, availabilityHasAuditData: false };
+    return { count: 0, lastCompletedAt: null, availabilityStarted: 0, availabilityCompleted: 0, availabilityHasAuditData: false };
   }
   let count = 0;
   let lastCompletedAt = null;
   let lastCompletedTime = -Infinity;
+  const records = [];
   for (const line of text.split("\n")) {
     if (!line.trim()) continue;
     let entry;
@@ -64,6 +112,8 @@ async function countCompletedReceiptsFromAudit(auditPath, aid) {
       continue;
     }
     const record = entry?.record;
+    if (!record) continue;
+    records.push(record);
     if (record?.kind !== "fed_receipt" || record.to !== aid || record.status !== "completed") continue;
     count++;
     const timestamp = record.completed_at ?? record.completedAt ?? record.last_completed_at ?? record.timestamp ?? record.receipt?.completed_at ?? record.receipt?.completedAt ?? record.receipt?.timestamp ?? null;
@@ -73,14 +123,24 @@ async function countCompletedReceiptsFromAudit(auditPath, aid) {
       lastCompletedAt = timestamp;
     }
   }
-  return { count, lastCompletedAt };
+  let availabilityStarted = 0;
+  let availabilityCompleted = 0;
+  let availabilityHasAuditData = false;
+  for (const record of records.slice(-50)) {
+    if (!auditRecordForWorker(record, aid)) continue;
+    if (record.kind === "fed_event" && record.type === "task.started") availabilityStarted++;
+    if (auditRecordIsCompleted(record)) availabilityCompleted++;
+    if (record.kind === "fed_event" && (record.type === "task.started" || record.type === "task.completed")) availabilityHasAuditData = true;
+    if (record.kind === "fed_receipt") availabilityHasAuditData = true;
+  }
+  return { count, lastCompletedAt, availabilityStarted, availabilityCompleted, availabilityHasAuditData };
 }
 
 function countRevocationsForWorker(revocations, aid, alias) {
   return (revocations ?? []).filter((revocation) => revocation.subject === aid || revocation.subject === alias).length;
 }
 
-function computeAgentScore(completedReceipts, lastCompletedAt, revocationCount, active) {
+function computeAgentScore(completedReceipts, lastCompletedAt, revocationCount, active, costScore, latencyScore, availabilityScore) {
   const receipt_score = Math.min(completedReceipts, 20) * 2;
   const credential_score = active ? 30 : 0;
   let freshness_score = 0;
@@ -90,9 +150,12 @@ function computeAgentScore(completedReceipts, lastCompletedAt, revocationCount, 
     if (age >= 0 && age <= 60 * 60 * 1000) freshness_score = 10;
     else if (age >= 0 && age <= 24 * 60 * 60 * 1000) freshness_score = 5;
   }
+  const cost_score = Number.isFinite(costScore) ? costScore : 5;
+  const latency_score = Number.isFinite(latencyScore) ? latencyScore : 5;
+  const availability_score = Number.isFinite(availabilityScore) ? availabilityScore : 5;
   const revocation_penalty = Math.min(revocationCount * 10, receipt_score + credential_score + freshness_score);
-  const total = Math.max(0, Math.min(100, receipt_score + credential_score + freshness_score - revocation_penalty));
-  return { total, receipt_score, credential_score, freshness_score, revocation_penalty };
+  const total = Math.max(0, Math.min(100, receipt_score + credential_score + freshness_score + cost_score + latency_score + availability_score - revocation_penalty));
+  return { total, receipt_score, credential_score, freshness_score, cost_score, latency_score, availability_score, revocation_penalty };
 }
 
 
@@ -105,11 +168,12 @@ export function queryMatch(zone, worker, capability, intent, credentialClaims = 
   ] : [];
   const completedReceipts = Number.isSafeInteger(credentialClaims?.completed_receipts) ? credentialClaims.completed_receipts : 0;
   const lastCompletedAt = typeof credentialClaims?.last_completed_at === "string" ? credentialClaims.last_completed_at : null;
+  const routing = routingSignals(worker, credentialClaims);
   let active = credentials.length > 0 && verifyCapabilityCredential(credentials[0], zone.descriptor, worker.descriptor);
   const validRevocations = (zone.revocations ?? []).filter((revocation) => verifyZoneRevocation(revocation, zone.descriptor));
   const revocationCount = countRevocationsForWorker(validRevocations, worker.descriptor.aid, worker.descriptor.alias);
   if (revocationCount > 0) active = false;
-  const agentScore = computeAgentScore(completedReceipts, lastCompletedAt, revocationCount, active);
+  const agentScore = computeAgentScore(completedReceipts, lastCompletedAt, revocationCount, active, routing.cost_score, routing.latency_score, routing.availability_score);
   const reasons = [];
   if (exact) reasons.push("capability_exact");
   if (semantic > 0) reasons.push("semantic_match");
@@ -125,6 +189,7 @@ export function queryMatch(zone, worker, capability, intent, credentialClaims = 
       capability: { exact, semantic: semantic > 0 },
       credential: { trusted: credentials.length > 0, active },
       reputation: { completed_receipts: completedReceipts, last_completed_at: lastCompletedAt, revocation_count: revocationCount, agent_score: agentScore },
+      routing,
     },
     ranking: { score, reasons },
   };
@@ -387,6 +452,9 @@ async function serve(port, trustedZonesFile) {
               evidence: ["zone-b-local-worker"],
               completed_receipts: receiptCounts.get(worker.aid)?.count ?? 0,
               last_completed_at: receiptCounts.get(worker.aid)?.lastCompletedAt ?? null,
+              availability_started: receiptCounts.get(worker.aid)?.availabilityStarted ?? 0,
+              availability_completed: receiptCounts.get(worker.aid)?.availabilityCompleted ?? 0,
+              availability_has_audit_data: receiptCounts.get(worker.aid)?.availabilityHasAuditData === true,
             }),
             queryMatch(zone, semanticWorker, frame.capability, frame.intent),
           ].filter(Boolean).sort((a, b) => b.ranking.score - a.ranking.score || a.worker.alias.localeCompare(b.worker.alias));

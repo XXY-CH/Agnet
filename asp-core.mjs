@@ -229,6 +229,40 @@ export async function loadOrCreateZone(name, keyFile) {
   return zoneFromPrivateKey(name, await loadOrCreatePrivateKey(keyFile));
 }
 
+function zoneTrustDelegationBody(delegation) {
+  if (!delegation || typeof delegation !== "object" || Array.isArray(delegation)) throw new Error("zone trust delegation missing");
+  const { signature, ...body } = delegation;
+  return body;
+}
+
+export function zoneTrustDelegation(authorityZone, delegateZoneDescriptor, capabilities) {
+  if (!authorityZone?.descriptor || !authorityZone?.privateKey) throw new Error("authority zone missing");
+  verifyZoneDescriptor(authorityZone.descriptor);
+  const delegate = verifyZoneDescriptor(delegateZoneDescriptor).descriptor;
+  if (!Array.isArray(capabilities)) throw new Error("zone trust delegation capabilities missing");
+  const body = {
+    delegator: authorityZone.zid,
+    delegate: delegate.zid,
+    capabilities: [...capabilities],
+    delegator_descriptor: authorityZone.descriptor,
+  };
+  return { ...body, signature: signObject(authorityZone.privateKey, body) };
+}
+
+export function verifyZoneTrustDelegation(delegation, trustedAuthorityDescriptor) {
+  if (!delegation || typeof delegation !== "object" || Array.isArray(delegation)) return false;
+  if (!Array.isArray(delegation.capabilities)) return false;
+  try {
+    const { descriptor, publicKey } = verifyZoneDescriptor(trustedAuthorityDescriptor);
+    if (delegation.delegator !== descriptor.zid) return false;
+    if (delegation.delegator_descriptor?.zid !== descriptor.zid) return false;
+    if (delegation.delegator_descriptor?.public_key_spki !== descriptor.public_key_spki) return false;
+    return verifyObject(publicKey, zoneTrustDelegationBody(delegation), delegation.signature);
+  } catch {
+    return false;
+  }
+}
+
 export function zoneBinding(zone, descriptor) {
   const body = { zone: zone.zid, alias: descriptor.alias, aid: descriptor.aid };
   return { ...body, signature: signObject(zone.privateKey, body) };
