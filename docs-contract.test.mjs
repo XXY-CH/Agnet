@@ -2896,7 +2896,7 @@ test("v14 public docs open the overlay/swarm/routing milestone without terminal 
   assert.match(readme, /v14 active at `v14\.4-protocol`/);
   assert.match(readme, /`docs\/v14-roadmap\.md` - active v14 roadmap\./);
   assert.match(readme, /`docs\/v14\.0-boundary\.md` - v14 opening boundary\./);
-  assert.match(roadmap, /状态：active at v14\.0/);
+  assert.match(roadmap, /状态：active at v14\.4/);
   assert.match(roadmap, /## v14\.1: Swarm Micro-contracts/);
   assert.match(roadmap, /## v14\.2: Multi-signal FED_QUERY routing/);
   assert.match(roadmap, /## v14\.3: Cross-zone trust chains/);
