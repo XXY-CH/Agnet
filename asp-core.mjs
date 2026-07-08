@@ -1,6 +1,6 @@
 import { appendFile, chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from "node:crypto";
+import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomUUID, sign, verify } from "node:crypto";
 
 const AGENT_DOMAIN = Buffer.from("asp-agent-id-v1\0");
 const ZONE_DOMAIN = Buffer.from("asp-zone-id-v1\0");
@@ -219,8 +219,103 @@ function validateSwarmPlanSteps(steps) {
   }
 }
 
+function sha256Canonical(value) {
+  return createHash("sha256").update(canonical(value)).digest("hex");
+}
+
+function knowledgeQueryDigest(intent, sources, policyDigest, queryId) {
+  return sha256Canonical({ intent, sources, policy_digest: policyDigest, query_id: queryId });
+}
+
+function validateKnowledgeSources(sources) {
+  if (!Array.isArray(sources) || sources.length === 0) throw new Error("knowledge query sources missing");
+  for (const source of sources) {
+    if (typeof source !== "string" || source === "") throw new Error("knowledge query source invalid");
+  }
+}
+
+function validateKnowledgeResults(results) {
+  if (!Array.isArray(results)) throw new Error("knowledge response results missing");
+  for (const result of results) {
+    if (!result || typeof result !== "object" || Array.isArray(result)) throw new Error("knowledge response result invalid");
+    for (const field of ["source", "title", "summary", "freshness_at", "license"]) {
+      if (typeof result[field] !== "string" || result[field] === "") throw new Error(`knowledge response result ${field} invalid`);
+    }
+  }
+}
+
+function knowledgeResultDigest(queryId, queryDigest, results) {
+  return sha256Canonical({ query_id: queryId, query_digest: queryDigest, results });
+}
+
 function swarmPlanDigest(intent, steps) {
-  return createHash("sha256").update(canonical({ intent, steps })).digest("hex");
+  return sha256Canonical({ intent, steps });
+}
+
+export function knowledgeQuery(requesterZone, intent, sources, policyDigest) {
+  if (!requesterZone || !requesterZone.descriptor || !requesterZone.privateKey) throw new Error("knowledge query zone missing");
+  if (typeof intent !== "string" || intent === "") throw new Error("knowledge query intent invalid");
+  validateKnowledgeSources(sources);
+  if (typeof policyDigest !== "string" || !/^[0-9a-f]{64}$/.test(policyDigest)) throw new Error("knowledge query policy digest invalid");
+  const query_id = `knowledge-query:${randomUUID()}`;
+  const query_digest = knowledgeQueryDigest(intent, sources, policyDigest, query_id);
+  const queryBody = { intent, sources, policy_digest: policyDigest, query_id, query_digest };
+  return {
+    type: "FED_KNOWLEDGE_QUERY",
+    zone: requesterZone.descriptor,
+    query: { ...queryBody, query_signature: signObject(requesterZone.privateKey, queryBody) },
+  };
+}
+
+export function verifyKnowledgeQuery(frame, trustedZones) {
+  if (!frame || typeof frame !== "object" || Array.isArray(frame) || frame.type !== "FED_KNOWLEDGE_QUERY") throw new Error("expected FED_KNOWLEDGE_QUERY frame");
+  if (!frame.zone || typeof frame.zone !== "object" || Array.isArray(frame.zone)) throw new Error("knowledge query zone missing");
+  const zone = assertTrustedZoneDescriptor(verifyZoneDescriptor(frame.zone).descriptor, trustedZones, "knowledge query");
+  if (!frame.query || typeof frame.query !== "object" || Array.isArray(frame.query)) throw new Error("knowledge query body missing");
+  const { query_signature, ...queryBody } = frame.query;
+  if (typeof queryBody.intent !== "string" || queryBody.intent === "") throw new Error("knowledge query intent invalid");
+  validateKnowledgeSources(queryBody.sources);
+  if (typeof queryBody.policy_digest !== "string" || !/^[0-9a-f]{64}$/.test(queryBody.policy_digest)) throw new Error("knowledge query policy digest invalid");
+  if (typeof queryBody.query_id !== "string" || queryBody.query_id === "" || queryBody.query_id.includes("\0")) throw new Error("knowledge query id invalid");
+  if (typeof queryBody.query_digest !== "string" || queryBody.query_digest !== knowledgeQueryDigest(queryBody.intent, queryBody.sources, queryBody.policy_digest, queryBody.query_id)) throw new Error("knowledge query digest invalid");
+  if (typeof query_signature !== "string" || query_signature === "") throw new Error("knowledge query signature missing");
+  if (!verifyObject(publicKeyFromDescriptor(zone), queryBody, query_signature)) {
+    throw new Error("knowledge query signature verification failed");
+  }
+  return { zone, query: frame.query };
+}
+
+export function knowledgeResponse(gatewayZone, queryId, results, queryDigest) {
+  if (!gatewayZone || !gatewayZone.descriptor || !gatewayZone.privateKey) throw new Error("knowledge response zone missing");
+  if (typeof queryId !== "string" || queryId === "" || queryId.includes("\0")) throw new Error("knowledge response query_id invalid");
+  if (typeof queryDigest !== "string" || !/^[0-9a-f]{64}$/.test(queryDigest)) throw new Error("knowledge response query_digest invalid");
+  validateKnowledgeResults(results);
+  const result_digest = knowledgeResultDigest(queryId, queryDigest, results);
+  const responseBody = { query_id: queryId, query_digest: queryDigest, results, result_digest };
+  return {
+    type: "FED_KNOWLEDGE_RESPONSE",
+    zone: gatewayZone.descriptor,
+    response: { ...responseBody, response_signature: signObject(gatewayZone.privateKey, responseBody) },
+  };
+}
+
+export function verifyKnowledgeResponse(frame, trustedZones, queryFrame) {
+  if (!frame || typeof frame !== "object" || Array.isArray(frame) || frame.type !== "FED_KNOWLEDGE_RESPONSE") throw new Error("expected FED_KNOWLEDGE_RESPONSE frame");
+  if (!frame.zone || typeof frame.zone !== "object" || Array.isArray(frame.zone)) throw new Error("knowledge response zone missing");
+  const zone = assertTrustedZoneDescriptor(verifyZoneDescriptor(frame.zone).descriptor, trustedZones, "knowledge response");
+  if (!frame.response || typeof frame.response !== "object" || Array.isArray(frame.response)) throw new Error("knowledge response body missing");
+  const verifiedQuery = verifyKnowledgeQuery(queryFrame, trustedZones);
+  const { response_signature, ...responseBody } = frame.response;
+  if (typeof responseBody.query_id !== "string" || responseBody.query_id === "" || responseBody.query_id.includes("\0")) throw new Error("knowledge response query_id invalid");
+  if (responseBody.query_id !== verifiedQuery.query.query_id) throw new Error("knowledge response query_id mismatch");
+  if (responseBody.query_digest !== verifiedQuery.query.query_digest) throw new Error("knowledge response query_digest mismatch");
+  validateKnowledgeResults(responseBody.results);
+  if (typeof responseBody.result_digest !== "string" || responseBody.result_digest !== knowledgeResultDigest(responseBody.query_id, responseBody.query_digest, responseBody.results)) throw new Error("knowledge response result digest invalid");
+  if (typeof response_signature !== "string" || response_signature === "") throw new Error("knowledge response signature missing");
+  if (!verifyObject(publicKeyFromDescriptor(zone), responseBody, response_signature)) {
+    throw new Error("knowledge response signature verification failed");
+  }
+  return { zone, response: frame.response };
 }
 
 export function swarmPlan(zone, swarmId, intent, steps, policyDigest) {
