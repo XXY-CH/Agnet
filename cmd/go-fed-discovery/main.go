@@ -29,6 +29,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -65,8 +66,10 @@ type Fixture struct {
 const requesterRegistryPath = "state/go-fed-discovery-requester-registry.json"
 const requesterRebindingHistoryPath = "state/go-fed-discovery-requester-rebindings.json"
 const base58BTCAlphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+const credentialValidUntilPattern = `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$`
 
 var ed25519MultikeyPrefix = []byte{0xed, 0x01}
+var credentialValidUntilRegexp = regexp.MustCompile(credentialValidUntilPattern)
 
 type WorkerProfile struct {
 	KeyFile      string         `json:"key_file,omitempty"`
@@ -2499,6 +2502,26 @@ func (f Fixture) capabilityCredential(worker *Worker, capability string) map[str
 	})
 }
 
+func isCredentialActive(credential map[string]any) bool {
+	claims, ok := credential["claims"].(map[string]any)
+	if !ok {
+		return true
+	}
+	validUntil, ok := claims["valid_until"]
+	if !ok {
+		return true
+	}
+	validUntilText, ok := validUntil.(string)
+	if !ok || !credentialValidUntilRegexp.MatchString(validUntilText) {
+		return false
+	}
+	expiresAt, err := time.Parse(time.RFC3339Nano, validUntilText)
+	if err != nil {
+		return false
+	}
+	return !time.Now().UTC().After(expiresAt)
+}
+
 func (f Fixture) credentialStatus(credential map[string]any, status string) map[string]any {
 	return signBodyWithKey(f.AuthorityPrivateKey, map[string]any{
 		"issuer":        f.Authority["zid"],
@@ -2517,11 +2540,13 @@ func (f Fixture) queryMatch(worker *Worker, capability, intent string) map[strin
 	credentials := []any{}
 	statuses := []any{}
 	completedReceipts := 0
+	active := false
 	if exact {
 		credential := f.capabilityCredential(worker, capability)
 		credentials = append(credentials, credential)
 		statuses = append(statuses, f.credentialStatus(credential, "active"))
 		completedReceipts = f.countCompletedReceipts(optionalString(worker.Descriptor["aid"]))
+		active = isCredentialActive(credential)
 	}
 	reasons := []string{}
 	if exact {
@@ -2530,7 +2555,7 @@ func (f Fixture) queryMatch(worker *Worker, capability, intent string) map[strin
 	if semantic > 0 {
 		reasons = append(reasons, "semantic_match")
 	}
-	if len(credentials) > 0 {
+	if active {
 		reasons = append(reasons, "credential_active")
 	}
 	if completedReceipts > 0 {
@@ -2540,7 +2565,7 @@ func (f Fixture) queryMatch(worker *Worker, capability, intent string) map[strin
 	if exact {
 		score += 50
 	}
-	if len(credentials) > 0 {
+	if active {
 		score += 30
 	}
 	score += min(completedReceipts, 10)
@@ -2556,7 +2581,7 @@ func (f Fixture) queryMatch(worker *Worker, capability, intent string) map[strin
 				"alias": worker.Descriptor["alias"],
 			},
 			"capability": map[string]any{"exact": exact, "semantic": semantic > 0},
-			"credential": map[string]any{"trusted": len(credentials) > 0, "active": len(credentials) > 0},
+			"credential": map[string]any{"trusted": len(credentials) > 0, "active": active},
 			"reputation": map[string]any{"completed_receipts": completedReceipts},
 		},
 		"ranking": map[string]any{"score": score, "reasons": reasons},

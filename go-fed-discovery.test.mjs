@@ -732,6 +732,7 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     ]);
     assert.deepEqual(semanticResult.matches[0].discovery_evidence.capability, { exact: true, semantic: true });
     assert.deepEqual(semanticResult.matches[0].discovery_evidence.credential, { trusted: true, active: true });
+    assert.equal(semanticResult.matches[0].discovery_evidence.credential.active, true);
     assert.ok(semanticResult.matches[0].discovery_evidence.reputation.completed_receipts >= 4);
     assert.deepEqual(semanticResult.matches[1].discovery_evidence.credential, { trusted: false, active: false });
     assert.ok(semanticResult.matches[0].ranking.score > semanticResult.matches[1].ranking.score);
