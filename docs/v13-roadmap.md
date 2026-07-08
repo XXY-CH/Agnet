@@ -1,6 +1,6 @@
 # Agent Space v13 Roadmap
 
-状态：active at v13.1
+状态：active at v13.2
 目标：从 v12 已闭合的 proof surface 继续向 Ultimate 推进，集中处理真实 hosted/public reachability、release trust/SBOM、strong sandbox/remote attestation、semantic discovery/reputation ranking、dynamic Swarm scheduling 五个大门槛。
 
 v13 uses larger evidence gates instead of many tiny versions. 每个 v13 slice 都必须能用测试、脚本、外部证据或 verifier 输出证明边界已经收住；没有证据的能力只作为 planned，不写成 current capability。
@@ -57,13 +57,22 @@ Remaining exit criterion:
 
 ## v13.2: Release Trust and SBOM
 
-状态：planned
+状态：complete
 目标：把 v12 package proof 推进到 release trust/SBOM evidence over the produced artifact.
+
+新增：
+
+- Recorded format choice: `asp-release-trust/v1`, an ASP-native signed release-trust/SBOM manifest.
+- Explicit non-claims: not CycloneDX, not SPDX, not SLSA provenance, not npm registry signing, not package publish, not release transparency, not a generic supply-chain platform.
+- `scripts/release-trust.mjs` consumes the existing package proof artifact path, verifies the package proof first, and writes signed release trust evidence for the produced tarball.
+- `asp-verify.mjs release-trust <release-trust.json> [trusted-release-signers.json]` verifies package-proof binding, tarball bytes, release signer capability, trusted release signer pins, and manifest signature.
+- Negative gates reject malformed, stale, mismatched, unsigned, wrong-signer, untrusted-signer, unsafe-path, invalid timestamp, and extra-argument release trust evidence.
+- `release-trust.test.mjs` covers happy path, trusted signer pinning, and fail-closed release trust mutations; `docs-contract.test.mjs` guards the public docs boundary.
 
 验收边界：
 
-- The release artifact is produced by the existing package proof path or a narrowly documented release command.
-- SBOM/provenance evidence binds package name, version, tarball bytes, package proof digest, signer identity, and packaged file list.
+- The release artifact is produced by the existing package proof path and bound by a narrowly documented release trust producer.
+- Release trust/SBOM evidence binds package name, version, tarball bytes, package proof digest, signer identity, and packaged file list.
 - Verifier commands reject malformed, stale, mismatched, unsigned, and wrong-signer release trust evidence.
 - The format choice is recorded before implementation; no implicit claim of registry publish or ecosystem signing.
 

@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v13.0-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v13.2-protocol`. It is not a full Agent Space product spec.
 Previous public draft baseline: local-first prototype at `v12.45-protocol`.
 
 ## Scope
@@ -339,6 +339,7 @@ node asp-verify.mjs fed-receipt <frame.json> <trusted-zones.json> [task.json]
 node asp-verify.mjs fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json]
 node asp-verify.mjs swarm-close <frame.json> <trusted-zones.json>
 node asp-verify.mjs package-proof <manifest.json>
+node asp-verify.mjs release-trust <release-trust.json> [trusted-release-signers.json]
 node asp-verify.mjs proof-bundle <bundle.json> [external-trusted-zones.json]
 node scripts/external-reachability-observer.mjs <bundle.json> <observed-bundle.json> <observer-trusted-zones.json> <container|external-host>
 bash scripts/docker-external-reachability-observer.sh <bundle.json> <observed-bundle.json> <observer-trusted-zones.json>
@@ -383,6 +384,16 @@ The package proof verifier rejects npm `shasum` or `integrity` values that do no
 After successful package proof verification, the verifier JSON returns the verified package name, version, filename, tarball path, size, npm shasum, npm integrity, ASP SHA-256, proof digest, and signer Agent ID.
 
 The implemented package proof signature is an ASP object signature over local package proof metadata. It is not npm registry signing, release transparency, package publish, or SBOM.
+
+The release trust producer command is `node scripts/release-trust.mjs`. It consumes the existing `state/package-proof/package-proof.json`, verifies that package proof first, then writes `state/package-proof/release-trust.json` as an ASP-native signed release-trust/SBOM manifest.
+
+The release trust format is `asp-release-trust/v1`: not CycloneDX, not SPDX, not SLSA provenance, not npm registry signing, not package publish, not release transparency, and not a generic supply-chain platform. The repo is zero-dependency and refuses capability claims it cannot verify; emitting unvalidated CycloneDX would itself be an overclaim.
+
+The release trust verifier command accepts `release-trust <release-trust.json> [trusted-release-signers.json]` and verifies the referenced package proof, the manifest-relative tarball bytes, package name, version, filename, tarball, SHA-256, size, packaged file list, package proof digest, release trust digest, release signer descriptor, release signer `release.trust.sign` capability, release trust signature, and optional trusted release signer pin.
+
+Release trust staleness means `package_proof_digest` no longer matches the verified referenced package proof. Releases do not expire by elapsed time; `released_at` MUST be a valid UTC timestamp with the same ISO 8601 shape used by observed reachability evidence and MUST NOT be beyond the verifier's future skew allowance.
+
+Trusted release signer pinning applies to the release signer only. It does not pin or replace the embedded package proof signer trust decision, because the release trust verifier verifies the referenced package proof as package proof evidence and then separately checks the release signer.
 
 Implemented Go checks:
 

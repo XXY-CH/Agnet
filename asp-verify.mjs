@@ -8,9 +8,10 @@ import { canonical, loadTrustedZones, publicKeyFromDescriptor, resolveAgent, ver
 const args = process.argv.slice(2);
 const [command, file, trustedFile, taskFile] = args;
 const PACKAGE_PROOF_CAPABILITY = "package.proof.sign";
+const RELEASE_TRUST_CAPABILITY = "release.trust.sign";
 const FUTURE_SKEW_MS = 5 * 60 * 1000;
 const MAX_AGE_MS = 60 * 60 * 1000;
-const OBSERVED_AT_UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+const UTC_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 const NON_GLOBAL_IP_BLOCKS = new BlockList();
 NON_GLOBAL_IP_BLOCKS.addSubnet("0.0.0.0", 8, "ipv4");
 NON_GLOBAL_IP_BLOCKS.addSubnet("10.0.0.0", 8, "ipv4");
@@ -69,21 +70,66 @@ function packageFilesInvalid(files) {
   return !Array.isArray(files) || files.length === 0 || files.some(pathUnsafe) || new Set(files).size !== files.length;
 }
 
+function hasCapability(descriptor, capability) {
+  return Array.isArray(descriptor.capabilities) && descriptor.capabilities.includes(capability);
+}
+
 function hasPackageProofCapability(descriptor) {
-  return Array.isArray(descriptor.capabilities) && descriptor.capabilities.includes(PACKAGE_PROOF_CAPABILITY);
+  return hasCapability(descriptor, PACKAGE_PROOF_CAPABILITY);
+}
+
+function hasReleaseTrustCapability(descriptor) {
+  return hasCapability(descriptor, RELEASE_TRUST_CAPABILITY);
+}
+
+async function loadTrustedSigners(file, capability, label) {
+  const trust = JSON.parse(await readFile(file, "utf8"));
+  if (!trust || typeof trust !== "object") throw new Error(`trusted ${label} signer list missing`);
+  const signers = Array.isArray(trust) ? trust : trust.signers;
+  if (!Array.isArray(signers)) throw new Error(`trusted ${label} signer list missing`);
+  return new Map(signers.map((descriptor) => {
+    if (!descriptor || typeof descriptor !== "object" || Array.isArray(descriptor)) throw new Error(`trusted ${label} signer descriptor missing`);
+    const signer = resolveAgent(new Map([[descriptor.alias, descriptor]]), descriptor.alias);
+    if (!hasCapability(signer.descriptor, capability)) throw new Error(`trusted ${label} signer capability missing`);
+    return [signer.descriptor.aid, signer.descriptor];
+  }));
 }
 
 async function loadTrustedPackageSigners(file) {
-  const trust = JSON.parse(await readFile(file, "utf8"));
-  if (!trust || typeof trust !== "object") throw new Error("trusted package signer list missing");
-  const signers = Array.isArray(trust) ? trust : trust.signers;
-  if (!Array.isArray(signers)) throw new Error("trusted package signer list missing");
-  return new Map(signers.map((descriptor) => {
-    if (!descriptor || typeof descriptor !== "object" || Array.isArray(descriptor)) throw new Error("trusted package signer descriptor missing");
-    const signer = resolveAgent(new Map([[descriptor.alias, descriptor]]), descriptor.alias);
-    if (!hasPackageProofCapability(signer.descriptor)) throw new Error("trusted package signer capability missing");
-    return [signer.descriptor.aid, signer.descriptor];
-  }));
+  return loadTrustedSigners(file, PACKAGE_PROOF_CAPABILITY, "package");
+}
+
+async function loadTrustedReleaseSigners(file) {
+  return loadTrustedSigners(file, RELEASE_TRUST_CAPABILITY, "release");
+}
+
+async function verifyPackageProof(file, trustedFile) {
+  const proof = JSON.parse(await readFile(file, "utf8"));
+  if (!proof || typeof proof !== "object" || Array.isArray(proof)) throw new Error("package proof manifest invalid");
+  if (pathUnsafe(proof.tarball)) throw new Error("package proof tarball path invalid");
+  const tarballPath = join(dirname(file), proof.tarball);
+  const { proof_digest: proofDigest, signature, ...proofBody } = proof;
+  requireEqual("package_proof", proof.package_proof, "ok");
+  requireEqual("proof_digest", proofDigest, createHash("sha256").update(canonical(proofBody)).digest("hex"));
+  if (!proof.signer || typeof proof.signer !== "object" || Array.isArray(proof.signer)) throw new Error("package proof signer missing");
+  if (typeof signature !== "string" || signature === "") throw new Error("package proof signature missing");
+  const signer = resolveAgent(new Map([[proof.signer.alias, proof.signer]]), proof.signer.alias);
+  if (!hasPackageProofCapability(signer.descriptor)) throw new Error("package proof signer capability missing");
+  if (!verifyObject(signer.publicKey, proofBody, signature)) throw new Error("package proof signature invalid");
+  const trustedSigners = trustedFile ? await loadTrustedPackageSigners(trustedFile) : null;
+  if (trustedSigners && !trustedSigners.has(signer.descriptor.aid)) throw new Error("package proof signer untrusted");
+  requireEqual("manifest", proof.manifest, basename(file));
+  requireEqual("filename", proof.filename, proof.tarball.split("/").at(-1));
+  if (typeof proof.name !== "string" || proof.name === "" || typeof proof.version !== "string" || proof.version === "" || typeof proof.filename !== "string" || proof.filename === "") throw new Error("package proof identity invalid");
+  requireEqual("package identity", proof.filename, `${proof.name}-${proof.version}.tgz`);
+  if (packageFilesInvalid(proof.files)) throw new Error("package proof files invalid");
+  if (typeof proof.shasum !== "string" || proof.shasum === "" || typeof proof.integrity !== "string" || proof.integrity === "" || typeof proof.sha256 !== "string" || proof.sha256 === "" || !Number.isSafeInteger(proof.size) || proof.size < 0) throw new Error("package proof byte metadata invalid");
+  const tarballBytes = await readFile(tarballPath);
+  requireEqual("shasum", proof.shasum, createHash("sha1").update(tarballBytes).digest("hex"));
+  requireEqual("integrity", proof.integrity, `sha512-${createHash("sha512").update(tarballBytes).digest("base64")}`);
+  requireEqual("sha256", proof.sha256, createHash("sha256").update(tarballBytes).digest("hex"));
+  requireEqual("size", (await stat(tarballPath)).size, proof.size);
+  return { proof, signer, trustedSigners };
 }
 
 async function verifyExternalReachability(bundle, transportProof, receiptDigest, trustedFile) {
@@ -104,7 +150,7 @@ async function verifyExternalReachability(bundle, transportProof, receiptDigest,
   if (body.vantage !== "container" && body.vantage !== "external-host") throw new Error("external reachability vantage invalid");
   if (body.observed_host !== transportProof.listen_host) throw new Error("external reachability observed_host mismatch");
   if (body.observed_port !== transportProof.port) throw new Error("external reachability observed_port mismatch");
-  const observedAt = typeof body.observed_at === "string" && OBSERVED_AT_UTC_PATTERN.test(body.observed_at) ? Date.parse(body.observed_at) : NaN;
+  const observedAt = typeof body.observed_at === "string" && UTC_TIMESTAMP_PATTERN.test(body.observed_at) ? Date.parse(body.observed_at) : NaN;
   const now = Date.now();
   if (Number.isNaN(observedAt) || observedAt - now > FUTURE_SKEW_MS) throw new Error("external reachability observed_at invalid");
   if (now - observedAt > MAX_AGE_MS) throw new Error("external reachability stale");
@@ -137,32 +183,39 @@ try {
     const verified = verifySwarmClose(frame, await loadTrustedZones(trustedFile));
     console.log(JSON.stringify({ swarm_close_verify: "ok", swarm_id: verified.close.swarm_id, swarm_close_digest: verified.closeDigest }));
   } else if (command === "package-proof" && file && (args.length === 2 || (args.length === 3 && trustedFile))) {
-    const proof = JSON.parse(await readFile(file, "utf8"));
-    if (!proof || typeof proof !== "object" || Array.isArray(proof)) throw new Error("package proof manifest invalid");
-    if (pathUnsafe(proof.tarball)) throw new Error("package proof tarball path invalid");
-    const tarballPath = join(dirname(file), proof.tarball);
-    const { proof_digest: proofDigest, signature, ...proofBody } = proof;
-    requireEqual("package_proof", proof.package_proof, "ok");
-    requireEqual("proof_digest", proofDigest, createHash("sha256").update(canonical(proofBody)).digest("hex"));
-    if (!proof.signer || typeof proof.signer !== "object" || Array.isArray(proof.signer)) throw new Error("package proof signer missing");
-    if (typeof signature !== "string" || signature === "") throw new Error("package proof signature missing");
-    const signer = resolveAgent(new Map([[proof.signer.alias, proof.signer]]), proof.signer.alias);
-    if (!hasPackageProofCapability(signer.descriptor)) throw new Error("package proof signer capability missing");
-    if (!verifyObject(signer.publicKey, proofBody, signature)) throw new Error("package proof signature invalid");
-    const trustedSigners = trustedFile ? await loadTrustedPackageSigners(trustedFile) : null;
-    if (trustedSigners && !trustedSigners.has(signer.descriptor.aid)) throw new Error("package proof signer untrusted");
-    requireEqual("manifest", proof.manifest, basename(file));
-    requireEqual("filename", proof.filename, proof.tarball.split("/").at(-1));
-    if (typeof proof.name !== "string" || proof.name === "" || typeof proof.version !== "string" || proof.version === "" || typeof proof.filename !== "string" || proof.filename === "") throw new Error("package proof identity invalid");
-    requireEqual("package identity", proof.filename, `${proof.name}-${proof.version}.tgz`);
-    if (packageFilesInvalid(proof.files)) throw new Error("package proof files invalid");
-    if (typeof proof.shasum !== "string" || proof.shasum === "" || typeof proof.integrity !== "string" || proof.integrity === "" || typeof proof.sha256 !== "string" || proof.sha256 === "" || !Number.isSafeInteger(proof.size) || proof.size < 0) throw new Error("package proof byte metadata invalid");
-    const tarballBytes = await readFile(tarballPath);
-    requireEqual("shasum", proof.shasum, createHash("sha1").update(tarballBytes).digest("hex"));
-    requireEqual("integrity", proof.integrity, `sha512-${createHash("sha512").update(tarballBytes).digest("base64")}`);
-    requireEqual("sha256", proof.sha256, createHash("sha256").update(tarballBytes).digest("hex"));
-    requireEqual("size", (await stat(tarballPath)).size, proof.size);
+    const { proof, signer, trustedSigners } = await verifyPackageProof(file, trustedFile);
     console.log(JSON.stringify({ package_proof_verify: "ok", name: proof.name, version: proof.version, filename: proof.filename, tarball: proof.tarball, size: proof.size, shasum: proof.shasum, integrity: proof.integrity, sha256: proof.sha256, proof_digest: proof.proof_digest, signer_aid: signer.descriptor.aid, ...(trustedSigners ? { signer_trusted: true } : {}) }));
+  } else if (command === "release-trust" && file && (args.length === 2 || (args.length === 3 && trustedFile))) {
+    const baseDir = dirname(file);
+    const proof = JSON.parse(await readFile(file, "utf8"));
+    if (!proof || typeof proof !== "object" || Array.isArray(proof)) throw new Error("release trust manifest invalid");
+    requireEqual("release_trust", proof.release_trust, "ok");
+    requireEqual("format", proof.format, "asp-release-trust/v1");
+    if (pathUnsafe(proof.package_proof)) throw new Error("release trust package_proof path invalid");
+    const packageProofPath = join(baseDir, proof.package_proof);
+    if (pathUnsafe(proof.tarball)) throw new Error("release trust tarball path invalid");
+    join(baseDir, proof.tarball);
+    const { proof: packageProof } = await verifyPackageProof(packageProofPath, null);
+    if (proof.package_proof_digest !== packageProof.proof_digest) throw new Error("release trust evidence stale");
+    requireEqual("name", proof.name, packageProof.name);
+    requireEqual("version", proof.version, packageProof.version);
+    requireEqual("filename", proof.filename, packageProof.filename);
+    requireEqual("tarball", proof.tarball, packageProof.tarball);
+    requireEqual("sha256", proof.sha256, packageProof.sha256);
+    requireEqual("size", proof.size, packageProof.size);
+    requireEqual("files", proof.files, packageProof.files);
+    const releasedAt = typeof proof.released_at === "string" && UTC_TIMESTAMP_PATTERN.test(proof.released_at) ? Date.parse(proof.released_at) : NaN;
+    if (Number.isNaN(releasedAt) || releasedAt - Date.now() > FUTURE_SKEW_MS) throw new Error("release trust released_at invalid");
+    const { trust_digest: trustDigest, signature, ...trustBody } = proof;
+    requireEqual("trust_digest", trustDigest, createHash("sha256").update(canonical(trustBody)).digest("hex"));
+    if (!proof.signer || typeof proof.signer !== "object" || Array.isArray(proof.signer)) throw new Error("release trust signer missing");
+    const signer = resolveAgent(new Map([[proof.signer.alias, proof.signer]]), proof.signer.alias);
+    if (!hasReleaseTrustCapability(signer.descriptor)) throw new Error("release trust signer capability missing");
+    if (typeof signature !== "string" || signature === "") throw new Error("release trust signature missing");
+    if (!verifyObject(signer.publicKey, trustBody, signature)) throw new Error("release trust signature invalid");
+    const trustedSigners = trustedFile ? await loadTrustedReleaseSigners(trustedFile) : null;
+    if (trustedSigners && !trustedSigners.has(signer.descriptor.aid)) throw new Error("release trust signer untrusted");
+    console.log(JSON.stringify({ release_trust_verify: "ok", name: proof.name, version: proof.version, filename: proof.filename, tarball: proof.tarball, size: proof.size, sha256: proof.sha256, package_proof: proof.package_proof, package_proof_digest: proof.package_proof_digest, trust_digest: proof.trust_digest, released_at: proof.released_at, signer_aid: signer.descriptor.aid, ...(trustedSigners ? { signer_trusted: true } : {}) }));
   } else if (command === "proof-bundle" && file && (args.length === 2 || (args.length === 3 && trustedFile))) {
     const baseDir = dirname(file);
     const bundle = JSON.parse(await readFile(file, "utf8"));
@@ -201,7 +254,7 @@ try {
     if (reachability) output.reachability_observer_zid = reachability.reachability_observer_zid;
     console.log(JSON.stringify(output));
   } else {
-    throw new Error("usage: node asp-verify.mjs artifact <manifest.json> | fed-receipt <frame.json> <trusted-zones.json> [task.json] | fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] | swarm-close <frame.json> <trusted-zones.json> | package-proof <manifest.json> [trusted-signers.json] | proof-bundle <bundle.json> [external-trusted-zones.json]");
+    throw new Error("usage: node asp-verify.mjs artifact <manifest.json> | fed-receipt <frame.json> <trusted-zones.json> [task.json] | fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] | swarm-close <frame.json> <trusted-zones.json> | package-proof <manifest.json> [trusted-signers.json] | release-trust <release-trust.json> [trusted-release-signers.json] | proof-bundle <bundle.json> [external-trusted-zones.json]");
   }
 } catch (error) {
   console.error(error.message);

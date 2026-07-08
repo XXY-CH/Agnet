@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v13 active at `v13.0-protocol`.
+Status: research prototype, local-first, v13 active at `v13.2-protocol`.
 Historical baseline: v12 closed at `v12.45-protocol`.
 
 ## Why This Exists
@@ -50,6 +50,7 @@ The current prototype proves:
 - Node capability credential and credential status helpers reject missing proof objects and malformed authority/subject descriptor inputs before field reads or crypto parsing.
 - Node and Go receipt verifiers require `task_digest` as a compact anchor to the signed task object, Node and Go receipt verification reject unsafe receipt task ids, Go protocol signing and digest verification use no-HTML-escape canonical JSON for `<>&` parity with Node, Node receipt verification rejects malformed artifact manifest URI/ref shapes, receipt artifact verification rejects malformed artifact manifest URIs, malformed artifact manifest SHA-256 values, non-integer or negative manifest sizes, malformed Go manifest AFP strings, malformed Go manifest media types or manifest hashes, malformed Go artifact list entries, type-coerced Go mirror index entries, null Go mirror index entries, missing Go mirror index SHA-256 values, unsafe Go mirror index SHA-256 values, unsafe Go mirror index manifest hashes, invalid Go mirror index AFP values, mismatched Go mirror index AFP strings, invalid Go mirror index sizes, invalid Go mirror index media types, and invalid Go mirror index URIs, and Node receipt/artifact CLIs, the Go receipt CLI, and bidirectional Node/Go interop checks can compare task digests against supplied or in-memory signed task evidence.
 - Minimal npm-facing package contract for the existing Node verifier CLI and `asp-core.mjs` exports, plus an npm tarball proof that emits and persists package filename, size, SHA-1 shasum, SHA-512 integrity, ASP-style SHA-256, canonical `proof_digest`, packaged file list, a package proof verifier command, package proof manifest object validation, package proof tarball path safety, manifest-relative package tarball verification, npm shasum/integrity verification, verified package metadata output, package filename/tarball binding, packaged file list shape validation, package manifest filename binding, package identity filename binding, and package proof signer capability validation.
+- Release trust/SBOM evidence in ASP-native `asp-release-trust/v1` format, with `scripts/release-trust.mjs` consuming the existing package proof artifact, `asp-verify.mjs release-trust <release-trust.json> [trusted-release-signers.json]` verifying package proof binding, tarball bytes, release signer capability, release signature, trusted release signer pins, package proof digest freshness, package name/version/filename/tarball/size/SHA-256/file-list binding, and invalid timestamp/unsafe-path/mismatch/unsigned/wrong-signer/untrusted-signer negative gates; this is not CycloneDX, not SPDX, not SLSA provenance, not npm registry signing, not package publish, not release transparency, and not a generic supply-chain platform.
 - One-command proof demo, Docker proof demo, Docker public-listen proof, and Docker external reachability observer wrapper that emit or consume verifier-ready receipt/trust files, expose receipt digests, verified artifact counts, verified artifact URIs, verified artifact byte digests, verified artifact manifest hashes, signed transport proof fields, and signed reachability evidence fields, verify local artifact closure, and support base-image override env vars for restricted Docker environments.
 - The proof-bundle verifier owns three reachability scopes: `local-interface` without observer evidence, `container-observer` when trusted observer evidence has `vantage: "container"`, and `external-host` only when trusted observer evidence has `vantage: "external-host"` and a globally routable literal-IP `listen_host`; valid observer evidence binds `vantage`, `observed_host`, `observed_port`, `observed_at`, the same transport proof, the same receipt digest, and returns `reachability_observer_zid`.
 - Public-listen proof script that starts the Go federation gateway on a non-loopback IPv4 host, proves `public_transport: true`, completes authenticated `FED_RESOLVE`, `FED_QUERY`, `FED_TASK_OPEN`, `FED_AUDIT_QUERY`, `FED_ARTIFACT_READ`, and `FED_SWARM_OPEN` round trips, verifies fetched artifact bytes, proves out-of-receipt and post-receipt-tampered artifact reads are rejected, confirms the signed task receipt includes the gateway transport proof, writes and verifies an object-shaped proof bundle manifest with type-checked, preflighted, bundle-relative, and traversal-safe proof file paths, plus required signed `fed+tcp` / non-loopback non-unspecified `listen_host` / `port` / `public_transport: true` proof via `asp-verify.mjs proof-bundle <bundle.json> [external-trusted-zones.json]`, rejects bundle-supplied `reachability_scope`, returns `proof_bundle_verify`, and writes a two-step Swarm close proof frame plus trusted Zone file with a reproducible close digest and summary `swarm_close_verify` result from the Node CLI.
@@ -248,6 +249,7 @@ Optional hardening flags include:
 - `scripts/proof-demo.sh` - one-command local proof demo.
 - `scripts/docker-proof-demo.sh` - Docker wrapper for the local proof demo.
 - `scripts/package-proof.mjs` - local npm tarball artifact proof.
+- `scripts/release-trust.mjs` - ASP-native release trust/SBOM manifest over the local package proof artifact.
 - `scripts/public-node-proof.sh` - local public-listen federation proof.
 - `scripts/external-reachability-observer.mjs` - TCP observer that writes signed external reachability evidence for a proof bundle.
 - `scripts/docker-public-node-proof.sh` - Docker wrapper for the public-listen federation proof.
@@ -262,6 +264,7 @@ Optional hardening flags include:
 - `docs/v13-roadmap.md` - active v13 roadmap.
 - `docs/v13.0-boundary.md` - v13 opening boundary.
 - `docs/v13.1-boundary.md` - v13.1 reachability scope boundary.
+- `docs/v13.2-boundary.md` - v13.2 release trust/SBOM boundary.
 - `docs/v12-roadmap.md` - closed v12 roadmap.
 - `docs/v12.45-boundary.md` - latest closed boundary.
 - `docs/v12.44-boundary.md` - package proof signer capability boundary.
@@ -395,7 +398,9 @@ Optional hardening flags include:
 
 ## Roadmap
 
-v9 and v10 are closed. v11 is closed at `v11.79-protocol`, v12 is closed at `v12.45-protocol`, and v13 is active at `v13.0-protocol`. V13 is aimed at five larger Ultimate-facing evidence gates: real hosted/public reachability, release trust/SBOM, strong sandbox/remote attestation, semantic discovery/reputation ranking, and dynamic Swarm scheduling. v13.1 reachability evidence gates are active: verifier-owned scope classes and observer evidence binding landed with tests; real hosted external-host evidence is still pending. The protocol tag stays `v13.0-protocol` until the slice completes, and upper-layer demo/master-agent orchestration plus A2A/ARD compatibility stay outside the current core.
+v9 and v10 are closed. v11 is closed at `v11.79-protocol`, v12 is closed at `v12.45-protocol`, and v13 is active at `v13.2-protocol`. V13 is aimed at five larger Ultimate-facing evidence gates: real hosted/public reachability, release trust/SBOM, strong sandbox/remote attestation, semantic discovery/reputation ranking, and dynamic Swarm scheduling. v13.2 release trust/SBOM is complete in ASP-native `asp-release-trust/v1` form. v13.1 reachability evidence gates are active: verifier-owned scope classes and observer evidence binding landed with tests; real hosted external-host evidence is still pending as the v13.1 exit criterion. The protocol tag advanced with v13.2 because it is the latest complete slice; upper-layer demo/master-agent orchestration plus A2A/ARD compatibility stay outside the current core.
+
+The current v13.2 release trust proof surface keeps the release artifact on the existing package proof path: `scripts/package-proof.mjs` produces the tarball and package proof, `scripts/release-trust.mjs` verifies that package proof and writes `state/package-proof/release-trust.json`, and `asp-verify.mjs release-trust <release-trust.json> [trusted-release-signers.json]` verifies the release manifest against the referenced package proof and tarball bytes. The evidence binds package name, version, filename, tarball path, tarball SHA-256, tarball size, package proof digest, release signer identity, and packaged file list; stale release trust means the referenced package proof drifted from `package_proof_digest`, not that the release expired by elapsed time. Trusted release signer pinning covers the release signer only and does not pin the embedded package proof signer. Format is `asp-release-trust/v1`: not CycloneDX, not SPDX, not SLSA provenance, not npm registry signing, not package publish, not release transparency, and not a generic supply-chain platform.
 
 The current v13.1 reachability proof surface keeps scope verifier-owned: `asp-verify.mjs proof-bundle` reports `reachability_scope: "local-interface"` without observer evidence, upgrades to `container-observer` when trusted signed evidence has `vantage: "container"`, upgrades to `external-host` only when trusted signed evidence has `vantage: "external-host"` and the signed receipt `listen_host` is a globally routable literal IP, returns `reachability_observer_zid` for observer-backed scopes, and rejects bundle-supplied `reachability_scope`. Observer evidence binds `vantage`, observed endpoint fields, freshness, the same transport proof, and the same receipt digest; hostname listen hosts are out of scope for external-host in this slice.
 
@@ -406,7 +411,7 @@ The closed v11 proof core remains in force: task and receipt verifiers require v
 Highest-value next directions:
 
 1. Prove real hosted/public reachability only with external-host evidence.
-2. Bind release trust/SBOM to the produced package artifact and signer evidence.
+2. Keep release trust/SBOM bound to the produced package artifact and signer evidence.
 3. Add strong sandbox/remote attestation only with fail-closed runtime proof.
 4. Add semantic discovery/reputation ranking only with inspectable evidence inputs.
 5. Add dynamic Swarm scheduling while preserving complete close proof accountability.
@@ -422,7 +427,7 @@ Agnet is deliberately not claiming:
 - A2A, ANP, or AGNTCY compatibility.
 - Token economy or settlement.
 - Dynamic Swarm decomposition or scheduler-owned DAG execution.
-- Real hosted external-host observer evidence, semantic discovery/reputation ranking, strong sandbox/remote attestation, and release trust/SBOM remain pending v13 gates until implemented and verified.
+- Real hosted external-host observer evidence, semantic discovery/reputation ranking, and strong sandbox/remote attestation remain pending v13 gates until implemented and verified.
 
 Those may become later work, but they are not current capabilities.
 
