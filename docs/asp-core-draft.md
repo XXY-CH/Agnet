@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v14.0-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v14.3-protocol`. It is not a full Agent Space product spec.
 Previous public draft baseline: local-first prototype at `v13.15-protocol`; v12 public baseline: local-first prototype at `v12.45-protocol`.
 
 ## Scope
@@ -92,6 +92,11 @@ A Zone Descriptor binds:
 - `signature`
 
 Federated verification starts by checking that the sender Zone is trusted. A trusted Zone entry is matched by `zid` and public key.
+
+v14.3 adds a narrow local-first cross-zone delegation primitive. `zoneTrustDelegation(authorityZone, delegateZoneDescriptor, capabilities)` creates a signed record whose body contains `delegator`, `delegate`, `capabilities`, and `delegator_descriptor`. `verifyZoneTrustDelegation(delegation, trustedAuthorityDescriptor)` checks that the delegator is the trusted local authority Zone, the signature verifies with that Zone descriptor, and `capabilities` is an array.
+
+`FED_QUERY` discovery evidence uses `zone_trust_chain` for zone-chain provenance. Direct local Zone membership is represented as `zone_trust_chain: []`; a cross-zone result can carry the signed delegation record in that array.
+
 
 Zone binding links an agent alias to an Agent ID inside a Zone:
 
@@ -365,7 +370,9 @@ When `proof-bundle` receives an additional caller-supplied trusted-Zone file, it
 
 `scripts/public-node-proof.sh` can pass `AGNET_PUBLIC_LISTEN_HOST` through to the public-listen proof so a caller can bind an explicit globally routable literal IP, and `AGNET_PUBLIC_PROOF_KEEPALIVE_MS` can keep the listener alive after local proof generation while a hosted observer attempts the TCP connection. The `.github/workflows/hosted-reachability-observer.yml` Hosted Reachability Observer workflow decodes caller-supplied verifier-ready bundle files, runs the observer with `external-host`, and verifies the observed bundle. A recorded GitHub-hosted attempt, workflow run `28916288568`, failed with `ENETUNREACH` against the current IPv6 listener; the real hosted external-host observer run is still pending.
 
-`FED_QUERY` may carry an `intent` string for semantic discovery. Ranking is deterministic and evidence-first: exact capability match, trusted capability credential, signed credential claims, audit-backed reputation, and semantic token overlap are exposed as inspectable evidence. The Go federation gateway FED_QUERY now accepts `intent` and returns ranked matches with `discovery_evidence` and `ranking` fields, mirroring the Node surface. For reputation, `discovery_evidence.reputation` exposes `completed_receipts`, `last_completed_at`, `revocation_count`, and labelled `agent_score` components: `receipt_score`, `credential_score`, `freshness_score`, and `revocation_penalty`. `ranking.score` is `agent_score.total` plus exact capability and semantic intent scores. receipt counts come from the persisted audit log; this is not a hardcoded demo value, not cross-session learned scoring, and not a third-party reputation service. The current implementation is token-overlap semantic discovery, not a vector database, not remote reputation, not a public marketplace, and not scheduler integration.
+`FED_QUERY` may carry an `intent` string for semantic discovery. Ranking is deterministic and evidence-first: exact capability match, trusted capability credential, signed credential claims, audit-backed reputation, zone-chain provenance, and semantic token overlap are exposed as inspectable evidence. The Go federation gateway FED_QUERY now accepts `intent` and returns ranked matches with `discovery_evidence` and `ranking` fields, mirroring the Node surface. For reputation, `discovery_evidence.reputation` exposes `completed_receipts`, `last_completed_at`, `revocation_count`, and labelled `agent_score` components: `receipt_score`, `credential_score`, `freshness_score`, and `revocation_penalty`. `discovery_evidence.zone_trust_chain` carries signed cross-zone delegation provenance or `[]` for direct Zone membership. `ranking.score` is `agent_score.total` plus exact capability and semantic intent scores. receipt counts come from the persisted audit log; this is not a hardcoded demo value, not cross-session learned scoring, and not a third-party reputation service. The current implementation is token-overlap semantic discovery plus local delegation evidence, not a vector database, not remote reputation, not a public marketplace, and not scheduler integration.
+
+In the v14.2 routing surface, `discovery_evidence.routing` exposes `cost_score`, `latency_score`, `availability_score`, and `signals_used`. `cost_score` comes from descriptor `policy.cost_tokens_per_task`, `latency_score` comes from descriptor `policy.latency_ms_p95`, and `availability_score` comes from local audit evidence over the last 50 entries. Missing cost, latency, or availability evidence falls back to neutral score `5` and does not increment `signals_used`; `agent_score.total` includes the three routing scores and remains capped at 100.
 
 Capability credentials may carry a `valid_until` ISO UTC expiry in claims; expired credentials lower discovery score and report `active: false` in discovery evidence. Credentials without `valid_until` keep the previous active behavior; malformed, unparseable, non-string, or past `valid_until` claims fail closed as inactive for discovery ranking.
 

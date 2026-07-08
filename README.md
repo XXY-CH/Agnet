@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 Agent Space Protocol (ASP) is the narrow proof layer for agent task execution: it signs tasks, receipts, artifacts, audit entries, sandbox claims, and federation evidence so another verifier can inspect what happened without trusting the original runtime.
 
-Status: research prototype, local-first, v14 active at `v14.0-protocol`.
+Status: research prototype, local-first, v14 active at `v14.3-protocol`.
 Historical baseline: v13 active-through `v13.15-protocol`; v12 closed at `v12.45-protocol`.
 
 ## What ASP Is For
@@ -473,6 +473,8 @@ v13 uses five larger Ultimate-facing evidence gates. Current status:
 - `docs/asp-core-draft.md` - narrow English draft for the implemented proof layer.
 - `docs/v14-roadmap.md` - active v14 roadmap.
 - `docs/v14.0-boundary.md` - v14 opening boundary.
+- `docs/v14.2-boundary.md` - v14.2 multi-signal FED_QUERY routing boundary.
+- `docs/v14.3-boundary.md` - v14.3 cross-zone trust chain boundary.
 - `docs/v13-roadmap.md` - closed v13 roadmap.
 - `docs/v13.0-boundary.md` - v13 opening boundary.
 - `docs/v13.1-boundary.md` - v13.1 reachability scope boundary.
@@ -660,9 +662,11 @@ Contribution notes:
 
 ## Roadmap
 
-v9 and v10 are closed. v11 is closed at `v11.79-protocol`, v12 is closed at `v12.45-protocol`, v13 is active-through `v13.15-protocol`, and v14 is active at `v14.0-protocol`. V14 pushes the next three Ultimate layers upward: deeper Agent Overlay Network, stronger Agent Swarm Layer, and Multi-signal routing.
+v9 and v10 are closed. v11 is closed at `v11.79-protocol`, v12 is closed at `v12.45-protocol`, v13 is active-through `v13.15-protocol`, and v14 is active at `v14.3-protocol`. V14 pushes the next three Ultimate layers upward: deeper Agent Overlay Network, stronger Agent Swarm Layer, and Multi-signal routing.
 
-v14.0 opens the local-first overlay/swarm/routing milestone without claiming P2P DHT, token economy, public marketplace, or production global Agent Net. The first implementation slice is v14.1 Swarm Micro-contracts: selected Swarm workers sign declared cost, latency, capability, policy, and worker identity commitments before step execution, and `FED_SWARM_CLOSE` carries the resulting `micro_contracts` array for verifier checks.
+v14.2 completes multi-signal `FED_QUERY` routing: Node and Go query results include `discovery_evidence.routing` with labelled `cost_score`, `latency_score`, `availability_score`, and `signals_used`; `agent_score.total` includes those routing scores while missing evidence stays neutral.
+
+v14.3 completes the local-first cross-zone trust chain slice: `zoneTrustDelegation` creates a Zone-signed delegation record, `verifyZoneTrustDelegation` verifies it against a trusted local authority descriptor, and FED_QUERY discovery evidence has a `zone_trust_chain` provenance slot. Direct Zone membership remains `zone_trust_chain: []`; this is signed local delegation evidence, not universal trust.
 
 v13.15 closes Node receipt checkpoint verification: `verifyFederatedReceipt` and `asp-verify.mjs fed-receipt` now fail closed when receipt-carried `checkpoint_refs` and `checkpoints` have malformed list shape, mismatched count, wrong task binding, broken parent chain, ref mismatch, or invalid worker checkpoint signatures.
 
