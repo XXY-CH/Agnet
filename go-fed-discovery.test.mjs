@@ -479,6 +479,138 @@ function exchangeWebSocketFrames(port, frame, closeType) {
   });
 }
 
+test("Go discovery migrates a failed Swarm step and signs migration_log", async () => {
+  const [port] = await freePorts(1);
+  zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/go-fed-requester.pkcs8");
+  const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
+  const authorityZone = authorityZoneFromFixture(fixture);
+  const goFixture = JSON.parse(JSON.stringify(fixture));
+  delete goFixture.authority_seed_hex;
+  delete goFixture.worker_seed_hex;
+  delete goFixture.worker;
+  delete goFixture.zone_binding;
+  delete goFixture.worker_profile;
+  goFixture.worker_profiles = [
+    {
+      key_file: "state/go-fed-discovery-migration-failing.seed",
+      alias: "agent://zone-b/failing-summarizer",
+      tool: "external.stdio",
+      tool_command: [process.execPath, `${process.cwd()}/state/go-fed-migration-fail.mjs`],
+      sandbox_claim: "local-temp-dir",
+      transports: ["fed+tcp://127.0.0.1:9010"],
+      capabilities: ["summarize.text"],
+      policy: { allow_network: false },
+    },
+    {
+      key_file: "state/go-fed-discovery-migration-replacement.seed",
+      alias: "agent://zone-b/replacement-summarizer",
+      tool: "summarize.mock",
+      transports: ["fed+tcp://127.0.0.1:9011"],
+      capabilities: ["summarize.text"],
+      policy: { allow_network: false },
+    },
+  ];
+  await writeFile("state/go-fed-discovery-migration-worker.json", `${JSON.stringify(goFixture, null, 2)}\n`);
+  await writeFile("state/go-fed-discovery-migration-authority.seed", `${fixture.authority_seed_hex}\n`);
+  await writeFile("state/go-fed-discovery-migration-failing.seed", `${fixture.worker_seed_hex}\n`);
+  await writeFile("state/go-fed-discovery-migration-replacement.seed", "a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0\n");
+  await writeFile("state/go-fed-migration-fail.mjs", `
+process.stderr.write("planned v14.4 migration failure\\n");
+process.exit(1);
+`);
+  await writeTrustedZones("state/go-fed-discovery-migration-trusted-origin.json", [zoneA]);
+  await rm("state/go-fed-discovery-migration-audit.log", { force: true });
+  await rm("state/go-fed-discovery-migration-audit-tasks", { recursive: true, force: true });
+  await rm("state/go-fed-discovery-migration-artifacts", { recursive: true, force: true });
+  const gateway = spawn("go", [
+    "run",
+    "./cmd/go-fed-discovery",
+    "--port",
+    String(port),
+    "--artifact-store",
+    "state/go-fed-discovery-migration-artifacts",
+    "--trusted",
+    "state/go-fed-discovery-migration-trusted-origin.json",
+    "--fixture",
+    "state/go-fed-discovery-migration-worker.json",
+    "--authority-key",
+    "state/go-fed-discovery-migration-authority.seed",
+    "--worker-key",
+    "state/go-fed-discovery-migration-failing.seed",
+    "--audit",
+    "state/go-fed-discovery-migration-audit.log",
+  ], {
+    cwd: process.cwd(),
+    detached: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  try {
+    await waitForGoGateway(gateway, port);
+    const migrationTask = {
+      task_id: "go_fed_swarm_migration_summary",
+      from: requester.aid,
+      to: "agent://zone-b/failing-summarizer",
+      intent: "Summarize after migrating away from the failing worker.",
+      scope: { network: false },
+      budget: { time_seconds: 30 },
+    };
+    const frames = await exchangeFrames(port, {
+      type: "FED_SWARM_OPEN",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      swarm: {
+        swarm_id: "swarm://local/go_fed_swarm_migration",
+        steps: [
+          {
+            step_id: "summary",
+            task: { ...migrationTask, signature: signObject(requester.privateKey, migrationTask) },
+          },
+        ],
+      },
+    }, "FED_SWARM_CLOSE");
+    assert.notEqual(frames.at(-1).type, "FED_TASK_ERROR", frames.at(-1).error);
+    const closeFrame = frames.at(-1);
+    assert.equal(closeFrame.type, "FED_SWARM_CLOSE");
+    const close = closeFrame.close;
+    assert.equal(close.swarm_id, "swarm://local/go_fed_swarm_migration");
+    assert.equal(Array.isArray(close.migration_log), true, "FED_SWARM_CLOSE close body must include migration_log");
+    assert.equal(close.migration_log.length, 1);
+    const [migration] = close.migration_log;
+    assert.equal(migration.step_id, "summary");
+    assert.equal(typeof migration.original_worker_aid, "string");
+    assert.notEqual(migration.original_worker_aid, "");
+    assert.match(migration.reason, /planned v14\.4 migration failure|external tool failed/);
+    assert.equal(typeof migration.migrated_to_worker_aid, "string", "migration_log must name migrated_to_worker_aid");
+    assert.notEqual(migration.migrated_to_worker_aid, "");
+    assert.match(migration.migration_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/);
+    assert.notEqual(migration.original_worker_aid, migration.migrated_to_worker_aid);
+    const migratedReceipt = frames.find((frame) => frame.type === "FED_RECEIPT" && frame.receipt.task_id === migrationTask.task_id).receipt;
+    assert.equal(migration.migrated_to_worker_aid, migratedReceipt.to, "migrated_to_worker_aid must bind the final replacement receipt worker");
+
+    const { close_signature, ...signedCloseBody } = close;
+    assert.equal(Object.hasOwn(signedCloseBody, "migration_log"), true);
+    assert.equal(verifyObject(publicKeyFromDescriptor(fixture.authority), signedCloseBody, close_signature), true);
+    assert.equal(verifySwarmClose(closeFrame, new Map([[fixture.authority.zid, fixture.authority]])).close.migration_log[0].migrated_to_worker_aid, migratedReceipt.to);
+
+    const tamperedMigrationFrame = structuredClone(closeFrame);
+    tamperedMigrationFrame.close.migration_log[0].step_id = "ghost";
+    const { close_signature: _tamperedSignature, ...tamperedMigrationBody } = tamperedMigrationFrame.close;
+    tamperedMigrationFrame.close.close_signature = signObject(authorityZone.privateKey, tamperedMigrationBody);
+    assert.throws(
+      () => verifySwarmClose(tamperedMigrationFrame, new Map([[fixture.authority.zid, fixture.authority]])),
+      /migration_log step_id|migration step/,
+    );
+  } finally {
+    try {
+      process.kill(-gateway.pid, "SIGINT");
+    } catch {
+      // already exited
+    }
+  }
+});
+
 test("Go discovery marks revoked worker credential inactive", async () => {
   const [port] = await freePorts(1);
   zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");

@@ -3151,6 +3151,46 @@ func (f Fixture) executeScheduledSwarm(send sendFunc, origin, frame map[string]a
 	return f.executeSwarmWithScheduler(send, origin, frame, map[string]any{"mode": "ready-dag"})
 }
 
+func capabilitiesFromDescriptor(descriptor map[string]any) []string {
+	return stringsFromAny(descriptor["capabilities"])
+}
+
+func sharesWorkerCapability(left, right *Worker) bool {
+	rightCapabilities := map[string]bool{}
+	for _, capability := range capabilitiesFromDescriptor(right.Descriptor) {
+		rightCapabilities[capability] = true
+	}
+	for _, capability := range capabilitiesFromDescriptor(left.Descriptor) {
+		if rightCapabilities[capability] {
+			return true
+		}
+	}
+	return false
+}
+
+func (f Fixture) migrationCandidate(original *Worker) *Worker {
+	for i := range f.Workers {
+		candidate := &f.Workers[i]
+		if optionalString(candidate.Descriptor["aid"]) == optionalString(original.Descriptor["aid"]) {
+			continue
+		}
+		if sharesWorkerCapability(original, candidate) {
+			return candidate
+		}
+	}
+	return nil
+}
+
+func migrationLogEntry(stepID string, original *Worker, reason string, migrated *Worker) map[string]any {
+	return map[string]any{
+		"step_id":                stepID,
+		"original_worker_aid":    original.Descriptor["aid"],
+		"reason":                 reason,
+		"migrated_to_worker_aid": migrated.Descriptor["aid"],
+		"migration_at":           time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
+	}
+}
+
 func (f Fixture) executeSwarmWithScheduler(send sendFunc, origin, frame map[string]any, scheduler map[string]any) error {
 	requester, ok := frame["requester"].(map[string]any)
 	if !ok {
@@ -3190,6 +3230,7 @@ func (f Fixture) executeSwarmWithScheduler(send sendFunc, origin, frame map[stri
 	completed := map[string]map[string]any{}
 	stepReceipts := []map[string]any{}
 	microContracts := []map[string]any{}
+	migrationLog := []map[string]any{}
 	for _, item := range steps {
 		step, ok := item.(map[string]any)
 		if !ok {
@@ -3239,26 +3280,44 @@ func (f Fixture) executeSwarmWithScheduler(send sendFunc, origin, frame map[stri
 		if err != nil {
 			return err
 		}
-		microContract := f.swarmMicroContract(worker, swarmID, stepID, task)
-		microContracts = append(microContracts, microContract)
-		if err := f.sendTaskEvent(send, microContract); err != nil {
-			return err
-		}
 		proof := map[string]any{
 			"swarm_id":        swarmID,
 			"step_id":         stepID,
 			"after":           after,
 			"input_artifacts": inputArtifacts,
 		}
-		if err := f.executeTask(send, origin, worker, task, nil, "", nil, false, map[string]any{"swarm": proof}, func(receipt map[string]any) error {
+		microContract := f.swarmMicroContract(worker, swarmID, stepID, task)
+		if err := f.sendTaskEvent(send, microContract); err != nil {
+			return err
+		}
+		executeErr := f.executeTask(send, origin, worker, task, nil, "", nil, false, map[string]any{"swarm": proof}, func(receipt map[string]any) error {
 			completed[stepID] = receipt
 			stepReceipts = append(stepReceipts, map[string]any{"step_id": stepID, "task_id": receipt["task_id"], "receipt_digest": digestHex(receipt), "worker": worker.Descriptor})
+			return nil
+		})
+		if executeErr == nil {
+			microContracts = append(microContracts, microContract)
+			continue
+		}
+		migratedWorker := f.migrationCandidate(worker)
+		if migratedWorker == nil {
+			return executeErr
+		}
+		migratedMicroContract := f.swarmMicroContract(migratedWorker, swarmID, stepID, task)
+		if err := f.sendTaskEvent(send, migratedMicroContract); err != nil {
+			return err
+		}
+		if err := f.executeTask(send, origin, migratedWorker, task, nil, "", nil, false, map[string]any{"swarm": proof}, func(receipt map[string]any) error {
+			completed[stepID] = receipt
+			stepReceipts = append(stepReceipts, map[string]any{"step_id": stepID, "task_id": receipt["task_id"], "receipt_digest": digestHex(receipt), "worker": migratedWorker.Descriptor})
 			return nil
 		}); err != nil {
 			return err
 		}
+		microContracts = append(microContracts, migratedMicroContract)
+		migrationLog = append(migrationLog, migrationLogEntry(stepID, worker, executeErr.Error(), migratedWorker))
 	}
-	closeBody := map[string]any{"swarm_id": swarmID, "step_receipts": stepReceipts, "micro_contracts": microContracts}
+	closeBody := map[string]any{"swarm_id": swarmID, "step_receipts": stepReceipts, "micro_contracts": microContracts, "migration_log": migrationLog}
 	if scheduler != nil {
 		closeBody["scheduler"] = scheduler
 	}
@@ -5273,6 +5332,9 @@ func verifySwarmCloseProof(record map[string]any, completed map[string]map[strin
 		}
 		seen[stepID] = true
 	}
+	if err := verifySwarmMigrationLog(closeProof["migration_log"], seen); err != nil {
+		return err
+	}
 	if len(steps) != expected {
 		return errors.New("swarm close step count mismatch")
 	}
@@ -5293,6 +5355,57 @@ func verifySwarmCloseProof(record map[string]any, completed map[string]map[strin
 		}
 	}
 	closed[swarmID] = true
+	return nil
+}
+
+func verifySwarmMigrationLog(value any, seen map[string]bool) error {
+	if value == nil {
+		return nil
+	}
+	items, ok := value.([]any)
+	if !ok {
+		if typed, ok := value.([]map[string]any); ok {
+			for _, entry := range typed {
+				if err := verifySwarmMigrationEntry(entry, seen); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		return errors.New("swarm close migration_log invalid")
+	}
+	for _, item := range items {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			return errors.New("swarm close migration entry invalid")
+		}
+		if err := verifySwarmMigrationEntry(entry, seen); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func verifySwarmMigrationEntry(entry map[string]any, seen map[string]bool) error {
+	stepID := optionalString(entry["step_id"])
+	if stepID == "" || hasSwarmDelimiter(stepID) {
+		return errors.New("swarm close migration step invalid")
+	}
+	if !seen[stepID] {
+		return errors.New("swarm close migration step missing")
+	}
+	if optionalString(entry["original_worker_aid"]) == "" {
+		return errors.New("swarm close migration original worker missing")
+	}
+	if optionalString(entry["migrated_to_worker_aid"]) == "" {
+		return errors.New("swarm close migration target worker missing")
+	}
+	if optionalString(entry["reason"]) == "" {
+		return errors.New("swarm close migration reason missing")
+	}
+	if _, err := time.Parse(time.RFC3339Nano, optionalString(entry["migration_at"])); err != nil {
+		return errors.New("swarm close migration_at invalid")
+	}
 	return nil
 }
 
