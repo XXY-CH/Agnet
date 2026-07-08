@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v13 active at `v13.14-protocol`.
+Status: research prototype, local-first, v13 active at `v13.15-protocol`.
 Historical baseline: v12 closed at `v12.45-protocol`.
 
 ## Why This Exists
@@ -48,6 +48,7 @@ The current prototype proves:
 - Node Zone binding verifiers reject missing binding context/descriptor objects before field reads.
 - Node Zone revocation verifiers reject missing revocation context/descriptor/list objects before field reads.
 - Node capability credential and credential status helpers reject missing proof objects and malformed authority/subject descriptor inputs before field reads or crypto parsing.
+- Node `FED_RECEIPT` verification now checks optional receipt-carried checkpoint evidence: `checkpoint_refs` and `checkpoints` list shape, list count, task binding, parent chain, ref matching, and worker `checkpoint_signature`; `asp-verify.mjs fed-receipt` fails closed on malformed checkpoint evidence.
 - Node and Go receipt verifiers require `task_digest` as a compact anchor to the signed task object, Node and Go receipt verification reject unsafe receipt task ids, Go protocol signing and digest verification use no-HTML-escape canonical JSON for `<>&` parity with Node, Node receipt verification rejects malformed artifact manifest URI/ref shapes, receipt artifact verification rejects malformed artifact manifest URIs, malformed artifact manifest SHA-256 values, non-integer or negative manifest sizes, malformed Go manifest AFP strings, malformed Go manifest media types or manifest hashes, malformed Go artifact list entries, type-coerced Go mirror index entries, null Go mirror index entries, missing Go mirror index SHA-256 values, unsafe Go mirror index SHA-256 values, unsafe Go mirror index manifest hashes, invalid Go mirror index AFP values, mismatched Go mirror index AFP strings, invalid Go mirror index sizes, invalid Go mirror index media types, and invalid Go mirror index URIs, and Node receipt/artifact CLIs, the Go receipt CLI, and bidirectional Node/Go interop checks can compare task digests against supplied or in-memory signed task evidence.
 - Minimal npm-facing package contract for the existing Node verifier CLI and `asp-core.mjs` exports, plus an npm tarball proof that emits and persists package filename, size, SHA-1 shasum, SHA-512 integrity, ASP-style SHA-256, canonical `proof_digest`, packaged file list, a package proof verifier command, package proof manifest object validation, package proof tarball path safety, manifest-relative package tarball verification, npm shasum/integrity verification, verified package metadata output, package filename/tarball binding, packaged file list shape validation, package manifest filename binding, package identity filename binding, and package proof signer capability validation.
 - Release trust/SBOM evidence in ASP-native `asp-release-trust/v1` format, with `scripts/release-trust.mjs` consuming the existing package proof artifact, `asp-verify.mjs release-trust <release-trust.json> [trusted-release-signers.json]` verifying package proof binding, tarball bytes, release signer capability, release signature, trusted release signer pins, package proof digest freshness, package name/version/filename/tarball/size/SHA-256/file-list binding, and invalid timestamp/unsafe-path/mismatch/unsigned/wrong-signer/untrusted-signer negative gates; this is not CycloneDX, not SPDX, not SLSA provenance, not npm registry signing, not package publish, not release transparency, and not a generic supply-chain platform.
@@ -284,6 +285,7 @@ Optional hardening flags include:
 - `docs/v13.12-boundary.md` - v13.12 credential valid_until expiry boundary.
 - `docs/v13.13-boundary.md` - v13.13 authority Zone revocation discovery boundary.
 - `docs/v13.14-boundary.md` - v13.14 multi-signal agent score reputation boundary.
+- `docs/v13.15-boundary.md` - v13.15 Node receipt checkpoint verification boundary.
 - `docs/v12-roadmap.md` - closed v12 roadmap.
 - `docs/v12.45-boundary.md` - latest closed boundary.
 - `docs/v12.44-boundary.md` - package proof signer capability boundary.
@@ -417,7 +419,9 @@ Optional hardening flags include:
 
 ## Roadmap
 
-v9 and v10 are closed. v11 is closed at `v11.79-protocol`, v12 is closed at `v12.45-protocol`, and v13 is active at `v13.14-protocol`. V13 is aimed at five larger Ultimate-facing evidence gates: real hosted/public reachability, release trust/SBOM, strong sandbox/remote attestation, semantic discovery/reputation ranking, and dynamic Swarm scheduling.
+v9 and v10 are closed. v11 is closed at `v11.79-protocol`, v12 is closed at `v12.45-protocol`, and v13 is active at `v13.15-protocol`. V13 is aimed at five larger Ultimate-facing evidence gates: real hosted/public reachability, release trust/SBOM, strong sandbox/remote attestation, semantic discovery/reputation ranking, and dynamic Swarm scheduling.
+
+v13.15 closes Node receipt checkpoint verification: `verifyFederatedReceipt` and `asp-verify.mjs fed-receipt` now fail closed when receipt-carried `checkpoint_refs` and `checkpoints` have malformed list shape, mismatched count, wrong task binding, broken parent chain, ref mismatch, or invalid worker checkpoint signatures.
 
 v13.14 closes multi-signal agent score in reputation: Node and Go `FED_QUERY` now enrich `discovery_evidence.reputation` with `last_completed_at`, `revocation_count`, and a labelled `agent_score` object. `ranking.score` now uses `agent_score.total` plus exact capability and semantic intent scores, so receipt, credential, freshness, and revocation effects remain inspectable inside reputation evidence.
 
@@ -431,7 +435,7 @@ v13.9 hosted observer runner support is complete as the latest reachability supp
 
 v13.11 closes audit-backed receipt-count reputation: Node and Go semantic discovery now count completed receipts from their persisted audit logs before ranking candidates. receipt counts come from the persisted audit log; this is not a hardcoded demo value, not cross-session learned scoring, and not a third-party reputation service.
 
-The protocol tag advanced with v13.14 because it is the latest complete slice; upper-layer demo/master-agent orchestration plus A2A/ARD compatibility stay outside the current core.
+The protocol tag advanced with v13.15 because it is the latest complete slice; upper-layer demo/master-agent orchestration plus A2A/ARD compatibility stay outside the current core.
 
 The current v13.9 reachability support surface makes the hosted attempt reproducible without hiding the network boundary: set `AGNET_PUBLIC_LISTEN_HOST` to an explicit global literal IP, optionally set `AGNET_PUBLIC_PROOF_KEEPALIVE_MS` to keep the local proof listener alive, then dispatch the Hosted Reachability Observer workflow with the generated bundle files and a pinned observer seed. The first recorded run, `28916288568`, failed with `ENETUNREACH` from the GitHub-hosted runner to the current IPv6 listener. The runner exists, but the real hosted external-host observer run is still pending.
 
@@ -442,6 +446,8 @@ The current v13.7 sandbox attestation proof surface keeps attestation evidence s
 The current v13.6 sandbox proof surface keeps isolation claims verifier-owned: `asp-verify.mjs sandbox-proof <frame.json> <trusted-zones.json> [required-sandbox-class]` verifies the signed receipt first, then verifies the embedded signed `local.sandbox.v1` proof, checks task/authority/worker/policy/claim/sandbox binding, requires command, binary, and transcript digests, reports `sandbox_class: "local-process"`, and rejects `remote-attestation` or any other stronger required class unless matching signed evidence exists. This is not hardware remote attestation, not container namespace execution, and not a VM/TEE claim.
 
 The current v13.5 Swarm scheduling proof surface keeps execution proof-owned: `FED_SWARM_SCHEDULE` accepts a signed Swarm DAG, schedules out-of-order steps in deterministic dependency-ready order, reuses the existing per-step receipt and artifact dependency evidence, and signs `scheduler.mode: "ready-dag"` plus `scheduler.step_order` into the same `FED_SWARM_CLOSE` proof. This is not automatic task decomposition, not parallel execution, not upper-layer master-agent orchestration, and not economic settlement.
+
+The current v13.15 checkpoint proof surface keeps checkpoint evidence receipt-local and verifier-owned: Node `FED_RECEIPT` verification accepts signed checkpoint evidence only when `checkpoint_refs` and `checkpoints` align, each checkpoint binds the receipt task, the parent chain starts at `receipt.resumed_from` or `null`, and the worker checkpoint signature verifies. This is not model KV/cache restore, not external checkpoint storage, and not scheduler orchestration.
 
 The current v13.14 agent score reputation proof surface keeps ranking evidence labelled and local: Node and Go `FED_QUERY` expose `discovery_evidence.reputation.agent_score` with `receipt_score`, `credential_score`, `freshness_score`, and `revocation_penalty`, and compute `ranking.score` from `agent_score.total` plus exact capability and semantic intent scores. `last_completed_at` is read from completed receipt audit evidence when present, and `revocation_count` comes from signed local authority Zone revocations. This is deterministic local discovery evidence, not a market, not a distributed registry, and not a third-party scoring service.
 

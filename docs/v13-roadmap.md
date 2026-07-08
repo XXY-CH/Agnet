@@ -1,6 +1,6 @@
 # Agent Space v13 Roadmap
 
-状态：active at v13.14
+状态：active at v13.15
 目标：从 v12 已闭合的 proof surface 继续向 Ultimate 推进，集中处理真实 hosted/public reachability、release trust/SBOM、strong sandbox/remote attestation、semantic discovery/reputation ranking、dynamic Swarm scheduling 五个大门槛。
 
 v13 uses larger evidence gates instead of many tiny versions. 每个 v13 slice 都必须能用测试、脚本、外部证据或 verifier 输出证明边界已经收住；没有证据的能力只作为 planned，不写成 current capability。
@@ -259,6 +259,26 @@ Remaining exit criterion:
 - No public marketplace or token-weighted reputation.
 - No scheduler integration.
 - No predictive scoring or opaque model.
+
+## v13.15: Node Receipt Checkpoint Verification
+
+状态：complete
+目标：Make Node `FED_RECEIPT` verification fail closed on malformed receipt-carried checkpoint evidence, closing the local verifier gap before checkpoint evidence can feed higher-level Swarm recovery or reputation signals.
+
+新增：
+
+- `verifyFederatedReceipt` now verifies optional `checkpoint_refs` and `checkpoints` after receipt signature and artifact manifest checks.
+- `checkpoint_refs` must be non-empty strings when present; `checkpoints` must be objects when present; the two lists must have equal length.
+- Each checkpoint must bind the same receipt `task_id`, match the corresponding `checkpoint_refs` entry, continue the parent chain from `receipt.resumed_from` or `null`, and verify with the worker `checkpoint_signature`.
+- `asp-verify.mjs fed-receipt <frame.json> <trusted-zones.json> [task.json]` inherits the same checkpoint evidence rejection.
+- `test-vectors.test.mjs` covers accepted signed checkpoint evidence, ref mismatch rejection, checkpoint signature mismatch rejection, and CLI acceptance/rejection.
+- `docs/v13.15-boundary.md` records the narrow proof boundary and non-goals.
+
+不做：
+
+- No model KV/cache restore.
+- No external checkpoint storage or lookup.
+- No scheduler integration, upper-layer demo/master-agent orchestration, A2A/ARD compatibility, or economic settlement.
 
 ## v13 非目标
 
