@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v13.12-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v13.13-protocol`. It is not a full Agent Space product spec.
 Previous public draft baseline: local-first prototype at `v12.45-protocol`.
 
 ## Scope
@@ -365,6 +365,8 @@ When `proof-bundle` receives an additional caller-supplied trusted-Zone file, it
 `FED_QUERY` may carry an `intent` string for semantic discovery. Ranking is deterministic and evidence-first: exact capability match, trusted capability credential, signed credential claims, receipt-count evidence, and semantic token overlap are exposed as inspectable evidence. The Go federation gateway FED_QUERY now accepts `intent` and returns ranked matches with `discovery_evidence` and `ranking` fields, mirroring the Node surface. For receipt-count reputation, receipt counts come from the persisted audit log; this is not a hardcoded demo value, not cross-session ML, not a global reputation oracle. The current implementation is token-overlap semantic discovery, not a vector database, not global reputation, not a public marketplace, and not scheduler integration.
 
 Capability credentials may carry a `valid_until` ISO UTC expiry in claims; expired credentials lower discovery score and report `active: false` in discovery evidence. Credentials without `valid_until` keep the previous active behavior; malformed, unparseable, non-string, or past `valid_until` claims fail closed as inactive for discovery ranking.
+
+authority Zone revocation in FED_QUERY discovery makes signed capability credentials inactive for revoked workers: revoked workers still expose trusted credential history when a signature exists, but `discovery_evidence.credential.active` becomes `false`, and revoked workers get no credential score boost. This is local authority Zone evidence checked by Node and Go query ranking, not network revocation sync, not a distributed registry, and not a third-party service.
 
 The package proof manifest includes `proof_digest`, computed as `sha256(canonical(proof without proof_digest or signature))`. It also includes a package proof signer Agent descriptor and `signature`, signed over that same proof body by the signer key.
 

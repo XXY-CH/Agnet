@@ -4,7 +4,7 @@ Agnet is an accountability layer for agent work.
 
 MCP makes tools callable. A2A and similar protocols coordinate agents. Agnet focuses on the missing proof layer: after an agent does work, a third party should be able to verify what was requested, who accepted it, what policy applied, which sandbox was claimed, which artifacts were produced, and which audit entry anchored the receipt.
 
-Status: research prototype, local-first, v13 active at `v13.12-protocol`.
+Status: research prototype, local-first, v13 active at `v13.13-protocol`.
 Historical baseline: v12 closed at `v12.45-protocol`.
 
 ## Why This Exists
@@ -55,6 +55,7 @@ The current prototype proves:
 - Signed sandbox attestation verification through `asp-verify.mjs sandbox-attestation <frame.json> <trusted-zones.json> <attestation.json> <trusted-attestors.json>`, which verifies `asp-sandbox-attestation/v1` evidence from a trusted `sandbox.attest` signer, binds it to the same receipt digest, task id, sandbox digest, sandbox claim, policy digest, and freshness window, and still reports `hardware_attestation: false`.
 - Evidence-first semantic discovery/reputation ranking in the Node federation gateway, where `FED_QUERY` may carry an intent string and returns inspectable identity, capability, credential, receipt-count, and ranking evidence; semantic-only candidates cannot outrank exact capability candidates with trusted credential and receipt-count evidence. The Go federation gateway now closes semantic parity by ranking candidates with exact-match, credential trust, receipt count, and semantic intent overlap while returning `discovery_evidence` and `ranking` per match. In v13.11, receipt counts come from the persisted audit log; this is not a hardcoded demo value, not cross-session ML, not a global reputation oracle.
 - Capability credentials may carry a `valid_until` ISO UTC expiry in claims; expired credentials lower discovery score and report `active: false` in discovery evidence.
+- Authority Zone revocation in FED_QUERY discovery sets `discovery_evidence.credential.active: false`; revoked workers get no credential score boost, while signed credentials remain inspectable as trusted history.
 - Scheduler-owned ready-DAG Swarm execution in the Go federation gateway, where `FED_SWARM_SCHEDULE` accepts out-of-order signed DAG steps, executes them in dependency-ready order, and signs close proof scheduler evidence with the executed step order.
 - One-command proof demo, Docker proof demo, Docker public-listen proof, and Docker external reachability observer wrapper that emit or consume verifier-ready receipt/trust files, expose receipt digests, verified artifact counts, verified artifact URIs, verified artifact byte digests, verified artifact manifest hashes, signed transport proof fields, and signed reachability evidence fields, verify local artifact closure, and support base-image override env vars for restricted Docker environments.
 - The proof-bundle verifier owns three reachability scopes: `local-interface` without observer evidence, `container-observer` when trusted observer evidence has `vantage: "container"`, and `external-host` only when trusted observer evidence has `vantage: "external-host"` and a globally routable literal-IP `listen_host`; valid observer evidence binds `vantage`, `observed_host`, `observed_port`, `observed_at`, the same transport proof, the same receipt digest, and returns `reachability_observer_zid`.
@@ -281,6 +282,7 @@ Optional hardening flags include:
 - `docs/v13.10-boundary.md` - v13.10 Go FED_QUERY semantic discovery parity boundary.
 - `docs/v13.11-boundary.md` - v13.11 audit-backed receipt-count reputation boundary.
 - `docs/v13.12-boundary.md` - v13.12 credential valid_until expiry boundary.
+- `docs/v13.13-boundary.md` - v13.13 authority Zone revocation discovery boundary.
 - `docs/v12-roadmap.md` - closed v12 roadmap.
 - `docs/v12.45-boundary.md` - latest closed boundary.
 - `docs/v12.44-boundary.md` - package proof signer capability boundary.
@@ -414,7 +416,9 @@ Optional hardening flags include:
 
 ## Roadmap
 
-v9 and v10 are closed. v11 is closed at `v11.79-protocol`, v12 is closed at `v12.45-protocol`, and v13 is active at `v13.12-protocol`. V13 is aimed at five larger Ultimate-facing evidence gates: real hosted/public reachability, release trust/SBOM, strong sandbox/remote attestation, semantic discovery/reputation ranking, and dynamic Swarm scheduling.
+v9 and v10 are closed. v11 is closed at `v11.79-protocol`, v12 is closed at `v12.45-protocol`, and v13 is active at `v13.13-protocol`. V13 is aimed at five larger Ultimate-facing evidence gates: real hosted/public reachability, release trust/SBOM, strong sandbox/remote attestation, semantic discovery/reputation ranking, and dynamic Swarm scheduling.
+
+v13.13 closes authority Zone revocation in FED_QUERY discovery: revoked workers report `discovery_evidence.credential.active: false`; revoked workers get no credential score boost, while non-revoked workers keep the existing active credential behavior.
 
 v13.12 closes credential validity windows: Capability credentials may carry a `valid_until` ISO UTC expiry in claims; expired credentials lower discovery score and report `active: false` in discovery evidence.
 
@@ -424,7 +428,7 @@ v13.9 hosted observer runner support is complete as the latest reachability supp
 
 v13.11 closes audit-backed receipt-count reputation: Node and Go semantic discovery now count completed receipts from their persisted audit logs before ranking candidates. receipt counts come from the persisted audit log; this is not a hardcoded demo value, not cross-session ML, not a global reputation oracle.
 
-The protocol tag advanced with v13.12 because it is the latest complete slice; upper-layer demo/master-agent orchestration plus A2A/ARD compatibility stay outside the current core.
+The protocol tag advanced with v13.13 because it is the latest complete slice; upper-layer demo/master-agent orchestration plus A2A/ARD compatibility stay outside the current core.
 
 The current v13.9 reachability support surface makes the hosted attempt reproducible without hiding the network boundary: set `AGNET_PUBLIC_LISTEN_HOST` to an explicit global literal IP, optionally set `AGNET_PUBLIC_PROOF_KEEPALIVE_MS` to keep the local proof listener alive, then dispatch the Hosted Reachability Observer workflow with the generated bundle files and a pinned observer seed. The first recorded run, `28916288568`, failed with `ENETUNREACH` from the GitHub-hosted runner to the current IPv6 listener. The runner exists, but the real hosted external-host observer run is still pending.
 
@@ -435,6 +439,8 @@ The current v13.7 sandbox attestation proof surface keeps attestation evidence s
 The current v13.6 sandbox proof surface keeps isolation claims verifier-owned: `asp-verify.mjs sandbox-proof <frame.json> <trusted-zones.json> [required-sandbox-class]` verifies the signed receipt first, then verifies the embedded signed `local.sandbox.v1` proof, checks task/authority/worker/policy/claim/sandbox binding, requires command, binary, and transcript digests, reports `sandbox_class: "local-process"`, and rejects `remote-attestation` or any other stronger required class unless matching signed evidence exists. This is not hardware remote attestation, not container namespace execution, and not a VM/TEE claim.
 
 The current v13.5 Swarm scheduling proof surface keeps execution proof-owned: `FED_SWARM_SCHEDULE` accepts a signed Swarm DAG, schedules out-of-order steps in deterministic dependency-ready order, reuses the existing per-step receipt and artifact dependency evidence, and signs `scheduler.mode: "ready-dag"` plus `scheduler.step_order` into the same `FED_SWARM_CLOSE` proof. This is not automatic task decomposition, not parallel execution, not upper-layer master-agent orchestration, and not economic settlement.
+
+The current v13.13 zone revocation discovery proof surface keeps credential activity authority-owned: Node and Go `FED_QUERY` evaluate authority Zone revocation in FED_QUERY discovery after credential signature and expiry checks, report revoked credentials as trusted but inactive, and ensure revoked workers get no credential score boost. This is local signed authority evidence, not network revocation sync, not a distributed registry, and not a third-party service.
 
 The current v13.12 credential validity proof surface keeps credential activity verifier-owned: Capability credentials may carry a `valid_until` ISO UTC expiry in claims; expired credentials lower discovery score and report `active: false` in discovery evidence. Credentials without `valid_until` keep the previous active behavior, while malformed or past timestamps fail closed as inactive.
 

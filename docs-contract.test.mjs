@@ -2487,10 +2487,10 @@ test("v13 public docs open the Ultimate-facing protocol milestone without scope 
     readFile("docs/v13.0-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v13 active at `v13\.12-protocol`/);
+  assert.match(readme, /v13 active at `v13\.13-protocol`/);
   assert.match(readme, /`docs\/v13-roadmap\.md` - active v13 roadmap\./);
   assert.match(readme, /`docs\/v13\.0-boundary\.md` - v13 opening boundary\./);
-  assert.match(roadmap, /状态：active at v13\.12/);
+  assert.match(roadmap, /状态：active at v13\.13/);
   assert.match(roadmap, /v13 uses larger evidence gates instead of many tiny versions/);
   assert.match(roadmap, /## v13\.1: Hosted Public Reachability Evidence/);
   assert.match(roadmap, /## v13\.2: Release Trust and SBOM/);
@@ -2501,9 +2501,9 @@ test("v13 public docs open the Ultimate-facing protocol milestone without scope 
   assert.match(roadmap, /## v13\.11: Audit-Backed Receipt-Count Reputation/);
   assert.match(roadmap, /upper-layer demo\/master-agent orchestration stays outside this repository/);
   assert.match(roadmap, /A2A\/ARD compatibility stays parked/);
-  assert.match(draft, /local-first prototype at `v13\.12-protocol`/);
-  assert.match(status, /状态：v13 active at v13\.12/);
-  assert.match(status, /v13.12-credential-validity-window/);
+  assert.match(draft, /local-first prototype at `v13\.13-protocol`/);
+  assert.match(status, /状态：v13 active at v13\.13/);
+  assert.match(status, /v13.13-zone-revocation-discovery/);
   assert.match(status, /v13\.1 reachability evidence gates are active: verifier-owned scope classes and observer evidence binding landed with tests; real hosted external-host evidence is still pending/);
   assert.match(boundary, /Open v13 as the Ultimate-facing protocol milestone/);
   assert.match(boundary, /real hosted\/public reachability/);
@@ -2526,14 +2526,14 @@ test("v13.1 public docs describe active reachability scope without hosted exit d
   assert.match(readme, /v13\.1 reachability evidence gates are active: verifier-owned scope classes and observer evidence binding landed with tests; real hosted external-host evidence is still pending/);
   assert.match(readme, /`local-interface` without observer evidence, `container-observer` when trusted observer evidence has `vantage: "container"`, and `external-host` only when trusted observer evidence has `vantage: "external-host"` and a globally routable literal-IP `listen_host`/);
   assert.match(readme, /returns `reachability_observer_zid`/);
-  assert.match(roadmap, /状态：active at v13\.12/);
+  assert.match(roadmap, /状态：active at v13\.13/);
   assert.match(roadmap, /状态：active\n目标：把 v12 的 local-interface proof 推进到 verifier-owned reachability scope classes/);
   assert.match(roadmap, /Valid trusted observer evidence returns `reachability_observer_zid` for both `container-observer` and `external-host` scopes/);
   assert.match(roadmap, /hostname listen hosts are out of scope for this slice/);
   assert.match(draft, /reports `reachability_scope: "container-observer"` for `vantage: "container"`/);
   assert.match(draft, /`reachability_scope: "external-host"` for `vantage: "external-host"` only when the signed receipt `listen_host` is a globally routable literal IP/);
   assert.match(draft, /Observer-backed scopes return `reachability_observer_zid`/);
-  assert.match(status, /状态：v13 active at v13\.12/);
+  assert.match(status, /状态：v13 active at v13\.13/);
   assert.match(status, /v13\.1 reachability evidence gates are active: verifier-owned scope classes and observer evidence binding landed with tests; real hosted external-host evidence is still pending as the remaining v13\.1 exit criterion/);
   assert.match(status, /`external-host` requires a globally routable literal-IP listen host; hostname listen hosts are out of scope for this slice/);
   assert.match(boundary, /状态：active/);
@@ -2555,20 +2555,20 @@ test("v13.2 public docs describe release trust without supply-chain overclaims",
 
   const formatNonClaims = /`asp-release-trust\/v1`.*not CycloneDX, not SPDX, not SLSA provenance, not npm registry signing, not package publish, not release transparency,.*not a generic supply-chain platform/s;
   for (const doc of [readme, roadmap, draft, status, boundary]) assert.match(doc, formatNonClaims);
-  assert.match(readme, /v13 active at `v13\.12-protocol`/);
+  assert.match(readme, /v13 active at `v13\.13-protocol`/);
   assert.match(readme, /Release trust\/SBOM evidence in ASP-native `asp-release-trust\/v1` format/);
   assert.match(readme, /stale release trust means the referenced package proof drifted from `package_proof_digest`, not that the release expired by elapsed time/);
   assert.match(readme, /Real hosted external-host observer evidence and hardware remote attestation remain pending v13 gates/);
   assert.doesNotMatch(readme, /release trust\/SBOM remain pending v13 gates/);
-  assert.match(roadmap, /状态：active at v13\.12/);
+  assert.match(roadmap, /状态：active at v13\.13/);
   assert.match(roadmap, /状态：complete\n目标：把 v12 package proof 推进到 release trust\/SBOM evidence over the produced artifact/);
   assert.match(roadmap, /`asp-verify\.mjs release-trust <release-trust\.json> \[trusted-release-signers\.json\]` verifies package-proof binding, tarball bytes, release signer capability, trusted release signer pins, and manifest signature/);
-  assert.match(draft, /local-first prototype at `v13\.12-protocol`/);
+  assert.match(draft, /local-first prototype at `v13\.13-protocol`/);
   assert.match(draft, /node asp-verify\.mjs release-trust <release-trust\.json> \[trusted-release-signers\.json\]/);
   assert.match(draft, /Release trust staleness means `package_proof_digest` no longer matches the verified referenced package proof/);
   assert.match(draft, /Trusted release signer pinning applies to the release signer only\. It does not pin or replace the embedded package proof signer trust decision/);
-  assert.match(status, /状态：v13 active at v13\.12/);
-  assert.match(status, /当前代码基线：`v13\.12-credential-validity-window`/);
+  assert.match(status, /状态：v13 active at v13\.13/);
+  assert.match(status, /当前代码基线：`v13\.13-zone-revocation-discovery`/);
   assert.match(status, /asp-verify\.mjs release-trust <release-trust\.json> \[trusted-release-signers\.json\] verifies `asp-release-trust\/v1` release trust manifests/);
   assert.match(status, /scripts\/release-trust\.mjs verifies the existing package proof first/);
   assert.match(boundary, /状态：complete/);
@@ -2587,17 +2587,17 @@ test("v13.4 public docs describe evidence-first semantic discovery without marke
     readFile("docs/v13.4-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v13 active at `v13\.12-protocol`/);
+  assert.match(readme, /v13 active at `v13\.13-protocol`/);
   assert.match(readme, /Evidence-first semantic discovery\/reputation ranking in the Node federation gateway/);
   assert.match(readme, /Real hosted external-host observer evidence and hardware remote attestation remain pending v13 gates/);
-  assert.match(roadmap, /状态：active at v13\.12/);
+  assert.match(roadmap, /状态：active at v13\.13/);
   assert.match(roadmap, /状态：complete\n目标：在 Node federation gateway 上增加证据优先的 semantic discovery\/reputation ranking primitive/);
   assert.match(roadmap, /No vector database, no global reputation coin, no public marketplace, and no Go query parity in this slice/);
-  assert.match(draft, /local-first prototype at `v13\.12-protocol`/);
+  assert.match(draft, /local-first prototype at `v13\.13-protocol`/);
   assert.match(draft, /`FED_QUERY` may carry an `intent` string for semantic discovery/);
   assert.match(draft, /Ranking is deterministic and evidence-first: exact capability match, trusted capability credential, signed credential claims, receipt-count evidence, and semantic token overlap are exposed as inspectable evidence/);
-  assert.match(status, /状态：v13 active at v13\.12/);
-  assert.match(status, /当前代码基线：`v13\.12-credential-validity-window`/);
+  assert.match(status, /状态：v13 active at v13\.13/);
+  assert.match(status, /当前代码基线：`v13\.13-zone-revocation-discovery`/);
   assert.match(status, /Node federation gateway evidence-first semantic discovery\/reputation ranking/);
   assert.match(boundary, /状态：complete/);
   assert.match(boundary, /Land the first evidence-first semantic discovery\/reputation ranking primitive without adding vector infrastructure/);
@@ -2614,16 +2614,16 @@ test("v13.5 public docs describe scheduler-owned ready-DAG Swarm without orchest
     readFile("docs/v13.5-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v13 active at `v13\.12-protocol`/);
+  assert.match(readme, /v13 active at `v13\.13-protocol`/);
   assert.match(readme, /Scheduler-owned ready-DAG Swarm execution in the Go federation gateway/);
   assert.match(readme, /Real hosted external-host observer evidence and hardware remote attestation remain pending v13 gates/);
-  assert.match(roadmap, /状态：active at v13\.12/);
+  assert.match(roadmap, /状态：active at v13\.13/);
   assert.match(roadmap, /状态：complete\n目标：把 explicit two-step Swarm proof 推进到 scheduler-owned ready-DAG execution primitive/);
   assert.match(roadmap, /No automatic task decomposition, no parallel worker pool, no upper-layer master-agent orchestration, and no economic settlement in this slice/);
   assert.match(draft, /`FED_SWARM_SCHEDULE` accepts a signed Swarm DAG and executes steps in deterministic ready order/);
   assert.match(draft, /The close proof may include signed scheduler evidence with `mode: "ready-dag"` and the executed `step_order`/);
-  assert.match(status, /状态：v13 active at v13\.12/);
-  assert.match(status, /当前代码基线：`v13\.12-credential-validity-window`/);
+  assert.match(status, /状态：v13 active at v13\.13/);
+  assert.match(status, /当前代码基线：`v13\.13-zone-revocation-discovery`/);
   assert.match(status, /Go `FED_SWARM_SCHEDULE` scheduler-owned ready-DAG execution/);
   assert.match(boundary, /状态：complete/);
   assert.match(boundary, /Land the first scheduler-owned ready-DAG Swarm execution primitive/);
@@ -2640,18 +2640,18 @@ test("v13.6 public docs describe sandbox proof verification without attestation 
     readFile("docs/v13.6-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v13 active at `v13\.12-protocol`/);
+  assert.match(readme, /v13 active at `v13\.13-protocol`/);
   assert.match(readme, /`asp-verify\.mjs sandbox-proof <frame\.json> <trusted-zones\.json> \[required-sandbox-class\]`/);
   assert.match(readme, /Real hosted external-host observer evidence and hardware remote attestation remain pending v13 gates/);
   assert.doesNotMatch(readme, /strong sandbox\/remote attestation remain pending v13 gates/);
-  assert.match(roadmap, /状态：active at v13\.12/);
+  assert.match(roadmap, /状态：active at v13\.13/);
   assert.match(roadmap, /状态：active\n目标：把 honest local-process sandbox evidence 推进到 verifier-owned sandbox proof class validation/);
   assert.match(roadmap, /`asp-verify\.mjs sandbox-proof <frame\.json> <trusted-zones\.json> \[required-sandbox-class\]`/);
   assert.match(roadmap, /Hardware remote attestation remains unimplemented and fail-closed/);
-  assert.match(draft, /local-first prototype at `v13\.12-protocol`/);
+  assert.match(draft, /local-first prototype at `v13\.13-protocol`/);
   assert.match(draft, /node asp-verify\.mjs sandbox-proof <frame\.json> <trusted-zones\.json> \[required-sandbox-class\]/);
-  assert.match(status, /状态：v13 active at v13\.12/);
-  assert.match(status, /当前代码基线：`v13\.12-credential-validity-window`/);
+  assert.match(status, /状态：v13 active at v13\.13/);
+  assert.match(status, /当前代码基线：`v13\.13-zone-revocation-discovery`/);
   assert.match(status, /sandbox-proof <frame\.json> <trusted-zones\.json> \[required-sandbox-class\]/);
   assert.match(boundary, /状态：complete/);
   assert.match(boundary, /It verifies a signed `local\.sandbox\.v1` proof embedded in a verified `FED_RECEIPT` frame/);
@@ -2667,16 +2667,16 @@ test("v13.7 public docs describe signed sandbox attestation without hardware ove
     readFile("docs/v13.7-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v13 active at `v13\.12-protocol`/);
+  assert.match(readme, /v13 active at `v13\.13-protocol`/);
   assert.match(readme, /`asp-verify\.mjs sandbox-attestation <frame\.json> <trusted-zones\.json> <attestation\.json> <trusted-attestors\.json>`/);
   assert.match(readme, /hardware attestation remains pending/);
-  assert.match(roadmap, /状态：active at v13\.12/);
+  assert.match(roadmap, /状态：active at v13\.13/);
   assert.match(roadmap, /`asp-verify\.mjs sandbox-attestation <frame\.json> <trusted-zones\.json> <attestation\.json> <trusted-attestors\.json>`/);
   assert.match(roadmap, /Signed sandbox attestation evidence is not hardware remote attestation by itself/);
-  assert.match(draft, /local-first prototype at `v13\.12-protocol`/);
+  assert.match(draft, /local-first prototype at `v13\.13-protocol`/);
   assert.match(draft, /node asp-verify\.mjs sandbox-attestation <frame\.json> <trusted-zones\.json> <attestation\.json> <trusted-attestors\.json>/);
-  assert.match(status, /状态：v13 active at v13\.12/);
-  assert.match(status, /当前代码基线：`v13\.12-credential-validity-window`/);
+  assert.match(status, /状态：v13 active at v13\.13/);
+  assert.match(status, /当前代码基线：`v13\.13-zone-revocation-discovery`/);
   assert.match(status, /sandbox-attestation <frame\.json> <trusted-zones\.json> <attestation\.json> <trusted-attestors\.json>/);
   assert.match(boundary, /状态：complete/);
   assert.match(boundary, /It verifies `asp-sandbox-attestation\/v1` signed evidence/);
@@ -2692,15 +2692,15 @@ test("v13.8 public docs describe pinned external observer identity without hoste
     readFile("docs/v13.8-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v13 active at `v13\.12-protocol`/);
+  assert.match(readme, /v13 active at `v13\.13-protocol`/);
   assert.match(readme, /`AGNET_REACHABILITY_OBSERVER_SEED_HEX`/);
   assert.match(readme, /pre-pinned observer identity/);
-  assert.match(roadmap, /状态：active at v13\.12/);
+  assert.match(roadmap, /状态：active at v13\.13/);
   assert.match(roadmap, /Pinned external observer identity/);
-  assert.match(draft, /local-first prototype at `v13\.12-protocol`/);
+  assert.match(draft, /local-first prototype at `v13\.13-protocol`/);
   assert.match(draft, /AGNET_REACHABILITY_OBSERVER_SEED_HEX/);
-  assert.match(status, /状态：v13 active at v13\.12/);
-  assert.match(status, /当前代码基线：`v13\.12-credential-validity-window`/);
+  assert.match(status, /状态：v13 active at v13\.13/);
+  assert.match(status, /当前代码基线：`v13\.13-zone-revocation-discovery`/);
   assert.match(status, /observer identity can be pinned before a hosted run/);
   assert.match(boundary, /状态：complete/);
   assert.match(boundary, /pre-pinned trusted observer identity/);
@@ -2718,16 +2718,16 @@ test("v13.9 public docs describe hosted observer runner without hiding IPv6 bloc
     readFile("docs/v13.9-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v13 active at `v13\.12-protocol`/);
+  assert.match(readme, /v13 active at `v13\.13-protocol`/);
   assert.match(readme, /AGNET_PUBLIC_LISTEN_HOST/);
   assert.match(readme, /AGNET_PUBLIC_PROOF_KEEPALIVE_MS/);
   assert.match(readme, /Hosted Reachability Observer/);
-  assert.match(roadmap, /状态：active at v13\.12/);
+  assert.match(roadmap, /状态：active at v13\.13/);
   assert.match(roadmap, /GitHub hosted observer runner/);
-  assert.match(draft, /local-first prototype at `v13\.12-protocol`/);
+  assert.match(draft, /local-first prototype at `v13\.13-protocol`/);
   assert.match(draft, /AGNET_PUBLIC_LISTEN_HOST/);
-  assert.match(status, /状态：v13 active at v13\.12/);
-  assert.match(status, /当前代码基线：`v13\.12-credential-validity-window`/);
+  assert.match(status, /状态：v13 active at v13\.13/);
+  assert.match(status, /当前代码基线：`v13\.13-zone-revocation-discovery`/);
   for (const doc of [readme, roadmap, status, boundary]) {
     assert.match(doc, /28916288568/);
     assert.match(doc, /ENETUNREACH/);
@@ -2768,14 +2768,14 @@ test("v13.11 public docs record audit-backed receipt-count reputation without or
     assert.match(doc, /not a hardcoded demo value, not cross-session ML, not a global reputation oracle/);
     assert.doesNotMatch(doc, /ephemeral receipt count/);
   }
-  assert.match(readme, /v13 active at `v13\.12-protocol`/);
+  assert.match(readme, /v13 active at `v13\.13-protocol`/);
   assert.match(readme, /`docs\/v13\.11-boundary\.md` - v13\.11 audit-backed receipt-count reputation boundary\./);
-  assert.match(roadmap, /状态：active at v13\.12/);
+  assert.match(roadmap, /状态：active at v13\.13/);
   assert.match(roadmap, /## v13\.11: Audit-Backed Receipt-Count Reputation/);
   assert.match(boundary, /状态：complete/);
-  assert.match(status, /状态：v13 active at v13\.12/);
-  assert.match(status, /当前代码基线：`v13\.12-credential-validity-window`/);
-  assert.match(draft, /local-first prototype at `v13\.12-protocol`/);
+  assert.match(status, /状态：v13 active at v13\.13/);
+  assert.match(status, /当前代码基线：`v13\.13-zone-revocation-discovery`/);
+  assert.match(draft, /local-first prototype at `v13\.13-protocol`/);
 });
 
 test("v13.12 public docs record credential valid_until expiry without credential lifecycle overclaims", async () => {
@@ -2789,16 +2789,40 @@ test("v13.12 public docs record credential valid_until expiry without credential
 
   for (const doc of [readme, roadmap, boundary, status, draft]) {
     assert.match(doc, /Capability credentials may carry a `valid_until` ISO UTC expiry in claims; expired credentials lower discovery score and report `active: false` in discovery evidence\./);
-    assert.doesNotMatch(doc, /revocation lists/i);
     assert.doesNotMatch(doc, /hardware key management/i);
     assert.doesNotMatch(doc, /cross-zone credential exchange/i);
   }
-  assert.match(readme, /v13 active at `v13\.12-protocol`/);
+  assert.match(readme, /v13 active at `v13\.13-protocol`/);
   assert.match(readme, /`docs\/v13\.12-boundary\.md` - v13\.12 credential valid_until expiry boundary\./);
-  assert.match(roadmap, /状态：active at v13\.12/);
+  assert.match(roadmap, /状态：active at v13\.13/);
   assert.match(roadmap, /## v13\.12: Credential Validity Window/);
   assert.match(boundary, /状态：complete/);
-  assert.match(status, /状态：v13 active at v13\.12/);
-  assert.match(status, /当前代码基线：`v13\.12-credential-validity-window`/);
-  assert.match(draft, /local-first prototype at `v13\.12-protocol`/);
+  assert.match(status, /状态：v13 active at v13\.13/);
+  assert.match(status, /当前代码基线：`v13\.13-zone-revocation-discovery`/);
+  assert.match(draft, /local-first prototype at `v13\.13-protocol`/);
+});
+
+test("v13.13 public docs record zone revocation in discovery without oracle overclaims", async () => {
+  const [readme, roadmap, boundary, status, draft] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/v13-roadmap.md", "utf8"),
+    readFile("docs/v13.13-boundary.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+  ]);
+
+  for (const doc of [readme, roadmap, boundary, status, draft]) {
+    assert.match(doc, /authority Zone revocation in FED_QUERY discovery/);
+    assert.match(doc, /revoked workers get no credential score boost/);
+    assert.doesNotMatch(doc, /global revocation list/i);
+    assert.doesNotMatch(doc, /revocation oracle/i);
+  }
+  assert.match(readme, /v13 active at `v13\.13-protocol`/);
+  assert.match(readme, /`docs\/v13\.13-boundary\.md` - v13\.13 authority Zone revocation discovery boundary\./);
+  assert.match(roadmap, /状态：active at v13\.13/);
+  assert.match(roadmap, /## v13\.13: Zone Revocation in FED_QUERY Discovery/);
+  assert.match(boundary, /状态：complete/);
+  assert.match(status, /状态：v13 active at v13\.13/);
+  assert.match(status, /当前代码基线：`v13\.13-zone-revocation-discovery`/);
+  assert.match(draft, /local-first prototype at `v13\.13-protocol`/);
 });

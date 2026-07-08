@@ -1,6 +1,6 @@
 # Agent Space v13 Roadmap
 
-状态：active at v13.12
+状态：active at v13.13
 目标：从 v12 已闭合的 proof surface 继续向 Ultimate 推进，集中处理真实 hosted/public reachability、release trust/SBOM、strong sandbox/remote attestation、semantic discovery/reputation ranking、dynamic Swarm scheduling 五个大门槛。
 
 v13 uses larger evidence gates instead of many tiny versions. 每个 v13 slice 都必须能用测试、脚本、外部证据或 verifier 输出证明边界已经收住；没有证据的能力只作为 planned，不写成 current capability。
@@ -217,6 +217,27 @@ Remaining exit criterion:
 - No key custody changes.
 - No inter-zone credential transport protocol.
 - No distributed credential registry.
+
+
+## v13.13: Zone Revocation in FED_QUERY Discovery
+
+状态：complete
+目标：Use authority Zone revocation in FED_QUERY discovery so revoked workers report inactive credentials and revoked workers get no credential score boost.
+
+新增：
+
+- Node `FED_QUERY` checks signed local authority Zone revocations after capability credential signature and expiry verification.
+- Go `FED_QUERY` loads fixture revocations and validates authority Zone revocation signatures before treating a worker credential as active.
+- `discovery_evidence.credential.trusted` still reports whether signed capability credentials exist, while `discovery_evidence.credential.active` fails closed to `false` for revoked worker AIDs or aliases.
+- Revoked workers get no credential score boost or `credential_active` ranking reason; non-revoked workers keep the existing active behavior.
+- `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs`, and `docs-contract.test.mjs` cover the zone revocation in discovery boundary.
+
+不做：
+
+- No network revocation sync.
+- No cross-Zone credential lifecycle service.
+- No third-party revocation service.
+- No distributed revocation registry.
 
 ## v13 非目标
 
