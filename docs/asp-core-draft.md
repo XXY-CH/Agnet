@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v14.3-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v14.4-protocol`. It is not a full Agent Space product spec.
 Previous public draft baseline: local-first prototype at `v13.15-protocol`; v12 public baseline: local-first prototype at `v12.45-protocol`.
 
 ## Scope
@@ -324,7 +324,9 @@ The audit hash chain is accountability evidence, not a global consensus layer.
 
 `FED_SWARM_CLOSE` binds a Swarm id to a signed list of completed step receipts. In the v14.1 Swarm micro-contract proof surface, closes may also carry `micro_contracts`: one signed worker commitment per step over declared cost, latency seconds, capability proof, policy digest, and worker descriptor.
 
-The implemented Node verifier checks the close frame object and type, trusted Zone store presence, signing Zone object and descriptor, close proof object, close signature presence and verification, the signed Swarm id, the frame/body Swarm id match, and the structure of `step_receipts`. It requires at least one step receipt, requires each step receipt to be an object with `step_id`, a safe `task_id` token, and a 64-hex `receipt_digest`, and rejects duplicate or NUL-bearing Swarm identities. When `micro_contracts` are present, it requires one contract per step, recomputes each `contract_digest`, matches each contract worker to the worker descriptor carried in the signed step receipt, and verifies the worker Ed25519 signature.
+In the v14.4 task failure migration surface, closes carry `migration_log`: an array of migration entries with `step_id`, `original_worker_aid`, `reason`, `migrated_to_worker_aid`, and `migration_at`. The `migration_log` array is part of the close body covered by `close_signature`; individual migration log entries do not require separate signatures. `migrated_to_worker_aid` names the replacement worker that produced the final successful step receipt.
+
+The implemented Node verifier checks the close frame object and type, trusted Zone store presence, signing Zone object and descriptor, close proof object, close signature presence and verification, the signed Swarm id, the frame/body Swarm id match, and the structure of `step_receipts`. It requires at least one step receipt, requires each step receipt to be an object with `step_id`, a safe `task_id` token, and a 64-hex `receipt_digest`, and rejects duplicate or NUL-bearing Swarm identities. When `migration_log` is present, it requires an array of objects, validates `step_id`, `original_worker_aid`, `migrated_to_worker_aid`, `reason`, and ISO UTC `migration_at`, and rejects entries whose `step_id` does not reference a real step receipt. When `micro_contracts` are present, it requires one contract per step, recomputes each `contract_digest`, matches each contract worker to the worker descriptor carried in the signed step receipt, and verifies the worker Ed25519 signature.
 
 This Node verifier is not an audit-backed completeness verifier. The audit-backed same-log Swarm completeness checks are implemented on the Go verifier path.
 
