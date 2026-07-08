@@ -28,6 +28,8 @@ await rm("artifacts/public_node_probe_task", { force: true, recursive: true });
 const binary = process.argv[2] ?? "state/public-node-proof-go";
 const listenHost = publicListenHost();
 const gatewayHost = listenHost;
+const keepAliveMs = Number(process.env.AGNET_PUBLIC_PROOF_KEEPALIVE_MS ?? "0");
+if (!Number.isSafeInteger(keepAliveMs) || keepAliveMs < 0) throw new Error("AGNET_PUBLIC_PROOF_KEEPALIVE_MS must be a non-negative integer");
 const child = spawn(binary, [
   "--listen-host",
   listenHost,
@@ -79,7 +81,6 @@ for await (const chunk of child.stdout) {
   const swarmCloseVerify = await execFileAsync(process.execPath, ["asp-verify.mjs", "swarm-close", swarmCloseFramePath, swarmCloseTrustedPath]);
   const swarmCloseProof = JSON.parse(swarmCloseVerify.stdout);
   clearTimeout(timer);
-  child.kill("SIGTERM");
   const bundle = {
     proof: "public-node-proof",
     receipt_frame: basename(receiptFramePath),
@@ -139,10 +140,13 @@ for await (const chunk of child.stdout) {
     swarm_close_frame: swarmCloseFramePath,
     swarm_close_trusted_zones: swarmCloseTrustedPath,
   }));
+  if (keepAliveMs > 0) await new Promise((resolve) => setTimeout(resolve, keepAliveMs));
+  child.kill("SIGTERM");
   process.exit(0);
 }
 
 function publicListenHost() {
+  if (process.env.AGNET_PUBLIC_LISTEN_HOST) return process.env.AGNET_PUBLIC_LISTEN_HOST;
   for (const entries of Object.values(networkInterfaces())) {
     for (const entry of entries ?? []) {
       if (entry.family === "IPv4" && !entry.internal) return entry.address;

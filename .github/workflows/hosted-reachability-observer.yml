@@ -1,0 +1,69 @@
+name: Hosted Reachability Observer
+
+on:
+  workflow_dispatch:
+    inputs:
+      bundle_b64:
+        required: true
+        type: string
+      receipt_frame_b64:
+        required: true
+        type: string
+      trusted_zones_b64:
+        required: true
+        type: string
+      swarm_close_frame_b64:
+        required: true
+        type: string
+      swarm_close_trusted_zones_b64:
+        required: true
+        type: string
+      observer_seed_hex:
+        required: true
+        type: string
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Decode proof bundle
+        env:
+          BUNDLE_B64: ${{ inputs.bundle_b64 }}
+          RECEIPT_FRAME_B64: ${{ inputs.receipt_frame_b64 }}
+          TRUSTED_ZONES_B64: ${{ inputs.trusted_zones_b64 }}
+          SWARM_CLOSE_FRAME_B64: ${{ inputs.swarm_close_frame_b64 }}
+          SWARM_CLOSE_TRUSTED_ZONES_B64: ${{ inputs.swarm_close_trusted_zones_b64 }}
+        run: |
+          node <<'NODE'
+          const { mkdirSync, writeFileSync } = require("node:fs");
+          mkdirSync("state/hosted", { recursive: true });
+          const decode = (name) => Buffer.from(process.env[name], "base64");
+          const bundle = JSON.parse(decode("BUNDLE_B64").toString("utf8"));
+          const safe = (name) => {
+            if (typeof name !== "string" || !/^[A-Za-z0-9._-]+\.json$/.test(name)) throw new Error(`unsafe bundle path: ${name}`);
+            return `state/hosted/${name}`;
+          };
+          writeFileSync("state/hosted/bundle.json", decode("BUNDLE_B64"));
+          writeFileSync(safe(bundle.receipt_frame), decode("RECEIPT_FRAME_B64"));
+          writeFileSync(safe(bundle.trusted_zones), decode("TRUSTED_ZONES_B64"));
+          writeFileSync(safe(bundle.swarm_close_frame), decode("SWARM_CLOSE_FRAME_B64"));
+          writeFileSync(safe(bundle.swarm_close_trusted_zones), decode("SWARM_CLOSE_TRUSTED_ZONES_B64"));
+          NODE
+      - name: Observe from GitHub hosted runner
+        env:
+          AGNET_REACHABILITY_OBSERVER_SEED_HEX: ${{ inputs.observer_seed_hex }}
+        run: |
+          node scripts/external-reachability-observer.mjs \
+            state/hosted/bundle.json \
+            state/hosted/observed-bundle.json \
+            state/hosted/observer-trusted-zones.json \
+            external-host
+      - name: Verify observed bundle
+        run: |
+          node asp-verify.mjs proof-bundle \
+            state/hosted/observed-bundle.json \
+            state/hosted/observer-trusted-zones.json | tee state/hosted/verification.json

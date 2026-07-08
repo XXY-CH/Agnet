@@ -3,11 +3,21 @@ import { execFile } from "node:child_process";
 import { createHash, createPrivateKey } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import net from "node:net";
+import { networkInterfaces } from "node:os";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import { canonical, createZone, loadTrustedZones, signObject, verifyFederatedReceipt, zoneFromPrivateKey } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
+
+function globalIpv6ListenHost() {
+  for (const entries of Object.values(networkInterfaces())) {
+    for (const entry of entries ?? []) {
+      if (entry.family === "IPv6" && !entry.internal && !entry.address.startsWith("fe80:")) return entry.address;
+    }
+  }
+  return "";
+}
 
 function privateKeyFromSeed(seedHex) {
   return createPrivateKey({
@@ -518,4 +528,18 @@ test("public node proof starts a public-listen gateway", async () => {
     execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedBundlePath]),
     /bundle receipt_frame path invalid/,
   );
+});
+
+test("public node proof can use an explicit global IPv6 listen host", { skip: !globalIpv6ListenHost() }, async () => {
+  const listenHost = globalIpv6ListenHost();
+  const { stdout } = await execFileAsync("bash", ["scripts/public-node-proof.sh"], {
+    env: { ...process.env, AGNET_PUBLIC_LISTEN_HOST: listenHost },
+  });
+  const result = JSON.parse(stdout);
+
+  assert.equal(result.public_node_proof, "ok");
+  assert.equal(result.listen_host, listenHost);
+  assert.equal(result.public_transport, true);
+  assert.equal(result.proof_bundle_verify, "ok");
+  assert.equal(result.reachability_scope, "local-interface");
 });
