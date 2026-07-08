@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v13.7-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v13.8-protocol`. It is not a full Agent Space product spec.
 Previous public draft baseline: local-first prototype at `v12.45-protocol`.
 
 ## Scope
@@ -406,6 +406,8 @@ The current sandbox proof verifier returns `sandbox_class: "local-process"` only
 The sandbox attestation verifier command is `node asp-verify.mjs sandbox-attestation <frame.json> <trusted-zones.json> <attestation.json> <trusted-attestors.json>`. It verifies the trusted receipt and local sandbox proof first, then verifies `asp-sandbox-attestation/v1` signed evidence from a trusted attestor descriptor with `sandbox.attest` capability.
 
 Sandbox attestation evidence binds the receipt digest, task id, sandbox digest, sandbox claim, policy digest, sandbox class, runtime identity, observed timestamp, attestor descriptor, attestation digest, and attestor signature. Evidence is rejected when stale, future-dated, mismatched, unsigned, signed by an untrusted attestor, or signed by a descriptor without `sandbox.attest`. This proves signed attestation evidence only; it is not hardware remote attestation, not container namespace execution, and not a TEE quote.
+
+The external reachability observer can use `AGNET_REACHABILITY_OBSERVER_SEED_HEX` to derive a stable observer Zone descriptor before it signs `external-reachability` evidence. This supports pre-pinned observer identity for a hosted observer; the real hosted external-host observer run is still pending.
 
 Implemented Go checks:
 

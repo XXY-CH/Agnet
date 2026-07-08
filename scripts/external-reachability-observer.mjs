@@ -2,8 +2,8 @@
 import net from "node:net";
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { createHash } from "node:crypto";
-import { canonical, createZone, signObject } from "../asp-core.mjs";
+import { createHash, createPrivateKey } from "node:crypto";
+import { canonical, createZone, signObject, zoneFromPrivateKey } from "../asp-core.mjs";
 
 const [bundlePath, observedBundlePath, trustedZonesPath, vantage] = process.argv.slice(2);
 
@@ -38,6 +38,21 @@ function connect(host, port) {
   });
 }
 
+function observerZone() {
+  const seedHex = process.env.AGNET_REACHABILITY_OBSERVER_SEED_HEX;
+  if (!seedHex) return createZone("zone://external-reachability-observer");
+  if (!/^[0-9a-f]{64}$/i.test(seedHex)) throw new Error("observer seed must be 32 bytes hex");
+  const privateKey = createPrivateKey({
+    key: Buffer.concat([
+      Buffer.from("302e020100300506032b657004220420", "hex"),
+      Buffer.from(seedHex, "hex"),
+    ]),
+    format: "der",
+    type: "pkcs8",
+  });
+  return zoneFromPrivateKey("zone://external-reachability-observer", privateKey);
+}
+
 try {
   if (!bundlePath || !observedBundlePath || !trustedZonesPath || !vantage || process.argv.length !== 6) usage();
   if (vantage !== "container" && vantage !== "external-host") usage();
@@ -49,7 +64,7 @@ try {
   if (receiptDigest(receiptFrame.receipt) !== bundle.receipt_digest) throw new Error("bundle receipt_digest mismatch");
   if (JSON.stringify(transportProof) !== JSON.stringify(bundle.transport_proof)) throw new Error("bundle transport_proof mismatch");
   await connect(transportProof.listen_host, transportProof.port);
-  const observer = createZone("zone://external-reachability-observer");
+  const observer = observerZone();
   const evidence = {
     proof: "external-reachability",
     observer_zid: observer.zid,

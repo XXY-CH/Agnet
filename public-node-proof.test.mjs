@@ -5,7 +5,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { canonical, createZone, loadTrustedZones, signObject, verifyFederatedReceipt } from "./asp-core.mjs";
+import { canonical, createZone, loadTrustedZones, signObject, verifyFederatedReceipt, zoneFromPrivateKey } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -326,10 +326,25 @@ test("public node proof starts a public-listen gateway", async () => {
       receipt_digest: createHash("sha256").update(canonical(observedReceipt)).digest("hex"),
       transport_proof: observedReceipt.transport_proof,
     }, null, 2)}\n`);
-    const observed = await execFileAsync(process.execPath, ["scripts/external-reachability-observer.mjs", observedBundleInputPath, observedBundlePath, observedTrustedPath, "container"]);
-    assert.equal(JSON.parse(observed.stdout).external_reachability_observer, "ok");
+    const observerSeed = "b0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecf";
+    const expectedObserver = zoneFromPrivateKey("zone://external-reachability-observer", privateKeyFromSeed(observerSeed));
+    await assert.rejects(
+      execFileAsync(process.execPath, ["scripts/external-reachability-observer.mjs", observedBundleInputPath, observedBundlePath, observedTrustedPath, "container"], {
+        env: { ...process.env, AGNET_REACHABILITY_OBSERVER_SEED_HEX: "not-hex" },
+      }),
+      /observer seed must be 32 bytes hex/,
+    );
+    const observed = await execFileAsync(process.execPath, ["scripts/external-reachability-observer.mjs", observedBundleInputPath, observedBundlePath, observedTrustedPath, "container"], {
+      env: { ...process.env, AGNET_REACHABILITY_OBSERVER_SEED_HEX: observerSeed },
+    });
+    const observedOutput = JSON.parse(observed.stdout);
+    assert.equal(observedOutput.external_reachability_observer, "ok");
+    assert.equal(observedOutput.observer_zid, expectedObserver.zid);
     const observedBundle = JSON.parse(await readFile(observedBundlePath, "utf8"));
+    const observedTrusted = JSON.parse(await readFile(observedTrustedPath, "utf8"));
+    assert.equal(observedTrusted.zones[0].zid, expectedObserver.zid);
     assert.equal(observedBundle.external_reachability.vantage, "container");
+    assert.equal(observedBundle.external_reachability.observer_zid, expectedObserver.zid);
     assert.equal(observedBundle.external_reachability.observed_host, observedReceipt.transport_proof.listen_host);
     assert.equal(observedBundle.external_reachability.observed_port, observedReceipt.transport_proof.port);
     assert.match(observedBundle.external_reachability.observed_at, /^\d{4}-\d{2}-\d{2}T/);
