@@ -46,6 +46,7 @@ type Fixture struct {
 	WorkerProfiles      []WorkerProfile     `json:"worker_profiles"`
 	Workers             []Worker            `json:"-"`
 	Credential          map[string]any      `json:"credential"`
+	Revocations         []any               `json:"revocations"`
 	AuthorityPrivateKey ed25519.PrivateKey  `json:"-"`
 	Audit               *AuditLog           `json:"-"`
 	TaskStateDir        string              `json:"-"`
@@ -2522,6 +2523,33 @@ func isCredentialActive(credential map[string]any) bool {
 	return !time.Now().UTC().After(expiresAt)
 }
 
+func verifyZoneRevocation(revocation, zoneDescriptor map[string]any) bool {
+	if revocation["zone"] != zoneDescriptor["zid"] {
+		return false
+	}
+	key, _, err := publicKey(zoneDescriptor)
+	if err != nil {
+		return false
+	}
+	return verifyMapSignature(key, revocation, "signature") == nil
+}
+
+func isRevoked(revocations []any, workerAID string, zoneDescriptor map[string]any) bool {
+	if workerAID == "" {
+		return false
+	}
+	for _, item := range revocations {
+		revocation, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if revocation["subject"] == workerAID && verifyZoneRevocation(revocation, zoneDescriptor) {
+			return true
+		}
+	}
+	return false
+}
+
 func (f Fixture) credentialStatus(credential map[string]any, status string) map[string]any {
 	return signBodyWithKey(f.AuthorityPrivateKey, map[string]any{
 		"issuer":        f.Authority["zid"],
@@ -2546,7 +2574,11 @@ func (f Fixture) queryMatch(worker *Worker, capability, intent string) map[strin
 		credentials = append(credentials, credential)
 		statuses = append(statuses, f.credentialStatus(credential, "active"))
 		completedReceipts = f.countCompletedReceipts(optionalString(worker.Descriptor["aid"]))
-		active = isCredentialActive(credential)
+		active = isCredentialActive(credential) && !isRevoked(
+			f.Revocations,
+			optionalString(worker.Descriptor["aid"]),
+			f.Authority,
+		)
 	}
 	reasons := []string{}
 	if exact {

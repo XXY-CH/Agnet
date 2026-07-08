@@ -1,13 +1,25 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createPrivateKey, randomBytes } from "node:crypto";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { canonical, capabilityCredentialId, createAgent, loadOrCreateAgent, loadOrCreateZone, loadRegistry, publicKeyFromDescriptor, resolveAgent, rotationProof, signObject, verifyAliasRebindingProof, verifyCredentialStatus, verifyObject, writeTrustedZones, zoneBinding } from "./asp-core.mjs";
+import { canonical, capabilityCredentialId, createAgent, loadOrCreateAgent, loadOrCreateZone, loadRegistry, publicKeyFromDescriptor, resolveAgent, rotationProof, signObject, verifyAliasRebindingProof, verifyCredentialStatus, verifyObject, writeTrustedZones, zoneBinding, zoneRevocation } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
+
+function authorityZoneFromFixture(fixture) {
+  const privateKey = createPrivateKey({
+    key: Buffer.concat([
+      Buffer.from("302e020100300506032b657004220420", "hex"),
+      Buffer.from(fixture.authority_seed_hex, "hex"),
+    ]),
+    format: "der",
+    type: "pkcs8",
+  });
+  return { ...fixture.authority, descriptor: fixture.authority, privateKey };
+}
 
 test("Go sandbox probe CLI reports unsupported container namespace", async () => {
   const shellDigest = createHash("sha256").update(await readFile("/bin/sh")).digest("hex");
@@ -466,6 +478,64 @@ function exchangeWebSocketFrames(port, frame, closeType) {
     });
   });
 }
+
+test("Go discovery marks revoked worker credential inactive", async () => {
+  const [port] = await freePorts(1);
+  zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
+  const authorityZone = authorityZoneFromFixture(fixture);
+  const goFixture = JSON.parse(JSON.stringify(fixture));
+  goFixture.revocations = [zoneRevocation(authorityZone, fixture.worker.aid, "test")];
+  delete goFixture.authority_seed_hex;
+  delete goFixture.worker_seed_hex;
+  delete goFixture.worker;
+  delete goFixture.zone_binding;
+  await writeFile("state/go-fed-discovery-revoked-worker.json", `${JSON.stringify(goFixture, null, 2)}\n`);
+  await writeFile("state/go-fed-discovery-revoked-authority.seed", `${fixture.authority_seed_hex}\n`);
+  await writeFile("state/go-fed-discovery-revoked-worker.seed", `${fixture.worker_seed_hex}\n`);
+  await writeTrustedZones("state/go-fed-discovery-revoked-trusted-origin.json", [zoneA]);
+  await rm("state/go-fed-discovery-revoked-audit.log", { force: true });
+  const gateway = spawn("go", [
+    "run",
+    "./cmd/go-fed-discovery",
+    "--port",
+    String(port),
+    "--trusted",
+    "state/go-fed-discovery-revoked-trusted-origin.json",
+    "--fixture",
+    "state/go-fed-discovery-revoked-worker.json",
+    "--authority-key",
+    "state/go-fed-discovery-revoked-authority.seed",
+    "--worker-key",
+    "state/go-fed-discovery-revoked-worker.seed",
+    "--audit",
+    "state/go-fed-discovery-revoked-audit.log",
+  ], {
+    cwd: process.cwd(),
+    detached: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  try {
+    await waitForGoGateway(gateway, port);
+    const frames = await exchangeFrames(port, {
+      type: "FED_QUERY",
+      origin_zone: zoneA.descriptor,
+      capability: "summarize.text",
+    }, "FED_QUERY_CLOSE");
+    assert.deepEqual(frames.map((frame) => frame.type), ["FED_QUERY_RESULT", "FED_QUERY_CLOSE"]);
+    const match = frames[0].matches[0];
+    assert.equal(match.worker.aid, fixture.worker.aid);
+    assert.deepEqual(match.discovery_evidence.credential, { trusted: true, active: false });
+    assert.equal(match.ranking.reasons.includes("credential_active"), false);
+  } finally {
+    try {
+      process.kill(-gateway.pid, "SIGINT");
+    } catch {
+      // already exited
+    }
+  }
+});
 
 test("Go discovery gateway serves FED_RESOLVE, FED_QUERY, and FED_TASK_OPEN to Node client", async () => {
   const [port, wsPort, humanPort] = await freePorts(3);
