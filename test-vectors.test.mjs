@@ -454,6 +454,55 @@ test("receipt artifact manifest verification rejects missing objects in Node", (
   );
 });
 
+function receiptFrameWithCheckpoint(vector, checkpointPatch = {}, receiptPatch = {}) {
+  const workerPrivateKey = privateKeyFromSeed(vector.worker_seed_hex);
+  const checkpointBody = {
+    task_id: vector.expected.task_id,
+    parent_checkpoint: null,
+    event_index: 5,
+    state_digest: "1".repeat(64),
+    artifact_refs: vector.frame.receipt.artifact_refs,
+    policy_digest: "2".repeat(64),
+    created_by: vector.frame.worker.aid,
+  };
+  checkpointBody.checkpoint_id = `checkpoint:sha256:${createHash("sha256").update(canonical(checkpointBody)).digest("hex")}`;
+  const checkpoint = { ...checkpointBody, checkpoint_signature: signObject(workerPrivateKey, checkpointBody), ...checkpointPatch };
+  const { signature, ...receipt } = vector.frame.receipt;
+  const receiptBody = { ...receipt, checkpoint_refs: [checkpoint.checkpoint_id], checkpoints: [checkpoint], ...receiptPatch };
+  return { ...vector.frame, receipt: { ...receiptBody, signature: signObject(workerPrivateKey, receiptBody) } };
+}
+
+test("FED_RECEIPT verification accepts signed checkpoint evidence in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  const frame = receiptFrameWithCheckpoint(vector);
+  const verified = verifyFederatedReceipt(frame, trustedZones);
+
+  assert.deepEqual(verified.receipt.checkpoint_refs, [frame.receipt.checkpoints[0].checkpoint_id]);
+});
+
+test("FED_RECEIPT verification rejects checkpoint ref mismatch in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  const frame = receiptFrameWithCheckpoint(vector, {}, { checkpoint_refs: [`checkpoint:sha256:${"0".repeat(64)}`] });
+
+  assert.throws(
+    () => verifyFederatedReceipt(frame, trustedZones),
+    /checkpoint ref mismatch/,
+  );
+});
+
+test("FED_RECEIPT verification rejects checkpoint signature mismatch in Node", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
+  const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
+  const frame = receiptFrameWithCheckpoint(vector, { state_digest: "3".repeat(64) });
+
+  assert.throws(
+    () => verifyFederatedReceipt(frame, trustedZones),
+    /checkpoint signature verification failed/,
+  );
+});
+
 test("FED_RECEIPT CLI verifies one frame in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
   const framePath = "state/node-fed-receipt-frame.json";
@@ -475,6 +524,19 @@ test("FED_RECEIPT CLI verifies one frame in Node", async () => {
   await assert.rejects(
     () => execFileAsync("node", ["asp-verify.mjs", "fed-receipt", framePath, trustedPath, taskPath, "extra.json"]),
     (error) => error.stderr.includes("usage: node asp-verify.mjs"),
+  );
+  const checkpointFrame = receiptFrameWithCheckpoint(vector);
+  await writeFile(framePath, `${JSON.stringify(checkpointFrame, null, 2)}\n`);
+  const { signature: _checkpointSignature, ...checkpointReceipt } = checkpointFrame.receipt;
+  assert.deepEqual(JSON.parse((await execFileAsync("node", ["asp-verify.mjs", "fed-receipt", framePath, trustedPath])).stdout), {
+    fed_receipt_verify: "ok",
+    task_id: vector.expected.task_id,
+    receipt_digest: createHash("sha256").update(canonical(checkpointReceipt)).digest("hex"),
+  });
+  await writeFile(framePath, `${JSON.stringify(receiptFrameWithCheckpoint(vector, { state_digest: "3".repeat(64) }), null, 2)}\n`);
+  await assert.rejects(
+    () => execFileAsync("node", ["asp-verify.mjs", "fed-receipt", framePath, trustedPath]),
+    (error) => error.stderr.includes("checkpoint signature verification failed"),
   );
 
   await writeFile(framePath, `${JSON.stringify({ ...vector.frame, receipt: { ...vector.frame.receipt, executing_zone: "zid:ed25519:bad" } }, null, 2)}\n`);

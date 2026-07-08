@@ -380,6 +380,34 @@ export function validateTaskId(taskId) {
   if (typeof taskId !== "string" || !TASK_ID_PATTERN.test(taskId)) throw new Error("task_id invalid");
 }
 
+function receiptCheckpointRefs(value) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || item === "")) throw new Error("checkpoint ref invalid");
+  return value;
+}
+
+function receiptCheckpoints(value) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some((item) => !item || typeof item !== "object" || Array.isArray(item))) throw new Error("checkpoint invalid");
+  return value;
+}
+
+function verifyReceiptCheckpoints(publicKey, receipt) {
+  const refs = receiptCheckpointRefs(receipt.checkpoint_refs);
+  const checkpoints = receiptCheckpoints(receipt.checkpoints);
+  if (refs.length !== checkpoints.length) throw new Error("receipt checkpoint ref count mismatch");
+  let parent = Object.prototype.hasOwnProperty.call(receipt, "resumed_from") ? receipt.resumed_from : null;
+  for (let index = 0; index < checkpoints.length; index++) {
+    const checkpoint = checkpoints[index];
+    if (checkpoint.task_id !== receipt.task_id) throw new Error("checkpoint task mismatch");
+    if (checkpoint.checkpoint_id !== refs[index]) throw new Error("checkpoint ref mismatch");
+    if (checkpoint.parent_checkpoint !== parent) throw new Error("checkpoint parent mismatch");
+    const { checkpoint_signature: signature, ...body } = checkpoint;
+    if (!verifyObject(publicKey, body, signature)) throw new Error("checkpoint signature verification failed");
+    parent = checkpoint.checkpoint_id;
+  }
+}
+
 export function verifyFederatedReceipt(frame, trustedZones, signedTask) {
   if (!frame || typeof frame !== "object" || Array.isArray(frame) || frame.type !== "FED_RECEIPT") throw new Error("expected FED_RECEIPT frame");
   if (!frame.zone || typeof frame.zone !== "object" || Array.isArray(frame.zone)) throw new Error("receipt zone missing");
@@ -412,6 +440,7 @@ export function verifyFederatedReceipt(frame, trustedZones, signedTask) {
     throw new Error("remote receipt signature verification failed");
   }
   verifyReceiptArtifactManifests(receipt);
+  verifyReceiptCheckpoints(resolved.publicKey, receipt);
   return { zone, worker: resolved.descriptor, receipt, signedReceipt: frame.receipt };
 }
 
