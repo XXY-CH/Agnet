@@ -22,6 +22,7 @@ import {
   writeArtifact,
   zoneBinding,
   verifyZoneRevocation,
+  verifyZoneBinding,
   zoneRevocation,
 } from "./asp-core.mjs";
 
@@ -218,6 +219,126 @@ async function sendEvent(socket, event) {
   send(socket, { type: "FED_TASK_EVENT", event });
 }
 
+function swarmAfterSteps(value) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error("swarm after invalid");
+  return value.map((item) => {
+    if (typeof item !== "string" || item === "" || item.includes("\0")) throw new Error("swarm after invalid");
+    return item;
+  });
+}
+
+function microContractForStep(worker, swarmId, stepId, task) {
+  const policyDigest = digestHex({ worker: worker.aid, policy: worker.descriptor.policy, task_scope: task.scope ?? null });
+  const body = {
+    micro_contract: "ok",
+    swarm_id: swarmId,
+    step_id: stepId,
+    worker: worker.descriptor,
+    cost_estimate: {
+      tokens: Math.max(1, Math.ceil(canonical(task).length / 4)),
+      seconds: Number.isSafeInteger(task.budget?.time_seconds) ? task.budget.time_seconds : 30,
+    },
+    capability_proof: worker.descriptor.capabilities.join(","),
+    policy_digest: policyDigest,
+  };
+  return { ...body, contract_digest: digestHex(body), signature: signObject(worker.privateKey, body) };
+}
+
+async function executeLocalTask(socket, zone, originZone, worker, signedTask, task, receiptExtra = {}) {
+  await sendEvent(socket, { type: "task.accepted", task_id: task.task_id, by: worker.aid, zone: zone.zid });
+  const approvals = approvalReasons(worker.descriptor, task);
+  if (approvals.length > 0) {
+    await sendEvent(socket, { type: "approval.required", task_id: task.task_id, reasons: approvals });
+    await sendEvent(socket, {
+      type: "approval.granted",
+      task_id: task.task_id,
+      by: "human://zone-b/operator",
+      reasons: approvals,
+    });
+  }
+  await sendEvent(socket, { type: "task.started", task_id: task.task_id, by: worker.aid, zone: zone.zid });
+  await sendEvent(socket, { type: "task.progress", task_id: task.task_id, progress: 0.5 });
+
+  const artifactUri = `artifact://local/${task.task_id}/federated-summary.md`;
+  const artifact = await writeArtifact(artifactUri, `# Federated Summary\n\nCompleted ${task.task_id} from ${originZone.zid}.\n`);
+  await sendEvent(socket, { type: "artifact.created", task_id: task.task_id, uri: artifactUri, manifest: artifact.manifest });
+  await sendEvent(socket, { type: "task.completed", task_id: task.task_id, by: worker.aid, zone: zone.zid });
+
+  const receipt = {
+    task_id: task.task_id,
+    task_digest: digestHex(signedTask),
+    from: task.from,
+    origin_zone: originZone.zid,
+    executing_zone: zone.zid,
+    to: worker.aid,
+    status: "completed",
+    artifact_refs: [artifactUri],
+    artifact_manifests: [artifact.manifest],
+    event_count: approvals.length > 0 ? 7 : 5,
+    approvals,
+    ...receiptExtra,
+  };
+  const signedReceipt = { ...receipt, signature: signObject(worker.privateKey, receipt) };
+  await appendAudit({ kind: "fed_receipt", ...signedReceipt });
+  send(socket, {
+    type: "FED_RECEIPT",
+    zone: zone.descriptor,
+    worker: worker.descriptor,
+    zone_binding: zoneBinding(zone, worker.descriptor),
+    receipt: signedReceipt,
+  });
+  send(socket, { type: "FED_TASK_CLOSE", task_id: task.task_id });
+  return signedReceipt;
+}
+
+async function executeSwarm(socket, trustedZones, zone, worker, frame) {
+  const originZone = verifyTrustedZone(trustedZones, frame.origin_zone);
+  if (!frame.requester || typeof frame.requester !== "object" || Array.isArray(frame.requester)) throw new Error("swarm requester missing");
+  if (!frame.requester_zone_binding || typeof frame.requester_zone_binding !== "object" || Array.isArray(frame.requester_zone_binding)) throw new Error("requester zone binding missing");
+  verifyZoneBinding({ zone: frame.origin_zone, zone_binding: frame.requester_zone_binding }, frame.requester, "requester");
+  if (!frame.swarm || typeof frame.swarm !== "object" || Array.isArray(frame.swarm)) throw new Error("swarm body missing");
+  const swarmId = frame.swarm.swarm_id;
+  if (typeof swarmId !== "string" || swarmId === "" || swarmId.includes("\0")) throw new Error("swarm_id missing");
+  if (!Array.isArray(frame.swarm.steps) || frame.swarm.steps.length === 0) throw new Error("swarm steps missing");
+
+  const completed = new Map();
+  const stepReceipts = [];
+  const microContracts = [];
+  for (const item of frame.swarm.steps) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("swarm step invalid");
+    const stepId = item.step_id;
+    if (typeof stepId !== "string" || stepId === "" || stepId.includes("\0")) throw new Error("swarm step_id missing");
+    if (completed.has(stepId)) throw new Error(`duplicate swarm step: ${stepId}`);
+    const after = swarmAfterSteps(item.after);
+    const inputArtifacts = [];
+    for (const dependency of after) {
+      const receipt = completed.get(dependency);
+      if (!receipt) throw new Error(`swarm dependency not completed: ${dependency}`);
+      const manifest = receipt.artifact_manifests?.[0];
+      if (!manifest) throw new Error(`swarm dependency artifact missing: ${dependency}`);
+      inputArtifacts.push({
+        step_id: dependency,
+        uri: manifest.uri,
+        sha256: manifest.sha256,
+        manifest_hash: manifest.manifest_hash,
+        receipt_digest: digestHex(receipt),
+      });
+    }
+    const { originZone: taskOriginZone, task } = verifyFederatedTaskOpen({ type: "FED_TASK_OPEN", origin_zone: frame.origin_zone, requester: frame.requester, requester_zone_binding: frame.requester_zone_binding, task: item.task }, trustedZones, worker.descriptor);
+    const microContract = microContractForStep(worker, swarmId, stepId, task);
+    microContracts.push(microContract);
+    await sendEvent(socket, microContract);
+    const signedReceipt = await executeLocalTask(socket, zone, taskOriginZone, worker, item.task, task, { swarm: { swarm_id: swarmId, step_id: stepId, after, input_artifacts: inputArtifacts } });
+    completed.set(stepId, signedReceipt);
+    stepReceipts.push({ step_id: stepId, task_id: signedReceipt.task_id, receipt_digest: digestHex(signedReceipt), worker: worker.descriptor });
+  }
+  const closeBody = { swarm_id: swarmId, step_receipts: stepReceipts, micro_contracts: microContracts };
+  const closeProof = { ...closeBody, close_signature: signObject(zone.privateKey, closeBody) };
+  await appendAudit({ kind: "fed_swarm_close", zone: zone.descriptor, close: closeProof });
+  send(socket, { type: "FED_SWARM_CLOSE", swarm_id: swarmId, zone: zone.descriptor, close: closeProof });
+}
+
 async function serve(port, trustedZonesFile) {
   const trustedZones = await loadTrustedZones(trustedZonesFile);
   const zone = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
@@ -273,51 +394,13 @@ async function serve(port, trustedZonesFile) {
           send(socket, { type: "FED_QUERY_CLOSE", capability: frame.capability });
           return;
         }
+        if (frame.type === "FED_SWARM_OPEN") {
+          await executeSwarm(socket, trustedZones, zone, worker, frame);
+          return;
+        }
         if (frame.type !== "FED_TASK_OPEN") throw new Error(`unsupported frame: ${frame.type}`);
         const { originZone, task } = verifyFederatedTaskOpen(frame, trustedZones, worker.descriptor);
-
-        await sendEvent(socket, { type: "task.accepted", task_id: task.task_id, by: worker.aid, zone: zone.zid });
-        const approvals = approvalReasons(worker.descriptor, task);
-        if (approvals.length > 0) {
-          await sendEvent(socket, { type: "approval.required", task_id: task.task_id, reasons: approvals });
-          await sendEvent(socket, {
-            type: "approval.granted",
-            task_id: task.task_id,
-            by: "human://zone-b/operator",
-            reasons: approvals,
-          });
-        }
-        await sendEvent(socket, { type: "task.started", task_id: task.task_id, by: worker.aid, zone: zone.zid });
-        await sendEvent(socket, { type: "task.progress", task_id: task.task_id, progress: 0.5 });
-
-        const artifactUri = `artifact://local/${task.task_id}/federated-summary.md`;
-        const artifact = await writeArtifact(artifactUri, `# Federated Summary\n\nCompleted ${task.task_id} from ${originZone.zid}.\n`);
-        await sendEvent(socket, { type: "artifact.created", task_id: task.task_id, uri: artifactUri, manifest: artifact.manifest });
-        await sendEvent(socket, { type: "task.completed", task_id: task.task_id, by: worker.aid, zone: zone.zid });
-
-        const receipt = {
-          task_id: task.task_id,
-          task_digest: digestHex(frame.task),
-          from: task.from,
-          origin_zone: originZone.zid,
-          executing_zone: zone.zid,
-          to: worker.aid,
-          status: "completed",
-          artifact_refs: [artifactUri],
-          artifact_manifests: [artifact.manifest],
-          event_count: approvals.length > 0 ? 7 : 5,
-          approvals,
-        };
-        const signedReceipt = { ...receipt, signature: signObject(worker.privateKey, receipt) };
-        await appendAudit({ kind: "fed_receipt", ...signedReceipt });
-        send(socket, {
-          type: "FED_RECEIPT",
-          zone: zone.descriptor,
-          worker: worker.descriptor,
-          zone_binding: zoneBinding(zone, worker.descriptor),
-          receipt: signedReceipt,
-        });
-        send(socket, { type: "FED_TASK_CLOSE", task_id: task.task_id });
+        await executeLocalTask(socket, zone, originZone, worker, frame.task, task);
       } catch (error) {
         send(socket, { type: "FED_TASK_ERROR", error: error.message });
         socket.end();

@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { AUDIT_ZERO_HASH, auditEntry, loadOrCreateAgent, loadOrCreateZone, signObject, writeTrustedZones, zoneBinding, zoneRevocation } from "./asp-core.mjs";
+import { AUDIT_ZERO_HASH, auditEntry, canonical, loadOrCreateAgent, loadOrCreateZone, publicKeyFromDescriptor, signObject, verifyObject, verifySwarmClose, writeTrustedZones, zoneBinding, zoneRevocation } from "./asp-core.mjs";
 import { queryMatch } from "./federation-gateway.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -54,6 +55,41 @@ function exchangeRawFrame(port, frame) {
         if (!line.trim()) continue;
         socket.end();
         resolve(JSON.parse(line));
+      }
+    });
+  });
+}
+
+function exchangeFramesUntil(port, frame, signingZone, closeType) {
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection(port, "127.0.0.1");
+    const frames = [];
+    let buffer = "";
+    socket.on("error", reject);
+    socket.on("connect", () => {
+      socket.write(`${JSON.stringify({ type: "HELLO", origin_zone: frame.origin_zone })}\n`);
+    });
+    socket.on("data", (chunk) => {
+      buffer += chunk.toString();
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const parsed = JSON.parse(line);
+        if (parsed.type === "HELLO") {
+          const authBody = { session_id: parsed.session_id, challenge: parsed.challenge, peer_zid: frame.origin_zone.zid, remote_zid: parsed.zone.zid };
+          socket.write(`${JSON.stringify({ type: "AUTH", origin_zone: frame.origin_zone, auth: { ...authBody, auth_signature: signObject(signingZone.privateKey, authBody) } })}\n`);
+          continue;
+        }
+        if (parsed.type === "AUTH_OK") {
+          socket.write(`${JSON.stringify(frame)}\n`);
+          continue;
+        }
+        frames.push(parsed);
+        if (parsed.type === closeType || parsed.type === "FED_TASK_ERROR") {
+          socket.end();
+          resolve(frames);
+        }
       }
     });
   });
@@ -188,6 +224,86 @@ test("Federation Gateway completes a cross-Zone task", async () => {
     assert.equal(result.receipt.executing_zone, zoneB.zid);
     assert.equal(result.events.at(-1).type, "task.completed");
     assert.equal(result.receipt.event_count, result.events.length);
+  } finally {
+    gateway.kill("SIGINT");
+  }
+});
+
+test("Federation Gateway closes Swarm steps with signed micro-contracts", async () => {
+  const port = 8998;
+  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/fed-zone-a-requester.pkcs8", {}, ["fed+tcp://127.0.0.1:8998"], ["request.task"]);
+  await writeTrustedZones("state/zone-a-trust.json", [zoneB, zoneA]);
+  await writeTrustedZones("state/zone-b-trust.json", [zoneA]);
+
+  const gateway = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-trust.json"], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  try {
+    await waitForGateway(gateway);
+    const summaryTask = {
+      task_id: "node_swarm_micro_contract_summary",
+      from: requester.aid,
+      to: "agent://zone-b/summarizer",
+      intent: "Summarize before signing the Swarm close.",
+      scope: { network: false },
+      budget: { time_seconds: 30 },
+    };
+    const followupTask = {
+      task_id: "node_swarm_micro_contract_followup",
+      from: requester.aid,
+      to: "agent://zone-b/summarizer",
+      intent: "Use the first step artifact after a micro-contract.",
+      scope: { network: false },
+      budget: { time_seconds: 30 },
+    };
+
+    const frames = await exchangeFramesUntil(port, {
+      type: "FED_SWARM_OPEN",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      requester_zone_binding: zoneBinding(zoneA, requester.descriptor),
+      swarm: {
+        swarm_id: "swarm://local/node_swarm_micro_contracts",
+        steps: [
+          { step_id: "summary", task: { ...summaryTask, signature: signObject(requester.privateKey, summaryTask) } },
+          { step_id: "followup", after: ["summary"], task: { ...followupTask, signature: signObject(requester.privateKey, followupTask) } },
+        ],
+      },
+    }, zoneA, "FED_SWARM_CLOSE");
+    assert.notEqual(frames.at(-1).type, "FED_TASK_ERROR", frames.at(-1).error);
+
+    const microContractEvents = frames.filter((frame) => frame.type === "FED_TASK_EVENT" && frame.event.micro_contract === "ok");
+    assert.deepEqual(microContractEvents.map((frame) => frame.event.step_id), ["summary", "followup"]);
+    const closeFrame = frames.at(-1);
+    const close = closeFrame.close;
+    assert.equal(close.micro_contracts.length, 2);
+    assert.deepEqual(close.micro_contracts.map((contract) => contract.step_id), ["summary", "followup"]);
+    for (const contract of close.micro_contracts) {
+      assert.equal(contract.micro_contract, "ok");
+      assert.equal(contract.swarm_id, "swarm://local/node_swarm_micro_contracts");
+      assert.equal(contract.worker.aid, close.step_receipts.find((step) => step.step_id === contract.step_id).worker.aid);
+      assert.match(contract.capability_proof, /summarize\.text/);
+      assert.equal(typeof contract.cost_estimate.tokens, "number");
+      assert.equal(typeof contract.cost_estimate.seconds, "number");
+      assert.match(contract.policy_digest, /^[0-9a-f]{64}$/);
+      assert.match(contract.contract_digest, /^[0-9a-f]{64}$/);
+      assert.equal(typeof contract.signature, "string");
+      const { contract_digest, signature, ...contractBody } = contract;
+      assert.equal(contract_digest, createHash("sha256").update(canonical(contractBody)).digest("hex"));
+      assert.equal(verifyObject(publicKeyFromDescriptor(contract.worker), contractBody, signature), true);
+    }
+    assert.equal(verifySwarmClose(closeFrame, new Map([[zoneB.zid, zoneB.descriptor]])).close.swarm_id, "swarm://local/node_swarm_micro_contracts");
+
+    const tamperedClose = structuredClone(closeFrame);
+    tamperedClose.close.micro_contracts[0].signature = "bad";
+    assert.throws(
+      () => verifySwarmClose(tamperedClose, new Map([[zoneB.zid, zoneB.descriptor]])),
+      /micro-contract signature verification failed/,
+    );
   } finally {
     gateway.kill("SIGINT");
   }

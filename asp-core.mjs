@@ -444,6 +444,38 @@ export function verifyFederatedReceipt(frame, trustedZones, signedTask) {
   return { zone, worker: resolved.descriptor, receipt, signedReceipt: frame.receipt };
 }
 
+
+function verifySwarmMicroContracts(closeBody, stepById) {
+  if (closeBody.micro_contracts === undefined) return;
+  if (!Array.isArray(closeBody.micro_contracts) || closeBody.micro_contracts.length !== stepById.size) throw new Error("swarm close micro-contracts missing");
+  const contractStepIds = new Set();
+  for (const contract of closeBody.micro_contracts) {
+    if (!contract || typeof contract !== "object" || Array.isArray(contract)) throw new Error("swarm close micro-contract missing");
+    const { contract_digest, signature, ...contractBody } = contract;
+    if (contractBody.micro_contract !== "ok") throw new Error("swarm close micro-contract status invalid");
+    if (contractBody.swarm_id !== closeBody.swarm_id) throw new Error("swarm close micro-contract swarm mismatch");
+    if (typeof contractBody.step_id !== "string" || contractBody.step_id === "" || contractBody.step_id.includes("\0")) throw new Error("swarm close micro-contract step invalid");
+    if (contractStepIds.has(contractBody.step_id)) throw new Error("swarm close duplicate micro-contract");
+    contractStepIds.add(contractBody.step_id);
+    const step = stepById.get(contractBody.step_id);
+    if (!step) throw new Error("swarm close micro-contract step missing");
+    if (!step.worker || typeof step.worker !== "object" || Array.isArray(step.worker)) throw new Error("swarm close step worker missing");
+    if (!contractBody.worker || typeof contractBody.worker !== "object" || Array.isArray(contractBody.worker)) throw new Error("swarm close micro-contract worker missing");
+    if (canonical(contractBody.worker) !== canonical(step.worker)) throw new Error("swarm close micro-contract worker mismatch");
+    if (!contractBody.cost_estimate || typeof contractBody.cost_estimate !== "object" || Array.isArray(contractBody.cost_estimate)) throw new Error("swarm close micro-contract cost missing");
+    for (const field of ["tokens", "seconds"]) {
+      if (typeof contractBody.cost_estimate[field] !== "number" || !Number.isSafeInteger(contractBody.cost_estimate[field]) || contractBody.cost_estimate[field] < 0) {
+        throw new Error("swarm close micro-contract cost invalid");
+      }
+    }
+    if (typeof contractBody.capability_proof !== "string" || contractBody.capability_proof === "") throw new Error("swarm close micro-contract capability missing");
+    if (typeof contractBody.policy_digest !== "string" || !/^[0-9a-f]{64}$/.test(contractBody.policy_digest)) throw new Error("swarm close micro-contract policy invalid");
+    if (typeof contract_digest !== "string" || contract_digest !== createHash("sha256").update(canonical(contractBody)).digest("hex")) throw new Error("swarm close micro-contract digest invalid");
+    if (typeof signature !== "string" || signature === "") throw new Error("swarm close micro-contract signature missing");
+    if (!verifyObject(publicKeyFromDescriptor(step.worker), contractBody, signature)) throw new Error("micro-contract signature verification failed");
+  }
+}
+
 export function verifySwarmClose(frame, trustedZones) {
   if (!frame || typeof frame !== "object" || Array.isArray(frame) || frame.type !== "FED_SWARM_CLOSE") throw new Error("expected FED_SWARM_CLOSE frame");
   if (!frame.zone || typeof frame.zone !== "object" || Array.isArray(frame.zone)) throw new Error("swarm close zone missing");
@@ -463,18 +495,21 @@ export function verifySwarmClose(frame, trustedZones) {
     throw new Error("swarm close step receipts missing");
   }
   const stepIds = new Set();
+  const stepById = new Map();
   for (const step of closeBody.step_receipts) {
     if (!step || typeof step !== "object" || Array.isArray(step)) throw new Error("swarm close step receipt missing");
     if (typeof step.step_id !== "string" || step.step_id === "") throw new Error("swarm close step identity missing");
     if (step.step_id.includes("\0")) throw new Error("swarm close identity contains NUL");
     if (stepIds.has(step.step_id)) throw new Error("swarm close duplicate step receipt");
     stepIds.add(step.step_id);
+    stepById.set(step.step_id, step);
     if (typeof step.task_id !== "string" || step.task_id === "") throw new Error("swarm close task missing");
     if (!TASK_ID_PATTERN.test(step.task_id)) throw new Error("swarm close task invalid");
     if (typeof step.receipt_digest !== "string" || !/^[0-9a-f]{64}$/.test(step.receipt_digest)) {
       throw new Error("swarm close receipt digest invalid");
     }
   }
+  verifySwarmMicroContracts(closeBody, stepById);
   if (!verifyObject(publicKeyFromDescriptor(zone), closeBody, close_signature)) {
     throw new Error("swarm close signature verification failed");
   }
