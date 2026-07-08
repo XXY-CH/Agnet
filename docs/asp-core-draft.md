@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v13.6-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v13.7-protocol`. It is not a full Agent Space product spec.
 Previous public draft baseline: local-first prototype at `v12.45-protocol`.
 
 ## Scope
@@ -402,6 +402,10 @@ Trusted release signer pinning applies to the release signer only. It does not p
 The sandbox proof verifier command is `node asp-verify.mjs sandbox-proof <frame.json> <trusted-zones.json> [required-sandbox-class]`. It first verifies the input as a trusted `FED_RECEIPT` frame, then verifies the embedded `local.sandbox.v1` proof signature using the receipt signing Zone, and checks task id, authority Zone, worker, policy digest, sandbox claim, and sandbox evidence binding.
 
 The current sandbox proof verifier returns `sandbox_class: "local-process"` only for local-process sandbox evidence. It requires mode, isolation level, network surface, command digest, binary digest, and transcript digest evidence before accepting the proof. Passing `remote-attestation` as the required sandbox class fails closed unless future signed attestation evidence is implemented. This is not hardware remote attestation, not container namespace execution, and not a VM/TEE claim.
+
+The sandbox attestation verifier command is `node asp-verify.mjs sandbox-attestation <frame.json> <trusted-zones.json> <attestation.json> <trusted-attestors.json>`. It verifies the trusted receipt and local sandbox proof first, then verifies `asp-sandbox-attestation/v1` signed evidence from a trusted attestor descriptor with `sandbox.attest` capability.
+
+Sandbox attestation evidence binds the receipt digest, task id, sandbox digest, sandbox claim, policy digest, sandbox class, runtime identity, observed timestamp, attestor descriptor, attestation digest, and attestor signature. Evidence is rejected when stale, future-dated, mismatched, unsigned, signed by an untrusted attestor, or signed by a descriptor without `sandbox.attest`. This proves signed attestation evidence only; it is not hardware remote attestation, not container namespace execution, and not a TEE quote.
 
 Implemented Go checks:
 

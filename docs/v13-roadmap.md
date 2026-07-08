@@ -1,6 +1,6 @@
 # Agent Space v13 Roadmap
 
-状态：active at v13.6
+状态：active at v13.7
 目标：从 v12 已闭合的 proof surface 继续向 Ultimate 推进，集中处理真实 hosted/public reachability、release trust/SBOM、strong sandbox/remote attestation、semantic discovery/reputation ranking、dynamic Swarm scheduling 五个大门槛。
 
 v13 uses larger evidence gates instead of many tiny versions. 每个 v13 slice 都必须能用测试、脚本、外部证据或 verifier 输出证明边界已经收住；没有证据的能力只作为 planned，不写成 current capability。
@@ -94,10 +94,12 @@ Remaining exit criterion:
 - Sandbox evidence must include mode, isolation level, network surface, command digest, binary digest, and transcript digest.
 - The verifier reports verifier-owned `sandbox_class: "local-process"` for the current local sandbox proof.
 - Required stronger classes such as `remote-attestation` fail closed unless matching signed evidence exists.
+- `asp-verify.mjs sandbox-attestation <frame.json> <trusted-zones.json> <attestation.json> <trusted-attestors.json>` verifies signed `asp-sandbox-attestation/v1` evidence.
+- Signed sandbox attestation evidence binds receipt digest, task id, sandbox digest, sandbox claim, policy digest, sandbox class, runtime identity, freshness, and a trusted `sandbox.attest` attestor signature.
 
 Remaining exit criterion:
 
-- Hardware remote attestation remains unimplemented and fail-closed.
+- Hardware remote attestation remains unimplemented and fail-closed. Signed sandbox attestation evidence is not hardware remote attestation by itself.
 - Real container namespace/VM/TEE isolation remains unimplemented and must not be inferred from local-process proof.
 
 验收边界：

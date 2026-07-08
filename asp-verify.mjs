@@ -9,6 +9,7 @@ const args = process.argv.slice(2);
 const [command, file, trustedFile, taskFile] = args;
 const PACKAGE_PROOF_CAPABILITY = "package.proof.sign";
 const RELEASE_TRUST_CAPABILITY = "release.trust.sign";
+const SANDBOX_ATTEST_CAPABILITY = "sandbox.attest";
 const FUTURE_SKEW_MS = 5 * 60 * 1000;
 const MAX_AGE_MS = 60 * 60 * 1000;
 const UTC_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
@@ -82,6 +83,10 @@ function hasReleaseTrustCapability(descriptor) {
   return hasCapability(descriptor, RELEASE_TRUST_CAPABILITY);
 }
 
+function hasSandboxAttestCapability(descriptor) {
+  return hasCapability(descriptor, SANDBOX_ATTEST_CAPABILITY);
+}
+
 async function loadTrustedSigners(file, capability, label) {
   const trust = JSON.parse(await readFile(file, "utf8"));
   if (!trust || typeof trust !== "object") throw new Error(`trusted ${label} signer list missing`);
@@ -101,6 +106,10 @@ async function loadTrustedPackageSigners(file) {
 
 async function loadTrustedReleaseSigners(file) {
   return loadTrustedSigners(file, RELEASE_TRUST_CAPABILITY, "release");
+}
+
+async function loadTrustedSandboxAttestors(file) {
+  return loadTrustedSigners(file, SANDBOX_ATTEST_CAPABILITY, "sandbox attestation");
 }
 
 async function verifyPackageProof(file, trustedFile) {
@@ -184,6 +193,33 @@ function verifySandboxProof(receiptVerified, requiredClass) {
   return { sandboxClass, sandbox };
 }
 
+async function verifySandboxAttestation(receiptVerified, sandbox, evidence, trustedFile) {
+  if (!evidence || typeof evidence !== "object" || Array.isArray(evidence)) throw new Error("sandbox attestation invalid");
+  const { signature, attestation_digest: attestationDigest, ...body } = evidence;
+  if (body.attestation !== "ok") throw new Error("sandbox attestation marker invalid");
+  if (body.format !== "asp-sandbox-attestation/v1") throw new Error("sandbox attestation format invalid");
+  if (attestationDigest !== createHash("sha256").update(canonical(body)).digest("hex")) throw new Error("sandbox attestation digest mismatch");
+  if (body.receipt_digest !== receiptDigest(receiptVerified.signedReceipt)) throw new Error("sandbox attestation receipt_digest mismatch");
+  if (body.task_id !== receiptVerified.receipt.task_id) throw new Error("sandbox attestation task_id mismatch");
+  if (body.sandbox_digest !== createHash("sha256").update(canonical(sandbox)).digest("hex")) throw new Error("sandbox attestation sandbox_digest mismatch");
+  if (body.sandbox_claim !== receiptVerified.receipt.sandbox_claim) throw new Error("sandbox attestation sandbox_claim mismatch");
+  if (body.policy_digest !== receiptVerified.receipt.policy_digest) throw new Error("sandbox attestation policy_digest mismatch");
+  if (typeof body.sandbox_class !== "string" || body.sandbox_class === "") throw new Error("sandbox attestation class missing");
+  if (typeof body.runtime_identity !== "string" || body.runtime_identity === "") throw new Error("sandbox attestation runtime identity missing");
+  const observedAt = typeof body.observed_at === "string" && UTC_TIMESTAMP_PATTERN.test(body.observed_at) ? Date.parse(body.observed_at) : NaN;
+  const now = Date.now();
+  if (Number.isNaN(observedAt) || observedAt - now > FUTURE_SKEW_MS) throw new Error("sandbox attestation observed_at invalid");
+  if (now - observedAt > MAX_AGE_MS) throw new Error("sandbox attestation stale");
+  if (!body.attestor || typeof body.attestor !== "object" || Array.isArray(body.attestor)) throw new Error("sandbox attestation signer missing");
+  const signer = resolveAgent(new Map([[body.attestor.alias, body.attestor]]), body.attestor.alias);
+  if (!hasSandboxAttestCapability(signer.descriptor)) throw new Error("sandbox attestation signer capability missing");
+  if (typeof signature !== "string" || signature === "") throw new Error("sandbox attestation signature missing");
+  if (!verifyObject(signer.publicKey, body, signature)) throw new Error("sandbox attestation signature invalid");
+  const trustedAttestors = await loadTrustedSandboxAttestors(trustedFile);
+  if (!trustedAttestors.has(signer.descriptor.aid)) throw new Error("sandbox attestation signer untrusted");
+  return { body, attestationDigest, signer };
+}
+
 try {
   if (command === "artifact" && file && args.length === 2) {
     const manifest = JSON.parse(await readFile(file, "utf8"));
@@ -213,6 +249,13 @@ try {
     const verified = verifyFederatedReceipt(frame, await loadTrustedZones(trustedFile));
     const { sandboxClass, sandbox } = verifySandboxProof(verified, taskFile);
     console.log(JSON.stringify({ sandbox_proof_verify: "ok", task_id: verified.receipt.task_id, sandbox_claim: verified.receipt.sandbox_claim, sandbox_class: sandboxClass, remote_attestation: false, runtime_identity: sandbox.runtime ?? sandbox.kind ?? sandbox.mode, network: sandbox.network, receipt_digest: receiptDigest(verified.signedReceipt) }));
+  } else if (command === "sandbox-attestation" && file && trustedFile && args[3] && args[4] && args.length === 5) {
+    const frame = JSON.parse(await readFile(file, "utf8"));
+    const verified = verifyFederatedReceipt(frame, await loadTrustedZones(trustedFile));
+    const { sandbox } = verifySandboxProof(verified);
+    const evidence = JSON.parse(await readFile(args[3], "utf8"));
+    const { body, attestationDigest, signer } = await verifySandboxAttestation(verified, sandbox, evidence, args[4]);
+    console.log(JSON.stringify({ sandbox_attestation_verify: "ok", task_id: verified.receipt.task_id, sandbox_class: body.sandbox_class, attestation_digest: attestationDigest, attestor_aid: signer.descriptor.aid, hardware_attestation: false, receipt_digest: receiptDigest(verified.signedReceipt) }));
   } else if (command === "package-proof" && file && (args.length === 2 || (args.length === 3 && trustedFile))) {
     const { proof, signer, trustedSigners } = await verifyPackageProof(file, trustedFile);
     console.log(JSON.stringify({ package_proof_verify: "ok", name: proof.name, version: proof.version, filename: proof.filename, tarball: proof.tarball, size: proof.size, shasum: proof.shasum, integrity: proof.integrity, sha256: proof.sha256, proof_digest: proof.proof_digest, signer_aid: signer.descriptor.aid, ...(trustedSigners ? { signer_trusted: true } : {}) }));
@@ -285,7 +328,7 @@ try {
     if (reachability) output.reachability_observer_zid = reachability.reachability_observer_zid;
     console.log(JSON.stringify(output));
   } else {
-    throw new Error("usage: node asp-verify.mjs artifact <manifest.json> | fed-receipt <frame.json> <trusted-zones.json> [task.json] | fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] | swarm-close <frame.json> <trusted-zones.json> | sandbox-proof <frame.json> <trusted-zones.json> [required-sandbox-class] | package-proof <manifest.json> [trusted-signers.json] | release-trust <release-trust.json> [trusted-release-signers.json] | proof-bundle <bundle.json> [external-trusted-zones.json]");
+    throw new Error("usage: node asp-verify.mjs artifact <manifest.json> | fed-receipt <frame.json> <trusted-zones.json> [task.json] | fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] | swarm-close <frame.json> <trusted-zones.json> | sandbox-proof <frame.json> <trusted-zones.json> [required-sandbox-class] | sandbox-attestation <frame.json> <trusted-zones.json> <attestation.json> <trusted-attestors.json> | package-proof <manifest.json> [trusted-signers.json] | release-trust <release-trust.json> [trusted-release-signers.json] | proof-bundle <bundle.json> [external-trusted-zones.json]");
   }
 } catch (error) {
   console.error(error.message);

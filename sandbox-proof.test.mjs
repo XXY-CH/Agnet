@@ -8,6 +8,11 @@ import { canonical, createAgent, createZone, signObject, zoneBinding } from "./a
 
 const execFileAsync = promisify(execFile);
 
+function receiptDigest(receipt) {
+  const { signature, ...body } = receipt;
+  return createHash("sha256").update(canonical(body)).digest("hex");
+}
+
 async function writeSandboxReceipt(prefix, mutate = (value) => value, mutateBeforeReceiptSignature = () => {}) {
   const authority = createZone("sandbox-authority");
   const origin = createZone("sandbox-origin");
@@ -62,7 +67,36 @@ async function writeSandboxReceipt(prefix, mutate = (value) => value, mutateBefo
   const trustedPath = `${dir}/${prefix}-trusted-zones.json`;
   await writeFile(framePath, `${JSON.stringify(frame, null, 2)}\n`);
   await writeFile(trustedPath, `${JSON.stringify({ zones: [authority.descriptor, origin.descriptor] }, null, 2)}\n`);
-  return { framePath, trustedPath, taskId };
+  return { frame, framePath, trustedPath, taskId };
+}
+
+async function writeSandboxAttestation(prefix, frame, mutate = (value) => value, trustedAttestor = null) {
+  const attestor = trustedAttestor ?? createAgent("agent://sandbox/attestor", {}, ["asp+local://sandbox-attestation"], ["sandbox.attest"]);
+  const body = mutate({
+    attestation: "ok",
+    format: "asp-sandbox-attestation/v1",
+    receipt_digest: receiptDigest(frame.receipt),
+    task_id: frame.receipt.task_id,
+    sandbox_class: "remote-attestation",
+    sandbox_digest: createHash("sha256").update(canonical(frame.receipt.sandbox)).digest("hex"),
+    sandbox_claim: frame.receipt.sandbox_claim,
+    policy_digest: frame.receipt.policy_digest,
+    runtime_identity: "test-attested-runtime",
+    observed_at: new Date().toISOString(),
+    attestor: attestor.descriptor,
+  });
+  const evidence = {
+    ...body,
+    attestation_digest: createHash("sha256").update(canonical(body)).digest("hex"),
+    signature: signObject(attestor.privateKey, body),
+  };
+  const dir = "state/sandbox-proof-test";
+  await mkdir(dir, { recursive: true });
+  const attestationPath = `${dir}/${prefix}-attestation.json`;
+  const trustedAttestorsPath = `${dir}/${prefix}-trusted-attestors.json`;
+  await writeFile(attestationPath, `${JSON.stringify(evidence, null, 2)}\n`);
+  await writeFile(trustedAttestorsPath, `${JSON.stringify({ signers: [attestor.descriptor] }, null, 2)}\n`);
+  return { attestationPath, trustedAttestorsPath, attestor };
 }
 
 test("sandbox proof verifier accepts signed local-process proof without upgrading it", async () => {
@@ -108,5 +142,107 @@ test("sandbox proof verifier rejects local proof without command and transcript 
   await assert.rejects(
     execFileAsync(process.execPath, ["asp-verify.mjs", "sandbox-proof", framePath, trustedPath]),
     /sandbox evidence transcript digest missing/,
+  );
+});
+
+test("sandbox attestation verifier accepts trusted signed evidence bound to receipt and sandbox", async () => {
+  const { frame, framePath, trustedPath, taskId } = await writeSandboxReceipt("attested");
+  const { attestationPath, trustedAttestorsPath, attestor } = await writeSandboxAttestation("attested", frame);
+
+  const { stdout } = await execFileAsync(process.execPath, ["asp-verify.mjs", "sandbox-attestation", framePath, trustedPath, attestationPath, trustedAttestorsPath]);
+  const verified = JSON.parse(stdout);
+
+  assert.equal(verified.sandbox_attestation_verify, "ok");
+  assert.equal(verified.task_id, taskId);
+  assert.equal(verified.sandbox_class, "remote-attestation");
+  assert.equal(verified.attestor_aid, attestor.aid);
+  assert.equal(verified.hardware_attestation, false);
+  assert.match(verified.attestation_digest, /^[0-9a-f]{64}$/);
+});
+
+test("sandbox attestation verifier rejects mismatched receipt digests", async () => {
+  const { frame, framePath, trustedPath } = await writeSandboxReceipt("attestationmismatch");
+  const { attestationPath, trustedAttestorsPath } = await writeSandboxAttestation("attestationmismatch", frame, (body) => ({
+    ...body,
+    receipt_digest: "0".repeat(64),
+  }));
+
+  await assert.rejects(
+    execFileAsync(process.execPath, ["asp-verify.mjs", "sandbox-attestation", framePath, trustedPath, attestationPath, trustedAttestorsPath]),
+    /sandbox attestation receipt_digest mismatch/,
+  );
+});
+
+test("sandbox attestation verifier rejects mismatched sandbox digests", async () => {
+  const { frame, framePath, trustedPath } = await writeSandboxReceipt("attestationsandboxmismatch");
+  const { attestationPath, trustedAttestorsPath } = await writeSandboxAttestation("attestationsandboxmismatch", frame, (body) => ({
+    ...body,
+    sandbox_digest: "9".repeat(64),
+  }));
+
+  await assert.rejects(
+    execFileAsync(process.execPath, ["asp-verify.mjs", "sandbox-attestation", framePath, trustedPath, attestationPath, trustedAttestorsPath]),
+    /sandbox attestation sandbox_digest mismatch/,
+  );
+});
+
+test("sandbox attestation verifier rejects untrusted attestors", async () => {
+  const { frame, framePath, trustedPath } = await writeSandboxReceipt("attestoruntrusted");
+  const { attestationPath, trustedAttestorsPath } = await writeSandboxAttestation("attestoruntrusted", frame);
+  const other = createAgent("agent://sandbox/other-attestor", {}, ["asp+local://sandbox-attestation"], ["sandbox.attest"]);
+  await writeFile(trustedAttestorsPath, `${JSON.stringify({ signers: [other.descriptor] }, null, 2)}\n`);
+
+  await assert.rejects(
+    execFileAsync(process.execPath, ["asp-verify.mjs", "sandbox-attestation", framePath, trustedPath, attestationPath, trustedAttestorsPath]),
+    /sandbox attestation signer untrusted/,
+  );
+});
+
+test("sandbox attestation verifier rejects attestors without sandbox attest capability", async () => {
+  const { frame, framePath, trustedPath } = await writeSandboxReceipt("attestormissingcapability");
+  const attestor = createAgent("agent://sandbox/no-cap-attestor", {}, ["asp+local://sandbox-attestation"], []);
+  const { attestationPath, trustedAttestorsPath } = await writeSandboxAttestation("attestormissingcapability", frame, (body) => body, attestor);
+
+  await assert.rejects(
+    execFileAsync(process.execPath, ["asp-verify.mjs", "sandbox-attestation", framePath, trustedPath, attestationPath, trustedAttestorsPath]),
+    /sandbox attestation signer capability missing/,
+  );
+});
+
+test("sandbox attestation verifier rejects stale evidence", async () => {
+  const { frame, framePath, trustedPath } = await writeSandboxReceipt("attestationstale");
+  const { attestationPath, trustedAttestorsPath } = await writeSandboxAttestation("attestationstale", frame, (body) => ({
+    ...body,
+    observed_at: "2000-01-01T00:00:00Z",
+  }));
+
+  await assert.rejects(
+    execFileAsync(process.execPath, ["asp-verify.mjs", "sandbox-attestation", framePath, trustedPath, attestationPath, trustedAttestorsPath]),
+    /sandbox attestation stale/,
+  );
+});
+
+test("sandbox attestation verifier rejects future-dated evidence", async () => {
+  const { frame, framePath, trustedPath } = await writeSandboxReceipt("attestationfuture");
+  const { attestationPath, trustedAttestorsPath } = await writeSandboxAttestation("attestationfuture", frame, (body) => ({
+    ...body,
+    observed_at: "2999-01-01T00:00:00Z",
+  }));
+
+  await assert.rejects(
+    execFileAsync(process.execPath, ["asp-verify.mjs", "sandbox-attestation", framePath, trustedPath, attestationPath, trustedAttestorsPath]),
+    /sandbox attestation observed_at invalid/,
+  );
+});
+
+test("sandbox attestation verifier rejects invalid embedded sandbox proofs first", async () => {
+  const { frame, framePath, trustedPath } = await writeSandboxReceipt("attestationbadproof", (receipt) => receipt, (draftFrame) => {
+    draftFrame.receipt.sandbox_proof.task_id = "different_task";
+  });
+  const { attestationPath, trustedAttestorsPath } = await writeSandboxAttestation("attestationbadproof", frame);
+
+  await assert.rejects(
+    execFileAsync(process.execPath, ["asp-verify.mjs", "sandbox-attestation", framePath, trustedPath, attestationPath, trustedAttestorsPath]),
+    /bundle sandbox task_id mismatch/,
   );
 });
