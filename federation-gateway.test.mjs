@@ -5,6 +5,7 @@ import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import { AUDIT_ZERO_HASH, auditEntry, loadOrCreateAgent, loadOrCreateZone, signObject, writeTrustedZones, zoneBinding } from "./asp-core.mjs";
+import { queryMatch } from "./federation-gateway.mjs";
 
 const execFileAsync = promisify(execFile);
 async function writeAuditLog(records) {
@@ -57,6 +58,36 @@ function exchangeRawFrame(port, frame) {
     });
   });
 }
+
+test("Federation Gateway queryMatch scores only active credentials", async () => {
+  const zone = await loadOrCreateZone("zone://query-match-zone", "state/keys/query-match-zone.pkcs8");
+  const worker = await loadOrCreateAgent("agent://query-match/summarizer", "state/keys/query-match-summarizer.pkcs8", {}, ["asp+local://demo"], ["summarize.text"]);
+  const futureMatch = queryMatch(zone, worker, "summarize.text", "", {
+    evidence: ["local-demo"],
+    completed_receipts: 0,
+    valid_until: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  });
+  const pastMatch = queryMatch(zone, worker, "summarize.text", "", {
+    evidence: ["local-demo"],
+    completed_receipts: 0,
+    valid_until: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+  });
+  const invalidMatch = queryMatch(zone, worker, "summarize.text", "", {
+    evidence: ["local-demo"],
+    completed_receipts: 0,
+    valid_until: "tomorrow",
+  });
+
+  assert.deepEqual(futureMatch.discovery_evidence.credential, { trusted: true, active: true });
+  assert.equal(futureMatch.ranking.score, 80);
+  assert.ok(futureMatch.ranking.reasons.includes("credential_active"));
+  assert.deepEqual(pastMatch.discovery_evidence.credential, { trusted: true, active: false });
+  assert.equal(pastMatch.ranking.score, 50);
+  assert.equal(pastMatch.ranking.reasons.includes("credential_active"), false);
+  assert.deepEqual(invalidMatch.discovery_evidence.credential, { trusted: true, active: false });
+  assert.equal(invalidMatch.ranking.score, 50);
+  assert.equal(invalidMatch.ranking.reasons.includes("credential_active"), false);
+});
 
 test("Federation Gateway completes a cross-Zone task", async () => {
   const port = 8991;

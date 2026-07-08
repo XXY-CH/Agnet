@@ -65,7 +65,7 @@ async function countCompletedReceiptsFromAudit(auditPath, aid) {
 }
 
 
-function queryMatch(zone, worker, capability, intent, credentialClaims = null) {
+export function queryMatch(zone, worker, capability, intent, credentialClaims = null) {
   const exact = worker.descriptor.capabilities.includes(capability);
   const semantic = semanticScore(intent, worker.descriptor);
   if (!exact && semantic === 0) return null;
@@ -73,12 +73,13 @@ function queryMatch(zone, worker, capability, intent, credentialClaims = null) {
     capabilityCredential(zone, worker.descriptor, capability, credentialClaims),
   ] : [];
   const completedReceipts = Number.isSafeInteger(credentialClaims?.completed_receipts) ? credentialClaims.completed_receipts : 0;
+  const active = credentials.length > 0 && verifyCapabilityCredential(credentials[0], zone.descriptor, worker.descriptor);
   const reasons = [];
   if (exact) reasons.push("capability_exact");
   if (semantic > 0) reasons.push("semantic_match");
-  if (credentials.length > 0) reasons.push("credential_active");
+  if (active) reasons.push("credential_active");
   if (completedReceipts > 0) reasons.push("reputation_receipts");
-  const score = (exact ? 50 : 0) + (credentials.length > 0 ? 30 : 0) + Math.min(completedReceipts, 10) + semantic;
+  const score = (exact ? 50 : 0) + (active ? 30 : 0) + Math.min(completedReceipts, 10) + semantic;
   return {
     worker: worker.descriptor,
     zone_binding: zoneBinding(zone, worker.descriptor),
@@ -86,7 +87,7 @@ function queryMatch(zone, worker, capability, intent, credentialClaims = null) {
     discovery_evidence: {
       identity: { zone: zone.zid, aid: worker.aid, alias: worker.alias },
       capability: { exact, semantic: semantic > 0 },
-      credential: { trusted: credentials.length > 0, active: credentials.length > 0 },
+      credential: { trusted: credentials.length > 0, active },
       reputation: { completed_receipts: completedReceipts },
     },
     ranking: { score, reasons },
@@ -493,7 +494,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error.message);
-  process.exitCode = 1;
-});
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((error) => {
+    console.error(error.message);
+    process.exitCode = 1;
+  });
+}
