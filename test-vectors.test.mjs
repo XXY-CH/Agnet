@@ -608,6 +608,33 @@ test("FED_SWARM_CLOSE verification rejects tampered close signatures in Node", a
   );
 });
 
+test("FED_SWARM_CLOSE verification rejects migration log entries for missing step receipts in Node", async () => {
+  const zone = createZone("zone://swarm-close-migration-step-test");
+  const closeBody = {
+    swarm_id: "swarm://node-test/migration-step",
+    step_receipts: [{ step_id: "summary", task_id: "task_1", receipt_digest: "0".repeat(64) }],
+    migration_log: [{
+      step_id: "missing-step",
+      original_worker_aid: "aid:ed25519:original",
+      reason: "policy denied network access",
+      migrated_to_worker_aid: "aid:ed25519:migrated",
+      migration_at: "2026-07-08T00:00:00.000Z",
+    }],
+  };
+  const frame = {
+    type: "FED_SWARM_CLOSE",
+    swarm_id: closeBody.swarm_id,
+    zone: zone.descriptor,
+    close: { ...closeBody, close_signature: signObject(zone.privateKey, closeBody) },
+  };
+  const trustedZones = new Map([[zone.descriptor.zid, zone.descriptor]]);
+
+  assert.throws(
+    () => verifySwarmClose(frame, trustedZones),
+    /swarm close migration step missing/,
+  );
+});
+
 test("FED_SWARM_CLOSE verification rejects missing frame objects in Node", async () => {
   assert.throws(
     () => verifySwarmClose(null, new Map()),

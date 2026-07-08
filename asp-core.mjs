@@ -510,6 +510,22 @@ function verifySwarmMicroContracts(closeBody, stepById) {
   }
 }
 
+function verifySwarmMigrationLog(closeBody, stepById) {
+  if (closeBody.migration_log === undefined) return;
+  if (!Array.isArray(closeBody.migration_log)) throw new Error("swarm close migration_log invalid");
+  for (const entry of closeBody.migration_log) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw new Error("swarm close migration entry invalid");
+    if (typeof entry.step_id !== "string" || entry.step_id === "" || entry.step_id.includes("\0")) throw new Error("swarm close migration step invalid");
+    if (!stepById.has(entry.step_id)) throw new Error("swarm close migration step missing");
+    if (typeof entry.original_worker_aid !== "string" || entry.original_worker_aid === "") throw new Error("swarm close migration original worker missing");
+    if (typeof entry.migrated_to_worker_aid !== "string" || entry.migrated_to_worker_aid === "") throw new Error("swarm close migration target worker missing");
+    if (typeof entry.reason !== "string" || entry.reason === "") throw new Error("swarm close migration reason missing");
+    if (typeof entry.migration_at !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(entry.migration_at)) {
+      throw new Error("swarm close migration_at invalid");
+    }
+  }
+}
+
 export function verifySwarmClose(frame, trustedZones) {
   if (!frame || typeof frame !== "object" || Array.isArray(frame) || frame.type !== "FED_SWARM_CLOSE") throw new Error("expected FED_SWARM_CLOSE frame");
   if (!frame.zone || typeof frame.zone !== "object" || Array.isArray(frame.zone)) throw new Error("swarm close zone missing");
@@ -543,6 +559,7 @@ export function verifySwarmClose(frame, trustedZones) {
       throw new Error("swarm close receipt digest invalid");
     }
   }
+  verifySwarmMigrationLog(closeBody, stepById);
   verifySwarmMicroContracts(closeBody, stepById);
   if (!verifyObject(publicKeyFromDescriptor(zone), closeBody, close_signature)) {
     throw new Error("swarm close signature verification failed");

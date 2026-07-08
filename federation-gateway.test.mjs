@@ -395,6 +395,78 @@ test("Federation Gateway closes Swarm steps with signed micro-contracts", async 
   }
 });
 
+test("Federation Gateway migrates a failed Swarm step to the next same-capability worker", async () => {
+  const port = 9014;
+  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/fed-zone-a-requester.pkcs8", {}, [`fed+tcp://127.0.0.1:${port}`], ["request.task"]);
+  await writeTrustedZones("state/zone-a-migration-trust.json", [zoneB, zoneA]);
+  await writeTrustedZones("state/zone-b-migration-trust.json", [zoneA]);
+
+  const gateway = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-migration-trust.json"], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  try {
+    await waitForGateway(gateway);
+    const migratingTask = {
+      task_id: "node_swarm_migration_network_retry",
+      from: requester.aid,
+      to: "agent://zone-b/summarizer",
+      intent: "Retry a failed Swarm step on the next same-capability worker.",
+      scope: { network: true },
+      budget: { time_seconds: 30 },
+    };
+
+    const frames = await exchangeFramesUntil(port, {
+      type: "FED_SWARM_OPEN",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      requester_zone_binding: zoneBinding(zoneA, requester.descriptor),
+      swarm: {
+        swarm_id: "swarm://local/node_swarm_failure_migration",
+        steps: [
+          { step_id: "summary", task: { ...migratingTask, signature: signObject(requester.privateKey, migratingTask) } },
+        ],
+      },
+    }, zoneA, "FED_SWARM_CLOSE");
+    assert.notEqual(frames.at(-1).type, "FED_TASK_ERROR", frames.at(-1).error);
+
+    const closeFrame = frames.at(-1);
+    assert.equal(closeFrame.type, "FED_SWARM_CLOSE");
+    const verifiedClose = verifySwarmClose(closeFrame, new Map([[zoneB.zid, zoneB.descriptor]]));
+    const { close } = verifiedClose;
+    assert.equal(close.swarm_id, "swarm://local/node_swarm_failure_migration");
+    assert.equal(close.migration_log.length, 1);
+
+    const [migration] = close.migration_log;
+    assert.equal(migration.step_id, "summary");
+    assert.match(migration.original_worker_aid, /^aid:ed25519:/);
+    assert.match(migration.migrated_to_worker_aid, /^aid:ed25519:/);
+    assert.notEqual(migration.original_worker_aid, migration.migrated_to_worker_aid);
+    assert.equal(migration.reason, "policy denied network access");
+    assert.match(migration.migration_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    assert.equal(new Date(migration.migration_at).toISOString(), migration.migration_at);
+
+    const finalReceiptFrame = frames.filter((frame) => frame.type === "FED_RECEIPT").at(-1);
+    assert.equal(finalReceiptFrame.worker.aid, migration.migrated_to_worker_aid);
+    assert.equal(finalReceiptFrame.receipt.to, migration.migrated_to_worker_aid);
+    const finalStepReceipt = close.step_receipts.find((step) => step.step_id === migration.step_id);
+    assert.equal(finalStepReceipt.worker.aid, migration.migrated_to_worker_aid);
+    assert.ok(finalStepReceipt.worker.capabilities.includes("summarize.text"));
+
+    const tamperedClose = structuredClone(closeFrame);
+    tamperedClose.close.migration_log[0].reason = "different failure";
+    assert.throws(
+      () => verifySwarmClose(tamperedClose, new Map([[zoneB.zid, zoneB.descriptor]])),
+      /swarm close signature verification failed/,
+    );
+  } finally {
+    gateway.kill("SIGINT");
+  }
+});
+
 test("Federation Gateway rejects an untrusted origin Zone", async () => {
   const port = 8992;
   const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
