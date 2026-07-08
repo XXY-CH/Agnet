@@ -21,6 +21,8 @@ import {
   verifyZoneDescriptor,
   writeArtifact,
   zoneBinding,
+  verifyZoneRevocation,
+  zoneRevocation,
 } from "./asp-core.mjs";
 
 function send(socket, frame) {
@@ -73,7 +75,11 @@ export function queryMatch(zone, worker, capability, intent, credentialClaims = 
     capabilityCredential(zone, worker.descriptor, capability, credentialClaims),
   ] : [];
   const completedReceipts = Number.isSafeInteger(credentialClaims?.completed_receipts) ? credentialClaims.completed_receipts : 0;
-  const active = credentials.length > 0 && verifyCapabilityCredential(credentials[0], zone.descriptor, worker.descriptor);
+  let active = credentials.length > 0 && verifyCapabilityCredential(credentials[0], zone.descriptor, worker.descriptor);
+  const isRevoked = (zone.revocations ?? []).some(
+    (revocation) => verifyZoneRevocation(revocation, zone.descriptor) && (revocation.subject === worker.descriptor.aid || revocation.subject === worker.descriptor.alias),
+  );
+  if (isRevoked) active = false;
   const reasons = [];
   if (exact) reasons.push("capability_exact");
   if (semantic > 0) reasons.push("semantic_match");

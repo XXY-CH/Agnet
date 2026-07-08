@@ -4,7 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { AUDIT_ZERO_HASH, auditEntry, loadOrCreateAgent, loadOrCreateZone, signObject, writeTrustedZones, zoneBinding } from "./asp-core.mjs";
+import { AUDIT_ZERO_HASH, auditEntry, loadOrCreateAgent, loadOrCreateZone, signObject, writeTrustedZones, zoneBinding, zoneRevocation } from "./asp-core.mjs";
 import { queryMatch } from "./federation-gateway.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -77,6 +77,11 @@ test("Federation Gateway queryMatch scores only active credentials", async () =>
     completed_receipts: 0,
     valid_until: "tomorrow",
   });
+  const revokedMatch = queryMatch({ ...zone, revocations: [zoneRevocation(zone, worker.aid, "test")] }, worker, "summarize.text", "", {
+    evidence: ["local-demo"],
+    completed_receipts: 0,
+    valid_until: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  });
 
   assert.deepEqual(futureMatch.discovery_evidence.credential, { trusted: true, active: true });
   assert.equal(futureMatch.ranking.score, 80);
@@ -87,6 +92,9 @@ test("Federation Gateway queryMatch scores only active credentials", async () =>
   assert.deepEqual(invalidMatch.discovery_evidence.credential, { trusted: true, active: false });
   assert.equal(invalidMatch.ranking.score, 50);
   assert.equal(invalidMatch.ranking.reasons.includes("credential_active"), false);
+  assert.deepEqual(revokedMatch.discovery_evidence.credential, { trusted: true, active: false });
+  assert.equal(revokedMatch.ranking.score, 50);
+  assert.equal(revokedMatch.ranking.reasons.includes("credential_active"), false);
 });
 
 test("Federation Gateway completes a cross-Zone task", async () => {
