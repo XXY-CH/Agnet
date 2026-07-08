@@ -56,7 +56,12 @@ Go-side scheduler-owned ready-DAG execution. It accepts out-of-order signed step
 
 ### `FED_SWARM_PLAN`
 
-In-flight v14.5 boundary work uses `FED_SWARM_PLAN` to make a `swarmPlan` digestible before execution. The planned `plan_digest` evidence should bind the proposed Swarm steps before a scheduler or gateway executes them; see `docs/v14.5-boundary.md` once that boundary lands.
+`FED_SWARM_PLAN` makes a `swarmPlan` digestible before execution. The `plan_digest` evidence binds proposed Swarm steps before a scheduler or gateway executes them; see `docs/v14.5-boundary.md`.
+
+
+### `FED_KNOWLEDGE_QUERY` / `FED_KNOWLEDGE_RESPONSE`
+
+v14.6 Knowledge Gateway frames bind a requester Zone's signed `intent`, `sources`, `policy_digest`, generated `query_id`, and `query_digest` to a gateway Zone's signed results. Each response result carries `source`, `title`, `summary`, `freshness_at`, and `license`, and `verifyKnowledgeResponse` requires the response `query_digest` to match the verified query frame. This is not a web crawler, semantic cache, vector store, or RAG pipeline.
 
 ### `FED_SWARM_CLOSE`
 

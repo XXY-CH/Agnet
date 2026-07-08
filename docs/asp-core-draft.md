@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v14.5-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v14.6-protocol`. It is not a full Agent Space product spec.
 Previous public draft baseline: local-first prototype at `v13.15-protocol`; v12 public baseline: local-first prototype at `v12.45-protocol`.
 
 ## Scope
@@ -19,6 +19,7 @@ ASP Core covers:
 - Receipt verification.
 - Local artifact byte verification.
 - Audit hash chain evidence.
+- Knowledge Gateway query/response frames.
 
 The implementation-backed rotation and alias rebinding proof verifiers reject missing proof and descriptor objects before field reads.
 
@@ -51,10 +52,12 @@ ASP Core does not cover:
 - Public discovery.
 - DID document resolution.
 - Remote artifact fetch.
+- Web crawling.
 - Receipt stores.
 - Batch verification.
 - Product UI.
 - A2A compatibility is out of scope for this draft.
+- Semantic cache, vector store, or RAG pipeline.
 
 ## Identity
 
@@ -319,6 +322,14 @@ The audit log is JSONL plus an audit hash chain.
 Each append links to the previous audit head. Verifiers check that entries preserve the chain and that receipt or artifact evidence can be tied back to the audited task.
 
 The audit hash chain is accountability evidence, not a global consensus layer.
+
+## Knowledge Gateway
+
+`FED_KNOWLEDGE_QUERY` records a local-first Knowledge Gateway request before knowledge results enter the Agent Task Fabric. `knowledgeQuery(requesterZone, intent, sources, policyDigest)` emits a signed query with the requester Zone descriptor, `intent`, source identifiers, 64-hex `policy_digest`, generated `query_id`, `query_digest`, and `query_signature`. The `query_digest` is the SHA-256 digest of canonical `{ intent, sources, policy_digest, query_id }`. `verifyKnowledgeQuery` validates the Zone descriptor, local Zone trust, source list, `policy_digest`, recomputed `query_digest`, and Zone signature.
+
+`FED_KNOWLEDGE_RESPONSE` records a local-first gateway answer. `knowledgeResponse(gatewayZone, queryId, results, queryDigest)` emits a signed response where each result carries `source`, `title`, `summary`, `freshness_at`, and `license`. The `result_digest` is the SHA-256 digest of canonical `{ query_id, query_digest, results }`, and `response_signature` is the gateway Zone Ed25519 signature over the response body. `verifyKnowledgeResponse` validates gateway Zone trust, the response signature, the result digest, and the response `query_digest` binding to the verified `FED_KNOWLEDGE_QUERY` frame.
+
+The Knowledge Gateway surface is signed local evidence for parsing / dedup / source citation / freshness tag / license note handoff. It is not a web crawler, not HTTP fetching, not a semantic cache, not a vector store, and not a RAG pipeline.
 
 ## Swarm Plan
 

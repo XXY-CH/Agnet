@@ -1,7 +1,7 @@
 # Agent Space Implementation Status
 
-状态：v14 active at v14.5
-当前代码基线：`v14.5-intent-decomposition`
+状态：v14 active at v14.6
+当前代码基线：`v14.6-knowledge-gateway-proto`
 历史状态：v12 closed at v12.45
 上一代码基线：`v12.45-closeout-alignment`
 历史代码基线：`v13.1-reachability-scope`
@@ -16,6 +16,7 @@ v14.2 Multi-signal FED_QUERY routing is complete in Node and Go: `discovery_evid
 v14.3 Cross-zone trust chains are complete in the local-first proof surface: `zoneTrustDelegation` creates a Zone-signed delegation record, `verifyZoneTrustDelegation` checks it against the trusted local authority descriptor, and FED_QUERY discovery evidence has a `zone_trust_chain` provenance slot where direct membership is represented as `zone_trust_chain: []`.
 v14.4 Task failure migration is complete in the local-first Swarm surface: Node `FED_SWARM_OPEN` and Go `FED_SWARM_OPEN` / `FED_SWARM_SCHEDULE` retry a failed step once on a different same-capability worker, and `FED_SWARM_CLOSE.close.migration_log` records `original_worker_aid`, `reason`, `migrated_to_worker_aid`, and `migration_at` inside the signed close body.
 v14.5 Intent Decomposition is complete in the local-first Swarm surface: `swarmPlan` emits a signed `FED_SWARM_PLAN` over the original `intent`, ordered step specs, `policy_digest`, and `plan_digest`; `verifySwarmPlan` validates Zone trust, non-empty step shape, NUL-free `step_id`, digest, and signature; `FED_SWARM_CLOSE.close.plan_digest` can link a close proof back to the verified plan digest.
+v14.6 Knowledge Gateway Proto is complete in the local-first Node proof surface: `knowledgeQuery` emits signed `FED_KNOWLEDGE_QUERY` frames over `intent`, `sources`, `policy_digest`, `query_id`, and `query_digest`; `knowledgeResponse` emits signed `FED_KNOWLEDGE_RESPONSE` frames with source-cited, freshness-tagged, license-noted results; `verifyKnowledgeResponse` binds responses back to the verified query digest. This is not a web crawler, semantic cache, vector store, or RAG pipeline.
 
 
 v13.14 multi-signal agent score reputation is complete: Node and Go `FED_QUERY` enrich `discovery_evidence.reputation` with `last_completed_at`, `revocation_count`, and labelled `agent_score` components: `receipt_score`, `credential_score`, `freshness_score`, and `revocation_penalty`. `ranking.score` now uses `agent_score.total` plus exact capability and semantic intent scores.
@@ -33,7 +34,7 @@ v13.8 pinned external observer identity is complete: `scripts/external-reachabil
 
 v13.7 sandbox attestation verification is complete: `asp-verify.mjs sandbox-attestation <frame.json> <trusted-zones.json> <attestation.json> <trusted-attestors.json>` verifies signed `asp-sandbox-attestation/v1` evidence from a trusted `sandbox.attest` attestor and binds it to the receipt digest, task id, sandbox digest, sandbox claim, policy digest, sandbox class, runtime identity, and freshness window while still reporting `hardware_attestation: false`. v13.6 sandbox proof verification is complete: `asp-verify.mjs sandbox-proof <frame.json> <trusted-zones.json> [required-sandbox-class]` verifies a signed `local.sandbox.v1` proof inside a trusted `FED_RECEIPT`, checks task/authority/worker/policy/claim/sandbox binding, requires command/binary/transcript digest evidence, reports verifier-owned `sandbox_class: "local-process"`, and rejects `remote-attestation` as unavailable without signed attestation evidence. v13.5 Go `FED_SWARM_SCHEDULE` scheduler-owned ready-DAG execution is complete: out-of-order signed DAG steps execute in dependency-ready order and the signed close proof records `scheduler.mode: "ready-dag"` plus `scheduler.step_order`. v13.4 Node federation gateway evidence-first semantic discovery/reputation ranking is complete: `FED_QUERY` may carry intent, returns inspectable discovery/ranking evidence, and keeps exact capability plus trusted credential plus receipt-count evidence ahead of semantic-only candidates. v13.2 release trust/SBOM is complete: the local release trust producer verifies the package proof, signs `asp-release-trust/v1` evidence over the produced tarball, and the verifier rejects stale, mismatched, unsigned, wrong-signer, untrusted-signer, unsafe-path, and invalid timestamp evidence. v13.1 reachability evidence gates are active: verifier-owned scope classes and observer evidence binding landed with tests; real hosted external-host evidence is still pending as the remaining v13.1 exit criterion.
 
-The active protocol tag is `v14.5-protocol`: v14.5 completes the local-first intent decomposition slice with signed `FED_SWARM_PLAN` and close-carried `plan_digest` evidence, while hosted external-host observer evidence, hardware remote attestation, conflict resolution, P2P DHT, token economy, and LLM orchestration remain out of current complete scope.
+The active protocol tag is `v14.6-protocol`: v14.6 completes the local-first Knowledge Gateway proto with signed `FED_KNOWLEDGE_QUERY` and `FED_KNOWLEDGE_RESPONSE` evidence, while real HTTP crawling, semantic cache, vector store, RAG pipeline, hosted external-host observer evidence, hardware remote attestation, conflict resolution, P2P DHT, token economy, and LLM orchestration remain out of current complete scope.
 
 还不是可产品化的 Agent Net。
 
