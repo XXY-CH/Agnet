@@ -97,6 +97,68 @@ test("Federation Gateway queryMatch scores only active credentials", async () =>
   assert.equal(revokedMatch.ranking.reasons.includes("credential_active"), false);
 });
 
+test("Federation Gateway queryMatch exposes multi-signal agent reputation score", async () => {
+  const zone = await loadOrCreateZone("zone://query-match-agent-score-zone", "state/keys/query-match-agent-score-zone.pkcs8");
+  const worker = await loadOrCreateAgent("agent://query-match/agent-score-summarizer", "state/keys/query-match-agent-score-summarizer.pkcs8", {}, ["asp+local://demo"], ["summarize.text"]);
+  const lastCompletedAt = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+
+  const match = queryMatch(zone, worker, "summarize.text", "", {
+    evidence: ["local-demo"],
+    completed_receipts: 5,
+    last_completed_at: lastCompletedAt,
+    valid_until: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  });
+
+  const reputation = match.discovery_evidence.reputation;
+  assert.equal(reputation.completed_receipts, 5);
+  assert.equal(reputation.revocation_count, 0);
+  assert.ok(reputation.agent_score, "expected reputation.agent_score to be exposed");
+  assert.equal(reputation.agent_score.receipt_score, 10);
+  assert.equal(reputation.agent_score.credential_score, 30);
+  assert.equal(reputation.agent_score.freshness_score, 10);
+  assert.equal(reputation.agent_score.revocation_penalty, 0);
+  assert.equal(reputation.agent_score.total, 50);
+  assert.ok(reputation.agent_score.total > 0);
+  assert.equal(reputation.last_completed_at, lastCompletedAt);
+  assert.equal(
+    reputation.agent_score.total,
+    reputation.agent_score.receipt_score + reputation.agent_score.credential_score + reputation.agent_score.freshness_score - reputation.agent_score.revocation_penalty,
+  );
+  assert.equal(match.ranking.score, reputation.agent_score.total + 50);
+});
+
+test("Federation Gateway queryMatch applies matching zone revocations as an agent score penalty", async () => {
+  const zone = await loadOrCreateZone("zone://query-match-agent-score-revocation-zone", "state/keys/query-match-agent-score-revocation-zone.pkcs8");
+  const worker = await loadOrCreateAgent("agent://query-match/agent-score-revoked-summarizer", "state/keys/query-match-agent-score-revoked-summarizer.pkcs8", {}, ["asp+local://demo"], ["summarize.text"]);
+  const lastCompletedAt = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const credentialClaims = {
+    evidence: ["local-demo"],
+    completed_receipts: 5,
+    last_completed_at: lastCompletedAt,
+    valid_until: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  };
+
+  const cleanMatch = queryMatch(zone, worker, "summarize.text", "", credentialClaims);
+  const revokedMatch = queryMatch({ ...zone, revocations: [zoneRevocation(zone, worker.aid, "agent score regression")] }, worker, "summarize.text", "", credentialClaims);
+
+  const cleanScore = cleanMatch.discovery_evidence.reputation.agent_score;
+  const revokedReputation = revokedMatch.discovery_evidence.reputation;
+  const revokedScore = revokedReputation.agent_score;
+
+  assert.equal(revokedReputation.completed_receipts, 5);
+  assert.equal(revokedReputation.revocation_count, 1);
+  assert.ok(revokedScore, "expected revoked reputation.agent_score to be exposed");
+  assert.equal(revokedScore.receipt_score, 10);
+  assert.equal(revokedScore.credential_score, 0);
+  assert.equal(revokedScore.freshness_score, 10);
+  assert.equal(revokedScore.revocation_penalty, 10);
+  assert.equal(revokedReputation.last_completed_at, lastCompletedAt);
+  assert.equal(revokedScore.total, revokedScore.receipt_score + revokedScore.credential_score + revokedScore.freshness_score - revokedScore.revocation_penalty);
+  assert.ok(revokedScore.revocation_penalty > 0);
+  assert.ok(revokedScore.total < cleanScore.total);
+  assert.equal(revokedMatch.ranking.score, revokedScore.total + 50);
+});
+
 test("Federation Gateway completes a cross-Zone task", async () => {
   const port = 8991;
   const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
@@ -248,13 +310,14 @@ test("Federation Gateway reports audit-backed completed receipt reputation", asy
   const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
   const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
   const worker = await loadOrCreateAgent("agent://zone-b/summarizer", "state/keys/fed-zone-b-summarizer.pkcs8");
+  const auditLastCompletedAt = new Date(Date.now() - 30 * 60 * 1000).toISOString();
   await writeTrustedZones("state/zone-a-audit-backed-query-trust.json", [zoneB]);
   await writeTrustedZones("state/zone-b-audit-backed-query-trust.json", [zoneA]);
   await writeAuditLog([
-    { kind: "fed_receipt", to: worker.aid, status: "completed", task_id: "audit_backed_1" },
-    { kind: "fed_receipt", to: worker.aid, status: "completed", task_id: "audit_backed_2" },
-    { kind: "fed_receipt", to: worker.aid, status: "completed", task_id: "audit_backed_3" },
-    { kind: "fed_receipt", to: worker.aid, status: "completed", task_id: "audit_backed_4" },
+    { kind: "fed_receipt", to: worker.aid, status: "completed", task_id: "audit_backed_1", completed_at: auditLastCompletedAt },
+    { kind: "fed_receipt", to: worker.aid, status: "completed", task_id: "audit_backed_2", completed_at: auditLastCompletedAt },
+    { kind: "fed_receipt", to: worker.aid, status: "completed", task_id: "audit_backed_3", completed_at: auditLastCompletedAt },
+    { kind: "fed_receipt", to: worker.aid, status: "completed", task_id: "audit_backed_4", completed_at: auditLastCompletedAt },
     { kind: "fed_receipt", to: worker.aid, status: "pending", task_id: "audit_backed_pending" },
     { kind: "fed_receipt", to: "aid:other", status: "completed", task_id: "audit_backed_other" },
     "malformed audit line",
@@ -279,6 +342,19 @@ test("Federation Gateway reports audit-backed completed receipt reputation", asy
 
     assert.equal(result.matches[0].alias, "agent://zone-b/summarizer");
     assert.equal(result.matches[0].discovery_evidence.reputation.completed_receipts, 4);
+    assert.equal(result.matches[0].discovery_evidence.reputation.last_completed_at, auditLastCompletedAt);
+    const reputation = result.matches[0].discovery_evidence.reputation;
+    assert.equal(reputation.revocation_count, 0);
+    assert.ok(reputation.agent_score, "expected audit-backed reputation.agent_score to be exposed");
+    assert.equal(reputation.agent_score.receipt_score, 8);
+    assert.equal(reputation.agent_score.credential_score, 30);
+    assert.equal(reputation.agent_score.freshness_score, 10);
+    assert.equal(reputation.agent_score.revocation_penalty, 0);
+    assert.equal(
+      reputation.agent_score.total,
+      reputation.agent_score.receipt_score + reputation.agent_score.credential_score + reputation.agent_score.freshness_score - reputation.agent_score.revocation_penalty,
+    );
+    assert.equal(result.matches[0].ranking.score, reputation.agent_score.total + 50);
   } finally {
     gateway.kill("SIGINT");
   }

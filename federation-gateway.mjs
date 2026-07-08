@@ -48,10 +48,12 @@ async function countCompletedReceiptsFromAudit(auditPath, aid) {
   try {
     text = await readFile(auditPath, "utf8");
   } catch (error) {
-    if (error.code === "ENOENT") return 0;
-    return 0;
+    if (error.code === "ENOENT") return { count: 0, lastCompletedAt: null };
+    return { count: 0, lastCompletedAt: null };
   }
   let count = 0;
+  let lastCompletedAt = null;
+  let lastCompletedTime = -Infinity;
   for (const line of text.split("\n")) {
     if (!line.trim()) continue;
     let entry;
@@ -61,9 +63,35 @@ async function countCompletedReceiptsFromAudit(auditPath, aid) {
       continue;
     }
     const record = entry?.record;
-    if (record?.kind === "fed_receipt" && record.to === aid && record.status === "completed") count++;
+    if (record?.kind !== "fed_receipt" || record.to !== aid || record.status !== "completed") continue;
+    count++;
+    const timestamp = record.completed_at ?? record.completedAt ?? record.last_completed_at ?? record.timestamp ?? record.receipt?.completed_at ?? record.receipt?.completedAt ?? record.receipt?.timestamp ?? null;
+    const time = Date.parse(timestamp);
+    if (Number.isFinite(time) && time > lastCompletedTime) {
+      lastCompletedTime = time;
+      lastCompletedAt = timestamp;
+    }
   }
-  return count;
+  return { count, lastCompletedAt };
+}
+
+function countRevocationsForWorker(revocations, aid, alias) {
+  return (revocations ?? []).filter((revocation) => revocation.subject === aid || revocation.subject === alias).length;
+}
+
+function computeAgentScore(completedReceipts, lastCompletedAt, revocationCount, active) {
+  const receipt_score = Math.min(completedReceipts, 20) * 2;
+  const credential_score = active ? 30 : 0;
+  let freshness_score = 0;
+  const completedTime = Date.parse(lastCompletedAt);
+  if (Number.isFinite(completedTime)) {
+    const age = Date.now() - completedTime;
+    if (age >= 0 && age <= 60 * 60 * 1000) freshness_score = 10;
+    else if (age >= 0 && age <= 24 * 60 * 60 * 1000) freshness_score = 5;
+  }
+  const revocation_penalty = Math.min(revocationCount * 10, receipt_score + credential_score + freshness_score);
+  const total = Math.max(0, Math.min(100, receipt_score + credential_score + freshness_score - revocation_penalty));
+  return { total, receipt_score, credential_score, freshness_score, revocation_penalty };
 }
 
 
@@ -75,17 +103,18 @@ export function queryMatch(zone, worker, capability, intent, credentialClaims = 
     capabilityCredential(zone, worker.descriptor, capability, credentialClaims),
   ] : [];
   const completedReceipts = Number.isSafeInteger(credentialClaims?.completed_receipts) ? credentialClaims.completed_receipts : 0;
+  const lastCompletedAt = typeof credentialClaims?.last_completed_at === "string" ? credentialClaims.last_completed_at : null;
   let active = credentials.length > 0 && verifyCapabilityCredential(credentials[0], zone.descriptor, worker.descriptor);
-  const isRevoked = (zone.revocations ?? []).some(
-    (revocation) => verifyZoneRevocation(revocation, zone.descriptor) && (revocation.subject === worker.descriptor.aid || revocation.subject === worker.descriptor.alias),
-  );
-  if (isRevoked) active = false;
+  const validRevocations = (zone.revocations ?? []).filter((revocation) => verifyZoneRevocation(revocation, zone.descriptor));
+  const revocationCount = countRevocationsForWorker(validRevocations, worker.descriptor.aid, worker.descriptor.alias);
+  if (revocationCount > 0) active = false;
+  const agentScore = computeAgentScore(completedReceipts, lastCompletedAt, revocationCount, active);
   const reasons = [];
   if (exact) reasons.push("capability_exact");
   if (semantic > 0) reasons.push("semantic_match");
   if (active) reasons.push("credential_active");
   if (completedReceipts > 0) reasons.push("reputation_receipts");
-  const score = (exact ? 50 : 0) + (active ? 30 : 0) + Math.min(completedReceipts, 10) + semantic;
+  const score = agentScore.total + (exact ? 50 : 0) + semantic;
   return {
     worker: worker.descriptor,
     zone_binding: zoneBinding(zone, worker.descriptor),
@@ -94,7 +123,7 @@ export function queryMatch(zone, worker, capability, intent, credentialClaims = 
       identity: { zone: zone.zid, aid: worker.aid, alias: worker.alias },
       capability: { exact, semantic: semantic > 0 },
       credential: { trusted: credentials.length > 0, active },
-      reputation: { completed_receipts: completedReceipts },
+      reputation: { completed_receipts: completedReceipts, last_completed_at: lastCompletedAt, revocation_count: revocationCount, agent_score: agentScore },
     },
     ranking: { score, reasons },
   };
@@ -235,7 +264,8 @@ async function serve(port, trustedZonesFile) {
             queryMatch(zone, worker, frame.capability, frame.intent, {
               level: "L1",
               evidence: ["zone-b-local-worker"],
-              completed_receipts: receiptCounts.get(worker.aid) ?? 0,
+              completed_receipts: receiptCounts.get(worker.aid)?.count ?? 0,
+              last_completed_at: receiptCounts.get(worker.aid)?.lastCompletedAt ?? null,
             }),
             queryMatch(zone, semanticWorker, frame.capability, frame.intent),
           ].filter(Boolean).sort((a, b) => b.ranking.score - a.ranking.score || a.worker.alias.localeCompare(b.worker.alias));
