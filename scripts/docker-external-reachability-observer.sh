@@ -11,4 +11,4 @@ docker run --rm \
   -v "$PWD:/app" \
   -w /app \
   "${AGNET_NODE_BASE_IMAGE:-node:22-bookworm-slim}" \
-  node scripts/external-reachability-observer.mjs "$@"
+  node scripts/external-reachability-observer.mjs "$@" container

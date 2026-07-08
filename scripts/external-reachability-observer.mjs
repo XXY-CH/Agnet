@@ -5,10 +5,10 @@ import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 import { canonical, createZone, signObject } from "../asp-core.mjs";
 
-const [bundlePath, observedBundlePath, trustedZonesPath] = process.argv.slice(2);
+const [bundlePath, observedBundlePath, trustedZonesPath, vantage] = process.argv.slice(2);
 
 function usage() {
-  throw new Error("usage: node scripts/external-reachability-observer.mjs <bundle.json> <observed-bundle.json> <observer-trusted-zones.json>");
+  throw new Error("usage: node scripts/external-reachability-observer.mjs <bundle.json> <observed-bundle.json> <observer-trusted-zones.json> <vantage>");
 }
 
 function receiptDigest(receipt) {
@@ -39,7 +39,8 @@ function connect(host, port) {
 }
 
 try {
-  if (!bundlePath || !observedBundlePath || !trustedZonesPath || process.argv.length !== 5) usage();
+  if (!bundlePath || !observedBundlePath || !trustedZonesPath || !vantage || process.argv.length !== 6) usage();
+  if (vantage !== "container" && vantage !== "external-host") usage();
   const baseDir = dirname(bundlePath);
   const bundle = JSON.parse(await readFile(bundlePath, "utf8"));
   const receiptFrame = JSON.parse(await readFile(bundlePathFor(baseDir, bundle.receipt_frame), "utf8"));
@@ -52,8 +53,12 @@ try {
   const evidence = {
     proof: "external-reachability",
     observer_zid: observer.zid,
+    vantage,
     transport_proof: transportProof,
     receipt_digest: bundle.receipt_digest,
+    observed_host: transportProof.listen_host,
+    observed_port: transportProof.port,
+    observed_at: new Date().toISOString(),
     reached: true,
   };
   await writeFile(observedBundlePath, `${JSON.stringify({ ...bundle, external_reachability: { ...evidence, signature: signObject(observer.privateKey, evidence) } }, null, 2)}\n`);

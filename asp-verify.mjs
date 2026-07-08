@@ -1,13 +1,36 @@
 #!/usr/bin/env node
 import { readFile, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { isIP } from "node:net";
+import { BlockList, isIP } from "node:net";
 import { basename, dirname, join } from "node:path";
 import { canonical, loadTrustedZones, publicKeyFromDescriptor, resolveAgent, verifyFederatedReceipt, verifyLocalArtifact, verifyObject, verifySwarmClose } from "./asp-core.mjs";
 
 const args = process.argv.slice(2);
 const [command, file, trustedFile, taskFile] = args;
 const PACKAGE_PROOF_CAPABILITY = "package.proof.sign";
+const FUTURE_SKEW_MS = 5 * 60 * 1000;
+const MAX_AGE_MS = 60 * 60 * 1000;
+const NON_GLOBAL_IP_BLOCKS = new BlockList();
+NON_GLOBAL_IP_BLOCKS.addSubnet("0.0.0.0", 8, "ipv4");
+NON_GLOBAL_IP_BLOCKS.addSubnet("10.0.0.0", 8, "ipv4");
+NON_GLOBAL_IP_BLOCKS.addSubnet("100.64.0.0", 10, "ipv4");
+NON_GLOBAL_IP_BLOCKS.addSubnet("127.0.0.0", 8, "ipv4");
+NON_GLOBAL_IP_BLOCKS.addSubnet("169.254.0.0", 16, "ipv4");
+NON_GLOBAL_IP_BLOCKS.addSubnet("172.16.0.0", 12, "ipv4");
+NON_GLOBAL_IP_BLOCKS.addSubnet("192.0.0.0", 24, "ipv4");
+NON_GLOBAL_IP_BLOCKS.addSubnet("192.0.2.0", 24, "ipv4");
+NON_GLOBAL_IP_BLOCKS.addSubnet("192.168.0.0", 16, "ipv4");
+NON_GLOBAL_IP_BLOCKS.addSubnet("198.18.0.0", 15, "ipv4");
+NON_GLOBAL_IP_BLOCKS.addSubnet("198.51.100.0", 24, "ipv4");
+NON_GLOBAL_IP_BLOCKS.addSubnet("203.0.113.0", 24, "ipv4");
+NON_GLOBAL_IP_BLOCKS.addSubnet("224.0.0.0", 4, "ipv4");
+NON_GLOBAL_IP_BLOCKS.addSubnet("240.0.0.0", 4, "ipv4");
+NON_GLOBAL_IP_BLOCKS.addAddress("::", "ipv6");
+NON_GLOBAL_IP_BLOCKS.addAddress("::1", "ipv6");
+NON_GLOBAL_IP_BLOCKS.addSubnet("fc00::", 7, "ipv6");
+NON_GLOBAL_IP_BLOCKS.addSubnet("fe80::", 10, "ipv6");
+NON_GLOBAL_IP_BLOCKS.addSubnet("ff00::", 8, "ipv6");
+NON_GLOBAL_IP_BLOCKS.addSubnet("2001:db8::", 32, "ipv6");
 
 function receiptDigest(receipt) {
   const { signature, ...body } = receipt;
@@ -33,6 +56,11 @@ function pathUnsafe(target) {
 
 function isLocalOnlyListenHost(host) {
   return host.toLowerCase() === "localhost" || host === "::1" || host === "::" || host === "0.0.0.0" || (isIP(host) === 4 && host.startsWith("127."));
+}
+
+function isGloballyRoutableIp(host) {
+  const type = isIP(host);
+  return type !== 0 && !NON_GLOBAL_IP_BLOCKS.check(host, type === 4 ? "ipv4" : "ipv6");
 }
 
 function packageFilesInvalid(files) {
@@ -71,7 +99,15 @@ async function verifyExternalReachability(bundle, transportProof, receiptDigest,
   const observer = trustedZones.get(body.observer_zid);
   if (!observer) throw new Error("external reachability observer untrusted");
   if (!verifyObject(publicKeyFromDescriptor(observer), body, signature)) throw new Error("external reachability signature invalid");
-  return body.observer_zid;
+  if (body.vantage !== "container" && body.vantage !== "external-host") throw new Error("external reachability vantage invalid");
+  if (body.observed_host !== transportProof.listen_host) throw new Error("external reachability observed_host mismatch");
+  if (body.observed_port !== transportProof.port) throw new Error("external reachability observed_port mismatch");
+  const observedAt = typeof body.observed_at === "string" ? Date.parse(body.observed_at) : NaN;
+  const now = Date.now();
+  if (Number.isNaN(observedAt) || observedAt - now > FUTURE_SKEW_MS) throw new Error("external reachability observed_at invalid");
+  if (now - observedAt > MAX_AGE_MS) throw new Error("external reachability stale");
+  if (body.vantage === "external-host" && !isGloballyRoutableIp(transportProof.listen_host)) throw new Error("external reachability listen host not globally routable");
+  return { reachability_scope: body.vantage === "container" ? "container-observer" : "external-host", reachability_observer_zid: body.observer_zid };
 }
 
 try {
@@ -157,10 +193,10 @@ try {
       throw new Error("bundle public_transport proof missing");
     }
     const receiptDigestValue = receiptDigest(receiptVerified.signedReceipt);
-    const externalObserverZid = await verifyExternalReachability(bundle, transportProof, receiptDigestValue, trustedFile);
+    const reachability = await verifyExternalReachability(bundle, transportProof, receiptDigestValue, trustedFile);
     requireEqual("swarm_close_digest", bundle.swarm_close_digest, closeVerified.closeDigest);
-    const output = { proof_bundle_verify: "ok", receipt_frame: bundle.receipt_frame, trusted_zones: bundle.trusted_zones, receipt_digest: bundle.receipt_digest, artifact_count: manifests.length, artifact_uris: bundle.artifact_uris, artifact_sha256s: bundle.artifact_sha256s, artifact_manifest_hashes: bundle.artifact_manifest_hashes, transport_proof: bundle.transport_proof, reachability_scope: externalObserverZid ? "external-host" : "local-interface", swarm_close_frame: bundle.swarm_close_frame, swarm_close_trusted_zones: bundle.swarm_close_trusted_zones, swarm_close_digest: bundle.swarm_close_digest };
-    if (externalObserverZid) output.external_observer_zid = externalObserverZid;
+    const output = { proof_bundle_verify: "ok", receipt_frame: bundle.receipt_frame, trusted_zones: bundle.trusted_zones, receipt_digest: bundle.receipt_digest, artifact_count: manifests.length, artifact_uris: bundle.artifact_uris, artifact_sha256s: bundle.artifact_sha256s, artifact_manifest_hashes: bundle.artifact_manifest_hashes, transport_proof: bundle.transport_proof, reachability_scope: reachability ? reachability.reachability_scope : "local-interface", swarm_close_frame: bundle.swarm_close_frame, swarm_close_trusted_zones: bundle.swarm_close_trusted_zones, swarm_close_digest: bundle.swarm_close_digest };
+    if (reachability) output.reachability_observer_zid = reachability.reachability_observer_zid;
     console.log(JSON.stringify(output));
   } else {
     throw new Error("usage: node asp-verify.mjs artifact <manifest.json> | fed-receipt <frame.json> <trusted-zones.json> [task.json] | fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] | swarm-close <frame.json> <trusted-zones.json> | package-proof <manifest.json> [trusted-signers.json] | proof-bundle <bundle.json> [external-trusted-zones.json]");
