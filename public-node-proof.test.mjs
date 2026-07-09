@@ -57,7 +57,7 @@ async function writeReachabilityBundle(file, bundle, evidence) {
   await writeFile(file, `${JSON.stringify({ ...bundle, external_reachability: evidence }, null, 2)}\n`);
 }
 
-test("public node proof starts a public-listen gateway", async () => {
+test("public node proof starts a public-listen gateway", async (t) => {
   const { stdout } = await execFileAsync("bash", ["scripts/public-node-proof.sh"]);
   const result = JSON.parse(stdout);
 
@@ -241,6 +241,127 @@ test("public node proof starts a public-listen gateway", async () => {
   assert.equal(verifiedExternal.reachability_scope, "external-host");
   assert.equal(verifiedExternal.reachability_observer_zid, observer.zid);
   assert.ok(!("external_observer_zid" in verifiedExternal));
+  await t.test("accepts cross-netns reachability over a private inter-namespace IP", async () => {
+    const crossNetnsTransportProof = { ...syntheticTransportProof, listen_host: "192.168.64.6" };
+    const crossNetnsReceipt = {
+      ...receiptBody,
+      transport_proof: crossNetnsTransportProof,
+    };
+    const crossNetnsReceiptDigest = createHash("sha256").update(canonical(crossNetnsReceipt)).digest("hex");
+    const crossNetnsReceiptFrame = {
+      ...receiptFrame,
+      receipt: {
+        ...crossNetnsReceipt,
+        signature: signObject(workerPrivateKey, crossNetnsReceipt),
+      },
+    };
+    assert.equal(verifyFederatedReceipt(crossNetnsReceiptFrame, await loadTrustedZones(result.trusted_zones)).receipt.transport_proof.listen_host, "192.168.64.6");
+    const crossNetnsReceiptFramePath = "state/public-node-proof-fed-receipt-cross-netns.json";
+    const crossNetnsBundlePath = "state/public-node-proof-bundle-cross-netns.json";
+    const crossNetnsBundle = {
+      ...bundle,
+      receipt_frame: "public-node-proof-fed-receipt-cross-netns.json",
+      receipt_digest: crossNetnsReceiptDigest,
+      transport_proof: crossNetnsTransportProof,
+    };
+    await writeFile(crossNetnsReceiptFramePath, `${JSON.stringify(crossNetnsReceiptFrame, null, 2)}\n`);
+    await writeReachabilityBundle(crossNetnsBundlePath, crossNetnsBundle, signedReachabilityEvidence(observer, reachabilityEvidence(observer, crossNetnsTransportProof, crossNetnsReceiptDigest, { vantage: "cross-netns" })));
+    const verifiedCrossNetnsBundle = await execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", crossNetnsBundlePath, externalTrustedPath]);
+    const verifiedCrossNetns = JSON.parse(verifiedCrossNetnsBundle.stdout);
+    assert.equal(verifiedCrossNetns.reachability_scope, "cross-netns");
+    assert.equal(verifiedCrossNetns.reachability_observer_zid, observer.zid);
+  });
+  await t.test("rejects cross-netns reachability over loopback", async () => {
+    const loopbackTransportProof = { ...syntheticTransportProof, listen_host: "127.0.0.1" };
+    const loopbackReceipt = {
+      ...receiptBody,
+      transport_proof: loopbackTransportProof,
+    };
+    const loopbackReceiptDigest = createHash("sha256").update(canonical(loopbackReceipt)).digest("hex");
+    const loopbackReceiptFrame = {
+      ...receiptFrame,
+      receipt: {
+        ...loopbackReceipt,
+        signature: signObject(workerPrivateKey, loopbackReceipt),
+      },
+    };
+    assert.equal(verifyFederatedReceipt(loopbackReceiptFrame, await loadTrustedZones(result.trusted_zones)).receipt.transport_proof.listen_host, "127.0.0.1");
+    const loopbackReceiptFramePath = "state/public-node-proof-fed-receipt-cross-netns-loopback.json";
+    const loopbackBundlePath = "state/public-node-proof-bundle-cross-netns-loopback.json";
+    const loopbackBundle = {
+      ...bundle,
+      receipt_frame: "public-node-proof-fed-receipt-cross-netns-loopback.json",
+      receipt_digest: loopbackReceiptDigest,
+      transport_proof: loopbackTransportProof,
+    };
+    await writeFile(loopbackReceiptFramePath, `${JSON.stringify(loopbackReceiptFrame, null, 2)}\n`);
+    await writeReachabilityBundle(loopbackBundlePath, loopbackBundle, signedReachabilityEvidence(observer, reachabilityEvidence(observer, loopbackTransportProof, loopbackReceiptDigest, { vantage: "cross-netns" })));
+    await assert.rejects(
+      execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", loopbackBundlePath, externalTrustedPath]),
+      /external reachability cross-netns listen host not a private inter-namespace IP/,
+    );
+  });
+  await t.test("rejects cross-netns reachability over a globally routable IP", async () => {
+    const globalTransportProof = { ...syntheticTransportProof, listen_host: "93.184.216.34" };
+    const globalReceipt = {
+      ...receiptBody,
+      transport_proof: globalTransportProof,
+    };
+    const globalReceiptDigest = createHash("sha256").update(canonical(globalReceipt)).digest("hex");
+    const globalReceiptFrame = {
+      ...receiptFrame,
+      receipt: {
+        ...globalReceipt,
+        signature: signObject(workerPrivateKey, globalReceipt),
+      },
+    };
+    assert.equal(verifyFederatedReceipt(globalReceiptFrame, await loadTrustedZones(result.trusted_zones)).receipt.transport_proof.listen_host, "93.184.216.34");
+    const globalReceiptFramePath = "state/public-node-proof-fed-receipt-cross-netns-global.json";
+    const globalBundlePath = "state/public-node-proof-bundle-cross-netns-global.json";
+    const globalBundle = {
+      ...bundle,
+      receipt_frame: "public-node-proof-fed-receipt-cross-netns-global.json",
+      receipt_digest: globalReceiptDigest,
+      transport_proof: globalTransportProof,
+    };
+    await writeFile(globalReceiptFramePath, `${JSON.stringify(globalReceiptFrame, null, 2)}\n`);
+    await writeReachabilityBundle(globalBundlePath, globalBundle, signedReachabilityEvidence(observer, reachabilityEvidence(observer, globalTransportProof, globalReceiptDigest, { vantage: "cross-netns" })));
+    await assert.rejects(
+      execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", globalBundlePath, externalTrustedPath]),
+      /external reachability cross-netns listen host not a private inter-namespace IP/,
+    );
+  });
+  await t.test("rejects cross-netns reachability with a tampered signature", async () => {
+    const tamperedCrossNetnsTransportProof = { ...syntheticTransportProof, listen_host: "192.168.64.6" };
+    const tamperedCrossNetnsReceipt = {
+      ...receiptBody,
+      transport_proof: tamperedCrossNetnsTransportProof,
+    };
+    const tamperedCrossNetnsReceiptDigest = createHash("sha256").update(canonical(tamperedCrossNetnsReceipt)).digest("hex");
+    const tamperedCrossNetnsReceiptFrame = {
+      ...receiptFrame,
+      receipt: {
+        ...tamperedCrossNetnsReceipt,
+        signature: signObject(workerPrivateKey, tamperedCrossNetnsReceipt),
+      },
+    };
+    assert.equal(verifyFederatedReceipt(tamperedCrossNetnsReceiptFrame, await loadTrustedZones(result.trusted_zones)).receipt.transport_proof.listen_host, "192.168.64.6");
+    const tamperedCrossNetnsReceiptFramePath = "state/public-node-proof-fed-receipt-cross-netns-tampered.json";
+    const tamperedCrossNetnsBundlePath = "state/public-node-proof-bundle-cross-netns-tampered.json";
+    const tamperedCrossNetnsBundle = {
+      ...bundle,
+      receipt_frame: "public-node-proof-fed-receipt-cross-netns-tampered.json",
+      receipt_digest: tamperedCrossNetnsReceiptDigest,
+      transport_proof: tamperedCrossNetnsTransportProof,
+    };
+    await writeFile(tamperedCrossNetnsReceiptFramePath, `${JSON.stringify(tamperedCrossNetnsReceiptFrame, null, 2)}\n`);
+    const tamperedCrossNetnsEvidence = signedReachabilityEvidence(observer, reachabilityEvidence(observer, tamperedCrossNetnsTransportProof, tamperedCrossNetnsReceiptDigest, { vantage: "cross-netns" }));
+    await writeReachabilityBundle(tamperedCrossNetnsBundlePath, tamperedCrossNetnsBundle, { ...tamperedCrossNetnsEvidence, observed_host: "192.168.64.7" });
+    await assert.rejects(
+      execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", tamperedCrossNetnsBundlePath, externalTrustedPath]),
+      /external reachability signature invalid/,
+    );
+  });
   await writeReachabilityBundle(externalBundlePath, syntheticBundle, signedReachabilityEvidence(observer, reachabilityEvidence(observer, syntheticTransportProof, syntheticReceiptDigest, { observed_at: new Date().toUTCString() })));
   await assert.rejects(
     execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", externalBundlePath, externalTrustedPath]),

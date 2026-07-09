@@ -8,7 +8,7 @@ import { canonical, createZone, signObject, zoneFromPrivateKey } from "../asp-co
 const [bundlePath, observedBundlePath, trustedZonesPath, vantage] = process.argv.slice(2);
 
 function usage() {
-  throw new Error("usage: node scripts/external-reachability-observer.mjs <bundle.json> <observed-bundle.json> <observer-trusted-zones.json> <vantage>");
+  throw new Error("usage: node scripts/external-reachability-observer.mjs <bundle.json> <observed-bundle.json> <observer-trusted-zones.json> <container|cross-netns|external-host>");
 }
 
 function receiptDigest(receipt) {
@@ -55,7 +55,7 @@ function observerZone() {
 
 try {
   if (!bundlePath || !observedBundlePath || !trustedZonesPath || !vantage || process.argv.length !== 6) usage();
-  if (vantage !== "container" && vantage !== "external-host") usage();
+  if (vantage !== "container" && vantage !== "cross-netns" && vantage !== "external-host") usage();
   const baseDir = dirname(bundlePath);
   const bundle = JSON.parse(await readFile(bundlePath, "utf8"));
   const receiptFrame = JSON.parse(await readFile(bundlePathFor(baseDir, bundle.receipt_frame), "utf8"));

@@ -156,7 +156,7 @@ async function verifyExternalReachability(bundle, transportProof, receiptDigest,
   const observer = trustedZones.get(body.observer_zid);
   if (!observer) throw new Error("external reachability observer untrusted");
   if (!verifyObject(publicKeyFromDescriptor(observer), body, signature)) throw new Error("external reachability signature invalid");
-  if (body.vantage !== "container" && body.vantage !== "external-host") throw new Error("external reachability vantage invalid");
+  if (body.vantage !== "container" && body.vantage !== "cross-netns" && body.vantage !== "external-host") throw new Error("external reachability vantage invalid");
   if (body.observed_host !== transportProof.listen_host) throw new Error("external reachability observed_host mismatch");
   if (body.observed_port !== transportProof.port) throw new Error("external reachability observed_port mismatch");
   const observedAt = typeof body.observed_at === "string" && UTC_TIMESTAMP_PATTERN.test(body.observed_at) ? Date.parse(body.observed_at) : NaN;
@@ -164,7 +164,12 @@ async function verifyExternalReachability(bundle, transportProof, receiptDigest,
   if (Number.isNaN(observedAt) || observedAt - now > FUTURE_SKEW_MS) throw new Error("external reachability observed_at invalid");
   if (now - observedAt > MAX_AGE_MS) throw new Error("external reachability stale");
   if (body.vantage === "external-host" && !isGloballyRoutableIp(transportProof.listen_host)) throw new Error("external reachability listen host not globally routable");
-  return { reachability_scope: body.vantage === "container" ? "container-observer" : "external-host", reachability_observer_zid: body.observer_zid };
+  if (body.vantage === "cross-netns") {
+    const host = transportProof.listen_host;
+    if (isIP(host) === 0 || isLocalOnlyListenHost(host) || isGloballyRoutableIp(host)) throw new Error("external reachability cross-netns listen host not a private inter-namespace IP");
+  }
+  const scope = body.vantage === "container" ? "container-observer" : body.vantage === "cross-netns" ? "cross-netns" : "external-host";
+  return { reachability_scope: scope, reachability_observer_zid: body.observer_zid };
 }
 
 function verifySandboxProof(receiptVerified, requiredClass) {
@@ -315,7 +320,8 @@ try {
     requireEqual("artifact_manifest_hashes", bundle.artifact_manifest_hashes, manifests.map(({ manifest_hash }) => manifest_hash));
     requireEqual("transport_proof", bundle.transport_proof, receiptVerified.receipt.transport_proof);
     const transportProof = receiptVerified.receipt.transport_proof;
-    if (!transportProof || typeof transportProof !== "object" || Array.isArray(transportProof) || transportProof.transport !== "fed+tcp" || typeof transportProof.listen_host !== "string" || transportProof.listen_host === "" || isLocalOnlyListenHost(transportProof.listen_host) || typeof transportProof.port !== "string" || !/^[1-9][0-9]{0,4}$/.test(transportProof.port)) {
+    const crossNetnsEvidence = bundle.external_reachability?.vantage === "cross-netns";
+    if (!transportProof || typeof transportProof !== "object" || Array.isArray(transportProof) || transportProof.transport !== "fed+tcp" || typeof transportProof.listen_host !== "string" || transportProof.listen_host === "" || (!crossNetnsEvidence && isLocalOnlyListenHost(transportProof.listen_host)) || typeof transportProof.port !== "string" || !/^[1-9][0-9]{0,4}$/.test(transportProof.port)) {
       throw new Error("bundle transport_proof invalid");
     }
     if (transportProof.public_transport !== true) {

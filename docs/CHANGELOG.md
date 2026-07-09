@@ -1,6 +1,16 @@
 # Changelog
 
-All notable changes from v13.0 through v14.4 are summarized here. Format follows Keep a Changelog with concise Added / Changed / Fixed bullets.
+All notable changes from v13.0 through v14.9 are summarized here. Format follows Keep a Changelog with concise Added / Changed / Fixed bullets.
+
+## [v14.9] - Cross-netns reachability evidence
+
+### Added
+- `cross-netns` reachability scope proves trusted observer TCP reachability from a separate network namespace / VM over a private literal IP.
+- `scripts/container-cross-netns-observer.sh` runs the observer with Apple `container` and `vantage: "cross-netns"`.
+### Changed
+- `asp-verify.mjs proof-bundle` now maps trusted `container`, `cross-netns`, and `external-host` vantage evidence to distinct verifier-owned scopes.
+### Fixed
+- Cross-netns evidence fails closed for loopback, globally routable IPs, and tampered observer signatures without claiming public reachability.
 
 ## [v14.4] - Task failure migration
 

@@ -68,4 +68,4 @@ For hosted observation attempts, set an explicit global literal IP and keepalive
 AGNET_PUBLIC_LISTEN_HOST=<global-ip> AGNET_PUBLIC_PROOF_KEEPALIVE_MS=600000 bash scripts/public-node-proof.sh
 ```
 
-`proof-bundle` owns the reachability label. It reports `local-interface` by default, `container-observer` for trusted container evidence, and `external-host` only for trusted external-host evidence plus a globally routable literal-IP `listen_host`.
+`proof-bundle` owns the reachability label. It reports `local-interface` by default, `container-observer` for trusted container evidence, `cross-netns` for trusted separate-network-namespace evidence over a literal private IP, and `external-host` only for trusted external-host evidence plus a globally routable literal-IP `listen_host`.

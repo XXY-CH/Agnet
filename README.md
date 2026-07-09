@@ -2,11 +2,11 @@
 
 Agnet is the proof layer for agent work.
 
-[![Protocol](https://img.shields.io/badge/protocol-v14.8--protocol-blue)](docs/v14-roadmap.md) [![Tests](https://img.shields.io/badge/tests-317-brightgreen)](#quick-start) [![Go](https://img.shields.io/badge/go-1.26.1-00ADD8)](go.mod)
+[![Protocol](https://img.shields.io/badge/protocol-v14.9--protocol-blue)](docs/v14-roadmap.md) [![Tests](https://img.shields.io/badge/tests-321-brightgreen)](#quick-start) [![Go](https://img.shields.io/badge/go-1.26.1-00ADD8)](go.mod)
 
-Status: research prototype, local-first, v14 active at `v14.8-protocol`. Historical baseline: v14.7 Policy and risk routing signals, v13 active-through `v13.15-protocol`, and v12 closed at `v12.45-protocol`.
+Status: research prototype, local-first, v14 active at `v14.9-protocol`. Historical baseline: v14.8 Swarm conflict resolution, v13 active-through `v13.15-protocol`, and v12 closed at `v12.45-protocol`.
 
-v14.8 adds deterministic Swarm conflict resolution: when Swarm steps write the same artifact ref with different SHA-256 digests, close proofs carry signed `conflict_resolutions` choosing the higher agent_score reputation worker with `alias_tiebreak` fallback. It is not voting/quorum, automatic merge of conflicting content, payment/settlement, or a departure from local-first proof.
+v14.9 adds private cross-network-namespace reachability evidence: trusted `cross-netns` observer proof can upgrade a bundle to `reachability_scope: "cross-netns"` only over a literal private IP such as `192.168.64.6`. It is not public reachability and the v13.1 hosted `external-host` run remains pending.
 
 ## What ASP is
 
@@ -80,6 +80,7 @@ go test ./...
 - Intent decomposition: `FED_SWARM_PLAN` binds generated Swarm plans to a signed `plan_digest`.
 - Knowledge Gateway: `FED_KNOWLEDGE_QUERY` and `FED_KNOWLEDGE_RESPONSE` bind cited freshness/license results to a signed query digest.
 - Conflict resolution: `FED_SWARM_CLOSE.close.conflict_resolutions` records signed, deterministic same-artifact conflict choices.
+- Cross-netns reachability: trusted private-IP observer evidence records separate network namespace reachability without claiming public `external-host` success.
 
 ## Repo map quicklinks
 
@@ -98,7 +99,7 @@ go test ./...
 
 | Gate | Status | Evidence | Pending / non-goal |
 | --- | --- | --- | --- |
-| v13.1 hosted/public reachability | Active / pending exit criterion | Verifier-owned `local-interface`, `container-observer`, and `external-host` scopes; hosted runner exists | A successful real hosted external-host observer run against a globally routable literal-IP listener is still pending. |
+| v13.1 hosted/public reachability | Active / pending exit criterion | Verifier-owned `local-interface`, `container-observer`, `cross-netns`, and `external-host` scopes; hosted runner exists | A successful real hosted external-host observer run against a globally routable literal-IP listener is still pending. |
 | v13.2 release trust/SBOM | Complete | `asp-release-trust/v1`, package proof binding, release signer verification | Not CycloneDX/SPDX/SLSA, not registry signing, not package publish. |
 | v13.3 strong sandbox / remote attestation | Active / partially complete | Local-process sandbox proof and signed sandbox attestation verifier | Hardware remote attestation and real container/VM/TEE isolation remain unimplemented and fail closed. |
 | v13.4-v13.15 discovery, scheduling, checkpoints | Complete for current local evidence surface | Semantic discovery, Go parity, audit-backed receipt counts, credential expiry, revocation, labelled `agent_score`, receipt checkpoint verification | No global reputation graph, marketplace, remote feed, or scheduler orchestration beyond scoped primitives. |
@@ -110,6 +111,7 @@ go test ./...
 | v14.6 Knowledge Gateway proto | Complete | `knowledgeQuery`, `FED_KNOWLEDGE_QUERY`, `FED_KNOWLEDGE_RESPONSE`, and `verifyKnowledgeResponse` are documented in `docs/v14.6-boundary.md` | Not a web crawler, semantic cache, vector store, or RAG pipeline. |
 | v14.7 policy/risk routing signals | Complete | `discovery_evidence.routing.policy_match` and `risk_match` feed labelled `agent_score` and `ranking.reasons` evidence | Not a new trust oracle, policy language, marketplace ranker, or opaque ML router. |
 | v14.8 Swarm conflict resolution | Complete | `conflict_resolutions` entries bind artifact ref, candidate steps, chosen worker, reason, digest, and Zone signature | Not voting/quorum, automatic content merge, payment/settlement, or non-local-first arbitration. |
+| v14.9 cross-netns reachability | Complete | `cross-netns` scope verifies trusted observer evidence from a separate netns/VM over a private literal IP | Not public reachability; not hosted external-host completion. |
 
 ## Non-claims
 
@@ -161,7 +163,7 @@ Detailed milestone history lives in the roadmap and boundary docs; this README k
   `docs/v13.0-boundary.md` - v13 opening boundary. `docs/v13.15-boundary.md` - v13.15 Node receipt checkpoint verification boundary. `docs/v13.11-boundary.md` - v13.11 audit-backed receipt-count reputation boundary. `docs/v13.12-boundary.md` - v13.12 credential valid_until expiry boundary.
   `docs/v13.13-boundary.md` - v13.13 authority Zone revocation discovery boundary. `docs/v13.14-boundary.md` - v13.14 multi-signal agent score reputation boundary.
 - v14 boundaries:
-  `docs/v14.0-boundary.md` - v14 opening boundary. `docs/v14.2-boundary.md` - v14.2 multi-signal FED_QUERY routing boundary. `docs/v14.3-boundary.md` - v14.3 cross-zone trust chain boundary. `docs/v14.4-boundary.md` - v14.4 task failure migration boundary. `docs/v14.8-boundary.md` - v14.8 Swarm conflict resolution boundary.
+  `docs/v14.0-boundary.md` - v14 opening boundary. `docs/v14.2-boundary.md` - v14.2 multi-signal FED_QUERY routing boundary. `docs/v14.3-boundary.md` - v14.3 cross-zone trust chain boundary. `docs/v14.4-boundary.md` - v14.4 task failure migration boundary. `docs/v14.8-boundary.md` - v14.8 Swarm conflict resolution boundary. `docs/v14.9-boundary.md` - v14.9 cross-netns reachability boundary.
 
 ## Verifier and proof commands
 
@@ -173,7 +175,7 @@ Detailed milestone history lives in the roadmap and boundary docs; this README k
 | `scripts/package-proof.mjs` + `asp-verify.mjs package-proof` | Package proof digest, ASP signature, trusted signer pin, metadata, and package proof tarball path safety. |
 | `asp-verify.mjs sandbox-proof <frame.json> <trusted-zones.json> [required-sandbox-class]` | Signed sandbox class, Zone trust, and fail-closed sandbox claim shape. |
 | `asp-verify.mjs sandbox-attestation <frame.json> <trusted-zones.json> <attestation.json> <trusted-attestors.json>` | Sandbox attestation signer trust, target frame binding, and attestor allow-list. |
-| `scripts/external-reachability-observer.mjs` / `scripts/docker-external-reachability-observer.sh` | External reachability evidence using `AGNET_REACHABILITY_OBSERVER_SEED_HEX`, `AGNET_PUBLIC_LISTEN_HOST`, and `AGNET_PUBLIC_PROOF_KEEPALIVE_MS`. |
+| `scripts/external-reachability-observer.mjs` / `scripts/docker-external-reachability-observer.sh` / `scripts/container-cross-netns-observer.sh` | External reachability evidence using `AGNET_REACHABILITY_OBSERVER_SEED_HEX`, `AGNET_PUBLIC_LISTEN_HOST`, `AGNET_PUBLIC_PROOF_KEEPALIVE_MS`, and private-IP `cross-netns` observation. |
 
 ## Contributing and license
 
