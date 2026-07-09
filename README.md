@@ -2,11 +2,11 @@
 
 Agnet is the proof layer for agent work.
 
-[![Protocol](https://img.shields.io/badge/protocol-v14.6--protocol-blue)](docs/v14-roadmap.md) [![Tests](https://img.shields.io/badge/tests-310-brightgreen)](#quick-start) [![Go](https://img.shields.io/badge/go-1.26.1-00ADD8)](go.mod)
+[![Protocol](https://img.shields.io/badge/protocol-v14.7--protocol-blue)](docs/v14-roadmap.md) [![Tests](https://img.shields.io/badge/tests-313-brightgreen)](#quick-start) [![Go](https://img.shields.io/badge/go-1.26.1-00ADD8)](go.mod)
 
-Status: research prototype, local-first, v14 active at `v14.6-protocol`. Historical baseline: v14.5 intent decomposition, v13 active-through `v13.15-protocol`, and v12 closed at `v12.45-protocol`.
+Status: research prototype, local-first, v14 active at `v14.7-protocol`. Historical baseline: v14.6 Knowledge Gateway proto, v13 active-through `v13.15-protocol`, and v12 closed at `v12.45-protocol`.
 
-v14.6 adds the Knowledge Gateway proto: see `docs/v14.6-boundary.md` for the `knowledgeQuery` / `FED_KNOWLEDGE_QUERY` / `verifyKnowledgeResponse` proof boundary. It is not a web crawler, semantic cache, vector store, or RAG pipeline.
+v14.7 adds verifier-owned FED_QUERY policy/risk routing signals: see `docs/v14.7-boundary.md` for `discovery_evidence.routing.policy_match` / `risk_match`, their neutral fallbacks, and non-goals. It is not a new trust oracle, policy language, marketplace ranking graph, or opaque ML router.
 
 ## What ASP is
 
@@ -104,9 +104,10 @@ go test ./...
 | v14.1 Swarm micro-contracts | Complete | Node and Go close proofs carry signed worker cost/latency/capability commitments | Not pricing, payment, settlement, or SLA enforcement. |
 | v14.2 multi-signal routing | Complete | `discovery_evidence.routing` with cost, latency, availability, and `signals_used` | Not opaque ML routing or remote reputation scoring. |
 | v14.3 cross-zone trust chains | Complete | Signed Zone delegation records and `zone_trust_chain` discovery provenance | Not global PKI, DID-native universal resolution, or universal trust. |
-| v14.4 task failure migration | Complete | Node and Go retry failed Swarm steps once on same-capability replacement workers and sign `migration_log` in close proof | Not invisible retry loops, distributed worker pools, or automatic decomposition. |
-| v14.5 Swarm plan digest | Complete | `swarmPlan`, `FED_SWARM_PLAN`, and `plan_digest` evidence are documented in `docs/v14.5-boundary.md` | Not LLM orchestration, automatic candidate selection, or full DAG execution. |
+| v14.4 Task failure migration | Complete | Node and Go Swarm execution can migrate a failed step with signed `migration_log` close evidence | Not invisible retries, model KV restore, or distributed scheduling. |
+| v14.5 Intent Decomposition | Complete | `swarmPlan`, `FED_SWARM_PLAN`, and `plan_digest` evidence are documented in `docs/v14.5-boundary.md` | Not LLM orchestration, automatic candidate selection, or full DAG execution. |
 | v14.6 Knowledge Gateway proto | Complete | `knowledgeQuery`, `FED_KNOWLEDGE_QUERY`, `FED_KNOWLEDGE_RESPONSE`, and `verifyKnowledgeResponse` are documented in `docs/v14.6-boundary.md` | Not a web crawler, semantic cache, vector store, or RAG pipeline. |
+| v14.7 policy/risk routing signals | Complete | `discovery_evidence.routing.policy_match` and `risk_match` feed labelled `agent_score` and `ranking.reasons` evidence | Not a new trust oracle, policy language, marketplace ranker, or opaque ML router. |
 
 ## Non-claims
 

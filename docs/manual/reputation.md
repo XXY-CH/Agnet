@@ -27,6 +27,11 @@ Each match may include:
 | `receipt_score` | Contribution from completed receipts counted in the persisted audit log. |
 | `credential_score` | Contribution from trusted and active capability credentials. |
 | `freshness_score` | Contribution from recent `last_completed_at` audit evidence. |
+| `cost_score` | Contribution from descriptor cost routing evidence. |
+| `latency_score` | Contribution from descriptor latency routing evidence. |
+| `availability_score` | Contribution from local audit-backed availability routing evidence. |
+| `policy_match` | Contribution from existing descriptor policy matching query/task scope constraints. |
+| `risk_match` | Contribution from existing credential trust, revocation state, and receipt reputation evidence. |
 | `revocation_penalty` | Penalty from signed local authority Zone revocations. |
 | `total` | Composite score used by ranking, capped by the implementation. |
 
@@ -34,16 +39,18 @@ Missing timestamps fail safe to no freshness contribution. Missing or unreadable
 
 ## Routing signals
 
-v14.2 adds `discovery_evidence.routing`:
+v14.7 exposes `discovery_evidence.routing`:
 
 | Signal | Source |
 | --- | --- |
 | `cost_score` | Descriptor `policy.cost_tokens_per_task`. |
 | `latency_score` | Descriptor `policy.latency_ms_p95`. |
 | `availability_score` | Local audit evidence over recent entries. |
-| `signals_used` | Labels for present routing evidence. |
+| `policy_match` | Existing worker descriptor `policy` compared with query/task `scope` constraints such as network and write-prefix allowances. |
+| `risk_match` | Existing active credential trust, signed revocation state, and completed-receipt reputation. |
+| `signals_used` | Count of present routing signals. |
 
-Missing cost, latency, or availability evidence stays neutral and does not fabricate an advantage.
+Missing cost, latency, availability, policy, or risk evidence stays neutral and does not fabricate an advantage.
 
 ## Semantic matching
 
