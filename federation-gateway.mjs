@@ -70,7 +70,33 @@ function availabilitySignal(started, completed, hasAuditData) {
   return { score: Math.max(0, Math.min(10, Math.floor((safeCompleted / denominator) * 10))), used: true };
 }
 
-function routingSignals(worker, credentialClaims) {
+function policyMatchSignal(policy, taskScope) {
+  const scope = taskScope && typeof taskScope === "object" ? taskScope : {};
+  const hasNetworkConstraint = typeof scope.network === "boolean";
+  const writeTargets = Array.isArray(scope.write) ? scope.write.filter((target) => typeof target === "string") : [];
+  const used = hasNetworkConstraint || writeTargets.length > 0;
+  if (!used) return { score: 5, used: false };
+  if (scope.network === true && policy?.allow_network !== true) return { score: 0, used: true };
+  for (const target of writeTargets) {
+    const allowed = (policy?.write_prefixes ?? []).some((prefix) => typeof prefix === "string" && target.startsWith(prefix));
+    if (!allowed) return { score: 0, used: true };
+  }
+  return { score: 10, used: true };
+}
+
+function riskMatchSignal(credentialClaims, active, completedReceipts, revocationCount) {
+  const used = credentialClaims !== null || revocationCount > 0;
+  if (!used) return { score: 5, used: false };
+  let score = 5;
+  if (active) score += 3;
+  else score -= 2;
+  if (completedReceipts > 0) score += 2;
+  score -= Math.min(revocationCount * 5, 10);
+  return { score: Math.max(0, Math.min(10, score)), used: true };
+}
+
+
+function routingSignals(worker, credentialClaims, taskScope, active, completedReceipts, revocationCount) {
   const cost = costSignal(worker.descriptor.policy);
   const latency = latencySignal(worker.descriptor.policy);
   const availability = availabilitySignal(
@@ -78,8 +104,10 @@ function routingSignals(worker, credentialClaims) {
     credentialClaims?.availability_completed,
     credentialClaims?.availability_has_audit_data === true,
   );
-  const signals_used = [cost.used, latency.used, availability.used].filter(Boolean).length;
-  return { cost_score: cost.score, latency_score: latency.score, availability_score: availability.score, signals_used };
+  const policy = policyMatchSignal(worker.descriptor.policy, taskScope);
+  const risk = riskMatchSignal(credentialClaims, active, completedReceipts, revocationCount);
+  const signals_used = [cost.used, latency.used, availability.used, policy.used, risk.used].filter(Boolean).length;
+  return { cost_score: cost.score, latency_score: latency.score, availability_score: availability.score, policy_match: policy.score, risk_match: risk.score, signals_used };
 }
 
 function auditRecordForWorker(record, aid) {
@@ -142,7 +170,7 @@ function countRevocationsForWorker(revocations, aid, alias) {
   return (revocations ?? []).filter((revocation) => revocation.subject === aid || revocation.subject === alias).length;
 }
 
-function computeAgentScore(completedReceipts, lastCompletedAt, revocationCount, active, costScore, latencyScore, availabilityScore) {
+function computeAgentScore(completedReceipts, lastCompletedAt, revocationCount, active, costScore, latencyScore, availabilityScore, policyMatch, riskMatch) {
   const receipt_score = Math.min(completedReceipts, 20) * 2;
   const credential_score = active ? 30 : 0;
   let freshness_score = 0;
@@ -155,13 +183,15 @@ function computeAgentScore(completedReceipts, lastCompletedAt, revocationCount, 
   const cost_score = Number.isFinite(costScore) ? costScore : 5;
   const latency_score = Number.isFinite(latencyScore) ? latencyScore : 5;
   const availability_score = Number.isFinite(availabilityScore) ? availabilityScore : 5;
+  const policy_match = Number.isFinite(policyMatch) ? policyMatch : 5;
+  const risk_match = Number.isFinite(riskMatch) ? riskMatch : 5;
   const revocation_penalty = Math.min(revocationCount * 10, receipt_score + credential_score + freshness_score);
-  const total = Math.max(0, Math.min(100, receipt_score + credential_score + freshness_score + cost_score + latency_score + availability_score - revocation_penalty));
-  return { total, receipt_score, credential_score, freshness_score, cost_score, latency_score, availability_score, revocation_penalty };
+  const total = Math.max(0, Math.min(100, receipt_score + credential_score + freshness_score + cost_score + latency_score + availability_score + policy_match + risk_match - revocation_penalty));
+  return { total, receipt_score, credential_score, freshness_score, cost_score, latency_score, availability_score, policy_match, risk_match, revocation_penalty };
 }
 
 
-export function queryMatch(zone, worker, capability, intent, credentialClaims = null) {
+export function queryMatch(zone, worker, capability, intent, credentialClaims = null, taskScope = null) {
   const exact = worker.descriptor.capabilities.includes(capability);
   const semantic = semanticScore(intent, worker.descriptor);
   if (!exact && semantic === 0) return null;
@@ -170,17 +200,19 @@ export function queryMatch(zone, worker, capability, intent, credentialClaims = 
   ] : [];
   const completedReceipts = Number.isSafeInteger(credentialClaims?.completed_receipts) ? credentialClaims.completed_receipts : 0;
   const lastCompletedAt = typeof credentialClaims?.last_completed_at === "string" ? credentialClaims.last_completed_at : null;
-  const routing = routingSignals(worker, credentialClaims);
   let active = credentials.length > 0 && verifyCapabilityCredential(credentials[0], zone.descriptor, worker.descriptor);
   const validRevocations = (zone.revocations ?? []).filter((revocation) => verifyZoneRevocation(revocation, zone.descriptor));
   const revocationCount = countRevocationsForWorker(validRevocations, worker.descriptor.aid, worker.descriptor.alias);
   if (revocationCount > 0) active = false;
-  const agentScore = computeAgentScore(completedReceipts, lastCompletedAt, revocationCount, active, routing.cost_score, routing.latency_score, routing.availability_score);
+  const routing = routingSignals(worker, credentialClaims, taskScope, active, completedReceipts, revocationCount);
+  const agentScore = computeAgentScore(completedReceipts, lastCompletedAt, revocationCount, active, routing.cost_score, routing.latency_score, routing.availability_score, routing.policy_match, routing.risk_match);
   const reasons = [];
   if (exact) reasons.push("capability_exact");
   if (semantic > 0) reasons.push("semantic_match");
   if (active) reasons.push("credential_active");
   if (completedReceipts > 0) reasons.push("reputation_receipts");
+  if (routing.policy_match > 5) reasons.push("policy_match");
+  if (routing.risk_match > 5) reasons.push("risk_match");
   const score = agentScore.total + (exact ? 50 : 0) + semantic;
   return {
     worker: worker.descriptor,
@@ -525,8 +557,8 @@ async function serve(port, trustedZonesFile) {
               availability_started: receiptCounts.get(worker.aid)?.availabilityStarted ?? 0,
               availability_completed: receiptCounts.get(worker.aid)?.availabilityCompleted ?? 0,
               availability_has_audit_data: receiptCounts.get(worker.aid)?.availabilityHasAuditData === true,
-            }),
-            queryMatch(zone, semanticWorker, frame.capability, frame.intent),
+            }, frame.scope),
+            queryMatch(zone, semanticWorker, frame.capability, frame.intent, null, frame.scope),
           ].filter(Boolean).sort((a, b) => b.ranking.score - a.ranking.score || a.worker.alias.localeCompare(b.worker.alias));
           send(socket, { type: "FED_QUERY_RESULT", zone: zone.descriptor, capability: frame.capability, matches });
           send(socket, { type: "FED_QUERY_CLOSE", capability: frame.capability });

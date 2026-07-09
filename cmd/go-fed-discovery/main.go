@@ -499,7 +499,8 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 		capability := fmt.Sprint(frame["capability"])
 		intent := optionalString(frame["intent"])
 		for i := range fixture.Workers {
-			if match := fixture.queryMatch(&fixture.Workers[i], capability, intent); match != nil {
+			queryScope, _ := frame["scope"].(map[string]any)
+			if match := fixture.queryMatch(&fixture.Workers[i], capability, intent, queryScope); match != nil {
 				matches = append(matches, match)
 			}
 		}
@@ -2682,17 +2683,58 @@ func availabilitySignal(started, completed int, hasAuditData bool) (int, bool) {
 	return max(0, min(10, int(math.Floor((float64(completed)/float64(denominator))*10)))), true
 }
 
-func routingSignals(worker *Worker, availabilityStarted, availabilityCompleted int, availabilityHasAuditData bool) map[string]any {
+func policyMatchSignal(policy, taskScope map[string]any) (int, bool) {
+	if taskScope == nil {
+		return 5, false
+	}
+	_, hasNetworkConstraint := taskScope["network"].(bool)
+	writeTargets := stringsFromAny(taskScope["write"])
+	used := hasNetworkConstraint || len(writeTargets) > 0
+	if !used {
+		return 5, false
+	}
+	if taskScope["network"] == true && policy["allow_network"] != true {
+		return 0, true
+	}
+	for _, target := range writeTargets {
+		if !hasPrefix(target, stringsFromAny(policy["write_prefixes"])) {
+			return 0, true
+		}
+	}
+	return 10, true
+}
+
+func riskMatchSignal(hasCredentialClaims bool, active bool, completedReceipts, revocationCount int) (int, bool) {
+	used := hasCredentialClaims || revocationCount > 0
+	if !used {
+		return 5, false
+	}
+	score := 5
+	if active {
+		score += 3
+	} else {
+		score -= 2
+	}
+	if completedReceipts > 0 {
+		score += 2
+	}
+	score -= min(revocationCount*5, 10)
+	return max(0, min(10, score)), true
+}
+
+func routingSignals(worker *Worker, taskScope map[string]any, active bool, completedReceipts, revocationCount, availabilityStarted, availabilityCompleted int, availabilityHasAuditData bool, hasCredentialClaims bool) map[string]any {
 	costScore, costUsed := costSignal(worker.Profile.Policy)
 	latencyScore, latencyUsed := latencySignal(worker.Profile.Policy)
 	availabilityScore, availabilityUsed := availabilitySignal(availabilityStarted, availabilityCompleted, availabilityHasAuditData)
+	policyScore, policyUsed := policyMatchSignal(worker.Profile.Policy, taskScope)
+	riskScore, riskUsed := riskMatchSignal(hasCredentialClaims, active, completedReceipts, revocationCount)
 	signalsUsed := 0
-	for _, used := range []bool{costUsed, latencyUsed, availabilityUsed} {
+	for _, used := range []bool{costUsed, latencyUsed, availabilityUsed, policyUsed, riskUsed} {
 		if used {
 			signalsUsed++
 		}
 	}
-	return map[string]any{"cost_score": costScore, "latency_score": latencyScore, "availability_score": availabilityScore, "signals_used": signalsUsed}
+	return map[string]any{"cost_score": costScore, "latency_score": latencyScore, "availability_score": availabilityScore, "policy_match": policyScore, "risk_match": riskScore, "signals_used": signalsUsed}
 }
 
 func intSignal(value any) (int, bool) {
@@ -2707,7 +2749,7 @@ func intSignal(value any) (int, bool) {
 	return 0, false
 }
 
-func computeAgentScore(completedReceipts int, lastCompletedAt string, revocationCount int, active bool, costScore, latencyScore, availabilityScore int) map[string]any {
+func computeAgentScore(completedReceipts int, lastCompletedAt string, revocationCount int, active bool, costScore, latencyScore, availabilityScore, policyMatch, riskMatch int) map[string]any {
 	receiptScore := min(completedReceipts, 20) * 2
 	credentialScore := 0
 	if active {
@@ -2726,7 +2768,7 @@ func computeAgentScore(completedReceipts int, lastCompletedAt string, revocation
 		}
 	}
 	revocationPenalty := min(revocationCount*10, receiptScore+credentialScore+freshnessScore)
-	total := receiptScore + credentialScore + freshnessScore + costScore + latencyScore + availabilityScore - revocationPenalty
+	total := receiptScore + credentialScore + freshnessScore + costScore + latencyScore + availabilityScore + policyMatch + riskMatch - revocationPenalty
 	if total < 0 {
 		total = 0
 	}
@@ -2741,6 +2783,8 @@ func computeAgentScore(completedReceipts int, lastCompletedAt string, revocation
 		"cost_score":         costScore,
 		"latency_score":      latencyScore,
 		"availability_score": availabilityScore,
+		"policy_match":       policyMatch,
+		"risk_match":         riskMatch,
 		"revocation_penalty": revocationPenalty,
 	}
 }
@@ -2754,7 +2798,7 @@ func (f Fixture) credentialStatus(credential map[string]any, status string) map[
 	}, "status_signature")
 }
 
-func (f Fixture) queryMatch(worker *Worker, capability, intent string) map[string]any {
+func (f Fixture) queryMatch(worker *Worker, capability, intent string, taskScope map[string]any) map[string]any {
 	exact := hasCapability(worker.Descriptor, capability)
 	semantic := semanticScore(intent, worker.Descriptor)
 	if !exact && semantic == 0 {
@@ -2791,8 +2835,15 @@ func (f Fixture) queryMatch(worker *Worker, capability, intent string) map[strin
 	if completedReceipts > 0 {
 		reasons = append(reasons, "reputation_receipts")
 	}
-	routing := routingSignals(worker, availabilityStarted, availabilityCompleted, availabilityHasAuditData)
-	agentScore := computeAgentScore(completedReceipts, lastCompletedAt, revocationCount, active, intFromMap(routing, "cost_score"), intFromMap(routing, "latency_score"), intFromMap(routing, "availability_score"))
+	hasCredentialClaims := exact
+	routing := routingSignals(worker, taskScope, active, completedReceipts, revocationCount, availabilityStarted, availabilityCompleted, availabilityHasAuditData, hasCredentialClaims)
+	if intFromMap(routing, "policy_match") > 5 {
+		reasons = append(reasons, "policy_match")
+	}
+	if intFromMap(routing, "risk_match") > 5 {
+		reasons = append(reasons, "risk_match")
+	}
+	agentScore := computeAgentScore(completedReceipts, lastCompletedAt, revocationCount, active, intFromMap(routing, "cost_score"), intFromMap(routing, "latency_score"), intFromMap(routing, "availability_score"), intFromMap(routing, "policy_match"), intFromMap(routing, "risk_match"))
 	score := intFromMap(agentScore, "total") + semantic
 	if exact {
 		score += 50

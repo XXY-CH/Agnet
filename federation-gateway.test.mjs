@@ -139,16 +139,16 @@ test("Federation Gateway queryMatch scores only active credentials", async () =>
   });
 
   assert.deepEqual(futureMatch.discovery_evidence.credential, { trusted: true, active: true });
-  assert.equal(futureMatch.ranking.score, 95);
+  assert.equal(futureMatch.ranking.score, 108);
   assert.ok(futureMatch.ranking.reasons.includes("credential_active"));
   assert.deepEqual(pastMatch.discovery_evidence.credential, { trusted: true, active: false });
-  assert.equal(pastMatch.ranking.score, 65);
+  assert.equal(pastMatch.ranking.score, 73);
   assert.equal(pastMatch.ranking.reasons.includes("credential_active"), false);
   assert.deepEqual(invalidMatch.discovery_evidence.credential, { trusted: true, active: false });
-  assert.equal(invalidMatch.ranking.score, 65);
+  assert.equal(invalidMatch.ranking.score, 73);
   assert.equal(invalidMatch.ranking.reasons.includes("credential_active"), false);
   assert.deepEqual(revokedMatch.discovery_evidence.credential, { trusted: true, active: false });
-  assert.equal(revokedMatch.ranking.score, 65);
+  assert.equal(revokedMatch.ranking.score, 70);
   assert.equal(revokedMatch.ranking.reasons.includes("credential_active"), false);
 });
 
@@ -174,13 +174,15 @@ test("Federation Gateway queryMatch exposes multi-signal agent reputation score"
   assert.equal(reputation.agent_score.cost_score, 5);
   assert.equal(reputation.agent_score.latency_score, 5);
   assert.equal(reputation.agent_score.availability_score, 5);
+  assert.equal(reputation.agent_score.policy_match, 5);
+  assert.equal(reputation.agent_score.risk_match, 10);
   assert.equal(reputation.agent_score.revocation_penalty, 0);
-  assert.equal(reputation.agent_score.total, 65);
+  assert.equal(reputation.agent_score.total, 80);
   assert.ok(reputation.agent_score.total > 0);
   assert.equal(reputation.last_completed_at, lastCompletedAt);
   assert.equal(
     reputation.agent_score.total,
-    reputation.agent_score.receipt_score + reputation.agent_score.credential_score + reputation.agent_score.freshness_score + reputation.agent_score.cost_score + reputation.agent_score.latency_score + reputation.agent_score.availability_score - reputation.agent_score.revocation_penalty,
+    reputation.agent_score.receipt_score + reputation.agent_score.credential_score + reputation.agent_score.freshness_score + reputation.agent_score.cost_score + reputation.agent_score.latency_score + reputation.agent_score.availability_score + reputation.agent_score.policy_match + reputation.agent_score.risk_match - reputation.agent_score.revocation_penalty,
   );
   assert.equal(match.ranking.score, reputation.agent_score.total + 50);
 });
@@ -216,6 +218,42 @@ test("Federation Gateway queryMatch exposes v14.2 routing evidence signals", asy
       signals_used: true,
     },
   );
+});
+
+test("Federation Gateway queryMatch exposes v14.7 policy and risk routing signals", async () => {
+  const zone = await loadOrCreateZone("zone://query-match-policy-risk-zone", "state/keys/query-match-policy-risk-zone.pkcs8");
+  const worker = await loadOrCreateAgent(
+    "agent://query-match/policy-risk-summarizer",
+    "state/keys/query-match-policy-risk-summarizer.pkcs8",
+    { allow_network: false, write_prefixes: ["artifact://local/"] },
+    ["asp+local://demo"],
+    ["summarize.text"],
+  );
+  const credentialClaims = {
+    evidence: ["local-demo"],
+    completed_receipts: 3,
+    valid_until: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  };
+  const taskScope = { network: false, write: ["artifact://local/result.md"] };
+
+  const match = queryMatch(zone, worker, "summarize.text", "", credentialClaims, taskScope);
+  const networkDeniedMatch = queryMatch(zone, worker, "summarize.text", "", credentialClaims, { ...taskScope, network: true });
+  const revokedMatch = queryMatch({ ...zone, revocations: [zoneRevocation(zone, worker.aid, "policy risk regression")] }, worker, "summarize.text", "", credentialClaims, taskScope);
+
+  assert.equal(match.discovery_evidence.routing.policy_match, 10);
+  assert.equal(match.discovery_evidence.routing.risk_match, 10);
+  assert.equal(match.discovery_evidence.routing.signals_used, 2);
+  assert.equal(match.discovery_evidence.reputation.agent_score.policy_match, 10);
+  assert.equal(match.discovery_evidence.reputation.agent_score.risk_match, 10);
+  assert.ok(match.ranking.reasons.includes("policy_match"));
+  assert.ok(match.ranking.reasons.includes("risk_match"));
+
+  assert.equal(networkDeniedMatch.discovery_evidence.routing.policy_match, 0);
+  assert.ok(networkDeniedMatch.ranking.score < match.ranking.score);
+  assert.equal(networkDeniedMatch.ranking.reasons.includes("policy_match"), false);
+
+  assert.ok(revokedMatch.discovery_evidence.routing.risk_match < match.discovery_evidence.routing.risk_match);
+  assert.equal(revokedMatch.ranking.reasons.includes("risk_match"), false);
 });
 
 test("Federation Gateway queryMatch ranks lower-cost workers above equivalent neutral-cost workers", async () => {
@@ -275,7 +313,7 @@ test("Federation Gateway queryMatch applies matching zone revocations as an agen
   assert.equal(revokedScore.freshness_score, 10);
   assert.equal(revokedScore.revocation_penalty, 10);
   assert.equal(revokedReputation.last_completed_at, lastCompletedAt);
-  assert.equal(revokedScore.total, revokedScore.receipt_score + revokedScore.credential_score + revokedScore.freshness_score + revokedScore.cost_score + revokedScore.latency_score + revokedScore.availability_score - revokedScore.revocation_penalty);
+  assert.equal(revokedScore.total, revokedScore.receipt_score + revokedScore.credential_score + revokedScore.freshness_score + revokedScore.cost_score + revokedScore.latency_score + revokedScore.availability_score + revokedScore.policy_match + revokedScore.risk_match - revokedScore.revocation_penalty);
   assert.ok(revokedScore.revocation_penalty > 0);
   assert.ok(revokedScore.total < cleanScore.total);
   assert.equal(revokedMatch.ranking.score, revokedScore.total + 50);
@@ -713,7 +751,7 @@ test("Federation Gateway reports audit-backed completed receipt reputation", asy
     assert.equal(reputation.agent_score.revocation_penalty, 0);
     assert.equal(
       reputation.agent_score.total,
-      reputation.agent_score.receipt_score + reputation.agent_score.credential_score + reputation.agent_score.freshness_score + reputation.agent_score.cost_score + reputation.agent_score.latency_score + reputation.agent_score.availability_score - reputation.agent_score.revocation_penalty,
+      reputation.agent_score.receipt_score + reputation.agent_score.credential_score + reputation.agent_score.freshness_score + reputation.agent_score.cost_score + reputation.agent_score.latency_score + reputation.agent_score.availability_score + reputation.agent_score.policy_match + reputation.agent_score.risk_match - reputation.agent_score.revocation_penalty,
     );
     assert.equal(result.matches[0].ranking.score, reputation.agent_score.total + 50);
   } finally {

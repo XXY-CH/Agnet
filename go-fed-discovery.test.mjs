@@ -943,18 +943,37 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
         cost_score: Number.isFinite(semanticRouting?.cost_score),
         latency_score: Number.isFinite(semanticRouting?.latency_score),
         availability_score: Number.isFinite(semanticRouting?.availability_score),
+        policy_match: Number.isFinite(semanticRouting?.policy_match),
+        risk_match: Number.isFinite(semanticRouting?.risk_match),
       },
       {
         cost_score: true,
         latency_score: true,
         availability_score: true,
+        policy_match: true,
+        risk_match: true,
       },
     );
+    assert.equal(semanticRouting.policy_match, 5);
+    assert.equal(semanticRouting.risk_match, 10);
     assert.deepEqual(semanticResult.matches[1].discovery_evidence.credential, { trusted: false, active: false });
     assert.ok(semanticResult.matches[0].ranking.score > semanticResult.matches[1].ranking.score);
     assert.ok(semanticResult.matches[0].ranking.reasons.includes("credential_active"));
     assert.ok(semanticResult.matches[0].ranking.reasons.includes("reputation_receipts"));
 
+
+    const scopedQueryFrames = await exchangeFrames(port, {
+      type: "FED_QUERY",
+      origin_zone: zoneA.descriptor,
+      capability: "summarize.text",
+      intent: "summarize text fast",
+      scope: { network: false },
+    }, "FED_QUERY_CLOSE");
+    const scopedQueryResult = scopedQueryFrames.find((frame) => frame.type === "FED_QUERY_RESULT");
+    assert.equal(scopedQueryResult.matches[0].discovery_evidence.routing.policy_match, 10);
+    assert.equal(scopedQueryResult.matches[0].discovery_evidence.routing.risk_match, 10);
+    assert.ok(scopedQueryResult.matches[0].ranking.reasons.includes("policy_match"));
+    assert.ok(scopedQueryResult.matches[0].ranking.reasons.includes("risk_match"));
     const translated = await execFileAsync(process.execPath, [
       "federation-gateway.mjs",
       "query",
