@@ -635,6 +635,41 @@ test("FED_SWARM_CLOSE verification rejects migration log entries for missing ste
   );
 });
 
+test("FED_SWARM_CLOSE verification rejects conflict resolutions with missing candidate steps in Node", async () => {
+  const zone = createZone("zone://swarm-close-conflict-candidate-test");
+  const worker = createZone("zone://swarm-close-conflict-worker-test").descriptor;
+  const resolutionBody = {
+    swarm_id: "swarm://node-test/conflict-candidate",
+    artifact_ref: "artifact://local/conflict/shared.md",
+    candidate_step_ids: ["summary", "missing-step"],
+    chosen_step_id: "summary",
+    chosen_worker: worker,
+    reason: "higher_reputation",
+  };
+  const resolution = {
+    ...resolutionBody,
+    resolution_digest: createHash("sha256").update(canonical(resolutionBody)).digest("hex"),
+    signature: signObject(zone.privateKey, resolutionBody),
+  };
+  const closeBody = {
+    swarm_id: resolutionBody.swarm_id,
+    step_receipts: [{ step_id: "summary", task_id: "task_1", receipt_digest: "0".repeat(64), worker }],
+    conflict_resolutions: [resolution],
+  };
+  const frame = {
+    type: "FED_SWARM_CLOSE",
+    swarm_id: closeBody.swarm_id,
+    zone: zone.descriptor,
+    close: { ...closeBody, close_signature: signObject(zone.privateKey, closeBody) },
+  };
+  const trustedZones = new Map([[zone.descriptor.zid, zone.descriptor]]);
+
+  assert.throws(
+    () => verifySwarmClose(frame, trustedZones),
+    /swarm close conflict resolution candidate missing/,
+  );
+});
+
 test("FED_SWARM_CLOSE verification rejects missing frame objects in Node", async () => {
   assert.throws(
     () => verifySwarmClose(null, new Map()),

@@ -669,6 +669,38 @@ function verifySwarmMicroContracts(closeBody, stepById) {
   }
 }
 
+
+function verifySwarmConflictResolutions(closeBody, stepById, zone) {
+  if (closeBody.conflict_resolutions === undefined) return;
+  if (!Array.isArray(closeBody.conflict_resolutions)) throw new Error("swarm close conflict_resolutions invalid");
+  const zonePublicKey = publicKeyFromDescriptor(zone);
+  for (const resolution of closeBody.conflict_resolutions) {
+    if (!resolution || typeof resolution !== "object" || Array.isArray(resolution)) throw new Error("swarm close conflict resolution invalid");
+    const { resolution_digest, signature, ...resolutionBody } = resolution;
+    if (resolutionBody.swarm_id !== closeBody.swarm_id) throw new Error("swarm close conflict resolution swarm mismatch");
+    if (typeof resolutionBody.artifact_ref !== "string" || resolutionBody.artifact_ref === "") throw new Error("swarm close conflict resolution artifact_ref missing");
+    if (!Array.isArray(resolutionBody.candidate_step_ids) || resolutionBody.candidate_step_ids.length < 2) throw new Error("swarm close conflict resolution candidates missing");
+    const candidateStepIds = new Set();
+    for (const stepId of resolutionBody.candidate_step_ids) {
+      if (typeof stepId !== "string" || stepId === "" || stepId.includes("\0")) throw new Error("swarm close conflict resolution candidate invalid");
+      if (candidateStepIds.has(stepId)) throw new Error("swarm close conflict resolution candidate duplicate");
+      candidateStepIds.add(stepId);
+      if (!stepById.has(stepId)) throw new Error("swarm close conflict resolution candidate missing");
+    }
+    if (candidateStepIds.size < 2) throw new Error("swarm close conflict resolution candidates missing");
+    if (typeof resolutionBody.chosen_step_id !== "string" || resolutionBody.chosen_step_id === "" || resolutionBody.chosen_step_id.includes("\0")) throw new Error("swarm close conflict resolution chosen step invalid");
+    if (!candidateStepIds.has(resolutionBody.chosen_step_id)) throw new Error("swarm close conflict resolution chosen step missing");
+    const chosenStep = stepById.get(resolutionBody.chosen_step_id);
+    if (!resolutionBody.chosen_worker || typeof resolutionBody.chosen_worker !== "object" || Array.isArray(resolutionBody.chosen_worker)) throw new Error("swarm close conflict resolution worker missing");
+    if (!chosenStep?.worker || typeof chosenStep.worker !== "object" || Array.isArray(chosenStep.worker)) throw new Error("swarm close step worker missing");
+    if (canonical(resolutionBody.chosen_worker) !== canonical(chosenStep.worker)) throw new Error("swarm close conflict resolution worker mismatch");
+    if (typeof resolutionBody.reason !== "string" || resolutionBody.reason === "") throw new Error("swarm close conflict resolution reason missing");
+    if (typeof resolution_digest !== "string" || resolution_digest !== createHash("sha256").update(canonical(resolutionBody)).digest("hex")) throw new Error("swarm close conflict resolution digest invalid");
+    if (typeof signature !== "string" || signature === "") throw new Error("swarm close conflict resolution signature missing");
+    if (!verifyObject(zonePublicKey, resolutionBody, signature)) throw new Error("conflict resolution signature verification failed");
+  }
+}
+
 function verifySwarmMigrationLog(closeBody, stepById) {
   if (closeBody.migration_log === undefined) return;
   if (!Array.isArray(closeBody.migration_log)) throw new Error("swarm close migration_log invalid");
@@ -723,6 +755,7 @@ export function verifySwarmClose(frame, trustedZones) {
   }
   verifySwarmMigrationLog(closeBody, stepById);
   verifySwarmMicroContracts(closeBody, stepById);
+  verifySwarmConflictResolutions(closeBody, stepById, zone);
   if (!verifyObject(publicKeyFromDescriptor(zone), closeBody, close_signature)) {
     throw new Error("swarm close signature verification failed");
   }

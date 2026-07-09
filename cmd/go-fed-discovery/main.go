@@ -2995,6 +2995,18 @@ func (f Fixture) verifyTaskCancel(frame map[string]any) (*Worker, map[string]any
 	return worker, requester, cancel, nil
 }
 
+func taskArtifactURI(task map[string]any, fallback string) (string, error) {
+	value, exists := task["artifact_ref"]
+	if !exists {
+		return fallback, nil
+	}
+	uri := optionalString(value)
+	if uri == "" || hasSwarmDelimiter(uri) {
+		return "", errors.New("task artifact_ref invalid")
+	}
+	return uri, nil
+}
+
 func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worker, task map[string]any, parentCheckpoint any, restoredStateDigest string, retryOf any, requireHumanApproval bool, receiptExtra map[string]any, onReceipt func(map[string]any) error) error {
 	taskID := fmt.Sprint(task["task_id"])
 	ctx, cancelRun := context.WithCancel(context.Background())
@@ -3050,7 +3062,10 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		return err
 	}
 
-	artifactURI := "artifact://local/" + taskID + "/go-summary.md"
+	artifactURI, err := taskArtifactURI(task, "artifact://local/"+taskID+"/go-summary.md")
+	if err != nil {
+		return err
+	}
 	toolName, artifactText, sandbox, err := runTool(ctx, worker.Profile, task, origin, f.ArtifactStoreDir, f.LiveTranscriptDir)
 	if err != nil {
 		if f.Runtime.WasCancelled(taskID) {
@@ -3242,6 +3257,98 @@ func migrationLogEntry(stepID string, original *Worker, reason string, migrated 
 	}
 }
 
+func (f Fixture) swarmWorkerAgentScore(descriptor map[string]any) int {
+	aid := optionalString(descriptor["aid"])
+	for i := range f.Workers {
+		worker := &f.Workers[i]
+		if optionalString(worker.Descriptor["aid"]) != aid {
+			continue
+		}
+		capabilities := capabilitiesFromDescriptor(worker.Descriptor)
+		if len(capabilities) == 0 {
+			return 0
+		}
+		match := f.queryMatch(worker, capabilities[0], "", nil)
+		if match == nil {
+			return 0
+		}
+		evidence, _ := match["discovery_evidence"].(map[string]any)
+		reputation, _ := evidence["reputation"].(map[string]any)
+		agentScore, _ := reputation["agent_score"].(map[string]any)
+		return intFromMap(agentScore, "total")
+	}
+	return 0
+}
+
+func (f Fixture) conflictResolutionForGroup(swarmID, artifactRef string, entries []map[string]any) map[string]any {
+	sorted := append([]map[string]any{}, entries...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		leftScore := f.swarmWorkerAgentScore(sorted[i]["worker"].(map[string]any))
+		rightScore := f.swarmWorkerAgentScore(sorted[j]["worker"].(map[string]any))
+		if leftScore != rightScore {
+			return leftScore > rightScore
+		}
+		return optionalString(sorted[i]["alias"]) < optionalString(sorted[j]["alias"])
+	})
+	chosen := sorted[0]
+	runnerUp := sorted[1]
+	reason := "alias_tiebreak"
+	if f.swarmWorkerAgentScore(chosen["worker"].(map[string]any)) > f.swarmWorkerAgentScore(runnerUp["worker"].(map[string]any)) {
+		reason = "higher_reputation"
+	}
+	candidateStepIDs := []string{}
+	for _, entry := range entries {
+		candidateStepIDs = append(candidateStepIDs, optionalString(entry["step_id"]))
+	}
+	body := map[string]any{
+		"swarm_id":           swarmID,
+		"artifact_ref":       artifactRef,
+		"candidate_step_ids": candidateStepIDs,
+		"chosen_step_id":     chosen["step_id"],
+		"chosen_worker":      chosen["worker"],
+		"reason":             reason,
+	}
+	signed := signBodyWithKey(f.AuthorityPrivateKey, body, "signature")
+	signed["resolution_digest"] = digestHex(body)
+	return signed
+}
+
+func (f Fixture) swarmConflictResolutions(swarmID string, completed map[string]map[string]any, stepReceipts []map[string]any) []map[string]any {
+	byArtifact := map[string][]map[string]any{}
+	for _, step := range stepReceipts {
+		stepID := optionalString(step["step_id"])
+		receipt := completed[stepID]
+		for _, manifest := range mapsFromAny(receipt["artifact_manifests"]) {
+			uri := optionalString(manifest["uri"])
+			sha := optionalString(manifest["sha256"])
+			if uri == "" || sha == "" {
+				continue
+			}
+			worker, _ := step["worker"].(map[string]any)
+			byArtifact[uri] = append(byArtifact[uri], map[string]any{"step_id": stepID, "worker": worker, "alias": optionalString(worker["alias"]), "sha256": sha})
+		}
+	}
+	refs := make([]string, 0, len(byArtifact))
+	for ref := range byArtifact {
+		refs = append(refs, ref)
+	}
+	sort.Strings(refs)
+	resolutions := []map[string]any{}
+	for _, ref := range refs {
+		entries := byArtifact[ref]
+		stepIDs := map[string]bool{}
+		digests := map[string]bool{}
+		for _, entry := range entries {
+			stepIDs[optionalString(entry["step_id"])] = true
+			digests[optionalString(entry["sha256"])] = true
+		}
+		if len(stepIDs) >= 2 && len(digests) >= 2 {
+			resolutions = append(resolutions, f.conflictResolutionForGroup(swarmID, ref, entries))
+		}
+	}
+	return resolutions
+}
+
 func (f Fixture) executeSwarmWithScheduler(send sendFunc, origin, frame map[string]any, scheduler map[string]any) error {
 	requester, ok := frame["requester"].(map[string]any)
 	if !ok {
@@ -3368,7 +3475,16 @@ func (f Fixture) executeSwarmWithScheduler(send sendFunc, origin, frame map[stri
 		microContracts = append(microContracts, migratedMicroContract)
 		migrationLog = append(migrationLog, migrationLogEntry(stepID, worker, executeErr.Error(), migratedWorker))
 	}
+	conflictResolutions := f.swarmConflictResolutions(swarmID, completed, stepReceipts)
+	for _, resolution := range conflictResolutions {
+		if err := f.sendTaskEvent(send, resolution); err != nil {
+			return err
+		}
+	}
 	closeBody := map[string]any{"swarm_id": swarmID, "step_receipts": stepReceipts, "micro_contracts": microContracts, "migration_log": migrationLog}
+	if len(conflictResolutions) > 0 {
+		closeBody["conflict_resolutions"] = conflictResolutions
+	}
 	if scheduler != nil {
 		closeBody["scheduler"] = scheduler
 	}

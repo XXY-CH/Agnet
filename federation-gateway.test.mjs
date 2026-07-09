@@ -972,3 +972,86 @@ test("Federation Gateway rejects capability handoff when no match exists", async
     gateway.kill("SIGINT");
   }
 });
+
+test("Federation Gateway resolves conflicting Swarm artifact refs by higher reputation", async () => {
+  const port = 9022;
+  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/fed-zone-a-requester.pkcs8", {}, [`fed+tcp://127.0.0.1:${port}`], ["request.task"]);
+  const highReputationWorker = await loadOrCreateAgent("agent://zone-b/migration-summarizer", "state/keys/fed-zone-b-migration-summarizer.pkcs8");
+  await writeTrustedZones("state/zone-a-conflict-resolution-trust.json", [zoneB, zoneA]);
+  await writeTrustedZones("state/zone-b-conflict-resolution-trust.json", [zoneA]);
+  await writeAuditLog([
+    { kind: "fed_receipt", to: highReputationWorker.aid, status: "completed", task_id: "prior_conflict_win_1", completed_at: new Date().toISOString() },
+    { kind: "fed_receipt", to: highReputationWorker.aid, status: "completed", task_id: "prior_conflict_win_2", completed_at: new Date().toISOString() },
+  ]);
+
+  const gateway = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-conflict-resolution-trust.json"], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  try {
+    await waitForGateway(gateway);
+    const artifactRef = "artifact://local/swarm-conflict/shared-summary.md";
+    const lowTask = {
+      task_id: "node_swarm_conflict_low",
+      from: requester.aid,
+      to: "agent://zone-b/summarizer",
+      intent: "Write the low-reputation Swarm conflict candidate.",
+      artifact_ref: artifactRef,
+      scope: { network: false, write: [artifactRef] },
+      budget: { time_seconds: 30 },
+    };
+    const highTask = {
+      task_id: "node_swarm_conflict_high",
+      from: requester.aid,
+      to: "agent://zone-b/migration-summarizer",
+      intent: "Write the high-reputation Swarm conflict candidate.",
+      artifact_ref: artifactRef,
+      scope: { network: true, write: [artifactRef] },
+      budget: { time_seconds: 30 },
+    };
+    const frames = await exchangeFramesUntil(port, {
+      type: "FED_SWARM_OPEN",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      requester_zone_binding: zoneBinding(zoneA, requester.descriptor),
+      swarm: {
+        swarm_id: "swarm://local/node_conflict_resolution",
+        steps: [
+          { step_id: "low", task: { ...lowTask, signature: signObject(requester.privateKey, lowTask) } },
+          { step_id: "high", task: { ...highTask, signature: signObject(requester.privateKey, highTask) } },
+        ],
+      },
+    }, zoneA, "FED_SWARM_CLOSE");
+
+    assert.notEqual(frames.at(-1).type, "FED_TASK_ERROR", frames.at(-1).error);
+    const closeFrame = frames.at(-1);
+    const close = closeFrame.close;
+    assert.equal(Array.isArray(close.conflict_resolutions), true, "FED_SWARM_CLOSE close body must include conflict_resolutions");
+    assert.equal(close.conflict_resolutions.length, 1);
+    const [resolution] = close.conflict_resolutions;
+    assert.equal(resolution.swarm_id, "swarm://local/node_conflict_resolution");
+    assert.equal(resolution.artifact_ref, artifactRef);
+    assert.deepEqual(resolution.candidate_step_ids, ["low", "high"]);
+    assert.equal(resolution.chosen_step_id, "high");
+    assert.equal(resolution.chosen_worker.alias, "agent://zone-b/migration-summarizer");
+    assert.equal(resolution.reason, "higher_reputation");
+    assert.match(resolution.resolution_digest, /^[0-9a-f]{64}$/);
+    assert.equal(typeof resolution.signature, "string");
+    const { resolution_digest, signature, ...resolutionBody } = resolution;
+    assert.equal(resolution_digest, createHash("sha256").update(canonical(resolutionBody)).digest("hex"));
+    assert.equal(verifyObject(publicKeyFromDescriptor(zoneB.descriptor), resolutionBody, signature), true);
+    assert.equal(verifySwarmClose(closeFrame, new Map([[zoneB.zid, zoneB.descriptor]])).close.conflict_resolutions[0].chosen_step_id, "high");
+
+    const tampered = structuredClone(closeFrame);
+    tampered.close.conflict_resolutions[0].signature = "bad";
+    assert.throws(
+      () => verifySwarmClose(tampered, new Map([[zoneB.zid, zoneB.descriptor]])),
+      /conflict resolution signature verification failed/,
+    );
+  } finally {
+    gateway.kill("SIGINT");
+  }
+});

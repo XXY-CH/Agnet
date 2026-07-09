@@ -5,9 +5,19 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { canonical, capabilityCredentialId, createAgent, loadOrCreateAgent, loadOrCreateZone, loadRegistry, publicKeyFromDescriptor, resolveAgent, rotationProof, signObject, verifyAliasRebindingProof, verifyCredentialStatus, verifyObject, verifySwarmClose, writeTrustedZones, zoneBinding, zoneRevocation } from "./asp-core.mjs";
+import { AUDIT_ZERO_HASH, agentFromPrivateKey, auditEntry, canonical, capabilityCredentialId, createAgent, loadOrCreateAgent, loadOrCreateZone, loadRegistry, publicKeyFromDescriptor, resolveAgent, rotationProof, signObject, verifyAliasRebindingProof, verifyCredentialStatus, verifyObject, verifySwarmClose, writeTrustedZones, zoneBinding, zoneRevocation } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
+
+async function writeGoAuditLog(path, records) {
+  let prevHash = AUDIT_ZERO_HASH;
+  const lines = records.map((record) => {
+    const entry = auditEntry(prevHash, record);
+    prevHash = entry.hash;
+    return JSON.stringify(entry);
+  });
+  await writeFile(path, `${lines.join("\n")}\n`);
+}
 
 function authorityZoneFromFixture(fixture) {
   const privateKey = createPrivateKey({
@@ -19,6 +29,18 @@ function authorityZoneFromFixture(fixture) {
     type: "pkcs8",
   });
   return { ...fixture.authority, descriptor: fixture.authority, privateKey };
+}
+
+function agentFromSeed(alias, seedHex, policy, transports, capabilities) {
+  const privateKey = createPrivateKey({
+    key: Buffer.concat([
+      Buffer.from("302e020100300506032b657004220420", "hex"),
+      Buffer.from(seedHex, "hex"),
+    ]),
+    format: "der",
+    type: "pkcs8",
+  });
+  return agentFromPrivateKey(alias, privateKey, policy, transports, capabilities);
 }
 
 test("Go sandbox probe CLI reports unsupported container namespace", async () => {
@@ -602,6 +624,127 @@ process.exit(1);
       () => verifySwarmClose(tamperedMigrationFrame, new Map([[fixture.authority.zid, fixture.authority]])),
       /migration_log step_id|migration step/,
     );
+  } finally {
+    try {
+      process.kill(-gateway.pid, "SIGINT");
+    } catch {
+      // already exited
+    }
+  }
+});
+
+test("Go discovery resolves conflicting Swarm artifact refs and Node verifies the close proof", async () => {
+  const [port] = await freePorts(1);
+  zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/go-fed-conflict-requester.pkcs8");
+  const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
+  const goFixture = JSON.parse(JSON.stringify(fixture));
+  delete goFixture.authority_seed_hex;
+  delete goFixture.worker_seed_hex;
+  delete goFixture.worker;
+  delete goFixture.zone_binding;
+  delete goFixture.worker_profile;
+  goFixture.worker_profiles = [
+    {
+      key_file: "state/go-fed-discovery-conflict-low.seed",
+      alias: "agent://zone-b/conflict-low-summarizer",
+      tool: "summarize.mock",
+      transports: [`fed+tcp://127.0.0.1:${port}`],
+      capabilities: ["summarize.text"],
+      policy: { allow_network: false, write_prefixes: ["artifact://local/"] },
+    },
+    {
+      key_file: "state/go-fed-discovery-conflict-high.seed",
+      alias: "agent://zone-b/conflict-high-summarizer",
+      tool: "summarize.mock",
+      transports: [`fed+tcp://127.0.0.1:${port}`],
+      capabilities: ["summarize.text"],
+      policy: { allow_network: false, write_prefixes: ["artifact://local/"] },
+    },
+  ];
+  await writeFile("state/go-fed-discovery-conflict-worker.json", `${JSON.stringify(goFixture, null, 2)}\n`);
+  await writeFile("state/go-fed-discovery-conflict-authority.seed", `${fixture.authority_seed_hex}\n`);
+  await writeFile("state/go-fed-discovery-conflict-low.seed", `${fixture.worker_seed_hex}\n`);
+  await writeFile("state/go-fed-discovery-conflict-high.seed", "b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0\n");
+  await writeTrustedZones("state/go-fed-discovery-conflict-trusted-origin.json", [zoneA]);
+  const highWorker = agentFromSeed("agent://zone-b/conflict-high-summarizer", "b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0", { allow_network: false, write_prefixes: ["artifact://local/"] }, [`fed+tcp://127.0.0.1:${port}`], ["summarize.text"]);
+  await writeGoAuditLog("state/go-fed-discovery-conflict-audit.log", [
+    { kind: "go_fed_receipt", receipt: { to: highWorker.aid, status: "completed", task_id: "prior_go_conflict_win_1", completed_at: new Date().toISOString() } },
+    { kind: "go_fed_receipt", receipt: { to: highWorker.aid, status: "completed", task_id: "prior_go_conflict_win_2", completed_at: new Date().toISOString() } },
+  ]);
+  await rm("state/go-fed-discovery-conflict-audit-tasks", { recursive: true, force: true });
+  await rm("state/go-fed-discovery-conflict-artifacts", { recursive: true, force: true });
+  const gateway = spawn("go", [
+    "run",
+    "./cmd/go-fed-discovery",
+    "--port",
+    String(port),
+    "--artifact-store",
+    "state/go-fed-discovery-conflict-artifacts",
+    "--trusted",
+    "state/go-fed-discovery-conflict-trusted-origin.json",
+    "--fixture",
+    "state/go-fed-discovery-conflict-worker.json",
+    "--authority-key",
+    "state/go-fed-discovery-conflict-authority.seed",
+    "--worker-key",
+    "state/go-fed-discovery-conflict-low.seed",
+    "--audit",
+    "state/go-fed-discovery-conflict-audit.log",
+  ], {
+    cwd: process.cwd(),
+    detached: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  try {
+    await waitForGoGateway(gateway, port);
+    const artifactRef = "artifact://local/go-conflict/shared-summary.md";
+    const lowTask = {
+      task_id: "go_fed_swarm_conflict_low",
+      from: requester.aid,
+      to: "agent://zone-b/conflict-low-summarizer",
+      intent: "Write the low-reputation Go Swarm conflict candidate.",
+      artifact_ref: artifactRef,
+      scope: { network: false, write: [artifactRef] },
+      budget: { time_seconds: 30 },
+    };
+    const highTask = {
+      task_id: "go_fed_swarm_conflict_high",
+      from: requester.aid,
+      to: "agent://zone-b/conflict-high-summarizer",
+      intent: "Write the high-reputation Go Swarm conflict candidate.",
+      artifact_ref: artifactRef,
+      scope: { network: false, write: [artifactRef] },
+      budget: { time_seconds: 30 },
+    };
+    const frames = await exchangeFrames(port, {
+      type: "FED_SWARM_OPEN",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      swarm: {
+        swarm_id: "swarm://local/go_fed_swarm_conflict_resolution",
+        steps: [
+          { step_id: "low", task: { ...lowTask, signature: signObject(requester.privateKey, lowTask) } },
+          { step_id: "high", task: { ...highTask, signature: signObject(requester.privateKey, highTask) } },
+        ],
+      },
+    }, "FED_SWARM_CLOSE");
+    assert.notEqual(frames.at(-1).type, "FED_TASK_ERROR", frames.at(-1).error);
+    const closeFrame = frames.at(-1);
+    const close = closeFrame.close;
+    assert.equal(Array.isArray(close.conflict_resolutions), true, "FED_SWARM_CLOSE close body must include conflict_resolutions");
+    assert.equal(close.conflict_resolutions.length, 1);
+    const [resolution] = close.conflict_resolutions;
+    assert.equal(resolution.artifact_ref, artifactRef);
+    assert.deepEqual(resolution.candidate_step_ids, ["low", "high"]);
+    assert.equal(resolution.chosen_step_id, "high");
+    assert.equal(resolution.chosen_worker.alias, "agent://zone-b/conflict-high-summarizer");
+    assert.equal(resolution.reason, "higher_reputation");
+    const { resolution_digest, signature, ...resolutionBody } = resolution;
+    assert.equal(resolution_digest, createHash("sha256").update(canonical(resolutionBody)).digest("hex"));
+    assert.equal(verifyObject(publicKeyFromDescriptor(fixture.authority), resolutionBody, signature), true);
+    assert.equal(verifySwarmClose(closeFrame, new Map([[fixture.authority.zid, fixture.authority]])).close.conflict_resolutions[0].chosen_step_id, "high");
   } finally {
     try {
       process.kill(-gateway.pid, "SIGINT");

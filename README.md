@@ -2,11 +2,11 @@
 
 Agnet is the proof layer for agent work.
 
-[![Protocol](https://img.shields.io/badge/protocol-v14.7--protocol-blue)](docs/v14-roadmap.md) [![Tests](https://img.shields.io/badge/tests-313-brightgreen)](#quick-start) [![Go](https://img.shields.io/badge/go-1.26.1-00ADD8)](go.mod)
+[![Protocol](https://img.shields.io/badge/protocol-v14.8--protocol-blue)](docs/v14-roadmap.md) [![Tests](https://img.shields.io/badge/tests-317-brightgreen)](#quick-start) [![Go](https://img.shields.io/badge/go-1.26.1-00ADD8)](go.mod)
 
-Status: research prototype, local-first, v14 active at `v14.7-protocol`. Historical baseline: v14.6 Knowledge Gateway proto, v13 active-through `v13.15-protocol`, and v12 closed at `v12.45-protocol`.
+Status: research prototype, local-first, v14 active at `v14.8-protocol`. Historical baseline: v14.7 Policy and risk routing signals, v13 active-through `v13.15-protocol`, and v12 closed at `v12.45-protocol`.
 
-v14.7 adds verifier-owned FED_QUERY policy/risk routing signals: see `docs/v14.7-boundary.md` for `discovery_evidence.routing.policy_match` / `risk_match`, their neutral fallbacks, and non-goals. It is not a new trust oracle, policy language, marketplace ranking graph, or opaque ML router.
+v14.8 adds deterministic Swarm conflict resolution: when Swarm steps write the same artifact ref with different SHA-256 digests, close proofs carry signed `conflict_resolutions` choosing the higher agent_score reputation worker with `alias_tiebreak` fallback. It is not voting/quorum, automatic merge of conflicting content, payment/settlement, or a departure from local-first proof.
 
 ## What ASP is
 
@@ -79,6 +79,7 @@ go test ./...
 - Failure migration: failed steps retry once on same-capability replacement workers with signed migration logs.
 - Intent decomposition: `FED_SWARM_PLAN` binds generated Swarm plans to a signed `plan_digest`.
 - Knowledge Gateway: `FED_KNOWLEDGE_QUERY` and `FED_KNOWLEDGE_RESPONSE` bind cited freshness/license results to a signed query digest.
+- Conflict resolution: `FED_SWARM_CLOSE.close.conflict_resolutions` records signed, deterministic same-artifact conflict choices.
 
 ## Repo map quicklinks
 
@@ -108,6 +109,7 @@ go test ./...
 | v14.5 Intent Decomposition | Complete | `swarmPlan`, `FED_SWARM_PLAN`, and `plan_digest` evidence are documented in `docs/v14.5-boundary.md` | Not LLM orchestration, automatic candidate selection, or full DAG execution. |
 | v14.6 Knowledge Gateway proto | Complete | `knowledgeQuery`, `FED_KNOWLEDGE_QUERY`, `FED_KNOWLEDGE_RESPONSE`, and `verifyKnowledgeResponse` are documented in `docs/v14.6-boundary.md` | Not a web crawler, semantic cache, vector store, or RAG pipeline. |
 | v14.7 policy/risk routing signals | Complete | `discovery_evidence.routing.policy_match` and `risk_match` feed labelled `agent_score` and `ranking.reasons` evidence | Not a new trust oracle, policy language, marketplace ranker, or opaque ML router. |
+| v14.8 Swarm conflict resolution | Complete | `conflict_resolutions` entries bind artifact ref, candidate steps, chosen worker, reason, digest, and Zone signature | Not voting/quorum, automatic content merge, payment/settlement, or non-local-first arbitration. |
 
 ## Non-claims
 
@@ -159,7 +161,7 @@ Detailed milestone history lives in the roadmap and boundary docs; this README k
   `docs/v13.0-boundary.md` - v13 opening boundary. `docs/v13.15-boundary.md` - v13.15 Node receipt checkpoint verification boundary. `docs/v13.11-boundary.md` - v13.11 audit-backed receipt-count reputation boundary. `docs/v13.12-boundary.md` - v13.12 credential valid_until expiry boundary.
   `docs/v13.13-boundary.md` - v13.13 authority Zone revocation discovery boundary. `docs/v13.14-boundary.md` - v13.14 multi-signal agent score reputation boundary.
 - v14 boundaries:
-  `docs/v14.0-boundary.md` - v14 opening boundary. `docs/v14.2-boundary.md` - v14.2 multi-signal FED_QUERY routing boundary. `docs/v14.3-boundary.md` - v14.3 cross-zone trust chain boundary. `docs/v14.4-boundary.md` - v14.4 task failure migration boundary.
+  `docs/v14.0-boundary.md` - v14 opening boundary. `docs/v14.2-boundary.md` - v14.2 multi-signal FED_QUERY routing boundary. `docs/v14.3-boundary.md` - v14.3 cross-zone trust chain boundary. `docs/v14.4-boundary.md` - v14.4 task failure migration boundary. `docs/v14.8-boundary.md` - v14.8 Swarm conflict resolution boundary.
 
 ## Verifier and proof commands
 

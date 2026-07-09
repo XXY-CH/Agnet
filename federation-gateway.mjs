@@ -344,6 +344,60 @@ function microContractForStep(worker, swarmId, stepId, task) {
   return { ...body, contract_digest: digestHex(body), signature: signObject(worker.privateKey, body) };
 }
 
+function taskArtifactUri(task, fallback) {
+  if (task.artifact_ref === undefined) return fallback;
+  if (typeof task.artifact_ref !== "string" || task.artifact_ref === "" || task.artifact_ref.includes("\0")) throw new Error("task artifact_ref invalid");
+  return task.artifact_ref;
+}
+
+function workerAgentScore(worker, agentScores) {
+  const score = agentScores?.get(worker.aid)?.total;
+  return Number.isFinite(score) ? score : 0;
+}
+
+function conflictResolutionForGroup(zone, swarmId, artifactRef, entries, agentScores) {
+  const candidates = entries.map((entry) => ({
+    ...entry,
+    score: workerAgentScore({ aid: entry.worker.aid }, agentScores),
+    alias: typeof entry.worker.alias === "string" ? entry.worker.alias : "",
+  }));
+  const sorted = [...candidates].sort((left, right) => right.score - left.score || left.alias.localeCompare(right.alias));
+  const chosen = sorted[0];
+  const runnerUp = sorted[1];
+  const body = {
+    swarm_id: swarmId,
+    artifact_ref: artifactRef,
+    candidate_step_ids: entries.map((entry) => entry.step_id),
+    chosen_step_id: chosen.step_id,
+    chosen_worker: chosen.worker,
+    reason: chosen.score > runnerUp.score ? "higher_reputation" : "alias_tiebreak",
+  };
+  return { ...body, resolution_digest: digestHex(body), signature: signObject(zone.privateKey, body) };
+}
+
+function swarmConflictResolutions(zone, swarmId, completed, stepReceipts, agentScores) {
+  const byArtifact = new Map();
+  const stepWorker = new Map(stepReceipts.map((step) => [step.step_id, step.worker]));
+  for (const step of stepReceipts) {
+    const receipt = completed.get(step.step_id);
+    for (const manifest of receipt?.artifact_manifests ?? []) {
+      if (!manifest || typeof manifest.uri !== "string" || typeof manifest.sha256 !== "string") continue;
+      if (!byArtifact.has(manifest.uri)) byArtifact.set(manifest.uri, []);
+      byArtifact.get(manifest.uri).push({ step_id: step.step_id, worker: stepWorker.get(step.step_id), sha256: manifest.sha256 });
+    }
+  }
+  const resolutions = [];
+  for (const [artifactRef, entries] of byArtifact) {
+    const distinctStepIds = new Set(entries.map((entry) => entry.step_id));
+    const distinctDigests = new Set(entries.map((entry) => entry.sha256));
+    if (distinctStepIds.size >= 2 && distinctDigests.size >= 2) {
+      resolutions.push(conflictResolutionForGroup(zone, swarmId, artifactRef, entries, agentScores));
+    }
+  }
+  return resolutions;
+}
+
+
 async function executeLocalTask(socket, zone, originZone, worker, signedTask, task, receiptExtra = {}) {
   await sendEvent(socket, { type: "task.accepted", task_id: task.task_id, by: worker.aid, zone: zone.zid });
   const approvals = approvalReasons(worker.descriptor, task);
@@ -359,7 +413,7 @@ async function executeLocalTask(socket, zone, originZone, worker, signedTask, ta
   await sendEvent(socket, { type: "task.started", task_id: task.task_id, by: worker.aid, zone: zone.zid });
   await sendEvent(socket, { type: "task.progress", task_id: task.task_id, progress: 0.5 });
 
-  const artifactUri = `artifact://local/${task.task_id}/federated-summary.md`;
+  const artifactUri = taskArtifactUri(task, `artifact://local/${task.task_id}/federated-summary.md`);
   const artifact = await writeArtifact(artifactUri, `# Federated Summary\n\nCompleted ${task.task_id} from ${originZone.zid}.\n`);
   await sendEvent(socket, { type: "artifact.created", task_id: task.task_id, uri: artifactUri, manifest: artifact.manifest });
   await sendEvent(socket, { type: "task.completed", task_id: task.task_id, by: worker.aid, zone: zone.zid });
@@ -414,7 +468,7 @@ function verifySwarmStepSignature(frame, trustedZones, signedTask) {
   return { originZone, task };
 }
 
-async function executeSwarm(socket, trustedZones, zone, workers, frame) {
+async function executeSwarm(socket, trustedZones, zone, workers, frame, agentScores = new Map()) {
   workers = Array.isArray(workers) ? workers : [workers];
   const originZone = verifyTrustedZone(trustedZones, frame.origin_zone);
   if (!frame.requester || typeof frame.requester !== "object" || Array.isArray(frame.requester)) throw new Error("swarm requester missing");
@@ -493,7 +547,9 @@ async function executeSwarm(socket, trustedZones, zone, workers, frame) {
       migration_at: new Date().toISOString(),
     });
   }
-  const closeBody = { swarm_id: swarmId, step_receipts: stepReceipts, micro_contracts: microContracts, migration_log: migrationLog, ...(planDigest !== undefined ? { plan_digest: planDigest } : {}) };
+  const conflictResolutions = swarmConflictResolutions(zone, swarmId, completed, stepReceipts, agentScores);
+  for (const resolution of conflictResolutions) await sendEvent(socket, resolution);
+  const closeBody = { swarm_id: swarmId, step_receipts: stepReceipts, micro_contracts: microContracts, migration_log: migrationLog, ...(conflictResolutions.length > 0 ? { conflict_resolutions: conflictResolutions } : {}), ...(planDigest !== undefined ? { plan_digest: planDigest } : {}) };
   const closeProof = { ...closeBody, close_signature: signObject(zone.privateKey, closeBody) };
   await appendAudit({ kind: "fed_swarm_close", zone: zone.descriptor, close: closeProof });
   send(socket, { type: "FED_SWARM_CLOSE", swarm_id: swarmId, zone: zone.descriptor, close: closeProof });
@@ -523,10 +579,24 @@ async function serve(port, trustedZonesFile) {
     [`fed+tcp://127.0.0.1:${port}`],
     ["summarize.text"],
   );
-  const knownWorkers = [worker, semanticWorker];
+  const knownWorkers = [worker, semanticWorker, migrationWorker];
   const receiptCounts = new Map(await Promise.all(
     knownWorkers.map(async (knownWorker) => [knownWorker.aid, await countCompletedReceiptsFromAudit("state/audit.log", knownWorker.aid)]),
   ));
+  const agentScores = new Map(knownWorkers.map((knownWorker) => {
+    const capability = workerCapabilities(knownWorker)[0] ?? "";
+    const counts = receiptCounts.get(knownWorker.aid);
+    const match = queryMatch(zone, knownWorker, capability, "", {
+      level: "L1",
+      evidence: ["zone-b-local-worker"],
+      completed_receipts: counts?.count ?? 0,
+      last_completed_at: counts?.lastCompletedAt ?? null,
+      availability_started: counts?.availabilityStarted ?? 0,
+      availability_completed: counts?.availabilityCompleted ?? 0,
+      availability_has_audit_data: counts?.availabilityHasAuditData === true,
+    });
+    return [knownWorker.aid, match?.discovery_evidence?.reputation?.agent_score ?? { total: 0 }];
+  }));
 
 
   const server = net.createServer((socket) => {
@@ -565,7 +635,7 @@ async function serve(port, trustedZonesFile) {
           return;
         }
         if (frame.type === "FED_SWARM_OPEN") {
-          await executeSwarm(socket, trustedZones, zone, [worker, migrationWorker], frame);
+          await executeSwarm(socket, trustedZones, zone, [worker, migrationWorker], frame, agentScores);
           return;
         }
         if (frame.type !== "FED_TASK_OPEN") throw new Error(`unsupported frame: ${frame.type}`);
