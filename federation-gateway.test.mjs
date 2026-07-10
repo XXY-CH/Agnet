@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { AUDIT_ZERO_HASH, auditEntry, canonical, createZone, loadOrCreateAgent, loadOrCreateZone, publicKeyFromDescriptor, signObject, swarmPlan, verifyObject, verifySwarmClose, verifySwarmPlan, verifyZoneTrustDelegation, writeTrustedZones, zoneBinding, zoneRevocation, zoneTrustDelegation } from "./asp-core.mjs";
+import { AUDIT_ZERO_HASH, auditEntry, canonical, createZone, loadOrCreateAgent, loadOrCreateZone, publicKeyFromDescriptor, signObject, swarmExecutionBinding, swarmPlan, verifyObject, verifySwarmClose, verifySwarmPlan, verifyZoneTrustDelegation, writeTrustedZones, zoneBinding, zoneRevocation, zoneTrustDelegation } from "./asp-core.mjs";
 import { queryMatch } from "./federation-gateway.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -20,6 +20,32 @@ async function writeAuditLog(records) {
   });
   await writeFile("state/audit.log", lines.join("\n") + "\n");
   await writeFile("state/audit.head", `${prevHash}\n`);
+}
+
+async function snapshotPersistentPath(path) {
+  let info;
+  try {
+    info = await lstat(path);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+  if (!info.isDirectory()) {
+    return { type: "file", bytes: (await readFile(path)).toString("base64") };
+  }
+  const entries = {};
+  for (const name of (await readdir(path)).sort()) {
+    entries[name] = await snapshotPersistentPath(`${path}/${name}`);
+  }
+  return { type: "directory", entries };
+}
+
+async function snapshotPersistentState(paths) {
+  return Object.fromEntries(await Promise.all(paths.map(async (path) => [path, await snapshotPersistentPath(path)])));
+}
+
+async function assertPersistentPathAbsent(path, message) {
+  await assert.rejects(lstat(path), (error) => error.code === "ENOENT", message);
 }
 
 test("Zone trust delegation verifies authority signature and rejects tampering", () => {
@@ -113,6 +139,52 @@ function exchangeFramesUntil(port, frame, signingZone, closeType) {
     });
   });
 }
+function swarmCapabilityForTask(task) {
+  return task?.to?.includes("translator") ? "translate.text" : "summarize.text";
+}
+
+function withSwarmExecutionBinding(coordinator, frame, { plan = null } = {}) {
+  const executableSteps = frame.swarm.steps.map((step) => ({ step_id: step.step_id, depends_on: step.after ?? [], task: step.task }));
+  const planFrame = plan ?? swarmPlan(
+    coordinator,
+    frame.swarm.swarm_id,
+    `Execute ${frame.swarm.swarm_id}.`,
+    frame.swarm.steps.map((step) => ({ step_id: step.step_id, capability: swarmCapabilityForTask(step.task), depends_on: step.after ?? [] })),
+    "c".repeat(64),
+  );
+  return {
+    ...frame,
+    swarm: {
+      swarm_id: frame.swarm.swarm_id,
+      plan: planFrame,
+      execution_binding: swarmExecutionBinding(coordinator, planFrame, executableSteps),
+      steps: frame.swarm.steps,
+    },
+  };
+}
+
+function withManuallySignedSwarmExecutionBinding(coordinator, frame) {
+  const planSteps = frame.swarm.steps.map((step) => ({ step_id: step.step_id, capability: swarmCapabilityForTask(step.task), depends_on: step.after ?? [] }));
+  const plan = swarmPlan(coordinator, frame.swarm.swarm_id, `Reject ${frame.swarm.swarm_id}.`, planSteps, "d".repeat(64));
+  const steps = frame.swarm.steps.map((step) => ({
+    step_id: step.step_id,
+    depends_on: step.after ?? [],
+    capability: swarmCapabilityForTask(step.task),
+    task_digest: createHash("sha256").update(canonical(step.task)).digest("hex"),
+  }));
+  const body = {
+    format: "asp-swarm-execution-binding/v1",
+    swarm_id: frame.swarm.swarm_id,
+    plan_digest: plan.plan.plan_digest,
+    steps,
+    execution_graph_digest: createHash("sha256").update(canonical({ swarm_id: frame.swarm.swarm_id, plan_digest: plan.plan.plan_digest, steps })).digest("hex"),
+  };
+  return {
+    ...frame,
+    swarm: { swarm_id: frame.swarm.swarm_id, plan, execution_binding: { ...body, binding_signature: signObject(coordinator.privateKey, body) }, steps: frame.swarm.steps },
+  };
+}
+
 
 test("Federation Gateway queryMatch scores only active credentials", async () => {
   const zone = await loadOrCreateZone("zone://query-match-zone", "state/keys/query-match-zone.pkcs8");
@@ -353,6 +425,130 @@ test("Federation Gateway completes a cross-Zone task", async () => {
   }
 });
 
+test("rejects unsigned or substituted executable Swarm before execution", async (t) => {
+  const port = 9032;
+  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/fed-zone-a-requester.pkcs8");
+  await writeTrustedZones("state/zone-b-u2-preflight-trust.json", [zoneA]);
+  const gateway = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-u2-preflight-trust.json"], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  const runId = `${process.pid}_${Date.now()}`;
+  const persistentPaths = ["state/audit.log", "state/audit.head", "state/audit-tasks", "artifacts"];
+  const buildFrame = ({ name, type = "FED_SWARM_OPEN", definitions }) => {
+    const swarmId = `swarm://local/node-u2-${runId}-${name}`;
+    const steps = definitions.map(({ stepId, after = [], capability = "summarize.text", to = "agent://zone-b/summarizer", network = false }) => {
+      const task = {
+        task_id: `node_u2_${runId}_${name}_${stepId}`,
+        from: requester.aid,
+        to,
+        intent: `Execute ${name} ${stepId}.`,
+        scope: { network },
+        budget: { time_seconds: 30 },
+      };
+      return { step_id: stepId, ...(after.length > 0 ? { after } : {}), capability, task: { ...task, signature: signObject(requester.privateKey, task) } };
+    });
+    const planSteps = steps.map((step) => ({ step_id: step.step_id, capability: step.capability, depends_on: step.after ?? [] }));
+    const plan = swarmPlan(zoneA, swarmId, `U2 ${name}.`, planSteps, "a".repeat(64));
+    const executableSteps = steps.map(({ step_id, after = [], task }) => ({ step_id, depends_on: after, task }));
+    const executionBinding = swarmExecutionBinding(zoneA, plan, executableSteps);
+    return {
+      type,
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      requester_zone_binding: zoneBinding(zoneA, requester.descriptor),
+      swarm: { swarm_id: swarmId, plan, execution_binding: executionBinding, steps: steps.map(({ capability: _capability, ...step }) => step) },
+    };
+  };
+
+  const cases = [];
+  const missingPlan = buildFrame({ name: "missing-plan", definitions: [{ stepId: "only" }] });
+  delete missingPlan.swarm.plan;
+  cases.push({ name: "missing FED_SWARM_PLAN", frame: missingPlan, error: /swarm plan missing/ });
+
+  const missingBinding = buildFrame({ name: "missing-binding", definitions: [{ stepId: "only" }] });
+  delete missingBinding.swarm.execution_binding;
+  cases.push({ name: "missing execution binding", frame: missingBinding, error: /execution binding missing/ });
+
+  const strippedFormat = buildFrame({ name: "stripped-format", definitions: [{ stepId: "only" }] });
+  delete strippedFormat.swarm.execution_binding.format;
+  cases.push({ name: "stripped execution binding format", frame: strippedFormat, error: /execution binding fields invalid/ });
+
+  const changedTask = buildFrame({ name: "changed-task", definitions: [{ stepId: "only" }] });
+  const changedTaskBody = { ...changedTask.swarm.steps[0].task, intent: "Substituted after binding." };
+  delete changedTaskBody.signature;
+  changedTask.swarm.steps[0].task = { ...changedTaskBody, signature: signObject(requester.privateKey, changedTaskBody) };
+  cases.push({ name: "changed signed task", frame: changedTask, error: /execution binding task_digest mismatch/ });
+
+  const reordered = buildFrame({ name: "reordered", type: "FED_SWARM_SCHEDULE", definitions: [{ stepId: "first" }, { stepId: "second" }] });
+  reordered.swarm.steps.reverse();
+  cases.push({ name: "reordered schedule input", frame: reordered, error: /execution binding executable step order mismatch/ });
+
+  const reconnected = buildFrame({ name: "reconnected", definitions: [{ stepId: "first" }, { stepId: "second", after: ["first"] }] });
+  delete reconnected.swarm.steps[1].after;
+  cases.push({ name: "dependency reconnection", frame: reconnected, error: /execution binding executable depends_on mismatch/ });
+
+  const substitutedCapability = buildFrame({ name: "capability", definitions: [{ stepId: "only", capability: "translate.text" }] });
+  cases.push({ name: "capability substitution", frame: substitutedCapability, error: /execution binding worker capability missing/ });
+  const migratedCapability = buildFrame({
+    name: "migrated-capability",
+    definitions: [{ stepId: "only", capability: "summarize.text.fast", to: "agent://zone-b/semantic-summarize-text-fast" }],
+  });
+  cases.push({ name: "migrated worker lacks exact signed capability", frame: migratedCapability, error: /execution binding migration worker capability missing/ });
+  const substitutedMigrationPolicy = buildFrame({ name: "migration-policy", definitions: [{ stepId: "only", to: "agent://zone-b/migration-summarizer", network: true }] });
+  cases.push({ name: "migration worker policy substitution", frame: substitutedMigrationPolicy, error: /policy denied network access/ });
+
+  const substitutedTerminal = buildFrame({ name: "terminal", definitions: [{ stepId: "terminal" }] });
+  substitutedTerminal.swarm.steps[0].step_id = "replacement";
+  cases.push({ name: "terminal-step substitution", frame: substitutedTerminal, error: /execution binding executable step order mismatch/ });
+
+  const invalidGraph = buildFrame({ name: "invalid-graph", type: "FED_SWARM_SCHEDULE", definitions: [{ stepId: "only", after: ["missing"] }] });
+  cases.push({ name: "graph preflight rejection", frame: invalidGraph, error: /swarm schedule dependency unresolved/ });
+  const invalidOpenGraph = buildFrame({ name: "invalid-open-graph", definitions: [{ stepId: "first" }, { stepId: "second", after: ["missing"] }] });
+  cases.push({ name: "open graph preflight rejection", frame: invalidOpenGraph, error: /swarm dependency not completed: missing/ });
+
+  try {
+    await waitForGateway(gateway);
+    for (const candidate of cases) {
+      await t.test(candidate.name, async () => {
+        const taskIds = candidate.frame.swarm.steps.map((step) => step.task.task_id);
+        const persistentBefore = await snapshotPersistentState(persistentPaths);
+        const frames = await exchangeFramesUntil(port, candidate.frame, zoneA, "FED_SWARM_CLOSE");
+        const effects = {
+          emitted_task_events: frames.filter((frame) => frame.type === "FED_TASK_EVENT").length,
+          emitted_artifacts: frames.filter((frame) => frame.type === "FED_TASK_EVENT" && frame.event?.type === "artifact.created").length,
+          emitted_receipts: frames.filter((frame) => frame.type === "FED_RECEIPT").length,
+          emitted_closes: frames.filter((frame) => frame.type === "FED_TASK_CLOSE" || frame.type === "FED_SWARM_CLOSE").length,
+        };
+        assert.deepEqual(effects, { emitted_task_events: 0, emitted_artifacts: 0, emitted_receipts: 0, emitted_closes: 0 }, `${candidate.name}: ${JSON.stringify(effects)}`);
+        assert.deepEqual(frames.map((frame) => frame.type), ["FED_TASK_ERROR"], candidate.name);
+        assert.match(frames[0].error, candidate.error, candidate.name);
+        const persistentAfter = await snapshotPersistentState(persistentPaths);
+        assert.deepEqual(persistentAfter, persistentBefore, `${candidate.name}: persistent state changed`);
+        for (const taskId of taskIds) {
+          await assertPersistentPathAbsent(`state/audit-tasks/${encodeURIComponent(taskId)}.json`, `${candidate.name}: task state persisted for ${taskId}`);
+          await assertPersistentPathAbsent(`artifacts/${taskId}`, `${candidate.name}: artifact path persisted for ${taskId}`);
+        }
+      });
+    }
+    await t.test("propagates verified plan and graph digests", async () => {
+      const valid = buildFrame({ name: "valid", definitions: [{ stepId: "first" }, { stepId: "second", after: ["first"] }] });
+      const frames = await exchangeFramesUntil(port, valid, zoneA, "FED_SWARM_CLOSE");
+      const close = frames.at(-1).close;
+      assert.equal(close.plan_digest, valid.swarm.plan.plan.plan_digest);
+      assert.equal(close.execution_graph_digest, valid.swarm.execution_binding.execution_graph_digest);
+      for (const receipt of frames.filter((frame) => frame.type === "FED_RECEIPT").map((frame) => frame.receipt)) {
+        assert.equal(receipt.swarm.plan_digest, close.plan_digest);
+        assert.equal(receipt.swarm.execution_graph_digest, close.execution_graph_digest);
+      }
+    });
+  } finally {
+    gateway.kill("SIGINT");
+  }
+});
+
 test("Swarm decomposition plan verifies and links to close plan digest", async () => {
   const port = 9021;
   const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
@@ -407,20 +603,19 @@ test("Swarm decomposition plan verifies and links to close plan digest", async (
       scope: { network: false },
       budget: { time_seconds: 30 },
     };
-    const frames = await exchangeFramesUntil(port, {
+    const frames = await exchangeFramesUntil(port, withSwarmExecutionBinding(zoneA, {
       type: "FED_SWARM_OPEN",
       origin_zone: zoneA.descriptor,
       requester: requester.descriptor,
       requester_zone_binding: zoneBinding(zoneA, requester.descriptor),
       swarm: {
         swarm_id: "swarm://local/node_swarm_plan",
-        plan_digest: planFrame.plan.plan_digest,
         steps: [
           { step_id: "1", task: { ...summaryTask, signature: signObject(requester.privateKey, summaryTask) } },
           { step_id: "2", after: ["1"], task: { ...followupTask, signature: signObject(requester.privateKey, followupTask) } },
         ],
       },
-    }, zoneA, "FED_SWARM_CLOSE");
+    }, { plan: planFrame }), zoneA, "FED_SWARM_CLOSE");
     assert.notEqual(frames.at(-1).type, "FED_TASK_ERROR", frames.at(-1).error);
 
     const closeFrame = frames.at(-1);
@@ -474,7 +669,7 @@ test("Federation Gateway schedules out-of-order Swarm steps in deterministic rea
       scope: { network: false },
       budget: { time_seconds: 30 },
     };
-    const frames = await exchangeFramesUntil(port, {
+    const frames = await exchangeFramesUntil(port, withSwarmExecutionBinding(zoneA, {
       type: "FED_SWARM_SCHEDULE",
       origin_zone: zoneA.descriptor,
       requester: requester.descriptor,
@@ -487,7 +682,7 @@ test("Federation Gateway schedules out-of-order Swarm steps in deterministic rea
           { step_id: "summary", task: { ...summaryTask, signature: signObject(requester.privateKey, summaryTask) } },
         ],
       },
-    }, zoneA, "FED_SWARM_CLOSE");
+    }), zoneA, "FED_SWARM_CLOSE");
 
     assert.notEqual(frames.at(-1).type, "FED_TASK_ERROR", frames.at(-1).error);
     assert.deepEqual(frames.filter((frame) => frame.type === "FED_RECEIPT").map((frame) => frame.receipt.swarm.step_id), ["preface", "summary", "followup"]);
@@ -522,7 +717,7 @@ test("Federation Gateway rejects invalid ready-DAG graphs before executing any s
     const cases = [
       {
         name: "duplicate step IDs",
-        error: "duplicate swarm step: duplicate",
+        error: "execution binding duplicate step_id",
         steps: [
           { step_id: "duplicate", task: taskFor("node_swarm_duplicate_first") },
           { step_id: "duplicate", task: taskFor("node_swarm_duplicate_second") },
@@ -541,13 +736,13 @@ test("Federation Gateway rejects invalid ready-DAG graphs before executing any s
     ];
 
     for (const graphCase of cases) {
-      const frames = await exchangeFramesUntil(port, {
+      const frames = await exchangeFramesUntil(port, withManuallySignedSwarmExecutionBinding(zoneA, {
         type: "FED_SWARM_SCHEDULE",
         origin_zone: zoneA.descriptor,
         requester: requester.descriptor,
         requester_zone_binding: zoneBinding(zoneA, requester.descriptor),
         swarm: { swarm_id: `swarm://local/${graphCase.name.replaceAll(" ", "-")}`, steps: graphCase.steps },
-      }, zoneA, "FED_SWARM_CLOSE");
+      }), zoneA, "FED_SWARM_CLOSE");
       assert.deepEqual(frames, [{ type: "FED_TASK_ERROR", error: graphCase.error }], graphCase.name);
       assert.equal(frames.some((frame) => frame.type === "FED_RECEIPT" || frame.type === "FED_SWARM_CLOSE"), false, graphCase.name);
     }
@@ -573,7 +768,7 @@ test("Federation Gateway rejects an unresolvable ready-DAG before executing any 
       budget: { time_seconds: 30 },
     };
     const secondTask = { ...firstTask, task_id: "node_swarm_cycle_second", intent: "Cycle second." };
-    const frames = await exchangeFramesUntil(port, {
+    const frames = await exchangeFramesUntil(port, withSwarmExecutionBinding(zoneA, {
       type: "FED_SWARM_SCHEDULE",
       origin_zone: zoneA.descriptor,
       requester: requester.descriptor,
@@ -585,7 +780,7 @@ test("Federation Gateway rejects an unresolvable ready-DAG before executing any 
           { step_id: "second", after: ["first"], task: { ...secondTask, signature: signObject(requester.privateKey, secondTask) } },
         ],
       },
-    }, zoneA, "FED_SWARM_CLOSE");
+    }), zoneA, "FED_SWARM_CLOSE");
 
     assert.deepEqual(frames, [{ type: "FED_TASK_ERROR", error: "swarm schedule dependency unresolved" }]);
     assert.equal(frames.some((frame) => frame.type === "FED_RECEIPT" || frame.type === "FED_SWARM_CLOSE"), false);
@@ -626,7 +821,7 @@ test("Federation Gateway closes Swarm steps with signed micro-contracts", async 
       budget: { time_seconds: 30 },
     };
 
-    const frames = await exchangeFramesUntil(port, {
+    const frames = await exchangeFramesUntil(port, withSwarmExecutionBinding(zoneA, {
       type: "FED_SWARM_OPEN",
       origin_zone: zoneA.descriptor,
       requester: requester.descriptor,
@@ -638,7 +833,7 @@ test("Federation Gateway closes Swarm steps with signed micro-contracts", async 
           { step_id: "followup", after: ["summary"], task: { ...followupTask, signature: signObject(requester.privateKey, followupTask) } },
         ],
       },
-    }, zoneA, "FED_SWARM_CLOSE");
+    }), zoneA, "FED_SWARM_CLOSE");
     assert.notEqual(frames.at(-1).type, "FED_TASK_ERROR", frames.at(-1).error);
 
     const microContractEvents = frames.filter((frame) => frame.type === "FED_TASK_EVENT" && frame.event.micro_contract === "ok");
@@ -698,7 +893,7 @@ test("Federation Gateway migrates a failed Swarm step to the next same-capabilit
       budget: { time_seconds: 30 },
     };
 
-    const frames = await exchangeFramesUntil(port, {
+    const frames = await exchangeFramesUntil(port, withSwarmExecutionBinding(zoneA, {
       type: "FED_SWARM_OPEN",
       origin_zone: zoneA.descriptor,
       requester: requester.descriptor,
@@ -709,7 +904,7 @@ test("Federation Gateway migrates a failed Swarm step to the next same-capabilit
           { step_id: "summary", task: { ...migratingTask, signature: signObject(requester.privateKey, migratingTask) } },
         ],
       },
-    }, zoneA, "FED_SWARM_CLOSE");
+    }), zoneA, "FED_SWARM_CLOSE");
     assert.notEqual(frames.at(-1).type, "FED_TASK_ERROR", frames.at(-1).error);
 
     const closeFrame = frames.at(-1);
@@ -1163,10 +1358,10 @@ test("Federation Gateway resolves conflicting Swarm artifact refs by higher repu
       to: "agent://zone-b/migration-summarizer",
       intent: "Write the high-reputation Swarm conflict candidate.",
       artifact_ref: artifactRef,
-      scope: { network: true, write: [artifactRef] },
+      scope: { network: false, write: [artifactRef] },
       budget: { time_seconds: 30 },
     };
-    const frames = await exchangeFramesUntil(port, {
+    const frames = await exchangeFramesUntil(port, withSwarmExecutionBinding(zoneA, {
       type: "FED_SWARM_OPEN",
       origin_zone: zoneA.descriptor,
       requester: requester.descriptor,
@@ -1178,7 +1373,7 @@ test("Federation Gateway resolves conflicting Swarm artifact refs by higher repu
           { step_id: "high", task: { ...highTask, signature: signObject(requester.privateKey, highTask) } },
         ],
       },
-    }, zoneA, "FED_SWARM_CLOSE");
+    }), zoneA, "FED_SWARM_CLOSE");
 
     assert.notEqual(frames.at(-1).type, "FED_TASK_ERROR", frames.at(-1).error);
     const closeFrame = frames.at(-1);

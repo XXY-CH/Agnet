@@ -98,6 +98,8 @@ test("public node proof starts a public-listen gateway", async (t) => {
   assert.equal(result.swarm_close_receipts, true);
   assert.equal(result.swarm_close_verify, "ok");
   assert.match(result.swarm_close_digest, /^[a-f0-9]{64}$/);
+  assert.match(result.swarm_plan_digest, /^[a-f0-9]{64}$/);
+  assert.match(result.swarm_execution_graph_digest, /^[a-f0-9]{64}$/);
   assert.equal(result.swarm_close_frame, "state/public-node-proof-swarm-close.json");
   assert.equal(result.swarm_close_trusted_zones, "state/public-node-proof-swarm-close-trusted-zones.json");
 
@@ -108,6 +110,8 @@ test("public node proof starts a public-listen gateway", async (t) => {
   assert.equal(closeFrame.type, "FED_SWARM_CLOSE");
   assert.equal(closeFrame.swarm_id, result.swarm_id);
   assert.equal(closeFrame.close.swarm_id, result.swarm_id);
+  assert.equal(closeFrame.close.plan_digest, result.swarm_plan_digest);
+  assert.equal(closeFrame.close.execution_graph_digest, result.swarm_execution_graph_digest);
   assert.equal(closeTrustedZones.zones[0].zid, closeFrame.zone.zid);
 
   const audit = await readFile("state/public-node-proof-audit.log", "utf8");

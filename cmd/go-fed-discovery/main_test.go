@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
@@ -1861,6 +1862,254 @@ func TestTrustedZoneStoreRejectsTamperedRevocation(t *testing.T) {
 	if _, err := loadTrustedZones(path); err == nil || !strings.Contains(err.Error(), "zone revocation signature verification failed") {
 		t.Fatalf("got %v, want zone revocation signature verification failed", err)
 	}
+}
+
+func TestExecuteSwarmRejectsWorkerCapabilitySubstitution(t *testing.T) {
+	t.Chdir(t.TempDir())
+	origin, originKey := testZoneDescriptor(t, "zone://u2-origin")
+	authority, authorityKey := testZoneDescriptor(t, "zone://u2-authority")
+	_, requesterKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requester, err := workerDescriptor(WorkerProfile{
+		Alias:        "agent://u2/requester",
+		Transports:   []string{"go-test"},
+		Capabilities: []string{"request.task"},
+		Policy:       map[string]any{},
+	}, requesterKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, originalKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalProfile := WorkerProfile{
+		Alias:        "agent://u2/original",
+		Tool:         "external.stdio",
+		ToolCommand:  []string{"/usr/bin/false"},
+		Transports:   []string{"go-test"},
+		Capabilities: []string{"summarize.text", "migration.shared"},
+		Policy:       map[string]any{"allow_network": false},
+	}
+	originalDescriptor, err := workerDescriptor(originalProfile, originalKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, replacementKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacementProfile := WorkerProfile{
+		Alias:        "agent://u2/replacement",
+		Tool:         "summarize.mock",
+		Transports:   []string{"go-test"},
+		Capabilities: []string{"translate.text", "migration.shared"},
+		Policy:       map[string]any{"allow_network": false},
+	}
+	replacementDescriptor, err := workerDescriptor(replacementProfile, replacementKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	swarmID := "swarm://local/go-u2-capability-substitution"
+	planSteps := []any{map[string]any{"step_id": "summary", "capability": "summarize.text", "depends_on": []any{}}}
+	planDigest := digestHex(map[string]any{"intent": "Reject migration capability substitution.", "steps": planSteps})
+	planBody := map[string]any{
+		"swarm_id":      swarmID,
+		"intent":        "Reject migration capability substitution.",
+		"steps":         planSteps,
+		"policy_digest": strings.Repeat("a", 64),
+		"plan_digest":   planDigest,
+	}
+	plan := map[string]any{"type": "FED_SWARM_PLAN", "zone": origin, "plan": signBodyWithKey(originKey, planBody, "plan_signature")}
+	taskBody := map[string]any{
+		"task_id": "go_u2_capability_substitution",
+		"from":    requester["aid"],
+		"to":      originalDescriptor["alias"],
+		"intent":  "Force the original worker to fail.",
+		"scope":   map[string]any{"network": false},
+		"budget":  map[string]any{"time_seconds": float64(30)},
+	}
+	signedTask := signBody(requesterKey, taskBody)
+	bindingSteps := []any{map[string]any{
+		"step_id":     "summary",
+		"depends_on":  []any{},
+		"capability":  "summarize.text",
+		"task_digest": digestHex(signedTask),
+	}}
+	bindingBody := map[string]any{
+		"format":                 "asp-swarm-execution-binding/v1",
+		"swarm_id":               swarmID,
+		"plan_digest":            planDigest,
+		"steps":                  bindingSteps,
+		"execution_graph_digest": digestHex(map[string]any{"swarm_id": swarmID, "plan_digest": planDigest, "steps": bindingSteps}),
+	}
+	executionBinding := signBodyWithKey(originKey, bindingBody, "binding_signature")
+	requesterBinding := signBodyWithKey(originKey, map[string]any{
+		"zone":  origin["zid"],
+		"alias": requester["alias"],
+		"aid":   requester["aid"],
+	}, "signature")
+	frame := map[string]any{
+		"type":                   "FED_SWARM_OPEN",
+		"origin_zone":            origin,
+		"requester":              requester,
+		"requester_zone_binding": requesterBinding,
+		"swarm": map[string]any{
+			"swarm_id":          swarmID,
+			"plan":              plan,
+			"execution_binding": executionBinding,
+			"steps": []any{map[string]any{
+				"step_id": "summary",
+				"task":    signedTask,
+			}},
+		},
+	}
+	fixture := Fixture{
+		Authority:           authority,
+		AuthorityPrivateKey: authorityKey,
+		Workers: []Worker{
+			{Profile: originalProfile, Descriptor: originalDescriptor, PrivateKey: originalKey},
+			{Profile: replacementProfile, Descriptor: replacementDescriptor, PrivateKey: replacementKey},
+		},
+		Runtime: &TaskRuntime{running: map[string]context.CancelFunc{}, cancelled: map[string]bool{}},
+	}
+	emitted := []map[string]any{}
+	err = fixture.executeSwarm(func(frame map[string]any) { emitted = append(emitted, frame) }, origin, frame)
+	if err == nil || !strings.Contains(err.Error(), "execution binding migration worker capability missing: summary") {
+		t.Fatalf("got %v, want execution binding migration worker capability missing: summary", err)
+	}
+	if len(emitted) != 0 {
+		t.Fatalf("emitted %d side effects before capability rejection: %#v", len(emitted), emitted)
+	}
+
+	policyOriginalProfile := originalProfile
+	policyOriginalProfile.Alias = "agent://u2/policy-original"
+	policyOriginalProfile.Policy = map[string]any{"allow_network": false}
+	policyOriginalDescriptor, err := workerDescriptor(policyOriginalProfile, originalKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policyReplacementProfile := replacementProfile
+	policyReplacementProfile.Alias = "agent://u2/policy-replacement"
+	policyReplacementProfile.Capabilities = []string{"summarize.text", "migration.shared"}
+	policyReplacementProfile.Policy = map[string]any{"allow_network": true}
+	policyReplacementDescriptor, err := workerDescriptor(policyReplacementProfile, replacementKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policySwarmID := "swarm://local/go-u2-policy-migration"
+	policyPlanDigest := digestHex(map[string]any{"intent": "Migrate a policy-denied task to an exact-capability worker.", "steps": planSteps})
+	policyPlanBody := map[string]any{
+		"swarm_id":      policySwarmID,
+		"intent":        "Migrate a policy-denied task to an exact-capability worker.",
+		"steps":         planSteps,
+		"policy_digest": strings.Repeat("b", 64),
+		"plan_digest":   policyPlanDigest,
+	}
+	policyPlan := map[string]any{"type": "FED_SWARM_PLAN", "zone": origin, "plan": signBodyWithKey(originKey, policyPlanBody, "plan_signature")}
+	policyTaskBody := map[string]any{
+		"task_id": "go_u2_policy_migration",
+		"from":    requester["aid"],
+		"to":      policyOriginalDescriptor["alias"],
+		"intent":  "Migrate without executing the policy-denied original worker.",
+		"scope":   map[string]any{"network": true},
+		"budget":  map[string]any{"time_seconds": float64(30)},
+	}
+	policySignedTask := signBody(requesterKey, policyTaskBody)
+	policyBindingSteps := []any{map[string]any{
+		"step_id":     "summary",
+		"depends_on":  []any{},
+		"capability":  "summarize.text",
+		"task_digest": digestHex(policySignedTask),
+	}}
+	policyBindingBody := map[string]any{
+		"format":                 "asp-swarm-execution-binding/v1",
+		"swarm_id":               policySwarmID,
+		"plan_digest":            policyPlanDigest,
+		"steps":                  policyBindingSteps,
+		"execution_graph_digest": digestHex(map[string]any{"swarm_id": policySwarmID, "plan_digest": policyPlanDigest, "steps": policyBindingSteps}),
+	}
+	policyFrame := map[string]any{
+		"type":                   "FED_SWARM_OPEN",
+		"origin_zone":            origin,
+		"requester":              requester,
+		"requester_zone_binding": requesterBinding,
+		"swarm": map[string]any{
+			"swarm_id":          policySwarmID,
+			"plan":              policyPlan,
+			"execution_binding": signBodyWithKey(originKey, policyBindingBody, "binding_signature"),
+			"steps": []any{map[string]any{
+				"step_id": "summary",
+				"task":    policySignedTask,
+			}},
+		},
+	}
+	policyFixture := Fixture{
+		Authority:           authority,
+		AuthorityPrivateKey: authorityKey,
+		Workers: []Worker{
+			{Profile: policyOriginalProfile, Descriptor: policyOriginalDescriptor, PrivateKey: originalKey},
+			{Profile: policyReplacementProfile, Descriptor: policyReplacementDescriptor, PrivateKey: replacementKey},
+		},
+		Runtime: &TaskRuntime{running: map[string]context.CancelFunc{}, cancelled: map[string]bool{}},
+	}
+	ordinaryPolicyFrame := map[string]any{
+		"type":                   "FED_TASK_OPEN",
+		"origin_zone":            origin,
+		"requester":              requester,
+		"requester_zone_binding": requesterBinding,
+		"task":                   policySignedTask,
+	}
+	if _, _, err := policyFixture.verifyTaskOpen(ordinaryPolicyFrame); err == nil || !strings.Contains(err.Error(), "policy denied network access") {
+		t.Fatalf("ordinary FED_TASK_OPEN got %v, want policy denied network access", err)
+	}
+
+	t.Run("tampered binding precedes original policy", func(t *testing.T) {
+		binding := policyFrame["swarm"].(map[string]any)["execution_binding"].(map[string]any)
+		signature := binding["binding_signature"]
+		binding["binding_signature"] = "bad"
+		defer func() { binding["binding_signature"] = signature }()
+		emitted := []map[string]any{}
+		err := policyFixture.executeSwarm(func(frame map[string]any) { emitted = append(emitted, frame) }, origin, policyFrame)
+		if err == nil || !strings.Contains(err.Error(), "execution binding signature verification failed") {
+			t.Fatalf("got %v, want execution binding signature verification failed", err)
+		}
+		if len(emitted) != 0 {
+			t.Fatalf("emitted %d side effects before binding rejection: %#v", len(emitted), emitted)
+		}
+	})
+
+	t.Run("policy denial migrates to exact-capability replacement", func(t *testing.T) {
+		emitted := []map[string]any{}
+		if err := policyFixture.executeSwarm(func(frame map[string]any) { emitted = append(emitted, frame) }, origin, policyFrame); err != nil {
+			t.Fatal(err)
+		}
+		for _, frame := range emitted {
+			event, _ := frame["event"].(map[string]any)
+			if event["by"] == policyOriginalDescriptor["aid"] {
+				t.Fatalf("policy-denied original worker emitted event: %#v", frame)
+			}
+			worker, _ := event["worker"].(map[string]any)
+			if worker["aid"] == policyOriginalDescriptor["aid"] {
+				t.Fatalf("policy-denied original worker emitted micro-contract: %#v", frame)
+			}
+		}
+		closeFrame := emitted[len(emitted)-1]
+		if closeFrame["type"] != "FED_SWARM_CLOSE" {
+			t.Fatalf("last frame = %#v, want FED_SWARM_CLOSE", closeFrame)
+		}
+		closeBody := closeFrame["close"].(map[string]any)
+		migration := mapsFromAny(closeBody["migration_log"])[0]
+		if migration["reason"] != "policy denied network access" {
+			t.Fatalf("migration reason = %v, want policy denied network access", migration["reason"])
+		}
+		if migration["original_worker_aid"] != policyOriginalDescriptor["aid"] || migration["migrated_to_worker_aid"] != policyReplacementDescriptor["aid"] {
+			t.Fatalf("migration worker binding = %#v", migration)
+		}
+	})
 }
 
 func testZoneDescriptor(t *testing.T, name string) (map[string]any, ed25519.PrivateKey) {

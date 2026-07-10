@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { createHash, createPrivateKey, randomBytes } from "node:crypto";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { AUDIT_ZERO_HASH, agentFromPrivateKey, auditEntry, canonical, capabilityCredentialId, createAgent, loadOrCreateAgent, loadOrCreateZone, loadRegistry, publicKeyFromDescriptor, resolveAgent, rotationProof, signObject, verifyAliasRebindingProof, verifyCredentialStatus, verifyObject, verifySwarmClose, writeTrustedZones, zoneBinding, zoneRevocation } from "./asp-core.mjs";
+import { AUDIT_ZERO_HASH, agentFromPrivateKey, auditEntry, canonical, capabilityCredentialId, createAgent, loadOrCreateAgent, loadOrCreateZone, loadRegistry, publicKeyFromDescriptor, resolveAgent, rotationProof, signObject, swarmExecutionBinding, swarmPlan, verifyAliasRebindingProof, verifyCredentialStatus, verifyObject, verifySwarmClose, writeTrustedZones, zoneBinding, zoneRevocation } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -17,6 +17,32 @@ async function writeGoAuditLog(path, records) {
     return JSON.stringify(entry);
   });
   await writeFile(path, `${lines.join("\n")}\n`);
+}
+
+async function snapshotPersistentPath(path) {
+  let info;
+  try {
+    info = await lstat(path);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+  if (!info.isDirectory()) {
+    return { type: "file", bytes: (await readFile(path)).toString("base64") };
+  }
+  const entries = {};
+  for (const name of (await readdir(path)).sort()) {
+    entries[name] = await snapshotPersistentPath(`${path}/${name}`);
+  }
+  return { type: "directory", entries };
+}
+
+async function snapshotPersistentState(paths) {
+  return Object.fromEntries(await Promise.all(paths.map(async (path) => [path, await snapshotPersistentPath(path)])));
+}
+
+async function assertPersistentPathAbsent(path, message) {
+  await assert.rejects(lstat(path), (error) => error.code === "ENOENT", message);
 }
 
 function authorityZoneFromFixture(fixture) {
@@ -259,6 +285,33 @@ function bindRequester(frame) {
   if (!frame.origin_zone || !frame.requester || frame.requester_zone_binding) return frame;
   return { ...frame, requester_zone_binding: zoneBinding(zoneA, frame.requester) };
 }
+function swarmCapabilityForTask(task) {
+  if (task?.to?.includes("mock-translator")) return "translate.mock";
+  if (task?.to?.includes("strict-translator")) return "translate.strict";
+  if (task?.to?.includes("translator")) return "translate.text";
+  return "summarize.text";
+}
+
+function withSwarmExecutionBinding(coordinator, frame) {
+  const executableSteps = frame.swarm.steps.map((step) => ({ step_id: step.step_id, depends_on: step.after ?? [], task: step.task }));
+  const plan = swarmPlan(
+    coordinator,
+    frame.swarm.swarm_id,
+    `Execute ${frame.swarm.swarm_id}.`,
+    frame.swarm.steps.map((step) => ({ step_id: step.step_id, capability: swarmCapabilityForTask(step.task), depends_on: step.after ?? [] })),
+    "e".repeat(64),
+  );
+  return {
+    ...frame,
+    swarm: {
+      swarm_id: frame.swarm.swarm_id,
+      plan,
+      execution_binding: swarmExecutionBinding(coordinator, plan, executableSteps),
+      steps: frame.swarm.steps,
+    },
+  };
+}
+
 
 let zoneA;
 let humanToken;
@@ -501,6 +554,157 @@ function exchangeWebSocketFrames(port, frame, closeType) {
   });
 }
 
+test("Go gateway rejects unsigned or substituted executable Swarm before execution", async (t) => {
+  const [port] = await freePorts(1);
+  zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/go-fed-u2-requester.pkcs8");
+  const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
+  const goFixture = JSON.parse(JSON.stringify(fixture));
+  delete goFixture.authority_seed_hex;
+  delete goFixture.worker_seed_hex;
+  delete goFixture.worker;
+  delete goFixture.zone_binding;
+  await writeFile("state/go-fed-u2-worker.json", `${JSON.stringify(goFixture, null, 2)}\n`);
+  await writeFile("state/go-fed-u2-authority.seed", `${fixture.authority_seed_hex}\n`);
+  await writeFile("state/go-fed-u2-worker.seed", `${fixture.worker_seed_hex}\n`);
+  await writeTrustedZones("state/go-fed-u2-trusted-origin.json", [zoneA]);
+  await rm("state/go-fed-u2-audit.log", { force: true });
+  await rm("state/go-fed-u2-audit-tasks", { recursive: true, force: true });
+  await rm("state/go-fed-u2-artifacts", { recursive: true, force: true });
+
+  const gateway = spawn("go", [
+    "run",
+    "./cmd/go-fed-discovery",
+    "--port",
+    String(port),
+    "--artifact-store",
+    "state/go-fed-u2-artifacts",
+    "--trusted",
+    "state/go-fed-u2-trusted-origin.json",
+    "--fixture",
+    "state/go-fed-u2-worker.json",
+    "--authority-key",
+    "state/go-fed-u2-authority.seed",
+    "--worker-key",
+    "state/go-fed-u2-worker.seed",
+    "--audit",
+    "state/go-fed-u2-audit.log",
+  ], {
+    cwd: process.cwd(),
+    detached: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  const runId = `${process.pid}_${Date.now()}`;
+  const persistentPaths = ["state/go-fed-u2-audit.log", "state/go-fed-u2-audit-tasks", "state/go-fed-u2-artifacts", "artifacts"];
+  const buildFrame = ({ name, type = "FED_SWARM_OPEN", definitions }) => {
+    const swarmId = `swarm://local/go-u2-${runId}-${name}`;
+    const steps = definitions.map(({ stepId, after = [], capability = "summarize.text" }) => {
+      const task = {
+        task_id: `go_u2_${runId}_${name}_${stepId}`,
+        from: requester.aid,
+        to: "agent://zone-b/summarizer",
+        intent: `Execute ${name} ${stepId}.`,
+        scope: { network: false },
+        budget: { time_seconds: 30 },
+      };
+      return { step_id: stepId, ...(after.length > 0 ? { after } : {}), capability, task: { ...task, signature: signObject(requester.privateKey, task) } };
+    });
+    const planSteps = steps.map((step) => ({ step_id: step.step_id, capability: step.capability, depends_on: step.after ?? [] }));
+    const plan = swarmPlan(zoneA, swarmId, `U2 ${name}.`, planSteps, "b".repeat(64));
+    const executableSteps = steps.map(({ step_id, after = [], task }) => ({ step_id, depends_on: after, task }));
+    const executionBinding = swarmExecutionBinding(zoneA, plan, executableSteps);
+    return {
+      type,
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      swarm: { swarm_id: swarmId, plan, execution_binding: executionBinding, steps: steps.map(({ capability: _capability, ...step }) => step) },
+    };
+  };
+
+  const cases = [];
+  const missingPlan = buildFrame({ name: "missing-plan", definitions: [{ stepId: "only" }] });
+  delete missingPlan.swarm.plan;
+  cases.push({ name: "missing FED_SWARM_PLAN", frame: missingPlan, error: /swarm plan missing/ });
+
+  const missingBinding = buildFrame({ name: "missing-binding", definitions: [{ stepId: "only" }] });
+  delete missingBinding.swarm.execution_binding;
+  cases.push({ name: "missing execution binding", frame: missingBinding, error: /execution binding missing/ });
+
+  const strippedFormat = buildFrame({ name: "stripped-format", definitions: [{ stepId: "only" }] });
+  delete strippedFormat.swarm.execution_binding.format;
+  cases.push({ name: "stripped execution binding format", frame: strippedFormat, error: /execution binding fields invalid/ });
+
+  const changedTask = buildFrame({ name: "changed-task", definitions: [{ stepId: "only" }] });
+  const changedTaskBody = { ...changedTask.swarm.steps[0].task, intent: "Substituted after binding." };
+  delete changedTaskBody.signature;
+  changedTask.swarm.steps[0].task = { ...changedTaskBody, signature: signObject(requester.privateKey, changedTaskBody) };
+  cases.push({ name: "changed signed task", frame: changedTask, error: /execution binding task_digest mismatch/ });
+
+  const reordered = buildFrame({ name: "reordered", type: "FED_SWARM_SCHEDULE", definitions: [{ stepId: "first" }, { stepId: "second" }] });
+  reordered.swarm.steps.reverse();
+  cases.push({ name: "reordered schedule input", frame: reordered, error: /execution binding executable step order mismatch/ });
+
+  const reconnected = buildFrame({ name: "reconnected", definitions: [{ stepId: "first" }, { stepId: "second", after: ["first"] }] });
+  delete reconnected.swarm.steps[1].after;
+  cases.push({ name: "dependency reconnection", frame: reconnected, error: /execution binding executable depends_on mismatch/ });
+
+  const substitutedCapability = buildFrame({ name: "capability", definitions: [{ stepId: "only", capability: "translate.text" }] });
+  cases.push({ name: "capability substitution", frame: substitutedCapability, error: /execution binding worker capability missing/ });
+
+  const substitutedTerminal = buildFrame({ name: "terminal", definitions: [{ stepId: "terminal" }] });
+  substitutedTerminal.swarm.steps[0].step_id = "replacement";
+  cases.push({ name: "terminal-step substitution", frame: substitutedTerminal, error: /execution binding executable step order mismatch/ });
+
+  const invalidGraph = buildFrame({ name: "invalid-graph", type: "FED_SWARM_SCHEDULE", definitions: [{ stepId: "only", after: ["missing"] }] });
+  cases.push({ name: "graph preflight rejection", frame: invalidGraph, error: /swarm schedule dependency unresolved/ });
+  const invalidOpenGraph = buildFrame({ name: "invalid-open-graph", definitions: [{ stepId: "first" }, { stepId: "second", after: ["missing"] }] });
+  cases.push({ name: "open graph preflight rejection", frame: invalidOpenGraph, error: /swarm dependency not completed: missing/ });
+
+  try {
+    await waitForGoGateway(gateway, port);
+    for (const candidate of cases) {
+      await t.test(candidate.name, async () => {
+        const taskIds = candidate.frame.swarm.steps.map((step) => step.task.task_id);
+        const persistentBefore = await snapshotPersistentState(persistentPaths);
+        const frames = await exchangeFrames(port, candidate.frame, "FED_SWARM_CLOSE");
+        const effects = {
+          emitted_task_events: frames.filter((frame) => frame.type === "FED_TASK_EVENT").length,
+          emitted_artifacts: frames.filter((frame) => frame.type === "FED_TASK_EVENT" && frame.event?.type === "artifact.created").length,
+          emitted_receipts: frames.filter((frame) => frame.type === "FED_RECEIPT").length,
+          emitted_closes: frames.filter((frame) => frame.type === "FED_TASK_CLOSE" || frame.type === "FED_SWARM_CLOSE").length,
+        };
+        assert.deepEqual(effects, { emitted_task_events: 0, emitted_artifacts: 0, emitted_receipts: 0, emitted_closes: 0 }, `${candidate.name}: ${JSON.stringify(effects)}`);
+        assert.deepEqual(frames.map((frame) => frame.type), ["FED_TASK_ERROR"], candidate.name);
+        assert.match(frames[0].error, candidate.error, candidate.name);
+        const persistentAfter = await snapshotPersistentState(persistentPaths);
+        assert.deepEqual(persistentAfter, persistentBefore, `${candidate.name}: persistent state changed`);
+        for (const taskId of taskIds) {
+          await assertPersistentPathAbsent(`state/go-fed-u2-audit-tasks/${encodeURIComponent(taskId)}.json`, `${candidate.name}: task state persisted for ${taskId}`);
+          await assertPersistentPathAbsent(`artifacts/${taskId}`, `${candidate.name}: artifact path persisted for ${taskId}`);
+        }
+      });
+    }
+    await t.test("propagates verified plan and graph digests", async () => {
+      const valid = buildFrame({ name: "valid", definitions: [{ stepId: "first" }, { stepId: "second", after: ["first"] }] });
+      const frames = await exchangeFrames(port, valid, "FED_SWARM_CLOSE");
+      const close = frames.at(-1).close;
+      assert.equal(close.plan_digest, valid.swarm.plan.plan.plan_digest);
+      assert.equal(close.execution_graph_digest, valid.swarm.execution_binding.execution_graph_digest);
+      for (const receipt of frames.filter((frame) => frame.type === "FED_RECEIPT").map((frame) => frame.receipt)) {
+        assert.equal(receipt.swarm.plan_digest, close.plan_digest);
+        assert.equal(receipt.swarm.execution_graph_digest, close.execution_graph_digest);
+      }
+    });
+  } finally {
+    try {
+      process.kill(-gateway.pid, "SIGINT");
+    } catch {
+      // already exited
+    }
+  }
+});
+
 test("Go discovery migrates a failed Swarm step and signs migration_log", async () => {
   const [port] = await freePorts(1);
   zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
@@ -578,7 +782,7 @@ process.exit(1);
       scope: { network: false },
       budget: { time_seconds: 30 },
     };
-    const frames = await exchangeFrames(port, {
+    const frames = await exchangeFrames(port, withSwarmExecutionBinding(zoneA, {
       type: "FED_SWARM_OPEN",
       origin_zone: zoneA.descriptor,
       requester: requester.descriptor,
@@ -591,7 +795,7 @@ process.exit(1);
           },
         ],
       },
-    }, "FED_SWARM_CLOSE");
+    }), "FED_SWARM_CLOSE");
     assert.notEqual(frames.at(-1).type, "FED_TASK_ERROR", frames.at(-1).error);
     const closeFrame = frames.at(-1);
     assert.equal(closeFrame.type, "FED_SWARM_CLOSE");
@@ -718,7 +922,7 @@ test("Go discovery resolves conflicting Swarm artifact refs and Node verifies th
       scope: { network: false, write: [artifactRef] },
       budget: { time_seconds: 30 },
     };
-    const frames = await exchangeFrames(port, {
+    const frames = await exchangeFrames(port, withSwarmExecutionBinding(zoneA, {
       type: "FED_SWARM_OPEN",
       origin_zone: zoneA.descriptor,
       requester: requester.descriptor,
@@ -729,7 +933,7 @@ test("Go discovery resolves conflicting Swarm artifact refs and Node verifies th
           { step_id: "high", task: { ...highTask, signature: signObject(requester.privateKey, highTask) } },
         ],
       },
-    }, "FED_SWARM_CLOSE");
+    }), "FED_SWARM_CLOSE");
     assert.notEqual(frames.at(-1).type, "FED_TASK_ERROR", frames.at(-1).error);
     const closeFrame = frames.at(-1);
     const close = closeFrame.close;
@@ -1160,7 +1364,7 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
       scope: { network: false },
       budget: { time_seconds: 30 },
     };
-    const swarmFrames = await exchangeFrames(port, {
+    const swarmFrames = await exchangeFrames(port, withSwarmExecutionBinding(zoneA, {
       type: "FED_SWARM_OPEN",
       origin_zone: zoneA.descriptor,
       requester: requester.descriptor,
@@ -1178,7 +1382,7 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
           },
         ],
       },
-    }, "FED_SWARM_CLOSE");
+    }), "FED_SWARM_CLOSE");
     assert.deepEqual(swarmFrames.map((frame) => frame.type), [
       "FED_TASK_EVENT",
       "FED_TASK_EVENT",
@@ -1260,7 +1464,7 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
       task_id: "go_fed_swarm_scheduled_translate",
       intent: "Translate after scheduler resolves the dependency.",
     };
-    const scheduledSwarmFrames = await exchangeFrames(port, {
+    const scheduledSwarmFrames = await exchangeFrames(port, withSwarmExecutionBinding(zoneA, {
       type: "FED_SWARM_SCHEDULE",
       origin_zone: zoneA.descriptor,
       requester: requester.descriptor,
@@ -1278,7 +1482,7 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
           },
         ],
       },
-    }, "FED_SWARM_CLOSE");
+    }), "FED_SWARM_CLOSE");
     assert.notEqual(scheduledSwarmFrames.at(-1).type, "FED_TASK_ERROR", scheduledSwarmFrames.at(-1).error);
     const scheduledSummaryReceipt = scheduledSwarmFrames.find((frame) => frame.type === "FED_RECEIPT" && frame.receipt.task_id === scheduledSummaryTask.task_id).receipt;
     const scheduledTranslationReceipt = scheduledSwarmFrames.find((frame) => frame.type === "FED_RECEIPT" && frame.receipt.task_id === scheduledTranslateTask.task_id).receipt;
@@ -1302,7 +1506,7 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
       task_id: "go_fed_swarm_bad_after_translate",
       intent: "This malformed Swarm step should not execute.",
     };
-    const badAfterSwarmFrames = await exchangeFrames(port, {
+    const badAfterFrame = withSwarmExecutionBinding(zoneA, {
       type: "FED_SWARM_OPEN",
       origin_zone: zoneA.descriptor,
       requester: requester.descriptor,
@@ -1315,12 +1519,14 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
           },
           {
             step_id: "translation",
-            after: ["summary", { step_id: "ghost" }],
+            after: ["summary"],
             task: { ...badSwarmTranslateTask, signature: signObject(requester.privateKey, badSwarmTranslateTask) },
           },
         ],
       },
-    }, "FED_SWARM_CLOSE");
+    });
+    badAfterFrame.swarm.steps[1].after = ["summary", { step_id: "ghost" }];
+    const badAfterSwarmFrames = await exchangeFrames(port, badAfterFrame, "FED_SWARM_CLOSE");
     assert.equal(badAfterSwarmFrames.at(-1).type, "FED_TASK_ERROR");
     assert.match(badAfterSwarmFrames.at(-1).error, /swarm after invalid/);
 

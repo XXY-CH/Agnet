@@ -5,7 +5,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname } from "node:path";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
-import { canonical, createAgent, createZone, publicKeyFromDescriptor, signObject, verifyObject, zoneBinding } from "../asp-core.mjs";
+import { canonical, createAgent, createZone, publicKeyFromDescriptor, signObject, swarmExecutionBinding, swarmPlan, verifyObject, zoneBinding } from "../asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 await mkdir("state", { recursive: true });
@@ -137,6 +137,8 @@ for await (const chunk of child.stdout) {
     swarm_close_receipts: swarm.closeReceipts,
     swarm_close_verify: swarmCloseProof.swarm_close_verify,
     swarm_close_digest: swarm.closeDigest,
+    swarm_plan_digest: swarm.planDigest,
+    swarm_execution_graph_digest: swarm.executionGraphDigest,
     swarm_close_frame: swarmCloseFramePath,
     swarm_close_trusted_zones: swarmCloseTrustedPath,
   }));
@@ -263,6 +265,15 @@ function openSwarm(port, zone) {
     scope: { network: false },
     budget: { time_seconds: 30 },
   };
+  const steps = [
+    { step_id: "summary", task: { ...summaryTask, signature: signObject(requester.privateKey, summaryTask) } },
+    { step_id: "dependent", after: ["summary"], task: { ...dependentTask, signature: signObject(requester.privateKey, dependentTask) } },
+  ];
+  const plan = swarmPlan(zone, "swarm://public-node-proof/two-step", "Prove a bound public-listen Swarm.", [
+    { step_id: "summary", capability: "summarize.text", depends_on: [] },
+    { step_id: "dependent", capability: "summarize.text", depends_on: ["summary"] },
+  ], "f".repeat(64));
+  const executionBinding = swarmExecutionBinding(zone, plan, steps.map((step) => ({ step_id: step.step_id, depends_on: step.after ?? [], task: step.task })));
   const receipts = [];
   return exchangeFrame(
     port,
@@ -274,10 +285,9 @@ function openSwarm(port, zone) {
       requester_zone_binding: zoneBinding(zone, requester.descriptor),
       swarm: {
         swarm_id: "swarm://public-node-proof/two-step",
-        steps: [
-          { step_id: "summary", task: { ...summaryTask, signature: signObject(requester.privateKey, summaryTask) } },
-          { step_id: "dependent", after: ["summary"], task: { ...dependentTask, signature: signObject(requester.privateKey, dependentTask) } },
-        ],
+        plan,
+        execution_binding: executionBinding,
+        steps,
       },
     },
     "FED_SWARM_CLOSE",
@@ -297,6 +307,8 @@ function openSwarm(port, zone) {
         stepReceipts: close.step_receipts,
         closeSignature: verifyObject(authorityKey, body, close_signature),
         closeReceipts: sameStepReceipts(close.step_receipts, expected),
+        planDigest: close.plan_digest,
+        executionGraphDigest: close.execution_graph_digest,
         closeDigest: digestJson(body),
         closeFrame: { ...frame, zone: fixture.authority },
       };

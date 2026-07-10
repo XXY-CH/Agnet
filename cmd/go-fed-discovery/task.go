@@ -18,51 +18,64 @@ func (f Fixture) transportProof() map[string]any {
 	}
 }
 
-func (f Fixture) verifyTaskOpen(frame map[string]any) (*Worker, map[string]any, error) {
+type verifiedTaskOpenEvidence struct {
+	Worker     *Worker
+	SignedTask map[string]any
+}
+
+func (f Fixture) verifyTaskOpenEvidence(frame map[string]any) (*verifiedTaskOpenEvidence, error) {
 	if frame["type"] != "FED_TASK_OPEN" {
-		return nil, nil, errors.New("expected FED_TASK_OPEN frame")
+		return nil, errors.New("expected FED_TASK_OPEN frame")
 	}
 	requester, ok := frame["requester"].(map[string]any)
 	if !ok {
-		return nil, nil, errors.New("missing requester")
+		return nil, errors.New("missing requester")
 	}
 	if err := verifyAgentDescriptor(requester); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if origin, ok := frame["origin_zone"].(map[string]any); ok {
 		binding, ok := frame["requester_zone_binding"].(map[string]any)
 		if !ok {
-			return nil, nil, errors.New("requester zone binding missing")
+			return nil, errors.New("requester zone binding missing")
 		}
 		if err := verifyZoneBinding(origin, binding, requester); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
 	task, ok := frame["task"].(map[string]any)
 	if !ok {
-		return nil, nil, errors.New("missing task")
+		return nil, errors.New("missing task")
 	}
 	if err := validateTaskID(optionalString(task["task_id"])); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if task["from"] != requester["aid"] {
-		return nil, nil, errors.New("task sender does not match requester descriptor")
+		return nil, errors.New("task sender does not match requester descriptor")
 	}
 	worker := f.workerByAlias(fmt.Sprint(task["to"]))
 	if worker == nil {
-		return nil, nil, errors.New("task target does not match worker alias")
+		return nil, errors.New("task target does not match worker alias")
 	}
 	requesterKey, _, err := publicKey(requester)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if err := verifyMapSignature(requesterKey, task, "signature"); err != nil {
-		return nil, nil, errors.New("task signature verification failed")
+		return nil, errors.New("task signature verification failed")
 	}
-	if err := enforcePolicy(worker.Descriptor, task); err != nil {
+	return &verifiedTaskOpenEvidence{Worker: worker, SignedTask: task}, nil
+}
+
+func (f Fixture) verifyTaskOpen(frame map[string]any) (*Worker, map[string]any, error) {
+	evidence, err := f.verifyTaskOpenEvidence(frame)
+	if err != nil {
 		return nil, nil, err
 	}
-	return worker, task, nil
+	if err := enforcePolicy(evidence.Worker.Descriptor, evidence.SignedTask); err != nil {
+		return nil, nil, err
+	}
+	return evidence.Worker, evidence.SignedTask, nil
 }
 
 func taskOpenFrameForVerification(frame map[string]any) map[string]any {

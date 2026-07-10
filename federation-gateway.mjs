@@ -17,6 +17,8 @@ import {
   validateTaskId,
   verifyFederatedReceipt,
   verifyFederatedTaskOpen,
+  verifySwarmExecutionBinding,
+  verifySwarmPlan,
   verifyObject,
   verifyCapabilityCredential,
   verifyCredentialStatus,
@@ -495,47 +497,147 @@ function sharesCapability(left, right) {
   return workerCapabilities(left).some((capability) => rightCapabilities.has(capability));
 }
 
-function nextMigrationCandidate(workers, originalWorker) {
-  return workers.find((candidate) => candidate.aid !== originalWorker.aid && sharesCapability(originalWorker, candidate)) ?? null;
+function nextMigrationCandidate(workers, originalWorker, capability, stepId) {
+  const sharedCandidates = workers.filter((worker) => worker.aid !== originalWorker.aid && sharesCapability(originalWorker, worker));
+  const exactCandidate = sharedCandidates.find((worker) => workerCapabilities(worker).includes(capability)) ?? null;
+  if (!exactCandidate && sharedCandidates.length > 0) {
+    throw new Error(`execution binding migration worker capability missing: ${stepId}`);
+  }
+  return exactCandidate;
 }
 
-function verifySwarmStepSignature(frame, trustedZones, signedTask) {
-  const originZone = verifyTrustedZone(trustedZones, frame.origin_zone);
+function normalizeExecutableSwarmStep(item) {
+  if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("swarm step invalid");
+  const stepId = item.step_id;
+  if (typeof stepId !== "string" || stepId === "" || stepId.includes("\0")) throw new Error("swarm step_id missing");
+  return { step_id: stepId, depends_on: swarmAfterSteps(item.after), task: item.task };
+}
+function validateOrderedSwarmDependencies(steps) {
+  const completed = new Set();
+  for (const step of steps) {
+    for (const dependency of step.dependsOn) {
+      if (!completed.has(dependency)) throw new Error(`swarm dependency not completed: ${dependency}`);
+    }
+    completed.add(step.stepId);
+  }
+}
+
+
+function verifiedSwarmRequester(frame) {
+  verifyZoneBinding({ zone: frame.origin_zone, zone_binding: frame.requester_zone_binding }, frame.requester, "requester");
+  try {
+    return resolveAgent(new Map([[frame.requester.alias, frame.requester]]), frame.requester.alias);
+  } catch (error) {
+    throw new Error(`swarm requester invalid: ${error.message}`);
+  }
+}
+
+function verifySwarmSignedTask(frame, requester, signedTask, originalWorker) {
+  if (!signedTask || typeof signedTask !== "object" || Array.isArray(signedTask)) throw new Error("execution binding signed task missing");
   const { signature, ...task } = signedTask;
   validateTaskId(task.task_id);
   if (task.from !== frame.requester.aid) throw new Error("task sender does not match requester descriptor");
+  if (task.to !== originalWorker.alias) throw new Error(`task target does not match worker alias: ${task.to}`);
   if (typeof signature !== "string" || signature === "") throw new Error("task signature missing");
-  if (!verifyObject(publicKeyFromDescriptor(frame.requester), task, signature)) throw new Error("task signature verification failed");
-  return { originZone, task };
+  if (!verifyObject(requester.publicKey, task, signature)) throw new Error("task signature verification failed");
+  let policyError = null;
+  try {
+    enforcePolicy(originalWorker.descriptor, task);
+  } catch (error) {
+    policyError = error;
+  }
+  return { task, policyError };
 }
 
-async function executeSwarm(socket, trustedZones, zone, workers, frame, agentScores = new Map(), readyDag = false) {
-  workers = Array.isArray(workers) ? workers : [workers];
+function preflightSwarmExecution(trustedZones, frame, workers, readyDag) {
   const originZone = verifyTrustedZone(trustedZones, frame.origin_zone);
   if (!frame.requester || typeof frame.requester !== "object" || Array.isArray(frame.requester)) throw new Error("swarm requester missing");
   if (!frame.requester_zone_binding || typeof frame.requester_zone_binding !== "object" || Array.isArray(frame.requester_zone_binding)) throw new Error("requester zone binding missing");
-  verifyZoneBinding({ zone: frame.origin_zone, zone_binding: frame.requester_zone_binding }, frame.requester, "requester");
   if (!frame.swarm || typeof frame.swarm !== "object" || Array.isArray(frame.swarm)) throw new Error("swarm body missing");
   const swarmId = frame.swarm.swarm_id;
   if (typeof swarmId !== "string" || swarmId === "" || swarmId.includes("\0")) throw new Error("swarm_id missing");
   if (!Array.isArray(frame.swarm.steps) || frame.swarm.steps.length === 0) throw new Error("swarm steps missing");
-  const planDigest = frame.swarm.plan_digest;
-  if (planDigest !== undefined && typeof planDigest !== "string") throw new Error("swarm plan_digest invalid");
-  const scheduled = readyDag ? scheduleSwarmSteps(frame.swarm.steps) : null;
-  const steps = scheduled?.steps ?? frame.swarm.steps;
+  if (!frame.swarm.plan || typeof frame.swarm.plan !== "object" || Array.isArray(frame.swarm.plan)) throw new Error("swarm plan missing");
+  const verifiedPlan = verifySwarmPlan(frame.swarm.plan, trustedZones);
+  if (verifiedPlan.zone.zid !== originZone.zid || verifiedPlan.zone.public_key_spki !== originZone.public_key_spki) {
+    throw new Error("swarm plan origin mismatch");
+  }
+  if (!frame.swarm.execution_binding || typeof frame.swarm.execution_binding !== "object" || Array.isArray(frame.swarm.execution_binding)) {
+    throw new Error("execution binding missing");
+  }
 
+  const requester = verifiedSwarmRequester(frame);
+  const executableSteps = frame.swarm.steps.map(normalizeExecutableSwarmStep);
+  const taskEvidence = executableSteps.map((step) => {
+    const originalWorker = workers.find((candidate) => candidate.alias === step.task?.to);
+    if (!originalWorker) throw new Error(`task target does not match worker alias: ${step.task?.to}`);
+    try {
+      resolveAgent(new Map([[originalWorker.descriptor.alias, originalWorker.descriptor]]), originalWorker.descriptor.alias);
+    } catch (error) {
+      throw new Error(`execution binding worker invalid: ${error.message}`);
+    }
+    const verifiedTask = verifySwarmSignedTask(frame, requester, step.task, originalWorker);
+    return { ...step, signedTask: step.task, task: verifiedTask.task, originalWorker, originalPolicyError: verifiedTask.policyError };
+  });
+  const verifiedBinding = verifySwarmExecutionBinding(
+    frame.swarm.execution_binding,
+    verifiedPlan,
+    executableSteps,
+    taskEvidence.map((step) => step.originalWorker.descriptor),
+  );
+  if (verifiedBinding.swarmId !== swarmId) throw new Error("execution binding swarm_id mismatch");
+
+  const verifiedSteps = taskEvidence.map((step, index) => {
+    const bindingStep = verifiedBinding.steps[index];
+    const migrationWorker = nextMigrationCandidate(workers, step.originalWorker, bindingStep.capability, bindingStep.step_id);
+    if (migrationWorker) enforcePolicy(migrationWorker.descriptor, step.task);
+    if (!migrationWorker && step.originalPolicyError) {
+      throw step.originalPolicyError;
+    }
+    return Object.freeze({
+      ...step,
+      stepId: bindingStep.step_id,
+      dependsOn: bindingStep.depends_on,
+      capability: bindingStep.capability,
+      taskDigest: bindingStep.task_digest,
+      migrationWorker,
+    });
+  });
+  if (verifiedSteps.some((step) => step.migrationWorker)) {
+    verifySwarmExecutionBinding(
+      frame.swarm.execution_binding,
+      verifiedPlan,
+      executableSteps,
+      verifiedSteps.map((step) => (step.migrationWorker ?? step.originalWorker).descriptor),
+    );
+  }
+
+  const scheduled = readyDag ? scheduleSwarmSteps(frame.swarm.steps) : null;
+  if (!scheduled) validateOrderedSwarmDependencies(verifiedSteps);
+  const verifiedByStepId = new Map(verifiedSteps.map((step) => [step.stepId, step]));
+  const executionSteps = scheduled ? scheduled.steps.map((step) => verifiedByStepId.get(step.step_id)) : verifiedSteps;
+  if (executionSteps.some((step) => !step)) throw new Error("swarm schedule dependency unresolved");
+  return Object.freeze({
+    originZone,
+    swarmId,
+    planDigest: verifiedBinding.planDigest,
+    executionGraphDigest: verifiedBinding.executionGraphDigest,
+    signedSteps: Object.freeze([...verifiedSteps]),
+    executionSteps: Object.freeze([...executionSteps]),
+    scheduler: scheduled?.scheduler ?? null,
+  });
+}
+
+async function executeSwarm(socket, trustedZones, zone, workers, frame, agentScores = new Map(), readyDag = false) {
+  workers = Array.isArray(workers) ? workers : [workers];
+  const context = preflightSwarmExecution(trustedZones, frame, workers, readyDag);
   const completed = new Map();
   const stepReceipts = [];
   const microContracts = [];
   const migrationLog = [];
-  for (const item of steps) {
-    if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("swarm step invalid");
-    const stepId = item.step_id;
-    if (typeof stepId !== "string" || stepId === "" || stepId.includes("\0")) throw new Error("swarm step_id missing");
-    if (completed.has(stepId)) throw new Error(`duplicate swarm step: ${stepId}`);
-    const after = swarmAfterSteps(item.after);
+  for (const step of context.executionSteps) {
     const inputArtifacts = [];
-    for (const dependency of after) {
+    for (const dependency of step.dependsOn) {
       const receipt = completed.get(dependency);
       if (!receipt) throw new Error(`swarm dependency not completed: ${dependency}`);
       const manifest = receipt.artifact_manifests?.[0];
@@ -548,54 +650,61 @@ async function executeSwarm(socket, trustedZones, zone, workers, frame, agentSco
         receipt_digest: digestHex(receipt),
       });
     }
-    const signedTask = item.task;
-    const originalWorker = workers.find((candidate) => candidate.alias === signedTask?.to) ?? workers[0];
-    let taskOriginZone = originZone;
-    let task;
-    let failure;
-    try {
-      const verified = verifyFederatedTaskOpen({ type: "FED_TASK_OPEN", origin_zone: frame.origin_zone, requester: frame.requester, requester_zone_binding: frame.requester_zone_binding, task: signedTask }, trustedZones, originalWorker.descriptor);
-      taskOriginZone = verified.originZone;
-      task = verified.task;
-      const microContract = microContractForStep(originalWorker, swarmId, stepId, task);
-      await sendEvent(socket, microContract);
-      const signedReceipt = await executeLocalTask(socket, zone, taskOriginZone, originalWorker, signedTask, task, { swarm: { swarm_id: swarmId, step_id: stepId, after, input_artifacts: inputArtifacts } });
-      microContracts.push(microContract);
-      completed.set(stepId, signedReceipt);
-      stepReceipts.push({ step_id: stepId, task_id: signedReceipt.task_id, receipt_digest: digestHex(signedReceipt), worker: originalWorker.descriptor });
-      continue;
-    } catch (error) {
-      failure = error;
-      if (!task) {
-        const verified = verifySwarmStepSignature(frame, trustedZones, signedTask);
-        taskOriginZone = verified.originZone;
-        task = verified.task;
+    const swarmProof = {
+      swarm_id: context.swarmId,
+      step_id: step.stepId,
+      after: step.dependsOn,
+      input_artifacts: inputArtifacts,
+      plan_digest: context.planDigest,
+      execution_graph_digest: context.executionGraphDigest,
+      capability: step.capability,
+      task_digest: step.taskDigest,
+    };
+    let failure = step.originalPolicyError;
+    if (!failure) {
+      try {
+        const microContract = microContractForStep(step.originalWorker, context.swarmId, step.stepId, step.task);
+        await sendEvent(socket, microContract);
+        const signedReceipt = await executeLocalTask(socket, zone, context.originZone, step.originalWorker, step.signedTask, step.task, { swarm: swarmProof });
+        microContracts.push(microContract);
+        completed.set(step.stepId, signedReceipt);
+        stepReceipts.push({ step_id: step.stepId, task_id: signedReceipt.task_id, receipt_digest: digestHex(signedReceipt), worker: step.originalWorker.descriptor });
+        continue;
+      } catch (error) {
+        failure = error;
       }
     }
 
-    const migratedWorker = nextMigrationCandidate(workers, originalWorker);
-    if (!migratedWorker) throw failure;
-    enforcePolicy(migratedWorker.descriptor, task);
-    const microContract = microContractForStep(migratedWorker, swarmId, stepId, task);
+    if (!step.migrationWorker) throw failure;
+    const microContract = microContractForStep(step.migrationWorker, context.swarmId, step.stepId, step.task);
     await sendEvent(socket, microContract);
-    const signedReceipt = await executeLocalTask(socket, zone, taskOriginZone, migratedWorker, signedTask, task, { swarm: { swarm_id: swarmId, step_id: stepId, after, input_artifacts: inputArtifacts } });
+    const signedReceipt = await executeLocalTask(socket, zone, context.originZone, step.migrationWorker, step.signedTask, step.task, { swarm: swarmProof });
     microContracts.push(microContract);
-    completed.set(stepId, signedReceipt);
-    stepReceipts.push({ step_id: stepId, task_id: signedReceipt.task_id, receipt_digest: digestHex(signedReceipt), worker: migratedWorker.descriptor });
+    completed.set(step.stepId, signedReceipt);
+    stepReceipts.push({ step_id: step.stepId, task_id: signedReceipt.task_id, receipt_digest: digestHex(signedReceipt), worker: step.migrationWorker.descriptor });
     migrationLog.push({
-      step_id: stepId,
-      original_worker_aid: originalWorker.aid,
+      step_id: step.stepId,
+      original_worker_aid: step.originalWorker.aid,
       reason: failure.message,
-      migrated_to_worker_aid: migratedWorker.aid,
+      migrated_to_worker_aid: step.migrationWorker.aid,
       migration_at: new Date().toISOString(),
     });
   }
-  const conflictResolutions = swarmConflictResolutions(zone, swarmId, completed, stepReceipts, agentScores);
+  const conflictResolutions = swarmConflictResolutions(zone, context.swarmId, completed, stepReceipts, agentScores);
   for (const resolution of conflictResolutions) await sendEvent(socket, resolution);
-  const closeBody = { swarm_id: swarmId, step_receipts: stepReceipts, micro_contracts: microContracts, migration_log: migrationLog, ...(conflictResolutions.length > 0 ? { conflict_resolutions: conflictResolutions } : {}), ...(planDigest !== undefined ? { plan_digest: planDigest } : {}), ...(scheduled ? { scheduler: scheduled.scheduler } : {}) };
+  const closeBody = {
+    swarm_id: context.swarmId,
+    plan_digest: context.planDigest,
+    execution_graph_digest: context.executionGraphDigest,
+    step_receipts: stepReceipts,
+    micro_contracts: microContracts,
+    migration_log: migrationLog,
+    ...(conflictResolutions.length > 0 ? { conflict_resolutions: conflictResolutions } : {}),
+    ...(context.scheduler ? { scheduler: context.scheduler } : {}),
+  };
   const closeProof = { ...closeBody, close_signature: signObject(zone.privateKey, closeBody) };
   await appendAudit({ kind: "fed_swarm_close", zone: zone.descriptor, close: closeProof });
-  send(socket, { type: "FED_SWARM_CLOSE", swarm_id: swarmId, zone: zone.descriptor, close: closeProof });
+  send(socket, { type: "FED_SWARM_CLOSE", swarm_id: context.swarmId, zone: zone.descriptor, close: closeProof });
 }
 
 async function serve(port, trustedZonesFile) {
@@ -606,21 +715,21 @@ async function serve(port, trustedZonesFile) {
     "state/keys/fed-zone-b-summarizer.pkcs8",
     { allow_network: false, approval_required: ["write"], write_prefixes: ["artifact://local/"] },
     [`fed+tcp://127.0.0.1:${port}`],
-    ["summarize.text"],
+    ["summarize.text", "migration.shared"],
   );
   const semanticWorker = await loadOrCreateAgent(
     "agent://zone-b/semantic-summarize-text-fast",
     "state/keys/fed-zone-b-semantic-summarizer.pkcs8",
     { allow_network: false, approval_required: ["write"], write_prefixes: ["artifact://local/"] },
     [`fed+tcp://127.0.0.1:${port}`],
-    ["summarize.text.fast"],
+    ["summarize.text.fast", "migration.shared"],
   );
   const migrationWorker = await loadOrCreateAgent(
     "agent://zone-b/migration-summarizer",
     "state/keys/fed-zone-b-migration-summarizer.pkcs8",
     { allow_network: true, approval_required: ["write"], write_prefixes: ["artifact://local/"] },
     [`fed+tcp://127.0.0.1:${port}`],
-    ["summarize.text"],
+    ["summarize.text", "migration.shared"],
   );
   const knownWorkers = [worker, semanticWorker, migrationWorker];
   const receiptCounts = new Map(await Promise.all(
@@ -678,7 +787,7 @@ async function serve(port, trustedZonesFile) {
           return;
         }
         if (frame.type === "FED_SWARM_OPEN" || frame.type === "FED_SWARM_SCHEDULE") {
-          await executeSwarm(socket, trustedZones, zone, [worker, migrationWorker], frame, agentScores, frame.type === "FED_SWARM_SCHEDULE");
+          await executeSwarm(socket, trustedZones, zone, knownWorkers, frame, agentScores, frame.type === "FED_SWARM_SCHEDULE");
           return;
         }
         if (frame.type !== "FED_TASK_OPEN") throw new Error(`unsupported frame: ${frame.type}`);

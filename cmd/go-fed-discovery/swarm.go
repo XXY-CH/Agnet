@@ -1,6 +1,7 @@
 package main
 
 import (
+	"agnet/verifier"
 	"errors"
 	"sort"
 	"strings"
@@ -72,17 +73,34 @@ func sharesWorkerCapability(left, right *Worker) bool {
 	return false
 }
 
-func (f Fixture) migrationCandidate(original *Worker) *Worker {
+func workerAdvertisesCapability(worker *Worker, capability string) bool {
+	for _, advertised := range capabilitiesFromDescriptor(worker.Descriptor) {
+		if advertised == capability {
+			return true
+		}
+	}
+	return false
+}
+
+func (f Fixture) migrationCandidate(original *Worker, capability, stepID string) (*Worker, error) {
+	foundSharedCapability := false
 	for i := range f.Workers {
 		candidate := &f.Workers[i]
 		if optionalString(candidate.Descriptor["aid"]) == optionalString(original.Descriptor["aid"]) {
 			continue
 		}
-		if sharesWorkerCapability(original, candidate) {
-			return candidate
+		if !sharesWorkerCapability(original, candidate) {
+			continue
+		}
+		foundSharedCapability = true
+		if workerAdvertisesCapability(candidate, capability) {
+			return candidate, nil
 		}
 	}
-	return nil
+	if foundSharedCapability {
+		return nil, errors.New("execution binding migration worker capability missing: " + stepID)
+	}
+	return nil, nil
 }
 
 func migrationLogEntry(stepID string, original *Worker, reason string, migrated *Worker) map[string]any {
@@ -187,70 +205,238 @@ func (f Fixture) swarmConflictResolutions(swarmID string, completed map[string]m
 	return resolutions
 }
 
-func (f Fixture) executeSwarmWithScheduler(send sendFunc, origin, frame map[string]any, scheduler map[string]any) error {
+type verifiedSwarmStep struct {
+	stepID              string
+	after               []string
+	capability          string
+	taskDigest          string
+	signedTask          map[string]any
+	originalWorker      *Worker
+	migrationWorker     *Worker
+	originalPolicyError error
+}
+
+type verifiedSwarmExecution struct {
+	swarmID              string
+	planDigest           string
+	executionGraphDigest string
+	signedOrder          []string
+	executionSteps       []*verifiedSwarmStep
+	scheduler            map[string]any
+}
+
+func normalizeExecutableSwarmSteps(items []any) ([]map[string]any, error) {
+	normalized := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		step, ok := item.(map[string]any)
+		if !ok {
+			return nil, errors.New("swarm step invalid")
+		}
+		stepID := optionalString(step["step_id"])
+		if stepID == "" {
+			return nil, errors.New("swarm step_id missing")
+		}
+		if hasSwarmDelimiter(stepID) {
+			return nil, errors.New("swarm identity contains NUL")
+		}
+		after, err := swarmAfterSteps(step["after"])
+		if err != nil {
+			return nil, err
+		}
+		task, ok := step["task"].(map[string]any)
+		if !ok {
+			return nil, errors.New("swarm step task missing")
+		}
+		normalized = append(normalized, map[string]any{"step_id": stepID, "depends_on": after, "task": task})
+	}
+	return normalized, nil
+}
+
+func verifySwarmPlanOrigin(planFrame, origin map[string]any) error {
+	if planFrame["type"] != "FED_SWARM_PLAN" {
+		return errors.New("expected FED_SWARM_PLAN frame")
+	}
+	planZone, ok := planFrame["zone"].(map[string]any)
+	if !ok {
+		return errors.New("swarm plan zone missing")
+	}
+	if planZone["zid"] != origin["zid"] || planZone["public_key_spki"] != origin["public_key_spki"] {
+		return errors.New("swarm plan origin mismatch")
+	}
+	return nil
+}
+
+func validateOrderedSwarmDependencies(steps []*verifiedSwarmStep) error {
+	completed := map[string]bool{}
+	for _, step := range steps {
+		for _, dependency := range step.after {
+			if !completed[dependency] {
+				return errors.New("swarm dependency not completed: " + dependency)
+			}
+		}
+		completed[step.stepID] = true
+	}
+	return nil
+}
+
+func (f Fixture) preflightSwarmExecution(origin, frame map[string]any, readyDAG bool) (*verifiedSwarmExecution, error) {
 	requester, ok := frame["requester"].(map[string]any)
 	if !ok {
-		return errors.New("swarm requester missing")
+		return nil, errors.New("swarm requester missing")
 	}
-	binding, ok := frame["requester_zone_binding"].(map[string]any)
+	requesterBinding, ok := frame["requester_zone_binding"].(map[string]any)
 	if !ok {
-		return errors.New("requester zone binding missing")
+		return nil, errors.New("requester zone binding missing")
 	}
-	if err := verifyZoneBinding(origin, binding, requester); err != nil {
-		return err
+	if err := verifyZoneBinding(origin, requesterBinding, requester); err != nil {
+		return nil, err
 	}
 	swarm, ok := frame["swarm"].(map[string]any)
 	if !ok {
-		return errors.New("swarm body missing")
+		return nil, errors.New("swarm body missing")
 	}
 	swarmID := optionalString(swarm["swarm_id"])
 	if swarmID == "" {
-		return errors.New("swarm_id missing")
+		return nil, errors.New("swarm_id missing")
 	}
 	if hasSwarmDelimiter(swarmID) {
-		return errors.New("swarm identity contains NUL")
+		return nil, errors.New("swarm identity contains NUL")
 	}
-	steps, ok := swarm["steps"].([]any)
-	if !ok || len(steps) == 0 {
-		return errors.New("swarm steps missing")
+	items, ok := swarm["steps"].([]any)
+	if !ok || len(items) == 0 {
+		return nil, errors.New("swarm steps missing")
 	}
-	var err error
-	if scheduler != nil {
-		var stepOrder []string
-		steps, stepOrder, err = scheduleSwarmSteps(steps)
+	planFrame, ok := swarm["plan"].(map[string]any)
+	if !ok {
+		return nil, errors.New("swarm plan missing")
+	}
+	if err := verifySwarmPlanOrigin(planFrame, origin); err != nil {
+		return nil, err
+	}
+	binding, ok := swarm["execution_binding"].(map[string]any)
+	if !ok {
+		return nil, errors.New("execution binding missing")
+	}
+	normalized, err := normalizeExecutableSwarmSteps(items)
+	if err != nil {
+		return nil, err
+	}
+	evidence := make([]*verifiedTaskOpenEvidence, 0, len(normalized))
+	originalWorkers := make([]map[string]any, 0, len(normalized))
+	for _, step := range normalized {
+		verifiedTask, err := f.verifyTaskOpenEvidence(map[string]any{
+			"type":                   "FED_TASK_OPEN",
+			"origin_zone":            origin,
+			"requester":              requester,
+			"requester_zone_binding": requesterBinding,
+			"task":                   step["task"],
+		})
 		if err != nil {
-			return err
+			return nil, err
 		}
-		scheduler["step_order"] = stepOrder
+		evidence = append(evidence, verifiedTask)
+		originalWorkers = append(originalWorkers, verifiedTask.Worker.Descriptor)
+	}
+	graphDigest, err := verifier.VerifySwarmExecutionBinding(binding, planFrame, normalized, originalWorkers)
+	if err != nil {
+		return nil, err
+	}
+	if binding["swarm_id"] != swarmID {
+		return nil, errors.New("execution binding swarm_id mismatch")
+	}
+	boundSteps := mapsFromAny(binding["steps"])
+	verifiedSteps := make([]*verifiedSwarmStep, 0, len(normalized))
+	migrationWorkers := make([]map[string]any, 0, len(normalized))
+	hasMigrationWorker := false
+	signedOrder := make([]string, 0, len(normalized))
+	for index, step := range normalized {
+		boundStep := boundSteps[index]
+		stepID := optionalString(boundStep["step_id"])
+		capability := optionalString(boundStep["capability"])
+		var originalPolicyError error
+		if err := enforcePolicy(evidence[index].Worker.Descriptor, evidence[index].SignedTask); err != nil {
+			originalPolicyError = err
+		}
+		migrationWorker, err := f.migrationCandidate(evidence[index].Worker, capability, stepID)
+		if err != nil {
+			return nil, err
+		}
+		if migrationWorker != nil {
+			if err := enforcePolicy(migrationWorker.Descriptor, evidence[index].SignedTask); err != nil {
+				return nil, err
+			}
+			hasMigrationWorker = true
+			migrationWorkers = append(migrationWorkers, migrationWorker.Descriptor)
+		} else {
+			if originalPolicyError != nil {
+				return nil, originalPolicyError
+			}
+			migrationWorkers = append(migrationWorkers, evidence[index].Worker.Descriptor)
+		}
+		verifiedSteps = append(verifiedSteps, &verifiedSwarmStep{
+			stepID:              stepID,
+			after:               append([]string{}, step["depends_on"].([]string)...),
+			capability:          capability,
+			taskDigest:          optionalString(boundStep["task_digest"]),
+			signedTask:          evidence[index].SignedTask,
+			originalWorker:      evidence[index].Worker,
+			migrationWorker:     migrationWorker,
+			originalPolicyError: originalPolicyError,
+		})
+		signedOrder = append(signedOrder, stepID)
+	}
+	if hasMigrationWorker {
+		if _, err := verifier.VerifySwarmExecutionBinding(binding, planFrame, normalized, migrationWorkers); err != nil {
+			return nil, err
+		}
+	}
+
+	executionSteps := verifiedSteps
+	var scheduler map[string]any
+	if readyDAG {
+		ordered, stepOrder, err := scheduleSwarmSteps(items)
+		if err != nil {
+			return nil, err
+		}
+		byStepID := map[string]*verifiedSwarmStep{}
+		for _, step := range verifiedSteps {
+			byStepID[step.stepID] = step
+		}
+		executionSteps = make([]*verifiedSwarmStep, 0, len(ordered))
+		for _, item := range ordered {
+			step := item.(map[string]any)
+			verifiedStep := byStepID[optionalString(step["step_id"])]
+			if verifiedStep == nil {
+				return nil, errors.New("swarm schedule dependency unresolved")
+			}
+			executionSteps = append(executionSteps, verifiedStep)
+		}
+		scheduler = map[string]any{"mode": "ready-dag", "step_order": stepOrder}
+	} else if err := validateOrderedSwarmDependencies(verifiedSteps); err != nil {
+		return nil, err
+	}
+	return &verifiedSwarmExecution{
+		swarmID:              swarmID,
+		planDigest:           optionalString(binding["plan_digest"]),
+		executionGraphDigest: graphDigest,
+		signedOrder:          signedOrder,
+		executionSteps:       executionSteps,
+		scheduler:            scheduler,
+	}, nil
+}
+
+func (f Fixture) executeSwarmWithScheduler(send sendFunc, origin, frame map[string]any, scheduler map[string]any) error {
+	context, err := f.preflightSwarmExecution(origin, frame, scheduler != nil)
+	if err != nil {
+		return err
 	}
 	completed := map[string]map[string]any{}
 	stepReceipts := []map[string]any{}
 	microContracts := []map[string]any{}
 	migrationLog := []map[string]any{}
-	for _, item := range steps {
-		step, ok := item.(map[string]any)
-		if !ok {
-			return errors.New("swarm step invalid")
-		}
-		stepID := optionalString(step["step_id"])
-		if stepID == "" {
-			return errors.New("swarm step_id missing")
-		}
-		if hasSwarmDelimiter(stepID) {
-			return errors.New("swarm identity contains NUL")
-		}
-		if _, exists := completed[stepID]; exists {
-			return errors.New("duplicate swarm step: " + stepID)
-		}
-		after, err := swarmAfterSteps(step["after"])
-		if err != nil {
-			return err
-		}
+	for _, step := range context.executionSteps {
 		inputArtifacts := []map[string]any{}
-		for _, dependency := range after {
-			if hasSwarmDelimiter(dependency) {
-				return errors.New("swarm identity contains NUL")
-			}
+		for _, dependency := range step.after {
 			receipt, ok := completed[dependency]
 			if !ok {
 				return errors.New("swarm dependency not completed: " + dependency)
@@ -268,69 +454,74 @@ func (f Fixture) executeSwarmWithScheduler(send sendFunc, origin, frame map[stri
 				"receipt_digest": digestHex(receipt),
 			})
 		}
-		task, ok := step["task"].(map[string]any)
-		if !ok {
-			return errors.New("swarm step task missing")
-		}
-		worker, task, err := f.verifyTaskOpen(map[string]any{"type": "FED_TASK_OPEN", "requester": requester, "task": task})
-		if err != nil {
-			return err
-		}
 		proof := map[string]any{
-			"swarm_id":        swarmID,
-			"step_id":         stepID,
-			"after":           after,
-			"input_artifacts": inputArtifacts,
+			"swarm_id":               context.swarmID,
+			"step_id":                step.stepID,
+			"after":                  step.after,
+			"input_artifacts":        inputArtifacts,
+			"plan_digest":            context.planDigest,
+			"execution_graph_digest": context.executionGraphDigest,
+			"capability":             step.capability,
+			"task_digest":            step.taskDigest,
 		}
-		microContract := f.swarmMicroContract(worker, swarmID, stepID, task)
-		if err := f.sendTaskEvent(send, microContract); err != nil {
-			return err
-		}
-		executeErr := f.executeTask(send, origin, worker, task, nil, "", nil, false, map[string]any{"swarm": proof}, func(receipt map[string]any) error {
-			completed[stepID] = receipt
-			stepReceipts = append(stepReceipts, map[string]any{"step_id": stepID, "task_id": receipt["task_id"], "receipt_digest": digestHex(receipt), "worker": worker.Descriptor})
-			return nil
-		})
+		var executeErr error = step.originalPolicyError
 		if executeErr == nil {
-			microContracts = append(microContracts, microContract)
-			continue
+			microContract := f.swarmMicroContract(step.originalWorker, context.swarmID, step.stepID, step.signedTask)
+			if err := f.sendTaskEvent(send, microContract); err != nil {
+				return err
+			}
+			executeErr = f.executeTask(send, origin, step.originalWorker, step.signedTask, nil, "", nil, false, map[string]any{"swarm": proof}, func(receipt map[string]any) error {
+				completed[step.stepID] = receipt
+				stepReceipts = append(stepReceipts, map[string]any{"step_id": step.stepID, "task_id": receipt["task_id"], "receipt_digest": digestHex(receipt), "worker": step.originalWorker.Descriptor})
+				return nil
+			})
+			if executeErr == nil {
+				microContracts = append(microContracts, microContract)
+				continue
+			}
 		}
-		migratedWorker := f.migrationCandidate(worker)
-		if migratedWorker == nil {
+		if step.migrationWorker == nil {
 			return executeErr
 		}
-		migratedMicroContract := f.swarmMicroContract(migratedWorker, swarmID, stepID, task)
+		migratedMicroContract := f.swarmMicroContract(step.migrationWorker, context.swarmID, step.stepID, step.signedTask)
 		if err := f.sendTaskEvent(send, migratedMicroContract); err != nil {
 			return err
 		}
-		if err := f.executeTask(send, origin, migratedWorker, task, nil, "", nil, false, map[string]any{"swarm": proof}, func(receipt map[string]any) error {
-			completed[stepID] = receipt
-			stepReceipts = append(stepReceipts, map[string]any{"step_id": stepID, "task_id": receipt["task_id"], "receipt_digest": digestHex(receipt), "worker": migratedWorker.Descriptor})
+		if err := f.executeTask(send, origin, step.migrationWorker, step.signedTask, nil, "", nil, false, map[string]any{"swarm": proof}, func(receipt map[string]any) error {
+			completed[step.stepID] = receipt
+			stepReceipts = append(stepReceipts, map[string]any{"step_id": step.stepID, "task_id": receipt["task_id"], "receipt_digest": digestHex(receipt), "worker": step.migrationWorker.Descriptor})
 			return nil
 		}); err != nil {
 			return err
 		}
 		microContracts = append(microContracts, migratedMicroContract)
-		migrationLog = append(migrationLog, migrationLogEntry(stepID, worker, executeErr.Error(), migratedWorker))
+		migrationLog = append(migrationLog, migrationLogEntry(step.stepID, step.originalWorker, executeErr.Error(), step.migrationWorker))
 	}
-	conflictResolutions := f.swarmConflictResolutions(swarmID, completed, stepReceipts)
+	conflictResolutions := f.swarmConflictResolutions(context.swarmID, completed, stepReceipts)
 	for _, resolution := range conflictResolutions {
 		if err := f.sendTaskEvent(send, resolution); err != nil {
 			return err
 		}
 	}
-	closeBody := map[string]any{"swarm_id": swarmID, "step_receipts": stepReceipts, "micro_contracts": microContracts, "migration_log": migrationLog}
+	closeBody := map[string]any{
+		"swarm_id":               context.swarmID,
+		"plan_digest":            context.planDigest,
+		"execution_graph_digest": context.executionGraphDigest,
+		"step_receipts":          stepReceipts,
+		"micro_contracts":        microContracts,
+		"migration_log":          migrationLog,
+	}
 	if len(conflictResolutions) > 0 {
 		closeBody["conflict_resolutions"] = conflictResolutions
 	}
-	if scheduler != nil {
-		closeBody["scheduler"] = scheduler
+	if context.scheduler != nil {
+		closeBody["scheduler"] = context.scheduler
 	}
 	closeProof := signBodyWithKey(f.AuthorityPrivateKey, closeBody, "close_signature")
 	if err := f.appendAudit(map[string]any{"kind": "go_swarm_close", "zone": f.Authority, "close": closeProof}); err != nil {
 		return err
 	}
-	send(map[string]any{"type": "FED_SWARM_CLOSE", "swarm_id": swarmID, "zone": f.Authority, "close": closeProof})
+	send(map[string]any{"type": "FED_SWARM_CLOSE", "swarm_id": context.swarmID, "zone": f.Authority, "close": closeProof})
 	return nil
 }
 
