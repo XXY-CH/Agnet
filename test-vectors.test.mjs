@@ -4,7 +4,7 @@ import { createHash, createPrivateKey, createPublicKey } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { canonical, computeAid, createAgent, createZone, descriptorBody, didKeyFromDescriptor, didKeyFromPublicKeySPKI, publicKeyFromDescriptor, publicKeySPKIFromDidKey, signObject, verifyFederatedReceipt, verifyFederatedTaskOpen, verifyObject, verifyReceiptArtifactManifests, verifySwarmClose, writeArtifact, zoneDescriptorBody } from "./asp-core.mjs";
+import { canonical, computeAid, createAgent, createZone, descriptorBody, didKeyFromDescriptor, didKeyFromPublicKeySPKI, publicKeyFromDescriptor, publicKeySPKIFromDidKey, signObject, signedReceiptDigest, swarmExecutionBinding, swarmPlan, verifyFederatedReceipt, verifyFederatedTaskOpen, verifyObject, verifyReceiptArtifactManifests, verifySwarmClose, verifySwarmExecutionBinding, verifySwarmPlan, writeArtifact, zoneDescriptorBody } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -585,6 +585,137 @@ test("FED_RECEIPT artifact CLI verifies one frame and local artifact bytes in No
     () => execFileAsync("node", ["asp-verify.mjs", "fed-receipt-artifacts", framePath, trustedPath]),
     (error) => /artifact bytes (size|digest) mismatch/.test(error.stderr),
   );
+});
+
+test("signed Swarm execution binding verifies exact plan and executable graph", () => {
+  const coordinator = createZone("zone://swarm-execution-binding-test");
+  const requester = createAgent("agent://swarm-execution-binding/requester");
+  const originalWorker = createAgent("agent://swarm-execution-binding/original", {}, ["asp+local://test"], ["summarize.text"]);
+  const migratedWorker = createAgent("agent://swarm-execution-binding/migrated", {}, ["asp+local://test"], ["summarize.text"]);
+  const planSteps = [
+    { step_id: "draft", capability: "summarize.text", depends_on: [] },
+    { step_id: "final", capability: "summarize.text", depends_on: ["draft"] },
+  ];
+  const planFrame = swarmPlan(coordinator, "swarm://node-test/execution-binding", "Draft and finalize a summary.", planSteps, "a".repeat(64));
+  const verifiedPlan = verifySwarmPlan(planFrame, new Map([[coordinator.zid, coordinator.descriptor]]));
+  const signedTasks = [
+    { task_id: "binding_draft", intent: "Draft the summary.", signature: "task-signature-draft" },
+    { task_id: "binding_final", intent: "Finalize the summary.", signature: "task-signature-final" },
+  ];
+  const executableSteps = [
+    { step_id: "draft", depends_on: [], task: signedTasks[0] },
+    { step_id: "final", depends_on: ["draft"], task: signedTasks[1] },
+  ];
+  const resolvedWorkers = [originalWorker.descriptor, migratedWorker.descriptor];
+  const binding = swarmExecutionBinding(coordinator, planFrame, executableSteps);
+  const expectedSteps = planSteps.map((step, index) => ({
+    step_id: step.step_id,
+    depends_on: step.depends_on,
+    capability: step.capability,
+    task_digest: createHash("sha256").update(canonical(signedTasks[index])).digest("hex"),
+  }));
+  const digestPreimage = { swarm_id: planFrame.plan.swarm_id, plan_digest: planFrame.plan.plan_digest, steps: expectedSteps };
+  const expectedDigest = createHash("sha256").update(canonical(digestPreimage)).digest("hex");
+
+  assert.deepEqual(binding.steps, expectedSteps);
+  assert.equal(binding.execution_graph_digest, expectedDigest);
+  const { binding_signature, ...bindingBody } = binding;
+  assert.equal(verifyObject(publicKeyFromDescriptor(coordinator.descriptor), bindingBody, binding_signature), true);
+  const verified = verifySwarmExecutionBinding(binding, verifiedPlan, executableSteps, resolvedWorkers);
+  assert.deepEqual(verified, {
+    swarmId: planFrame.plan.swarm_id,
+    planDigest: planFrame.plan.plan_digest,
+    steps: expectedSteps,
+    executionGraphDigest: expectedDigest,
+  });
+  assert.equal(Object.isFrozen(verified), true);
+  assert.equal(Object.isFrozen(verified.steps), true);
+  assert.equal(Object.isFrozen(verified.steps[0]), true);
+  assert.equal(Object.isFrozen(verified.steps[0].depends_on), true);
+
+  const signedBindingFor = ({
+    format = "asp-swarm-execution-binding/v1",
+    swarmId = planFrame.plan.swarm_id,
+    planDigest = planFrame.plan.plan_digest,
+    steps = expectedSteps,
+  } = {}) => {
+    const execution_graph_digest = createHash("sha256").update(canonical({ swarm_id: swarmId, plan_digest: planDigest, steps })).digest("hex");
+    const body = { format, swarm_id: swarmId, plan_digest: planDigest, steps, execution_graph_digest };
+    return { ...body, binding_signature: signObject(coordinator.privateKey, body) };
+  };
+  const rejects = (candidate, message, candidateSteps = executableSteps, candidateWorkers = resolvedWorkers) => {
+    assert.throws(
+      () => verifySwarmExecutionBinding(candidate, verifiedPlan, candidateSteps, candidateWorkers),
+      message,
+    );
+  };
+  const rejectsPlanSteps = (steps, message) => {
+    const plan_digest = createHash("sha256").update(canonical({ intent: planFrame.plan.intent, steps })).digest("hex");
+    const planBody = {
+      swarm_id: planFrame.plan.swarm_id,
+      intent: planFrame.plan.intent,
+      steps,
+      policy_digest: planFrame.plan.policy_digest,
+      plan_digest,
+    };
+    const candidateVerifiedPlan = {
+      zone: coordinator.descriptor,
+      plan: { ...planBody, plan_signature: signObject(coordinator.privateKey, planBody) },
+    };
+    assert.throws(
+      () => verifySwarmExecutionBinding(signedBindingFor({ planDigest: plan_digest }), candidateVerifiedPlan, executableSteps, resolvedWorkers),
+      message,
+    );
+  };
+
+  rejectsPlanSteps([{ ...planSteps[0], depends_on: null }, planSteps[1]], /swarm plan step depends_on invalid/);
+  for (const constraint of [null, [], "invalid"]) {
+    rejectsPlanSteps([{ ...planSteps[0], constraint }, planSteps[1]], /swarm plan step constraint invalid/);
+  }
+
+  rejects(signedBindingFor({ swarmId: "swarm://node-test/substituted" }), /execution binding swarm_id mismatch/);
+  rejects(signedBindingFor({ planDigest: "b".repeat(64) }), /execution binding plan_digest mismatch/);
+  rejects(signedBindingFor({ steps: [...expectedSteps].reverse() }), /execution binding step order mismatch/);
+  rejects(signedBindingFor({ steps: expectedSteps.slice(0, 1) }), /execution binding step count mismatch/);
+  rejects(signedBindingFor({ steps: [...expectedSteps, { step_id: "extra", depends_on: ["final"], capability: "summarize.text", task_digest: "c".repeat(64) }] }), /execution binding step count mismatch/);
+  rejects(signedBindingFor({ steps: [expectedSteps[0], { ...expectedSteps[1], step_id: "draft" }] }), /execution binding duplicate step_id/);
+  rejects(signedBindingFor({ steps: [expectedSteps[0], { ...expectedSteps[1], depends_on: [] }] }), /execution binding step depends_on mismatch/);
+  rejects(signedBindingFor({ steps: [expectedSteps[0], { ...expectedSteps[1], capability: "translate.text" }] }), /execution binding step capability mismatch/);
+  rejects(signedBindingFor({ steps: [{ ...expectedSteps[0], task_digest: "bad" }, expectedSteps[1]] }), /execution binding step task_digest invalid/);
+  rejects(signedBindingFor({ steps: [expectedSteps[0], { ...expectedSteps[1], depends_on: ["draft", "draft"] }] }), /execution binding duplicate dependency/);
+
+  const changedTaskSteps = structuredClone(executableSteps);
+  changedTaskSteps[1].task.intent = "Substituted task.";
+  rejects(binding, /execution binding task_digest mismatch/, changedTaskSteps);
+  const changedDependencySteps = structuredClone(executableSteps);
+  changedDependencySteps[1].depends_on = [];
+  rejects(binding, /execution binding executable depends_on mismatch/, changedDependencySteps);
+
+  rejects({ ...binding, binding_signature: "bad" }, /execution binding signature verification failed/);
+  rejects(binding, /execution binding worker capability missing/, executableSteps, [createAgent("agent://swarm-execution-binding/incapable-original", {}, ["asp+local://test"], ["translate.text"]).descriptor, migratedWorker.descriptor]);
+  rejects(binding, /execution binding worker capability missing/, executableSteps, [originalWorker.descriptor, createAgent("agent://swarm-execution-binding/incapable-migration", {}, ["asp+local://test"], ["translate.text"]).descriptor]);
+  rejects(binding, /execution binding worker capabilities invalid/, executableSteps, [createAgent("agent://swarm-execution-binding/malformed-capabilities", {}, ["asp+local://test"], ["summarize.text", { bad: true }]).descriptor, migratedWorker.descriptor]);
+  rejects(binding, /execution binding worker capability duplicate/, executableSteps, [originalWorker.descriptor, createAgent("agent://swarm-execution-binding/duplicate-capability", {}, ["asp+local://test"], ["summarize.text", "summarize.text"]).descriptor]);
+  rejects({ ...binding, unexpected: true }, /execution binding fields invalid/);
+  rejects(signedBindingFor({ steps: [{ ...expectedSteps[0], unexpected: true }, expectedSteps[1]] }), /execution binding step fields invalid/);
+  const { capability: _capability, ...stepWithoutCapability } = expectedSteps[0];
+  rejects(signedBindingFor({ steps: [stepWithoutCapability, expectedSteps[1]] }), /execution binding step fields invalid/);
+});
+
+test("v2 signed receipt digest includes worker signature", () => {
+  const signedReceipt = {
+    task_id: "binding_receipt",
+    task_digest: "d".repeat(64),
+    status: "completed",
+    signature: "worker-signature-a",
+  };
+  const changedSignature = { ...signedReceipt, signature: "worker-signature-b" };
+
+  assert.equal(signedReceiptDigest(signedReceipt), createHash("sha256").update(canonical(signedReceipt)).digest("hex"));
+  assert.equal(signedReceiptDigest(changedSignature), createHash("sha256").update(canonical(changedSignature)).digest("hex"));
+  assert.notEqual(signedReceiptDigest(signedReceipt), signedReceiptDigest(changedSignature));
+  const { signature: _signature, ...unsignedReceipt } = signedReceipt;
+  assert.throws(() => signedReceiptDigest(unsignedReceipt), /signed receipt signature missing/);
 });
 
 test("FED_SWARM_CLOSE verification rejects tampered close signatures in Node", async () => {

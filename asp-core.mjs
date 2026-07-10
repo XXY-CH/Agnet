@@ -351,6 +351,209 @@ export function verifySwarmPlan(frame, trustedZones) {
   return { zone, plan: frame.plan };
 }
 
+const SWARM_EXECUTION_BINDING_FIELDS = ["binding_signature", "execution_graph_digest", "format", "plan_digest", "steps", "swarm_id"];
+const SWARM_EXECUTION_BINDING_STEP_FIELDS = ["capability", "depends_on", "step_id", "task_digest"];
+
+function hasExactFields(value, expected) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const fields = Object.keys(value).sort();
+  return fields.length === expected.length && fields.every((field, index) => field === expected[index]);
+}
+
+function executionBindingDependencies(value) {
+  if (!Array.isArray(value)) throw new Error("execution binding step depends_on invalid");
+  const seen = new Set();
+  for (const dependency of value) {
+    if (typeof dependency !== "string" || dependency === "" || dependency.includes("\0")) {
+      throw new Error("execution binding step depends_on invalid");
+    }
+    if (seen.has(dependency)) throw new Error("execution binding duplicate dependency");
+    seen.add(dependency);
+  }
+  return value;
+}
+
+function validateSwarmExecutionBinding(binding) {
+  if (!hasExactFields(binding, SWARM_EXECUTION_BINDING_FIELDS)) throw new Error("execution binding fields invalid");
+  if (binding.format !== "asp-swarm-execution-binding/v1") throw new Error("execution binding format invalid");
+  if (typeof binding.swarm_id !== "string" || binding.swarm_id === "" || binding.swarm_id.includes("\0")) {
+    throw new Error("execution binding swarm_id invalid");
+  }
+  if (typeof binding.plan_digest !== "string" || !/^[0-9a-f]{64}$/.test(binding.plan_digest)) {
+    throw new Error("execution binding plan_digest invalid");
+  }
+  if (!Array.isArray(binding.steps) || binding.steps.length === 0) throw new Error("execution binding steps missing");
+  const stepIds = new Set();
+  for (const step of binding.steps) {
+    if (!hasExactFields(step, SWARM_EXECUTION_BINDING_STEP_FIELDS)) throw new Error("execution binding step fields invalid");
+    if (typeof step.step_id !== "string" || step.step_id === "" || step.step_id.includes("\0")) {
+      throw new Error("execution binding step_id invalid");
+    }
+    if (stepIds.has(step.step_id)) throw new Error("execution binding duplicate step_id");
+    stepIds.add(step.step_id);
+    executionBindingDependencies(step.depends_on);
+    if (typeof step.capability !== "string" || step.capability === "" || step.capability.includes("\0")) {
+      throw new Error("execution binding step capability invalid");
+    }
+    if (typeof step.task_digest !== "string" || !/^[0-9a-f]{64}$/.test(step.task_digest)) {
+      throw new Error("execution binding step task_digest invalid");
+    }
+  }
+  if (typeof binding.execution_graph_digest !== "string" || !/^[0-9a-f]{64}$/.test(binding.execution_graph_digest)) {
+    throw new Error("execution binding graph digest invalid");
+  }
+  if (typeof binding.binding_signature !== "string" || binding.binding_signature === "") {
+    throw new Error("execution binding signature missing");
+  }
+}
+
+function executionBindingPlan(verifiedPlan) {
+  if (!verifiedPlan || typeof verifiedPlan !== "object" || Array.isArray(verifiedPlan)) throw new Error("verified swarm plan missing");
+  if (!verifiedPlan.zone || !verifiedPlan.plan) throw new Error("verified swarm plan missing");
+  const verified = verifySwarmPlan(
+    { type: "FED_SWARM_PLAN", zone: verifiedPlan.zone, plan: verifiedPlan.plan },
+    new Map([[verifiedPlan.zone.zid, verifiedPlan.zone]]),
+  );
+  const stepIds = new Set();
+  const steps = verified.plan.steps.map((step) => {
+    if (stepIds.has(step.step_id)) throw new Error("execution binding duplicate plan step_id");
+    stepIds.add(step.step_id);
+    const depends_on = executionBindingDependencies(step.depends_on ?? []);
+    return { step_id: step.step_id, depends_on, capability: step.capability };
+  });
+  return { zone: verified.zone, plan: verified.plan, steps };
+}
+
+function executableBindingStep(step) {
+  if (!step || typeof step !== "object" || Array.isArray(step)) throw new Error("execution binding executable step invalid");
+  if (typeof step.step_id !== "string" || step.step_id === "" || step.step_id.includes("\0")) {
+    throw new Error("execution binding executable step invalid");
+  }
+  const depends_on = executionBindingDependencies(step.depends_on);
+  if (!step.task || typeof step.task !== "object" || Array.isArray(step.task) || typeof step.task.signature !== "string" || step.task.signature === "") {
+    throw new Error("execution binding signed task missing");
+  }
+  return { step_id: step.step_id, depends_on, task: step.task };
+}
+
+function sameExecutionDependencies(left, right) {
+  return left.length === right.length && left.every((dependency, index) => dependency === right[index]);
+}
+
+function executionBindingCapabilities(value) {
+  if (!Array.isArray(value) || value.length === 0) throw new Error("execution binding worker capabilities invalid");
+  const seen = new Set();
+  for (const capability of value) {
+    if (typeof capability !== "string" || capability === "" || capability.includes("\0")) {
+      throw new Error("execution binding worker capabilities invalid");
+    }
+    if (seen.has(capability)) throw new Error("execution binding worker capability duplicate");
+    seen.add(capability);
+  }
+  return value;
+}
+
+export function signedReceiptDigest(signedReceipt) {
+  if (!signedReceipt || typeof signedReceipt !== "object" || Array.isArray(signedReceipt)) throw new Error("signed receipt missing");
+  if (typeof signedReceipt.signature !== "string" || signedReceipt.signature === "") throw new Error("signed receipt signature missing");
+  return sha256Canonical(signedReceipt);
+}
+
+export function swarmExecutionBinding(coordinatorZone, planFrame, executableSteps) {
+  if (!coordinatorZone || !coordinatorZone.descriptor || !coordinatorZone.privateKey) throw new Error("execution binding coordinator zone missing");
+  const verifiedPlan = verifySwarmPlan(planFrame, new Map([[coordinatorZone.descriptor.zid, coordinatorZone.descriptor]]));
+  const plan = executionBindingPlan(verifiedPlan);
+  if (!Array.isArray(executableSteps) || executableSteps.length !== plan.steps.length) {
+    throw new Error("execution binding executable step count mismatch");
+  }
+  const steps = plan.steps.map((planStep, index) => {
+    const executableStep = executableBindingStep(executableSteps[index]);
+    if (executableStep.step_id !== planStep.step_id) throw new Error("execution binding executable step order mismatch");
+    if (!sameExecutionDependencies(executableStep.depends_on, planStep.depends_on)) {
+      throw new Error("execution binding executable depends_on mismatch");
+    }
+    return {
+      step_id: planStep.step_id,
+      depends_on: [...planStep.depends_on],
+      capability: planStep.capability,
+      task_digest: sha256Canonical(executableStep.task),
+    };
+  });
+  const digestPreimage = { swarm_id: plan.plan.swarm_id, plan_digest: plan.plan.plan_digest, steps };
+  const execution_graph_digest = sha256Canonical(digestPreimage);
+  const body = {
+    format: "asp-swarm-execution-binding/v1",
+    swarm_id: plan.plan.swarm_id,
+    plan_digest: plan.plan.plan_digest,
+    steps,
+    execution_graph_digest,
+  };
+  const binding = { ...body, binding_signature: signObject(coordinatorZone.privateKey, body) };
+  validateSwarmExecutionBinding(binding);
+  return binding;
+}
+
+export function verifySwarmExecutionBinding(binding, verifiedPlan, executableSteps, resolvedWorkers) {
+  validateSwarmExecutionBinding(binding);
+  const plan = executionBindingPlan(verifiedPlan);
+  if (binding.swarm_id !== plan.plan.swarm_id) throw new Error("execution binding swarm_id mismatch");
+  if (binding.plan_digest !== plan.plan.plan_digest) throw new Error("execution binding plan_digest mismatch");
+  if (!Array.isArray(executableSteps) || !Array.isArray(resolvedWorkers) || binding.steps.length !== plan.steps.length || executableSteps.length !== plan.steps.length || resolvedWorkers.length !== plan.steps.length) {
+    throw new Error("execution binding step count mismatch");
+  }
+
+  for (let index = 0; index < plan.steps.length; index += 1) {
+    const boundStep = binding.steps[index];
+    const planStep = plan.steps[index];
+    const executableStep = executableBindingStep(executableSteps[index]);
+    if (boundStep.step_id !== planStep.step_id) throw new Error("execution binding step order mismatch");
+    if (executableStep.step_id !== planStep.step_id) throw new Error("execution binding executable step order mismatch");
+    if (!sameExecutionDependencies(boundStep.depends_on, planStep.depends_on)) throw new Error("execution binding step depends_on mismatch");
+    if (!sameExecutionDependencies(executableStep.depends_on, planStep.depends_on)) throw new Error("execution binding executable depends_on mismatch");
+    if (boundStep.capability !== planStep.capability) throw new Error("execution binding step capability mismatch");
+    if (boundStep.task_digest !== sha256Canonical(executableStep.task)) throw new Error("execution binding task_digest mismatch");
+  }
+
+  const digestPreimage = { swarm_id: binding.swarm_id, plan_digest: binding.plan_digest, steps: binding.steps };
+  if (binding.execution_graph_digest !== sha256Canonical(digestPreimage)) throw new Error("execution binding graph digest mismatch");
+  const { binding_signature, ...bindingBody } = binding;
+  let validSignature = false;
+  try {
+    validSignature = verifyObject(publicKeyFromDescriptor(plan.zone), bindingBody, binding_signature);
+  } catch {
+    validSignature = false;
+  }
+  if (!validSignature) throw new Error("execution binding signature verification failed");
+
+  for (let index = 0; index < plan.steps.length; index += 1) {
+    const workerEntry = resolvedWorkers[index];
+    const descriptor = workerEntry?.descriptor ?? workerEntry;
+    let worker;
+    try {
+      worker = resolveAgent(new Map([[descriptor?.alias, workerEntry]]), descriptor?.alias).descriptor;
+    } catch (error) {
+      throw new Error(`execution binding worker invalid: ${error.message}`);
+    }
+    const capabilities = executionBindingCapabilities(worker.capabilities);
+    if (!capabilities.includes(plan.steps[index].capability)) {
+      throw new Error(`execution binding worker capability missing: ${plan.steps[index].step_id}`);
+    }
+  }
+
+  const immutableSteps = Object.freeze(binding.steps.map((step) => Object.freeze({
+    step_id: step.step_id,
+    depends_on: Object.freeze([...step.depends_on]),
+    capability: step.capability,
+    task_digest: step.task_digest,
+  })));
+  return Object.freeze({
+    swarmId: binding.swarm_id,
+    planDigest: binding.plan_digest,
+    steps: immutableSteps,
+    executionGraphDigest: binding.execution_graph_digest,
+  });
+}
+
 export async function writeTrustedZones(file, zones) {
   await writeJson(file, { zones: zones.map((zone) => zone.descriptor ?? zone) });
 }

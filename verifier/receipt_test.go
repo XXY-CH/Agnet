@@ -169,6 +169,214 @@ func spkiBytes(t *testing.T, key ed25519.PublicKey) []byte {
 	return der
 }
 
+func TestVerifySwarmExecutionBinding(t *testing.T) {
+	zonePub, zoneKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zone := signedDescriptor(t, zoneKey, "zone_signature", map[string]any{
+		"zid":             zidFromSPKI(spkiBytes(t, zonePub)),
+		"public_key_spki": spki(t, zonePub),
+	})
+	makeWorker := func(alias string, capabilities []any) map[string]any {
+		t.Helper()
+		workerPub, workerKey, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return signedDescriptor(t, workerKey, "descriptor_signature", map[string]any{
+			"aid":             aidFromSPKI(spkiBytes(t, workerPub)),
+			"alias":           alias,
+			"public_key_spki": spki(t, workerPub),
+			"capabilities":    capabilities,
+		})
+	}
+	originalWorker := makeWorker("agent://swarm-execution-binding/original", []any{"summarize.text"})
+	migratedWorker := makeWorker("agent://swarm-execution-binding/migrated", []any{"summarize.text"})
+	planSteps := []any{
+		map[string]any{"step_id": "draft", "capability": "summarize.text", "depends_on": []any{}},
+		map[string]any{"step_id": "final", "capability": "summarize.text", "depends_on": []any{"draft"}},
+	}
+	intent := "Draft and finalize a summary."
+	planDigest := digestNodeCanonical(map[string]any{"intent": intent, "steps": planSteps})
+	plan := signNodeCanonical(t, zoneKey, "plan_signature", map[string]any{
+		"swarm_id":      "swarm://go-test/execution-binding",
+		"intent":        intent,
+		"steps":         planSteps,
+		"policy_digest": strings.Repeat("a", 64),
+		"plan_digest":   planDigest,
+	})
+	verifiedPlan := map[string]any{"zone": zone, "plan": plan}
+	signedTasks := []map[string]any{
+		{"task_id": "binding_draft", "intent": "Draft the summary.", "signature": "task-signature-draft"},
+		{"task_id": "binding_final", "intent": "Finalize the summary.", "signature": "task-signature-final"},
+	}
+	executableSteps := []map[string]any{
+		{"step_id": "draft", "depends_on": []any{}, "task": signedTasks[0]},
+		{"step_id": "final", "depends_on": []any{"draft"}, "task": signedTasks[1]},
+	}
+	bindingSteps := []any{
+		map[string]any{"step_id": "draft", "depends_on": []any{}, "capability": "summarize.text", "task_digest": digestNodeCanonical(signedTasks[0])},
+		map[string]any{"step_id": "final", "depends_on": []any{"draft"}, "capability": "summarize.text", "task_digest": digestNodeCanonical(signedTasks[1])},
+	}
+	bindingFor := func(swarmID, digest string, steps []any) map[string]any {
+		graphDigest := digestNodeCanonical(map[string]any{"swarm_id": swarmID, "plan_digest": digest, "steps": steps})
+		return signNodeCanonical(t, zoneKey, "binding_signature", map[string]any{
+			"format":                 "asp-swarm-execution-binding/v1",
+			"swarm_id":               swarmID,
+			"plan_digest":            digest,
+			"steps":                  steps,
+			"execution_graph_digest": graphDigest,
+		})
+	}
+	binding := bindingFor(plan["swarm_id"].(string), planDigest, bindingSteps)
+	resolvedWorkers := []map[string]any{originalWorker, migratedWorker}
+	gotDigest, err := VerifySwarmExecutionBinding(binding, verifiedPlan, executableSteps, resolvedWorkers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotDigest != binding["execution_graph_digest"] {
+		t.Fatalf("got digest %q, want %q", gotDigest, binding["execution_graph_digest"])
+	}
+
+	cloneMap := func(source map[string]any) map[string]any {
+		out := map[string]any{}
+		for key, value := range source {
+			out[key] = value
+		}
+		return out
+	}
+	wantError := func(name string, candidate map[string]any, candidateSteps []map[string]any, workers []map[string]any, message string) {
+		t.Helper()
+		t.Run(name, func(t *testing.T) {
+			_, err := VerifySwarmExecutionBinding(candidate, verifiedPlan, candidateSteps, workers)
+			if err == nil || !strings.Contains(err.Error(), message) {
+				t.Fatalf("got %v, want %q", err, message)
+			}
+		})
+	}
+	wantPlanError := func(name string, steps []any, message string) {
+		t.Helper()
+		planDigest := digestNodeCanonical(map[string]any{"intent": intent, "steps": steps})
+		candidatePlan := signNodeCanonical(t, zoneKey, "plan_signature", map[string]any{
+			"swarm_id":      plan["swarm_id"],
+			"intent":        intent,
+			"steps":         steps,
+			"policy_digest": plan["policy_digest"],
+			"plan_digest":   planDigest,
+		})
+		candidateVerifiedPlan := map[string]any{"zone": zone, "plan": candidatePlan}
+		candidateBinding := bindingFor(plan["swarm_id"].(string), planDigest, bindingSteps)
+		t.Run(name, func(t *testing.T) {
+			_, err := VerifySwarmExecutionBinding(candidateBinding, candidateVerifiedPlan, executableSteps, resolvedWorkers)
+			if err == nil || !strings.Contains(err.Error(), message) {
+				t.Fatalf("got %v, want %q", err, message)
+			}
+		})
+	}
+	invalidDependsOnSteps := []any{
+		map[string]any{"step_id": "draft", "capability": "summarize.text", "depends_on": nil},
+		planSteps[1],
+	}
+	wantPlanError("explicit null plan dependency", invalidDependsOnSteps, "swarm plan step depends_on invalid")
+	for _, testCase := range []struct {
+		name       string
+		constraint any
+	}{
+		{name: "null", constraint: nil},
+		{name: "array", constraint: []any{}},
+		{name: "scalar", constraint: "invalid"},
+	} {
+		invalidConstraintSteps := []any{
+			map[string]any{"step_id": "draft", "capability": "summarize.text", "depends_on": []any{}, "constraint": testCase.constraint},
+			planSteps[1],
+		}
+		wantPlanError("malformed plan constraint "+testCase.name, invalidConstraintSteps, "swarm plan step constraint invalid")
+	}
+	wantError("wrong swarm id", bindingFor("swarm://go-test/substituted", planDigest, bindingSteps), executableSteps, resolvedWorkers, "execution binding swarm_id mismatch")
+	wantError("wrong plan digest", bindingFor(plan["swarm_id"].(string), strings.Repeat("b", 64), bindingSteps), executableSteps, resolvedWorkers, "execution binding plan_digest mismatch")
+	wantError("reordered steps", bindingFor(plan["swarm_id"].(string), planDigest, []any{bindingSteps[1], bindingSteps[0]}), executableSteps, resolvedWorkers, "execution binding step order mismatch")
+	wantError("missing step", bindingFor(plan["swarm_id"].(string), planDigest, bindingSteps[:1]), executableSteps, resolvedWorkers, "execution binding step count mismatch")
+	extraStep := map[string]any{"step_id": "extra", "depends_on": []any{"final"}, "capability": "summarize.text", "task_digest": strings.Repeat("c", 64)}
+	wantError("extra step", bindingFor(plan["swarm_id"].(string), planDigest, []any{bindingSteps[0], bindingSteps[1], extraStep}), executableSteps, resolvedWorkers, "execution binding step count mismatch")
+	duplicateStep := cloneMap(bindingSteps[1].(map[string]any))
+	duplicateStep["step_id"] = "draft"
+	wantError("duplicate step", bindingFor(plan["swarm_id"].(string), planDigest, []any{bindingSteps[0], duplicateStep}), executableSteps, resolvedWorkers, "execution binding duplicate step_id")
+	reconnectedStep := cloneMap(bindingSteps[1].(map[string]any))
+	reconnectedStep["depends_on"] = []any{}
+	wantError("reconnected step", bindingFor(plan["swarm_id"].(string), planDigest, []any{bindingSteps[0], reconnectedStep}), executableSteps, resolvedWorkers, "execution binding step depends_on mismatch")
+	changedCapabilityStep := cloneMap(bindingSteps[1].(map[string]any))
+	changedCapabilityStep["capability"] = "translate.text"
+	wantError("changed capability", bindingFor(plan["swarm_id"].(string), planDigest, []any{bindingSteps[0], changedCapabilityStep}), executableSteps, resolvedWorkers, "execution binding step capability mismatch")
+	malformedDigestStep := cloneMap(bindingSteps[0].(map[string]any))
+	malformedDigestStep["task_digest"] = "bad"
+	wantError("malformed task digest", bindingFor(plan["swarm_id"].(string), planDigest, []any{malformedDigestStep, bindingSteps[1]}), executableSteps, resolvedWorkers, "execution binding step task_digest invalid")
+	duplicateDependencyStep := cloneMap(bindingSteps[1].(map[string]any))
+	duplicateDependencyStep["depends_on"] = []any{"draft", "draft"}
+	wantError("duplicate dependency", bindingFor(plan["swarm_id"].(string), planDigest, []any{bindingSteps[0], duplicateDependencyStep}), executableSteps, resolvedWorkers, "execution binding duplicate dependency")
+
+	changedTaskSteps := []map[string]any{cloneMap(executableSteps[0]), cloneMap(executableSteps[1])}
+	changedTaskSteps[1]["task"] = map[string]any{"task_id": "binding_final", "intent": "Substituted task.", "signature": "task-signature-final"}
+	wantError("changed task", binding, changedTaskSteps, resolvedWorkers, "execution binding task_digest mismatch")
+	changedDependencySteps := []map[string]any{cloneMap(executableSteps[0]), cloneMap(executableSteps[1])}
+	changedDependencySteps[1]["depends_on"] = []any{}
+	wantError("changed executable dependency", binding, changedDependencySteps, resolvedWorkers, "execution binding executable depends_on mismatch")
+	wrongSignature := cloneMap(binding)
+	wrongSignature["binding_signature"] = "bad"
+	wantError("wrong coordinator signature", wrongSignature, executableSteps, resolvedWorkers, "execution binding signature verification failed")
+	wantError("original worker lacks capability", binding, executableSteps, []map[string]any{makeWorker("agent://swarm-execution-binding/incapable-original", []any{"translate.text"}), migratedWorker}, "execution binding worker capability missing")
+	wantError("migrated worker lacks capability", binding, executableSteps, []map[string]any{originalWorker, makeWorker("agent://swarm-execution-binding/incapable-migration", []any{"translate.text"})}, "execution binding worker capability missing")
+	wantError("malformed worker capabilities", binding, executableSteps, []map[string]any{makeWorker("agent://swarm-execution-binding/malformed-capabilities", []any{"summarize.text", map[string]any{"bad": true}}), migratedWorker}, "execution binding worker capabilities invalid")
+	wantError("duplicate worker capability", binding, executableSteps, []map[string]any{originalWorker, makeWorker("agent://swarm-execution-binding/duplicate-capability", []any{"summarize.text", "summarize.text"})}, "execution binding worker capability duplicate")
+	unknownRoot := cloneMap(binding)
+	unknownRoot["unexpected"] = true
+	wantError("unknown root field", unknownRoot, executableSteps, resolvedWorkers, "execution binding fields invalid")
+	unknownStep := cloneMap(bindingSteps[0].(map[string]any))
+	unknownStep["unexpected"] = true
+	wantError("unknown step field", bindingFor(plan["swarm_id"].(string), planDigest, []any{unknownStep, bindingSteps[1]}), executableSteps, resolvedWorkers, "execution binding step fields invalid")
+	missingCapabilityStep := cloneMap(bindingSteps[0].(map[string]any))
+	delete(missingCapabilityStep, "capability")
+	wantError("missing step field", bindingFor(plan["swarm_id"].(string), planDigest, []any{missingCapabilityStep, bindingSteps[1]}), executableSteps, resolvedWorkers, "execution binding step fields invalid")
+}
+
+func TestSignedReceiptDigestIncludesSignature(t *testing.T) {
+	signedReceipt := map[string]any{
+		"task_id":     "binding_receipt",
+		"task_digest": strings.Repeat("d", 64),
+		"status":      "completed",
+		"signature":   "worker-signature-a",
+	}
+	changedSignature := map[string]any{}
+	for key, value := range signedReceipt {
+		changedSignature[key] = value
+	}
+	changedSignature["signature"] = "worker-signature-b"
+
+	digestA, err := SignedReceiptDigest(signedReceipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digestB, err := SignedReceiptDigest(changedSignature)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if digestA != digestNodeCanonical(signedReceipt) || digestB != digestNodeCanonical(changedSignature) {
+		t.Fatal("signed receipt digest did not hash the exact signed receipt")
+	}
+	if digestA == digestB {
+		t.Fatal("changing only the worker signature must change signed receipt digest")
+	}
+	unsignedReceipt := map[string]any{}
+	for key, value := range signedReceipt {
+		if key != "signature" {
+			unsignedReceipt[key] = value
+		}
+	}
+	if _, err := SignedReceiptDigest(unsignedReceipt); err == nil || !strings.Contains(err.Error(), "signed receipt signature missing") {
+		t.Fatalf("got %v, want signed receipt signature missing", err)
+	}
+}
+
 func TestArtifactManifestAFPMatchesSHA256(t *testing.T) {
 	manifest := map[string]any{
 		"uri":        "artifact://local/afp-test/out.md",
