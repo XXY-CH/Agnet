@@ -2,11 +2,11 @@
 
 Agnet is the proof layer for agent work.
 
-[![Protocol](https://img.shields.io/badge/protocol-v14.9--protocol-blue)](docs/v14-roadmap.md) [![Tests](https://img.shields.io/badge/tests-321-brightgreen)](#quick-start) [![Go](https://img.shields.io/badge/go-1.26.1-00ADD8)](go.mod)
+[![Protocol](https://img.shields.io/badge/protocol-v14.10--protocol-blue)](docs/v14-roadmap.md) [![Tests](https://img.shields.io/badge/tests-326-brightgreen)](#quick-start) [![Go](https://img.shields.io/badge/go-1.26.1-00ADD8)](go.mod)
 
-Status: research prototype, local-first, v14 active at `v14.9-protocol`. Historical baseline: v14.8 Swarm conflict resolution, v13 active-through `v13.15-protocol`, and v12 closed at `v12.45-protocol`.
+Status: research prototype, local-first, v14 active at `v14.10-protocol`. Historical baseline: v14.9 cross-netns reachability, v13 active-through `v13.15-protocol`, and v12 closed at `v12.45-protocol`.
 
-v14.9 adds private cross-network-namespace reachability evidence: trusted `cross-netns` observer proof can upgrade a bundle to `reachability_scope: "cross-netns"` only over a literal private IP such as `192.168.64.6`. It is not public reachability and the v13.1 hosted `external-host` run remains pending.
+v14.10 brings Node to Go ready-DAG parity: `FED_SWARM_SCHEDULE` deterministically topologically orders signed Swarm steps using original input order as the ready-step tie rule, executes them serially, and signs close `scheduler: { mode: "ready-dag", step_order: [...] }`. Invalid graphs fail before execution. No parallel execution, no resource scheduling, no economic ranking, no LLM scheduling, and no new trust inputs.
 
 ## What ASP is
 
@@ -112,6 +112,7 @@ go test ./...
 | v14.7 policy/risk routing signals | Complete | `discovery_evidence.routing.policy_match` and `risk_match` feed labelled `agent_score` and `ranking.reasons` evidence | Not a new trust oracle, policy language, marketplace ranker, or opaque ML router. |
 | v14.8 Swarm conflict resolution | Complete | `conflict_resolutions` entries bind artifact ref, candidate steps, chosen worker, reason, digest, and Zone signature | Not voting/quorum, automatic content merge, payment/settlement, or non-local-first arbitration. |
 | v14.9 cross-netns reachability | Complete | `cross-netns` scope verifies trusted observer evidence from a separate netns/VM over a private literal IP | Not public reachability; not hosted external-host completion. |
+| v14.10 Node ready-DAG parity | Complete | Node `FED_SWARM_SCHEDULE` orders dependency-ready steps deterministically and signs exact scheduler evidence | No parallel execution, no resource scheduling, no economic ranking, no LLM scheduling, and no new trust inputs. |
 
 ## Non-claims
 
@@ -163,7 +164,7 @@ Detailed milestone history lives in the roadmap and boundary docs; this README k
   `docs/v13.0-boundary.md` - v13 opening boundary. `docs/v13.15-boundary.md` - v13.15 Node receipt checkpoint verification boundary. `docs/v13.11-boundary.md` - v13.11 audit-backed receipt-count reputation boundary. `docs/v13.12-boundary.md` - v13.12 credential valid_until expiry boundary.
   `docs/v13.13-boundary.md` - v13.13 authority Zone revocation discovery boundary. `docs/v13.14-boundary.md` - v13.14 multi-signal agent score reputation boundary.
 - v14 boundaries:
-  `docs/v14.0-boundary.md` - v14 opening boundary. `docs/v14.2-boundary.md` - v14.2 multi-signal FED_QUERY routing boundary. `docs/v14.3-boundary.md` - v14.3 cross-zone trust chain boundary. `docs/v14.4-boundary.md` - v14.4 task failure migration boundary. `docs/v14.8-boundary.md` - v14.8 Swarm conflict resolution boundary. `docs/v14.9-boundary.md` - v14.9 cross-netns reachability boundary.
+  `docs/v14.0-boundary.md` - v14 opening boundary. `docs/v14.2-boundary.md` - v14.2 multi-signal FED_QUERY routing boundary. `docs/v14.3-boundary.md` - v14.3 cross-zone trust chain boundary. `docs/v14.4-boundary.md` - v14.4 task failure migration boundary. `docs/v14.8-boundary.md` - v14.8 Swarm conflict resolution boundary. `docs/v14.9-boundary.md` - v14.9 cross-netns reachability boundary. `docs/v14.10-boundary.md` - v14.10 Node ready-DAG parity boundary.
 
 ## Verifier and proof commands
 

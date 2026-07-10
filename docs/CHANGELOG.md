@@ -1,6 +1,15 @@
 # Changelog
 
-All notable changes from v13.0 through v14.9 are summarized here. Format follows Keep a Changelog with concise Added / Changed / Fixed bullets.
+All notable changes from v13.0 through v14.10 are summarized here. Format follows Keep a Changelog with concise Added / Changed / Fixed bullets.
+
+## [v14.10] - Node FED_SWARM_SCHEDULE ready-DAG parity
+
+### Added
+- Node accepts `FED_SWARM_SCHEDULE`, validates missing dependencies, duplicate step IDs, self-dependencies, and a cycle or unresolvable graph before execution, then orders ready steps by original input order.
+### Changed
+- Successful scheduled Swarms execute serially and sign close `scheduler: { mode: "ready-dag", step_order: [...] }`; the Node close verifier requires that order to match ordered `step_receipts` position by position.
+### Fixed
+- Out-of-order Node DAG inputs now preserve existing signed task, artifact/receipt dependency, micro-contract, migration, conflict resolution, plan digest, close, and audit evidence instead of failing on input order. No parallel execution, no resource scheduling, no economic ranking, no LLM scheduling, and no new trust inputs were added.
 
 ## [v14.9] - Cross-netns reachability evidence
 

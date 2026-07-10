@@ -425,6 +425,7 @@ test("Swarm decomposition plan verifies and links to close plan digest", async (
 
     const closeFrame = frames.at(-1);
     assert.equal(closeFrame.close.plan_digest, planFrame.plan.plan_digest);
+    assert.equal(closeFrame.close.scheduler, undefined);
     assert.equal(verifySwarmClose(closeFrame, new Map([[zoneB.zid, zoneB.descriptor]])).close.plan_digest, planFrame.plan.plan_digest);
 
     const malformedPlanDigest = structuredClone(closeFrame);
@@ -435,6 +436,159 @@ test("Swarm decomposition plan verifies and links to close plan digest", async (
       () => verifySwarmClose(malformedPlanDigest, new Map([[zoneB.zid, zoneB.descriptor]])),
       /swarm close plan digest invalid/,
     );
+  } finally {
+    child.kill();
+  }
+});
+
+test("Federation Gateway schedules out-of-order Swarm steps in deterministic ready-DAG order", async () => {
+  const port = 9023;
+  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/fed-zone-a-requester.pkcs8");
+  await writeTrustedZones("state/zone-b-schedule-trust.json", [zoneA]);
+  const child = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-schedule-trust.json"], { stdio: ["ignore", "pipe", "inherit"] });
+  try {
+    await waitForGateway(child);
+    const prefaceTask = {
+      task_id: "node_swarm_scheduled_preface",
+      from: requester.aid,
+      to: "agent://zone-b/summarizer",
+      intent: "Run first among simultaneously ready roots by original input order.",
+      scope: { network: false },
+      budget: { time_seconds: 30 },
+    };
+    const summaryTask = {
+      task_id: "node_swarm_scheduled_summary",
+      from: requester.aid,
+      to: "agent://zone-b/summarizer",
+      intent: "Summarize as the scheduler-ready Swarm DAG step.",
+      scope: { network: false },
+      budget: { time_seconds: 30 },
+    };
+    const followupTask = {
+      task_id: "node_swarm_scheduled_followup",
+      from: requester.aid,
+      to: "agent://zone-b/summarizer",
+      intent: "Use the summary after the scheduler resolves the dependency.",
+      scope: { network: false },
+      budget: { time_seconds: 30 },
+    };
+    const frames = await exchangeFramesUntil(port, {
+      type: "FED_SWARM_SCHEDULE",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      requester_zone_binding: zoneBinding(zoneA, requester.descriptor),
+      swarm: {
+        swarm_id: "swarm://local/node_ready_dag",
+        steps: [
+          { step_id: "preface", task: { ...prefaceTask, signature: signObject(requester.privateKey, prefaceTask) } },
+          { step_id: "followup", after: ["summary"], task: { ...followupTask, signature: signObject(requester.privateKey, followupTask) } },
+          { step_id: "summary", task: { ...summaryTask, signature: signObject(requester.privateKey, summaryTask) } },
+        ],
+      },
+    }, zoneA, "FED_SWARM_CLOSE");
+
+    assert.notEqual(frames.at(-1).type, "FED_TASK_ERROR", frames.at(-1).error);
+    assert.deepEqual(frames.filter((frame) => frame.type === "FED_RECEIPT").map((frame) => frame.receipt.swarm.step_id), ["preface", "summary", "followup"]);
+    const closeFrame = frames.at(-1);
+    assert.deepEqual(closeFrame.close.scheduler, { mode: "ready-dag", step_order: ["preface", "summary", "followup"] });
+    assert.deepEqual(closeFrame.close.step_receipts.map((step) => step.step_id), ["preface", "summary", "followup"]);
+    assert.deepEqual(verifySwarmClose(closeFrame, new Map([[zoneB.zid, zoneB.descriptor]])).close.scheduler, closeFrame.close.scheduler);
+  } finally {
+    child.kill();
+  }
+});
+
+test("Federation Gateway rejects invalid ready-DAG graphs before executing any step", async () => {
+  const port = 9025;
+  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/fed-zone-a-requester.pkcs8");
+  await writeTrustedZones("state/zone-b-schedule-preflight-trust.json", [zoneA]);
+  const child = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-schedule-preflight-trust.json"], { stdio: ["ignore", "pipe", "inherit"] });
+  try {
+    await waitForGateway(child);
+    const taskFor = (taskId) => {
+      const task = {
+        task_id: taskId,
+        from: requester.aid,
+        to: "agent://zone-b/summarizer",
+        intent: `Preflight ${taskId}.`,
+        scope: { network: false },
+        budget: { time_seconds: 30 },
+      };
+      return { ...task, signature: signObject(requester.privateKey, task) };
+    };
+    const cases = [
+      {
+        name: "duplicate step IDs",
+        error: "duplicate swarm step: duplicate",
+        steps: [
+          { step_id: "duplicate", task: taskFor("node_swarm_duplicate_first") },
+          { step_id: "duplicate", task: taskFor("node_swarm_duplicate_second") },
+        ],
+      },
+      {
+        name: "missing dependency",
+        error: "swarm schedule dependency unresolved",
+        steps: [{ step_id: "dependent", after: ["missing"], task: taskFor("node_swarm_missing_dependency") }],
+      },
+      {
+        name: "self-dependency",
+        error: "swarm schedule dependency unresolved",
+        steps: [{ step_id: "self", after: ["self"], task: taskFor("node_swarm_self_dependency") }],
+      },
+    ];
+
+    for (const graphCase of cases) {
+      const frames = await exchangeFramesUntil(port, {
+        type: "FED_SWARM_SCHEDULE",
+        origin_zone: zoneA.descriptor,
+        requester: requester.descriptor,
+        requester_zone_binding: zoneBinding(zoneA, requester.descriptor),
+        swarm: { swarm_id: `swarm://local/${graphCase.name.replaceAll(" ", "-")}`, steps: graphCase.steps },
+      }, zoneA, "FED_SWARM_CLOSE");
+      assert.deepEqual(frames, [{ type: "FED_TASK_ERROR", error: graphCase.error }], graphCase.name);
+      assert.equal(frames.some((frame) => frame.type === "FED_RECEIPT" || frame.type === "FED_SWARM_CLOSE"), false, graphCase.name);
+    }
+  } finally {
+    child.kill();
+  }
+});
+
+test("Federation Gateway rejects an unresolvable ready-DAG before executing any step", async () => {
+  const port = 9024;
+  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/fed-zone-a-requester.pkcs8");
+  await writeTrustedZones("state/zone-b-schedule-cycle-trust.json", [zoneA]);
+  const child = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-schedule-cycle-trust.json"], { stdio: ["ignore", "pipe", "inherit"] });
+  try {
+    await waitForGateway(child);
+    const firstTask = {
+      task_id: "node_swarm_cycle_first",
+      from: requester.aid,
+      to: "agent://zone-b/summarizer",
+      intent: "Cycle first.",
+      scope: { network: false },
+      budget: { time_seconds: 30 },
+    };
+    const secondTask = { ...firstTask, task_id: "node_swarm_cycle_second", intent: "Cycle second." };
+    const frames = await exchangeFramesUntil(port, {
+      type: "FED_SWARM_SCHEDULE",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      requester_zone_binding: zoneBinding(zoneA, requester.descriptor),
+      swarm: {
+        swarm_id: "swarm://local/node_ready_dag_cycle",
+        steps: [
+          { step_id: "first", after: ["second"], task: { ...firstTask, signature: signObject(requester.privateKey, firstTask) } },
+          { step_id: "second", after: ["first"], task: { ...secondTask, signature: signObject(requester.privateKey, secondTask) } },
+        ],
+      },
+    }, zoneA, "FED_SWARM_CLOSE");
+
+    assert.deepEqual(frames, [{ type: "FED_TASK_ERROR", error: "swarm schedule dependency unresolved" }]);
+    assert.equal(frames.some((frame) => frame.type === "FED_RECEIPT" || frame.type === "FED_SWARM_CLOSE"), false);
   } finally {
     child.kill();
   }

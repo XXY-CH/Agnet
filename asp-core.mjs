@@ -717,6 +717,23 @@ function verifySwarmMigrationLog(closeBody, stepById) {
   }
 }
 
+function verifySwarmScheduler(closeBody, stepById) {
+  if (closeBody.scheduler === undefined) return;
+  const scheduler = closeBody.scheduler;
+  if (!scheduler || typeof scheduler !== "object" || Array.isArray(scheduler)) throw new Error("swarm close scheduler invalid");
+  if (scheduler.mode !== "ready-dag") throw new Error("swarm close scheduler mode invalid");
+  if (!Array.isArray(scheduler.step_order)) throw new Error("swarm close scheduler step order invalid");
+  if (scheduler.step_order.length !== stepById.size) throw new Error("swarm close scheduler step order mismatch");
+  const scheduled = new Set();
+  for (const [index, stepId] of scheduler.step_order.entries()) {
+    if (typeof stepId !== "string" || stepId === "" || stepId.includes("\0")) throw new Error("swarm close scheduler step invalid");
+    if (scheduled.has(stepId)) throw new Error("swarm close scheduler step duplicate");
+    if (!stepById.has(stepId)) throw new Error("swarm close scheduler step missing");
+    if (stepId !== closeBody.step_receipts[index].step_id) throw new Error("swarm close scheduler step_order mismatch");
+    scheduled.add(stepId);
+  }
+}
+
 export function verifySwarmClose(frame, trustedZones) {
   if (!frame || typeof frame !== "object" || Array.isArray(frame) || frame.type !== "FED_SWARM_CLOSE") throw new Error("expected FED_SWARM_CLOSE frame");
   if (!frame.zone || typeof frame.zone !== "object" || Array.isArray(frame.zone)) throw new Error("swarm close zone missing");
@@ -756,6 +773,7 @@ export function verifySwarmClose(frame, trustedZones) {
   verifySwarmMigrationLog(closeBody, stepById);
   verifySwarmMicroContracts(closeBody, stepById);
   verifySwarmConflictResolutions(closeBody, stepById, zone);
+  verifySwarmScheduler(closeBody, stepById);
   if (!verifyObject(publicKeyFromDescriptor(zone), closeBody, close_signature)) {
     throw new Error("swarm close signature verification failed");
   }

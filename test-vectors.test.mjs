@@ -607,6 +607,40 @@ test("FED_SWARM_CLOSE verification rejects tampered close signatures in Node", a
     /swarm close signature verification failed/,
   );
 });
+test("FED_SWARM_CLOSE verification validates optional ready-DAG scheduler evidence in Node", () => {
+  const zone = createZone("zone://swarm-close-scheduler-test");
+  const trustedZones = new Map([[zone.descriptor.zid, zone.descriptor]]);
+  const stepReceipts = [
+    { step_id: "summary", task_id: "task_1", receipt_digest: "0".repeat(64) },
+    { step_id: "followup", task_id: "task_2", receipt_digest: "1".repeat(64) },
+  ];
+  const frameFor = (scheduler) => {
+    const closeBody = { swarm_id: "swarm://node-test/scheduler", step_receipts: stepReceipts, scheduler };
+    return {
+      type: "FED_SWARM_CLOSE",
+      swarm_id: closeBody.swarm_id,
+      zone: zone.descriptor,
+      close: { ...closeBody, close_signature: signObject(zone.privateKey, closeBody) },
+    };
+  };
+
+  assert.deepEqual(
+    verifySwarmClose(frameFor({ mode: "ready-dag", step_order: ["summary", "followup"] }), trustedZones).close.scheduler,
+    { mode: "ready-dag", step_order: ["summary", "followup"] },
+  );
+  assert.throws(
+    () => verifySwarmClose(frameFor({ mode: "ready-dag", step_order: ["followup", "summary"] }), trustedZones),
+    /swarm close scheduler step_order mismatch/,
+  );
+  for (const [scheduler, message] of [
+    [{ mode: "parallel", step_order: ["summary", "followup"] }, /swarm close scheduler mode invalid/],
+    [{ mode: "ready-dag", step_order: ["summary"] }, /swarm close scheduler step order mismatch/],
+    [{ mode: "ready-dag", step_order: ["summary", "summary"] }, /swarm close scheduler step duplicate/],
+    [{ mode: "ready-dag", step_order: ["summary", "missing"] }, /swarm close scheduler step missing/],
+  ]) {
+    assert.throws(() => verifySwarmClose(frameFor(scheduler), trustedZones), message);
+  }
+});
 
 test("FED_SWARM_CLOSE verification rejects migration log entries for missing step receipts in Node", async () => {
   const zone = createZone("zone://swarm-close-migration-step-test");

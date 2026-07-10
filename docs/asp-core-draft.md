@@ -4,7 +4,7 @@ Status: Draft 0, implementation-backed.
 
 ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v14.9-protocol`. It is not a full Agent Space product spec.
+This draft describes the local-first prototype at `v14.10-protocol`. It is not a full Agent Space product spec.
 Previous public draft baseline: local-first prototype at `v13.15-protocol`; v12 public baseline: local-first prototype at `v12.45-protocol`.
 
 ## Scope
@@ -348,6 +348,7 @@ In the v14.5 intent decomposition surface, closes may carry `plan_digest` copied
 In the v14.8 Swarm conflict resolution surface, closes may carry `conflict_resolutions`: Zone-signed entries for same-artifact different-digest step outputs. Each entry binds `swarm_id`, `artifact_ref`, `candidate_step_ids`, `chosen_step_id`, `chosen_worker`, `reason`, `resolution_digest`, and `signature`. The deterministic rule chooses the worker with higher agent_score reputation and uses `alias_tiebreak` for equal scores. The Node verifier recomputes the digest over the canonical entry body without `resolution_digest` / `signature`, checks candidate steps are present in the close step receipts, checks the chosen step and chosen worker descriptor are bound to those receipts, and verifies the signature with the close Zone key. This is still local-first proof, not voting/quorum, not automatic merge of conflicting content, and not payment/settlement.
 
 When `conflict_resolutions` are present, candidate steps and Zone signatures must verify.
+In the v14.10 Node ready-DAG parity surface, Node and Go gateways accept `FED_SWARM_SCHEDULE`, validate the full graph before executing any step, and order dependency-ready steps deterministically using original input order as the tie rule. Scheduled close bodies carry exactly `scheduler: { mode: "ready-dag", step_order: [...] }`. The optional Node verifier check requires each `step_order` entry to match the corresponding ordered `step_receipts` entry, while preserving unique, complete step coverage.
 
 The implemented Node verifier checks the close frame object and type, trusted Zone store presence, signing Zone object and descriptor, close proof object, close signature presence and verification, the signed Swarm id, the frame/body Swarm id match, and the structure of `step_receipts`. It requires at least one step receipt, requires each step receipt to be an object with `step_id`, a safe `task_id` token, and a 64-hex `receipt_digest`, and rejects duplicate or NUL-bearing Swarm identities. When `migration_log` is present, it requires an array of objects, validates `step_id`, `original_worker_aid`, `migrated_to_worker_aid`, `reason`, and ISO UTC `migration_at`, and rejects entries whose `step_id` does not reference a real step receipt. When `micro_contracts` are present, it requires one contract per step, recomputes each `contract_digest`, matches each contract worker to the worker descriptor carried in the signed step receipt, and verifies the worker Ed25519 signature.
 
@@ -359,7 +360,7 @@ Go `FED_SWARM_OPEN` execution MUST reject malformed step `after` list entries be
 
 Go audit-backed Swarm close proof verification MUST reject malformed `step_receipts` list entries instead of silently filtering them before close step count, order, task, and digest checks.
 
-`FED_SWARM_SCHEDULE` accepts a signed Swarm DAG and executes steps in deterministic ready order. Each scheduled step reuses `FED_TASK_OPEN` task verification and the existing Swarm receipt dependency evidence. The close proof may include signed scheduler evidence with `mode: "ready-dag"` and the executed `step_order`. This is scheduler-owned DAG execution only, not automatic task decomposition, not parallel execution, not upper-layer master-agent orchestration, and not economic settlement.
+`FED_SWARM_SCHEDULE` accepts a signed Swarm DAG and executes steps in deterministic ready order. Node and Go execute those steps serially. Missing dependencies, duplicate step IDs, self-dependencies, and a cycle or unresolvable graph fail before execution. Each scheduled step reuses `FED_TASK_OPEN` task verification and the existing Swarm receipt dependency evidence. The close proof may include signed scheduler evidence with `mode: "ready-dag"` and the executed `step_order`; v14.10 scheduled closes include it, with original input order breaking ready ties. This is scheduler-owned DAG execution only: no automatic task decomposition, no parallel execution, no resource scheduling, no economic ranking, no LLM scheduling, and no new trust inputs.
 
 ## Verification Commands
 

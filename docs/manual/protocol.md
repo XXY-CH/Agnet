@@ -52,7 +52,7 @@ Starts an explicit Swarm DAG. The current shape carries `origin_zone`, `requeste
 
 ### `FED_SWARM_SCHEDULE`
 
-Go-side scheduler-owned ready-DAG execution. It accepts out-of-order signed steps, executes in deterministic dependency-ready order, and signs scheduler evidence with `mode: "ready-dag"` and `step_order` into the close proof. It is not automatic task decomposition or parallel economic scheduling.
+Node and Go gateways both support scheduler-owned ready-DAG execution. They accept out-of-order signed steps, execute in deterministic dependency-ready order, and sign scheduler evidence with `mode: "ready-dag"` and `step_order` into the close proof. This preserves serial execution only: it is not automatic task decomposition, parallel economic scheduling, or resource orchestration.
 
 ### `FED_SWARM_PLAN`
 

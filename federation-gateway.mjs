@@ -327,6 +327,47 @@ function swarmAfterSteps(value) {
   });
 }
 
+function scheduleSwarmSteps(items) {
+  const pending = new Map();
+  const afterByStep = new Map();
+  const inputOrder = [];
+  for (const item of items) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("swarm step invalid");
+    const stepId = item.step_id;
+    if (typeof stepId !== "string" || stepId === "" || stepId.includes("\0")) throw new Error("swarm step_id missing");
+    if (pending.has(stepId)) throw new Error(`duplicate swarm step: ${stepId}`);
+    const after = swarmAfterSteps(item.after);
+    if (after.includes(stepId)) throw new Error("swarm schedule dependency unresolved");
+    pending.set(stepId, item);
+    afterByStep.set(stepId, after);
+    inputOrder.push(stepId);
+  }
+
+  for (const after of afterByStep.values()) {
+    for (const dependency of after) {
+      if (!pending.has(dependency)) throw new Error("swarm schedule dependency unresolved");
+    }
+  }
+
+  const done = new Set();
+  const ordered = [];
+  const stepOrder = [];
+  while (pending.size > 0) {
+    let progressed = false;
+    for (const stepId of inputOrder) {
+      const step = pending.get(stepId);
+      if (!step || !afterByStep.get(stepId).every((dependency) => done.has(dependency))) continue;
+      ordered.push(step);
+      stepOrder.push(stepId);
+      done.add(stepId);
+      pending.delete(stepId);
+      progressed = true;
+    }
+    if (!progressed) throw new Error("swarm schedule dependency unresolved");
+  }
+  return { steps: ordered, scheduler: { mode: "ready-dag", step_order: stepOrder } };
+}
+
 function microContractForStep(worker, swarmId, stepId, task) {
   const policyDigest = digestHex({ worker: worker.aid, policy: worker.descriptor.policy, task_scope: task.scope ?? null });
   const body = {
@@ -468,7 +509,7 @@ function verifySwarmStepSignature(frame, trustedZones, signedTask) {
   return { originZone, task };
 }
 
-async function executeSwarm(socket, trustedZones, zone, workers, frame, agentScores = new Map()) {
+async function executeSwarm(socket, trustedZones, zone, workers, frame, agentScores = new Map(), readyDag = false) {
   workers = Array.isArray(workers) ? workers : [workers];
   const originZone = verifyTrustedZone(trustedZones, frame.origin_zone);
   if (!frame.requester || typeof frame.requester !== "object" || Array.isArray(frame.requester)) throw new Error("swarm requester missing");
@@ -480,12 +521,14 @@ async function executeSwarm(socket, trustedZones, zone, workers, frame, agentSco
   if (!Array.isArray(frame.swarm.steps) || frame.swarm.steps.length === 0) throw new Error("swarm steps missing");
   const planDigest = frame.swarm.plan_digest;
   if (planDigest !== undefined && typeof planDigest !== "string") throw new Error("swarm plan_digest invalid");
+  const scheduled = readyDag ? scheduleSwarmSteps(frame.swarm.steps) : null;
+  const steps = scheduled?.steps ?? frame.swarm.steps;
 
   const completed = new Map();
   const stepReceipts = [];
   const microContracts = [];
   const migrationLog = [];
-  for (const item of frame.swarm.steps) {
+  for (const item of steps) {
     if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("swarm step invalid");
     const stepId = item.step_id;
     if (typeof stepId !== "string" || stepId === "" || stepId.includes("\0")) throw new Error("swarm step_id missing");
@@ -549,7 +592,7 @@ async function executeSwarm(socket, trustedZones, zone, workers, frame, agentSco
   }
   const conflictResolutions = swarmConflictResolutions(zone, swarmId, completed, stepReceipts, agentScores);
   for (const resolution of conflictResolutions) await sendEvent(socket, resolution);
-  const closeBody = { swarm_id: swarmId, step_receipts: stepReceipts, micro_contracts: microContracts, migration_log: migrationLog, ...(conflictResolutions.length > 0 ? { conflict_resolutions: conflictResolutions } : {}), ...(planDigest !== undefined ? { plan_digest: planDigest } : {}) };
+  const closeBody = { swarm_id: swarmId, step_receipts: stepReceipts, micro_contracts: microContracts, migration_log: migrationLog, ...(conflictResolutions.length > 0 ? { conflict_resolutions: conflictResolutions } : {}), ...(planDigest !== undefined ? { plan_digest: planDigest } : {}), ...(scheduled ? { scheduler: scheduled.scheduler } : {}) };
   const closeProof = { ...closeBody, close_signature: signObject(zone.privateKey, closeBody) };
   await appendAudit({ kind: "fed_swarm_close", zone: zone.descriptor, close: closeProof });
   send(socket, { type: "FED_SWARM_CLOSE", swarm_id: swarmId, zone: zone.descriptor, close: closeProof });
@@ -634,8 +677,8 @@ async function serve(port, trustedZonesFile) {
           send(socket, { type: "FED_QUERY_CLOSE", capability: frame.capability });
           return;
         }
-        if (frame.type === "FED_SWARM_OPEN") {
-          await executeSwarm(socket, trustedZones, zone, [worker, migrationWorker], frame, agentScores);
+        if (frame.type === "FED_SWARM_OPEN" || frame.type === "FED_SWARM_SCHEDULE") {
+          await executeSwarm(socket, trustedZones, zone, [worker, migrationWorker], frame, agentScores, frame.type === "FED_SWARM_SCHEDULE");
           return;
         }
         if (frame.type !== "FED_TASK_OPEN") throw new Error(`unsupported frame: ${frame.type}`);
