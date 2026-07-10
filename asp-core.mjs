@@ -836,6 +836,7 @@ export function verifyFederatedReceipt(frame, trustedZones, signedTask) {
     throw new Error("remote receipt signature verification failed");
   }
   verifyReceiptArtifactManifests(receipt);
+  verifyResultArtifactPointer(receipt);
   verifyReceiptCheckpoints(resolved.publicKey, receipt);
   return { zone, worker: resolved.descriptor, receipt, signedReceipt: frame.receipt };
 }
@@ -920,10 +921,10 @@ function verifySwarmMigrationLog(closeBody, stepById) {
   }
 }
 
-function verifySwarmScheduler(closeBody, stepById) {
+function verifySwarmScheduler(closeBody, stepById, requireReceiptOrder) {
   if (closeBody.scheduler === undefined) return;
   const scheduler = closeBody.scheduler;
-  if (!scheduler || typeof scheduler !== "object" || Array.isArray(scheduler)) throw new Error("swarm close scheduler invalid");
+  if (!hasExactFields(scheduler, ["mode", "step_order"])) throw new Error("swarm close scheduler invalid");
   if (scheduler.mode !== "ready-dag") throw new Error("swarm close scheduler mode invalid");
   if (!Array.isArray(scheduler.step_order)) throw new Error("swarm close scheduler step order invalid");
   if (scheduler.step_order.length !== stepById.size) throw new Error("swarm close scheduler step order mismatch");
@@ -932,36 +933,48 @@ function verifySwarmScheduler(closeBody, stepById) {
     if (typeof stepId !== "string" || stepId === "" || stepId.includes("\0")) throw new Error("swarm close scheduler step invalid");
     if (scheduled.has(stepId)) throw new Error("swarm close scheduler step duplicate");
     if (!stepById.has(stepId)) throw new Error("swarm close scheduler step missing");
-    if (stepId !== closeBody.step_receipts[index].step_id) throw new Error("swarm close scheduler step_order mismatch");
+    if (requireReceiptOrder && stepId !== closeBody.step_receipts[index].step_id) throw new Error("swarm close scheduler step_order mismatch");
     scheduled.add(stepId);
   }
 }
 
-export function verifySwarmClose(frame, trustedZones) {
+const SWARM_CLOSE_V1_REQUIRED_FIELDS = ["close_signature", "format", "step_receipts", "swarm_id"];
+const SWARM_CLOSE_V1_OPTIONAL_FIELDS = ["conflict_resolutions", "execution_graph_digest", "micro_contracts", "migration_log", "plan_digest", "scheduler"];
+const SWARM_CLOSE_V2_REQUIRED_FIELDS = ["close_signature", "execution_graph_digest", "final_output", "format", "plan_digest", "step_receipts", "swarm_id"];
+const SWARM_CLOSE_V2_OPTIONAL_FIELDS = ["conflict_resolutions", "micro_contracts", "migration_log", "scheduler"];
+const SWARM_CLOSE_FINAL_OUTPUT_FIELDS = ["artifact", "selection_rule", "signed_receipt_digest", "step_id", "task_id"];
+const RESULT_ARTIFACT_FIELDS = ["manifest_hash", "sha256", "uri"];
+
+function hasRequiredAllowedFields(value, required, optional = []) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const allowed = new Set([...required, ...optional]);
+  return required.every((field) => Object.prototype.hasOwnProperty.call(value, field)) && Object.keys(value).every((field) => allowed.has(field));
+}
+
+function verifiedSwarmCloseEnvelope(frame, trustedZones) {
   if (!frame || typeof frame !== "object" || Array.isArray(frame) || frame.type !== "FED_SWARM_CLOSE") throw new Error("expected FED_SWARM_CLOSE frame");
   if (!frame.zone || typeof frame.zone !== "object" || Array.isArray(frame.zone)) throw new Error("swarm close zone missing");
   const zone = verifyZoneDescriptor(frame.zone).descriptor;
   assertTrustedZones(trustedZones);
   const trusted = trustedZones.get(zone.zid);
-  if (!trusted || trusted.public_key_spki !== zone.public_key_spki) {
-    throw new Error(`untrusted zone: ${zone.zid}`);
-  }
+  if (!trusted || trusted.public_key_spki !== zone.public_key_spki) throw new Error(`untrusted zone: ${zone.zid}`);
   if (!frame.close || typeof frame.close !== "object" || Array.isArray(frame.close)) throw new Error("swarm close proof missing");
-  const { close_signature, ...closeBody } = frame.close;
-  if (typeof close_signature !== "string" || close_signature === "") throw new Error("swarm close signature missing");
+  return zone;
+}
+
+function verifySwarmCloseIdentity(frame, closeBody) {
   if (typeof closeBody.swarm_id !== "string" || closeBody.swarm_id === "") throw new Error("swarm close identity missing");
   if (closeBody.swarm_id.includes("\0")) throw new Error("swarm close identity contains NUL");
   if (frame.swarm_id !== closeBody.swarm_id) throw new Error("swarm close frame id mismatch");
-  if (closeBody.plan_digest !== undefined && (typeof closeBody.plan_digest !== "string" || !/^[0-9a-f]{64}$/.test(closeBody.plan_digest))) {
-    throw new Error("swarm close plan digest invalid");
-  }
-  if (!Array.isArray(closeBody.step_receipts) || closeBody.step_receipts.length === 0) {
-    throw new Error("swarm close step receipts missing");
-  }
+}
+
+function verifySwarmCloseStepReceipts(closeBody, digestField, fieldsError) {
+  if (!Array.isArray(closeBody.step_receipts) || closeBody.step_receipts.length === 0) throw new Error("swarm close step receipts missing");
+  const requiredFields = [digestField, "step_id", "task_id"].sort();
   const stepIds = new Set();
   const stepById = new Map();
   for (const step of closeBody.step_receipts) {
-    if (!step || typeof step !== "object" || Array.isArray(step)) throw new Error("swarm close step receipt missing");
+    if (!hasRequiredAllowedFields(step, requiredFields, ["worker"])) throw new Error(fieldsError);
     if (typeof step.step_id !== "string" || step.step_id === "") throw new Error("swarm close step identity missing");
     if (step.step_id.includes("\0")) throw new Error("swarm close identity contains NUL");
     if (stepIds.has(step.step_id)) throw new Error("swarm close duplicate step receipt");
@@ -969,18 +982,79 @@ export function verifySwarmClose(frame, trustedZones) {
     stepById.set(step.step_id, step);
     if (typeof step.task_id !== "string" || step.task_id === "") throw new Error("swarm close task missing");
     if (!TASK_ID_PATTERN.test(step.task_id)) throw new Error("swarm close task invalid");
-    if (typeof step.receipt_digest !== "string" || !/^[0-9a-f]{64}$/.test(step.receipt_digest)) {
-      throw new Error("swarm close receipt digest invalid");
-    }
+    if (typeof step[digestField] !== "string" || !/^[0-9a-f]{64}$/.test(step[digestField])) throw new Error(`swarm close ${digestField.replaceAll("_", " ")} invalid`);
+    if (step.worker !== undefined && (!step.worker || typeof step.worker !== "object" || Array.isArray(step.worker))) throw new Error("swarm close step worker missing");
   }
+  return stepById;
+}
+
+function verifySwarmCloseAuxiliaryEvidence(closeBody, stepById, zone, requireSchedulerReceiptOrder) {
   verifySwarmMigrationLog(closeBody, stepById);
   verifySwarmMicroContracts(closeBody, stepById);
   verifySwarmConflictResolutions(closeBody, stepById, zone);
-  verifySwarmScheduler(closeBody, stepById);
-  if (!verifyObject(publicKeyFromDescriptor(zone), closeBody, close_signature)) {
-    throw new Error("swarm close signature verification failed");
+  verifySwarmScheduler(closeBody, stepById, requireSchedulerReceiptOrder);
+}
+
+function verifySwarmCloseSignature(zone, closeBody, closeSignature) {
+  if (typeof closeSignature !== "string" || closeSignature === "") throw new Error("swarm close signature missing");
+  if (!verifyObject(publicKeyFromDescriptor(zone), closeBody, closeSignature)) throw new Error("swarm close signature verification failed");
+}
+
+function verifySwarmCloseFinalOutput(closeBody, stepById) {
+  const finalOutput = closeBody.final_output;
+  if (!hasExactFields(finalOutput, SWARM_CLOSE_FINAL_OUTPUT_FIELDS)) throw new Error("swarm close final output fields invalid");
+  if (typeof finalOutput.step_id !== "string" || finalOutput.step_id === "" || finalOutput.step_id.includes("\0")) throw new Error("swarm close final output step invalid");
+  if (typeof finalOutput.task_id !== "string" || !TASK_ID_PATTERN.test(finalOutput.task_id)) throw new Error("swarm close final output task invalid");
+  if (typeof finalOutput.signed_receipt_digest !== "string" || !/^[0-9a-f]{64}$/.test(finalOutput.signed_receipt_digest)) throw new Error("swarm close final output receipt digest invalid");
+  if (finalOutput.selection_rule !== "single-terminal-result") throw new Error("swarm close final output selection rule invalid");
+  if (!hasExactFields(finalOutput.artifact, RESULT_ARTIFACT_FIELDS)) throw new Error("swarm close final output artifact fields invalid");
+  if (typeof finalOutput.artifact.uri !== "string" || finalOutput.artifact.uri === "") throw new Error("swarm close final output artifact uri invalid");
+  for (const field of ["sha256", "manifest_hash"]) {
+    if (typeof finalOutput.artifact[field] !== "string" || !/^[0-9a-f]{64}$/.test(finalOutput.artifact[field])) throw new Error(`swarm close final output artifact ${field} invalid`);
   }
-  return { zone, close: frame.close, closeDigest: createHash("sha256").update(canonical(closeBody)).digest("hex") };
+  const linkedStep = stepById.get(finalOutput.step_id);
+  if (!linkedStep) throw new Error("swarm close final output step mismatch");
+  if (linkedStep.task_id !== finalOutput.task_id) throw new Error("swarm close final output task mismatch");
+  if (linkedStep.signed_receipt_digest !== finalOutput.signed_receipt_digest) throw new Error("swarm close final output receipt digest mismatch");
+}
+
+export function verifySwarmCloseV1(frame, trustedZones) {
+  const zone = verifiedSwarmCloseEnvelope(frame, trustedZones);
+  if (!hasRequiredAllowedFields(frame.close, SWARM_CLOSE_V1_REQUIRED_FIELDS, SWARM_CLOSE_V1_OPTIONAL_FIELDS)) throw new Error("swarm close v1 fields invalid");
+  if (frame.close.format !== "asp-swarm-close/v1") throw new Error("swarm close v1 format invalid");
+  const { close_signature, ...closeBody } = frame.close;
+  verifySwarmCloseIdentity(frame, closeBody);
+  for (const field of ["plan_digest", "execution_graph_digest"]) {
+    if (closeBody[field] !== undefined && (typeof closeBody[field] !== "string" || !/^[0-9a-f]{64}$/.test(closeBody[field]))) throw new Error(`swarm close ${field.replaceAll("_", " ")} invalid`);
+  }
+  const stepById = verifySwarmCloseStepReceipts(closeBody, "receipt_digest", "swarm close v1 step fields invalid");
+  verifySwarmCloseAuxiliaryEvidence(closeBody, stepById, zone, true);
+  verifySwarmCloseSignature(zone, closeBody, close_signature);
+  return { zone, close: frame.close, closeDigest: sha256Canonical(closeBody), format: frame.close.format, legacy: true };
+}
+
+export function verifySwarmCloseV2(frame, trustedZones) {
+  const zone = verifiedSwarmCloseEnvelope(frame, trustedZones);
+  if (!hasRequiredAllowedFields(frame.close, SWARM_CLOSE_V2_REQUIRED_FIELDS, SWARM_CLOSE_V2_OPTIONAL_FIELDS)) throw new Error("swarm close v2 fields invalid");
+  if (frame.close.format !== "asp-swarm-close/v2") throw new Error("swarm close v2 format invalid");
+  const { close_signature, ...closeBody } = frame.close;
+  verifySwarmCloseIdentity(frame, closeBody);
+  if (typeof closeBody.plan_digest !== "string" || !/^[0-9a-f]{64}$/.test(closeBody.plan_digest)) throw new Error("swarm close plan digest invalid");
+  if (typeof closeBody.execution_graph_digest !== "string" || !/^[0-9a-f]{64}$/.test(closeBody.execution_graph_digest)) throw new Error("swarm close execution graph digest invalid");
+  const stepById = verifySwarmCloseStepReceipts(closeBody, "signed_receipt_digest", "swarm close v2 step fields invalid");
+  verifySwarmCloseFinalOutput(closeBody, stepById);
+  verifySwarmCloseAuxiliaryEvidence(closeBody, stepById, zone, false);
+  verifySwarmCloseSignature(zone, closeBody, close_signature);
+  return { zone, close: frame.close, closeDigest: sha256Canonical(frame.close), format: frame.close.format, legacy: false };
+}
+
+export function verifySwarmClose(frame, trustedZones) {
+  if (!frame || typeof frame !== "object" || Array.isArray(frame) || frame.type !== "FED_SWARM_CLOSE") throw new Error("expected FED_SWARM_CLOSE frame");
+  if (!frame.close || typeof frame.close !== "object" || Array.isArray(frame.close)) throw new Error("swarm close proof missing");
+  if (!Object.prototype.hasOwnProperty.call(frame.close, "format")) throw new Error("swarm close format missing");
+  if (frame.close.format === "asp-swarm-close/v1") return verifySwarmCloseV1(frame, trustedZones);
+  if (frame.close.format === "asp-swarm-close/v2") return verifySwarmCloseV2(frame, trustedZones);
+  throw new Error("unsupported swarm close format");
 }
 
 export function verifyReceiptArtifactManifests(receipt) {
@@ -1011,6 +1085,92 @@ export function verifyReceiptArtifactManifests(receipt) {
       throw new Error("artifact manifest hash mismatch");
     }
   }
+}
+
+function verifyResultArtifactPointer(receipt) {
+  if (!receipt || typeof receipt !== "object" || Array.isArray(receipt)) throw new Error("result artifact receipt invalid");
+  if (!Object.prototype.hasOwnProperty.call(receipt, "result_artifact")) return null;
+  const pointer = receipt.result_artifact;
+  if (!pointer || typeof pointer !== "object" || Array.isArray(pointer)) throw new Error("result artifact invalid");
+  if (!hasExactFields(pointer, RESULT_ARTIFACT_FIELDS)) throw new Error("result artifact fields invalid");
+  if (typeof pointer.uri !== "string" || pointer.uri === "") throw new Error("result artifact uri invalid");
+  for (const field of ["sha256", "manifest_hash"]) {
+    if (typeof pointer[field] !== "string" || !/^[0-9a-f]{64}$/.test(pointer[field])) throw new Error(`result artifact ${field} invalid`);
+  }
+  const manifests = Array.isArray(receipt.artifact_manifests) ? receipt.artifact_manifests : [];
+  const matches = manifests.filter((manifest) => manifest.uri === pointer.uri && manifest.sha256 === pointer.sha256 && manifest.manifest_hash === pointer.manifest_hash);
+  if (matches.length !== 1) throw new Error("result artifact manifest mismatch");
+  return Object.freeze({ uri: pointer.uri, sha256: pointer.sha256, manifest_hash: pointer.manifest_hash });
+}
+
+export function verifyResultArtifact(receipt) {
+  verifyReceiptArtifactManifests(receipt);
+  return verifyResultArtifactPointer(receipt);
+}
+
+export function deriveSwarmFinalOutput(binding, completedReceipts) {
+  if (!hasExactFields(binding, ["executionGraphDigest", "planDigest", "steps", "swarmId"])) throw new Error("verified execution binding invalid");
+  if (typeof binding.swarmId !== "string" || binding.swarmId === "" || binding.swarmId.includes("\0")) throw new Error("verified execution binding swarm_id invalid");
+  if (typeof binding.planDigest !== "string" || !/^[0-9a-f]{64}$/.test(binding.planDigest)) throw new Error("verified execution binding plan digest invalid");
+  if (typeof binding.executionGraphDigest !== "string" || !/^[0-9a-f]{64}$/.test(binding.executionGraphDigest)) throw new Error("verified execution binding graph digest invalid");
+  if (!Array.isArray(binding.steps) || binding.steps.length === 0) throw new Error("verified execution binding steps missing");
+  if (!(completedReceipts instanceof Map)) throw new Error("completed receipts invalid");
+
+  const stepById = new Map();
+  for (const step of binding.steps) {
+    if (!hasExactFields(step, SWARM_EXECUTION_BINDING_STEP_FIELDS)) throw new Error("verified execution binding step fields invalid");
+    if (typeof step.step_id !== "string" || step.step_id === "" || step.step_id.includes("\0")) throw new Error("verified execution binding step invalid");
+    if (stepById.has(step.step_id)) throw new Error("verified execution binding duplicate step");
+    executionBindingDependencies(step.depends_on);
+    if (typeof step.capability !== "string" || step.capability === "" || step.capability.includes("\0")) throw new Error("verified execution binding capability invalid");
+    if (typeof step.task_digest !== "string" || !/^[0-9a-f]{64}$/.test(step.task_digest)) throw new Error("verified execution binding task digest invalid");
+    stepById.set(step.step_id, step);
+  }
+  for (const step of binding.steps) {
+    if (!completedReceipts.has(step.step_id)) throw new Error(`completed receipt missing: ${step.step_id}`);
+  }
+  if (completedReceipts.size !== binding.steps.length) throw new Error("completed receipt count mismatch");
+  const referenced = new Set();
+  for (const step of binding.steps) {
+    for (const dependency of step.depends_on) {
+      if (!stepById.has(dependency)) throw new Error("verified execution binding dependency missing");
+      referenced.add(dependency);
+    }
+  }
+  const terminalStepIds = binding.steps.map((step) => step.step_id).filter((stepId) => !referenced.has(stepId));
+  if (terminalStepIds.length !== 1) throw new Error("single terminal step required");
+
+  const selectedByStep = new Map();
+  for (const step of binding.steps) {
+    const receipt = completedReceipts.get(step.step_id);
+    if (!receipt || typeof receipt !== "object" || Array.isArray(receipt)) throw new Error(`completed receipt missing: ${step.step_id}`);
+    signedReceiptDigest(receipt);
+    if (typeof receipt.task_id !== "string" || !TASK_ID_PATTERN.test(receipt.task_id)) throw new Error("receipt task id invalid");
+    if (receipt.task_digest !== step.task_digest) throw new Error("receipt task digest mismatch");
+    const swarm = receipt.swarm;
+    if (!swarm || typeof swarm !== "object" || Array.isArray(swarm)) throw new Error("receipt swarm binding missing");
+    if (swarm.swarm_id !== binding.swarmId) throw new Error("receipt swarm_id mismatch");
+    if (swarm.step_id !== step.step_id) throw new Error("receipt step mismatch");
+    if (!sameExecutionDependencies(swarm.after, step.depends_on)) throw new Error("receipt dependency mismatch");
+    if (swarm.plan_digest !== binding.planDigest) throw new Error("receipt plan digest mismatch");
+    if (swarm.execution_graph_digest !== binding.executionGraphDigest) throw new Error("receipt execution graph digest mismatch");
+    if (swarm.capability !== step.capability) throw new Error("receipt capability mismatch");
+    if (swarm.task_digest !== step.task_digest) throw new Error("receipt swarm task digest mismatch");
+    verifyReceiptArtifactManifests(receipt);
+    selectedByStep.set(step.step_id, verifyResultArtifactPointer(receipt));
+  }
+
+  const terminalStepId = terminalStepIds[0];
+  const terminalReceipt = completedReceipts.get(terminalStepId);
+  const artifact = selectedByStep.get(terminalStepId);
+  if (artifact === null) throw new Error("terminal result artifact missing");
+  return Object.freeze({
+    step_id: terminalStepId,
+    task_id: terminalReceipt.task_id,
+    signed_receipt_digest: signedReceiptDigest(terminalReceipt),
+    artifact,
+    selection_rule: "single-terminal-result",
+  });
 }
 
 export function verifyZoneBinding(entry, descriptor, alias) {

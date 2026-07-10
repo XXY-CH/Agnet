@@ -1,6 +1,7 @@
 package main
 
 import (
+	"agnet/verifier"
 	"bufio"
 	"crypto/ed25519"
 	"encoding/json"
@@ -75,6 +76,9 @@ func verifyReceiptRecord(record map[string]any, artifactStoreDir string, signedT
 	if err := verifyArtifactManifests(receipt, artifactStoreDir); err != nil {
 		return err
 	}
+	if _, err := verifier.VerifyResultArtifact(receipt); err != nil {
+		return err
+	}
 	if err := verifyPolicyScope(receipt); err != nil {
 		return err
 	}
@@ -109,6 +113,9 @@ func verifySwarmReceiptDependencies(receipt map[string]any, completed map[string
 		return errors.New("swarm input artifact count mismatch")
 	}
 	for i, input := range inputs {
+		if !hasRequiredAllowedMapFields(input, []string{"step_id", "uri", "sha256", "manifest_hash", "signed_receipt_digest"}, nil) {
+			return errors.New("swarm input artifact fields invalid")
+		}
 		dependency := optionalString(input["step_id"])
 		if hasSwarmDelimiter(dependency) || hasSwarmDelimiter(after[i]) {
 			return errors.New("swarm identity contains NUL")
@@ -116,43 +123,39 @@ func verifySwarmReceiptDependencies(receipt map[string]any, completed map[string
 		if dependency != after[i] {
 			return errors.New("swarm input artifact step mismatch")
 		}
-		manifest, ok := completed[swarmID+"\x00"+dependency]
+		dependencyReceipt, ok := completed[swarmID+"\x00"+dependency]
 		if !ok {
 			return errors.New("swarm dependency receipt missing: " + dependency)
 		}
-		if len(manifest) == 0 {
+		resultArtifact, err := verifier.VerifyResultArtifact(dependencyReceipt)
+		if err != nil {
+			return err
+		}
+		if resultArtifact == nil {
 			return errors.New("swarm dependency artifact missing: " + dependency)
 		}
-		if input["uri"] != manifest["uri"] {
+		if input["uri"] != resultArtifact["uri"] {
 			return errors.New("swarm input artifact uri mismatch")
 		}
-		if input["sha256"] != manifest["sha256"] {
+		if input["sha256"] != resultArtifact["sha256"] {
 			return errors.New("swarm input artifact digest mismatch")
 		}
-		if input["manifest_hash"] != manifest["manifest_hash"] {
+		if input["manifest_hash"] != resultArtifact["manifest_hash"] {
 			return errors.New("swarm input artifact manifest hash mismatch")
 		}
-		if input["receipt_digest"] != manifest["receipt_digest"] {
-			return errors.New("swarm input receipt digest mismatch")
+		signedDigest, err := verifier.SignedReceiptDigest(dependencyReceipt)
+		if err != nil {
+			return err
+		}
+		if input["signed_receipt_digest"] != signedDigest {
+			return errors.New("swarm input signed receipt digest mismatch")
 		}
 	}
 	completedKey := swarmID + "\x00" + stepID
 	if _, exists := completed[completedKey]; exists {
 		return errors.New("duplicate swarm step receipt: " + stepID)
 	}
-	manifests := mapsFromAny(receipt["artifact_manifests"])
-	if len(manifests) == 0 {
-		completed[completedKey] = map[string]any{"task_id": receipt["task_id"], "receipt_digest": digestHex(receipt)}
-		order[swarmID] = append(order[swarmID], stepID)
-		return nil
-	}
-	manifest := map[string]any{}
-	for key, value := range manifests[0] {
-		manifest[key] = value
-	}
-	manifest["task_id"] = receipt["task_id"]
-	manifest["receipt_digest"] = digestHex(receipt)
-	completed[completedKey] = manifest
+	completed[completedKey] = receipt
 	order[swarmID] = append(order[swarmID], stepID)
 	return nil
 }
@@ -217,18 +220,204 @@ func verifySwarmCloseProof(record map[string]any, completed map[string]map[strin
 	if err != nil {
 		return err
 	}
+	format, exists := closeProof["format"]
+	if !exists {
+		return errors.New("swarm close format missing")
+	}
+	switch format {
+	case "asp-swarm-close/v1":
+		return verifySwarmCloseProofV1(closeProof, zoneKey, completed, order, closed)
+	case "asp-swarm-close/v2":
+		return verifySwarmCloseProofV2(closeProof, zoneKey, completed, order, closed)
+	default:
+		return errors.New("unsupported swarm close format")
+	}
+}
+
+func verifySwarmCloseProofV1(closeProof map[string]any, zoneKey ed25519.PublicKey, completed map[string]map[string]any, order map[string][]string, closed map[string]bool) error {
+	if !hasRequiredAllowedMapFields(closeProof,
+		[]string{"format", "swarm_id", "step_receipts", "close_signature"},
+		[]string{"plan_digest", "execution_graph_digest", "micro_contracts", "migration_log", "conflict_resolutions", "scheduler"},
+	) {
+		return errors.New("swarm close v1 fields invalid")
+	}
 	if err := verifyMapSignature(zoneKey, closeProof, "close_signature"); err != nil {
 		return errors.New("swarm close signature verification failed")
 	}
+	swarmID, expected, err := verifySwarmCloseIdentity(closeProof, completed, closed)
+	if err != nil {
+		return err
+	}
+	steps, err := swarmCloseStepReceipts(closeProof["step_receipts"])
+	if err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+	for index, step := range steps {
+		if !hasRequiredAllowedMapFields(step, []string{"step_id", "task_id", "receipt_digest"}, []string{"worker"}) {
+			return errors.New("swarm close v1 step fields invalid")
+		}
+		stepID, err := verifySwarmCloseStepIdentity(step, seen)
+		if err != nil {
+			return err
+		}
+		if index >= len(order[swarmID]) || stepID != order[swarmID][index] {
+			return errors.New("swarm close step order mismatch")
+		}
+		receipt, ok := completed[swarmID+"\x00"+stepID]
+		if !ok {
+			return errors.New("swarm close step receipt missing: " + stepID)
+		}
+		if step["task_id"] != receipt["task_id"] {
+			return errors.New("swarm close task mismatch")
+		}
+		if step["receipt_digest"] != digestHex(receipt) {
+			return errors.New("swarm close receipt digest mismatch")
+		}
+	}
+	if len(steps) != expected {
+		return errors.New("swarm close step count mismatch")
+	}
+	scheduler, schedulerPresent := closeProof["scheduler"]
+	if err := verifySwarmCloseScheduler(scheduler, schedulerPresent, steps, seen, true, nil); err != nil {
+		return err
+	}
+	if err := verifySwarmMigrationLog(closeProof["migration_log"], seen); err != nil {
+		return err
+	}
+	closed[swarmID] = true
+	return nil
+}
+
+func verifySwarmCloseProofV2(closeProof map[string]any, zoneKey ed25519.PublicKey, completed map[string]map[string]any, observed map[string][]string, closed map[string]bool) error {
+	if !hasRequiredAllowedMapFields(closeProof,
+		[]string{"format", "swarm_id", "plan_digest", "execution_graph_digest", "step_receipts", "final_output", "close_signature"},
+		[]string{"micro_contracts", "migration_log", "conflict_resolutions", "scheduler"},
+	) {
+		return errors.New("swarm close v2 fields invalid")
+	}
+	if !isHexDigest(optionalString(closeProof["plan_digest"])) {
+		return errors.New("swarm close plan digest invalid")
+	}
+	if !isHexDigest(optionalString(closeProof["execution_graph_digest"])) {
+		return errors.New("swarm close execution graph digest invalid")
+	}
+	if err := verifyMapSignature(zoneKey, closeProof, "close_signature"); err != nil {
+		return errors.New("swarm close signature verification failed")
+	}
+	swarmID, expected, err := verifySwarmCloseIdentity(closeProof, completed, closed)
+	if err != nil {
+		return err
+	}
+	steps, err := swarmCloseStepReceipts(closeProof["step_receipts"])
+	if err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+	bindingSteps := make([]map[string]any, 0, len(steps))
+	receiptsByStep := make(map[string]map[string]any, len(steps))
+	stepReceiptOrder := make([]string, 0, len(steps))
+	for _, step := range steps {
+		if !hasRequiredAllowedMapFields(step, []string{"step_id", "task_id", "signed_receipt_digest"}, []string{"worker"}) {
+			return errors.New("swarm close v2 step fields invalid")
+		}
+		stepID, err := verifySwarmCloseStepIdentity(step, seen)
+		if err != nil {
+			return err
+		}
+		receipt, ok := completed[swarmID+"\x00"+stepID]
+		if !ok {
+			return errors.New("swarm close step receipt missing: " + stepID)
+		}
+		if step["task_id"] != receipt["task_id"] {
+			return errors.New("swarm close task mismatch")
+		}
+		signedDigest, err := verifier.SignedReceiptDigest(receipt)
+		if err != nil {
+			return err
+		}
+		if step["signed_receipt_digest"] != signedDigest {
+			return errors.New("swarm close signed receipt digest mismatch")
+		}
+		swarm, ok := receipt["swarm"].(map[string]any)
+		if !ok || swarm == nil {
+			return errors.New("receipt swarm binding missing")
+		}
+		if swarm["swarm_id"] != swarmID || swarm["step_id"] != stepID {
+			return errors.New("swarm close receipt binding mismatch")
+		}
+		if swarm["plan_digest"] != closeProof["plan_digest"] {
+			return errors.New("swarm close plan digest mismatch")
+		}
+		if swarm["execution_graph_digest"] != closeProof["execution_graph_digest"] {
+			return errors.New("swarm close execution graph digest mismatch")
+		}
+		dependsOn, err := swarmAfterSteps(swarm["after"])
+		if err != nil {
+			return err
+		}
+		capability := optionalString(swarm["capability"])
+		taskDigest := optionalString(swarm["task_digest"])
+		if capability == "" || !isHexDigest(taskDigest) || receipt["task_digest"] != taskDigest {
+			return errors.New("swarm close receipt binding mismatch")
+		}
+		bindingSteps = append(bindingSteps, map[string]any{"step_id": stepID, "depends_on": dependsOn, "capability": capability, "task_digest": taskDigest})
+		stepReceiptOrder = append(stepReceiptOrder, stepID)
+		receiptsByStep[stepID] = receipt
+	}
+	if len(steps) != expected {
+		return errors.New("swarm close step count mismatch")
+	}
+	scheduler, schedulerPresent := closeProof["scheduler"]
+	if err := verifySwarmCloseScheduler(scheduler, schedulerPresent, steps, seen, false, observed[swarmID]); err != nil {
+		return err
+	}
+	if !schedulerPresent && !sameStepOrder(observed[swarmID], stepReceiptOrder) {
+		return errors.New("swarm close scheduler evidence required")
+	}
+	if err := verifySwarmMigrationLog(closeProof["migration_log"], seen); err != nil {
+		return err
+	}
+	finalOutput, ok := closeProof["final_output"].(map[string]any)
+	if !ok || !hasRequiredAllowedMapFields(finalOutput, []string{"step_id", "task_id", "signed_receipt_digest", "artifact", "selection_rule"}, nil) {
+		return errors.New("swarm close final output fields invalid")
+	}
+	artifact, ok := finalOutput["artifact"].(map[string]any)
+	if !ok || !hasRequiredAllowedMapFields(artifact, []string{"uri", "sha256", "manifest_hash"}, nil) {
+		return errors.New("swarm close final output artifact fields invalid")
+	}
+	binding := map[string]any{
+		"format":                 "asp-swarm-execution-binding/v1",
+		"swarm_id":               swarmID,
+		"plan_digest":            closeProof["plan_digest"],
+		"steps":                  bindingSteps,
+		"execution_graph_digest": closeProof["execution_graph_digest"],
+		"binding_signature":      "audit-verified-binding",
+	}
+	derived, err := verifier.DeriveSwarmFinalOutput(binding, receiptsByStep)
+	if err != nil {
+		if strings.Contains(err.Error(), "execution binding graph digest mismatch") {
+			return errors.New("swarm close execution graph digest mismatch")
+		}
+		return err
+	}
+	if !reflect.DeepEqual(derived, finalOutput) {
+		return errors.New("swarm close final output mismatch")
+	}
+	closed[swarmID] = true
+	return nil
+}
+
+func verifySwarmCloseIdentity(closeProof map[string]any, completed map[string]map[string]any, closed map[string]bool) (string, int, error) {
 	swarmID := optionalString(closeProof["swarm_id"])
 	if swarmID == "" {
-		return errors.New("swarm close identity missing")
+		return "", 0, errors.New("swarm close identity missing")
 	}
 	if hasSwarmDelimiter(swarmID) {
-		return errors.New("swarm identity contains NUL")
+		return "", 0, errors.New("swarm identity contains NUL")
 	}
 	if closed[swarmID] {
-		return errors.New("duplicate swarm close proof: " + swarmID)
+		return "", 0, errors.New("duplicate swarm close proof: " + swarmID)
 	}
 	expected := 0
 	for key := range completed {
@@ -237,50 +426,113 @@ func verifySwarmCloseProof(record map[string]any, completed map[string]map[strin
 		}
 	}
 	if expected == 0 {
-		return errors.New("swarm close proof without receipts: " + swarmID)
+		return "", 0, errors.New("swarm close proof without receipts: " + swarmID)
 	}
-	steps, err := swarmCloseStepReceipts(closeProof["step_receipts"])
-	if err != nil {
-		return err
+	return swarmID, expected, nil
+}
+
+func verifySwarmCloseStepIdentity(step map[string]any, seen map[string]bool) (string, error) {
+	stepID := optionalString(step["step_id"])
+	if stepID == "" {
+		return "", errors.New("swarm close step identity missing")
 	}
-	seen := map[string]bool{}
-	for _, step := range steps {
-		stepID := optionalString(step["step_id"])
-		if stepID == "" {
-			return errors.New("swarm close step identity missing")
-		}
-		if hasSwarmDelimiter(stepID) {
-			return errors.New("swarm identity contains NUL")
-		}
-		if seen[stepID] {
-			return errors.New("duplicate swarm close step receipt: " + stepID)
-		}
-		seen[stepID] = true
+	if hasSwarmDelimiter(stepID) {
+		return "", errors.New("swarm identity contains NUL")
 	}
-	if err := verifySwarmMigrationLog(closeProof["migration_log"], seen); err != nil {
-		return err
+	if seen[stepID] {
+		return "", errors.New("duplicate swarm close step receipt: " + stepID)
 	}
-	if len(steps) != expected {
-		return errors.New("swarm close step count mismatch")
+	seen[stepID] = true
+	return stepID, nil
+}
+
+func verifySwarmCloseScheduler(value any, present bool, steps []map[string]any, seen map[string]bool, requireReceiptOrder bool, observedOrder []string) error {
+	if !present {
+		return nil
 	}
-	for index, step := range steps {
-		stepID := optionalString(step["step_id"])
-		if index >= len(order[swarmID]) || stepID != order[swarmID][index] {
-			return errors.New("swarm close step order mismatch")
-		}
-		completedStep, ok := completed[swarmID+"\x00"+stepID]
-		if !ok {
-			return errors.New("swarm close step receipt missing: " + stepID)
-		}
-		if step["task_id"] != completedStep["task_id"] {
-			return errors.New("swarm close task mismatch")
-		}
-		if step["receipt_digest"] != completedStep["receipt_digest"] {
-			return errors.New("swarm close receipt digest mismatch")
-		}
+	if value == nil {
+		return errors.New("swarm close scheduler invalid")
 	}
-	closed[swarmID] = true
+	scheduler, ok := value.(map[string]any)
+	if !ok || !hasRequiredAllowedMapFields(scheduler, []string{"mode", "step_order"}, nil) {
+		return errors.New("swarm close scheduler invalid")
+	}
+	if scheduler["mode"] != "ready-dag" {
+		return errors.New("swarm close scheduler mode invalid")
+	}
+	var order []string
+	switch typed := scheduler["step_order"].(type) {
+	case []string:
+		order = typed
+	case []any:
+		order = make([]string, 0, len(typed))
+		for _, item := range typed {
+			stepID, ok := item.(string)
+			if !ok {
+				return errors.New("swarm close scheduler step invalid")
+			}
+			order = append(order, stepID)
+		}
+	default:
+		return errors.New("swarm close scheduler step order invalid")
+	}
+	if len(order) != len(seen) {
+		return errors.New("swarm close scheduler step order mismatch")
+	}
+	scheduled := map[string]bool{}
+	for index, stepID := range order {
+		if stepID == "" || hasSwarmDelimiter(stepID) {
+			return errors.New("swarm close scheduler step invalid")
+		}
+		if scheduled[stepID] {
+			return errors.New("swarm close scheduler step duplicate")
+		}
+		if !seen[stepID] {
+			return errors.New("swarm close scheduler step missing")
+		}
+		if requireReceiptOrder && optionalString(steps[index]["step_id"]) != stepID {
+			return errors.New("swarm close scheduler step_order mismatch")
+		}
+		scheduled[stepID] = true
+	}
+	if len(observedOrder) > 0 && !sameStepOrder(order, observedOrder) {
+		return errors.New("swarm close scheduler observed order mismatch")
+	}
 	return nil
+}
+
+func sameStepOrder(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func hasRequiredAllowedMapFields(value map[string]any, required, optional []string) bool {
+	if value == nil {
+		return false
+	}
+	allowed := make(map[string]bool, len(required)+len(optional))
+	for _, field := range required {
+		allowed[field] = true
+		if _, ok := value[field]; !ok {
+			return false
+		}
+	}
+	for _, field := range optional {
+		allowed[field] = true
+	}
+	for field := range value {
+		if !allowed[field] {
+			return false
+		}
+	}
+	return true
 }
 
 func verifySwarmMigrationLog(value any, seen map[string]bool) error {

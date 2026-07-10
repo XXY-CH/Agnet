@@ -4,7 +4,7 @@ import { createHash, createPrivateKey, createPublicKey } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { canonical, computeAid, createAgent, createZone, descriptorBody, didKeyFromDescriptor, didKeyFromPublicKeySPKI, publicKeyFromDescriptor, publicKeySPKIFromDidKey, signObject, signedReceiptDigest, swarmExecutionBinding, swarmPlan, verifyFederatedReceipt, verifyFederatedTaskOpen, verifyObject, verifyReceiptArtifactManifests, verifySwarmClose, verifySwarmExecutionBinding, verifySwarmPlan, writeArtifact, zoneDescriptorBody } from "./asp-core.mjs";
+import { canonical, computeAid, createAgent, createZone, deriveSwarmFinalOutput, descriptorBody, didKeyFromDescriptor, didKeyFromPublicKeySPKI, publicKeyFromDescriptor, publicKeySPKIFromDidKey, signObject, signedReceiptDigest, swarmExecutionBinding, swarmPlan, verifyFederatedReceipt, verifyFederatedTaskOpen, verifyObject, verifyReceiptArtifactManifests, verifyResultArtifact, verifySwarmClose, verifySwarmExecutionBinding, verifySwarmPlan, writeArtifact, zoneBinding, zoneDescriptorBody } from "./asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -718,9 +718,173 @@ test("v2 signed receipt digest includes worker signature", () => {
   assert.throws(() => signedReceiptDigest(unsignedReceipt), /signed receipt signature missing/);
 });
 
+test("result_artifact selects one manifest while auxiliary artifacts remain evidence", () => {
+  const manifestFor = (uri, sha256, mediaType = "text/plain") => {
+    const body = {
+      uri,
+      sha256,
+      size: 7,
+      media_type: mediaType,
+      afp: `afp:sha256:${sha256}`,
+    };
+    return { ...body, manifest_hash: createHash("sha256").update(canonical(body)).digest("hex") };
+  };
+  const resultManifest = manifestFor("artifact://local/result-selection/result.txt", "1".repeat(64));
+  const transcriptManifest = manifestFor("artifact://local/result-selection/transcript.jsonl", "2".repeat(64), "application/x-ndjson");
+  const pointer = {
+    uri: resultManifest.uri,
+    sha256: resultManifest.sha256,
+    manifest_hash: resultManifest.manifest_hash,
+  };
+  const receipt = {
+    artifact_refs: [resultManifest.uri, transcriptManifest.uri],
+    artifact_manifests: [resultManifest, transcriptManifest],
+    result_artifact: pointer,
+  };
+
+  assert.deepEqual(verifyResultArtifact(receipt), pointer);
+  assert.equal(verifyResultArtifact({ artifact_refs: receipt.artifact_refs, artifact_manifests: receipt.artifact_manifests }), null);
+  assert.deepEqual(receipt.artifact_manifests[1], transcriptManifest);
+
+  for (const [name, resultArtifact, message] of [
+    ["array of pointers", [pointer, pointer], /result artifact invalid/],
+    ["unknown pointer field", { ...pointer, media_type: resultManifest.media_type }, /result artifact fields invalid/],
+    ["unknown manifest", { ...pointer, uri: "artifact://local/result-selection/missing.txt" }, /result artifact manifest mismatch/],
+    ["sha mismatch", { ...pointer, sha256: "3".repeat(64) }, /result artifact manifest mismatch/],
+    ["manifest hash mismatch", { ...pointer, manifest_hash: "4".repeat(64) }, /result artifact manifest mismatch/],
+  ]) {
+    assert.throws(() => verifyResultArtifact({ ...receipt, result_artifact: resultArtifact }), message, name);
+  }
+
+  const zone = createZone("zone://result-artifact-verifier");
+  const worker = createAgent("agent://result-artifact-verifier/worker", {}, ["asp+local://result-artifact"], ["summarize.text"]);
+  const taskBody = {
+    task_id: "result_artifact_receipt",
+    from: worker.aid,
+    to: worker.alias,
+    intent: "Verify the signed result pointer.",
+  };
+  const signedTask = { ...taskBody, signature: signObject(worker.privateKey, taskBody) };
+  const receiptBody = {
+    task_id: taskBody.task_id,
+    task_digest: createHash("sha256").update(canonical(signedTask)).digest("hex"),
+    origin_zone: zone.zid,
+    executing_zone: zone.zid,
+    to: worker.aid,
+    artifact_refs: receipt.artifact_refs,
+    artifact_manifests: receipt.artifact_manifests,
+    result_artifact: pointer,
+  };
+  const frameFor = (body) => ({
+    type: "FED_RECEIPT",
+    zone: zone.descriptor,
+    worker: worker.descriptor,
+    zone_binding: zoneBinding(zone, worker.descriptor),
+    receipt: { ...body, signature: signObject(worker.privateKey, body) },
+  });
+  const trustedZones = new Map([[zone.zid, zone.descriptor]]);
+  assert.deepEqual(verifyFederatedReceipt(frameFor(receiptBody), trustedZones, signedTask).receipt.result_artifact, pointer);
+  assert.throws(
+    () => verifyFederatedReceipt(frameFor({ ...receiptBody, result_artifact: { ...pointer, sha256: "5".repeat(64) } }), trustedZones, signedTask),
+    /result artifact manifest mismatch/,
+  );
+});
+
+test("derives final_output only from one terminal result", () => {
+  const swarmId = "swarm://node-test/final-output";
+  const planDigest = "a".repeat(64);
+  const executionGraphDigest = "b".repeat(64);
+  const steps = [
+    { step_id: "draft", depends_on: [], capability: "summarize.text", task_digest: "c".repeat(64) },
+    { step_id: "final", depends_on: ["draft"], capability: "summarize.text", task_digest: "d".repeat(64) },
+  ];
+  const binding = { swarmId, planDigest, executionGraphDigest, steps };
+  const manifestFor = (stepId, digit) => {
+    const body = {
+      uri: `artifact://local/${stepId}/result.txt`,
+      sha256: digit.repeat(64),
+      size: 8,
+      media_type: "text/plain",
+      afp: `afp:sha256:${digit.repeat(64)}`,
+    };
+    return { ...body, manifest_hash: createHash("sha256").update(canonical(body)).digest("hex") };
+  };
+  const receiptFor = (step, digit, includeResult = true) => {
+    const manifest = manifestFor(step.step_id, digit);
+    const resultArtifact = { uri: manifest.uri, sha256: manifest.sha256, manifest_hash: manifest.manifest_hash };
+    return {
+      task_id: `task_${step.step_id}`,
+      task_digest: step.task_digest,
+      artifact_refs: [manifest.uri],
+      artifact_manifests: [manifest],
+      ...(includeResult ? { result_artifact: resultArtifact } : {}),
+      swarm: {
+        swarm_id: swarmId,
+        step_id: step.step_id,
+        after: step.depends_on,
+        plan_digest: planDigest,
+        execution_graph_digest: executionGraphDigest,
+        capability: step.capability,
+        task_digest: step.task_digest,
+      },
+      signature: `worker-signature-${step.step_id}`,
+    };
+  };
+  const draftReceipt = receiptFor(steps[0], "6");
+  const finalReceipt = receiptFor(steps[1], "7");
+  const completed = new Map([["draft", draftReceipt], ["final", finalReceipt]]);
+  const expected = {
+    step_id: "final",
+    task_id: "task_final",
+    signed_receipt_digest: signedReceiptDigest(finalReceipt),
+    artifact: finalReceipt.result_artifact,
+    selection_rule: "single-terminal-result",
+  };
+
+  assert.deepEqual(deriveSwarmFinalOutput(binding, completed), expected);
+
+  const missingTerminalResult = structuredClone(finalReceipt);
+  delete missingTerminalResult.result_artifact;
+  assert.throws(
+    () => deriveSwarmFinalOutput(binding, new Map([["draft", draftReceipt], ["final", missingTerminalResult]])),
+    /terminal result artifact missing/,
+  );
+  assert.throws(
+    () => deriveSwarmFinalOutput({ ...binding, steps: [steps[0], { ...steps[1], depends_on: [] }] }, completed),
+    /single terminal step required/,
+  );
+  const nonTerminalOnly = structuredClone(finalReceipt);
+  delete nonTerminalOnly.result_artifact;
+  assert.throws(
+    () => deriveSwarmFinalOutput(binding, new Map([["draft", draftReceipt], ["final", nonTerminalOnly]])),
+    /terminal result artifact missing/,
+  );
+  const wrongTaskDigest = structuredClone(finalReceipt);
+  wrongTaskDigest.task_digest = "e".repeat(64);
+  assert.throws(
+    () => deriveSwarmFinalOutput(binding, new Map([["draft", draftReceipt], ["final", wrongTaskDigest]])),
+    /receipt task digest mismatch/,
+  );
+  const wrongGraphDigest = structuredClone(finalReceipt);
+  wrongGraphDigest.swarm.execution_graph_digest = "f".repeat(64);
+  assert.throws(
+    () => deriveSwarmFinalOutput(binding, new Map([["draft", draftReceipt], ["final", wrongGraphDigest]])),
+    /receipt execution graph digest mismatch/,
+  );
+  assert.throws(
+    () => deriveSwarmFinalOutput(binding, new Map([["draft", draftReceipt]])),
+    /completed receipt missing/,
+  );
+  assert.throws(
+    () => deriveSwarmFinalOutput(binding, new Map([["draft", draftReceipt], ["final", finalReceipt], ["extra", finalReceipt]])),
+    /completed receipt count mismatch/,
+  );
+});
+
 test("FED_SWARM_CLOSE verification rejects tampered close signatures in Node", async () => {
   const zone = createZone("zone://swarm-close-test");
   const closeBody = {
+    format: "asp-swarm-close/v1",
     swarm_id: "swarm://node-test/two-step",
     step_receipts: [{ step_id: "summary", task_id: "task_1", receipt_digest: "0".repeat(64) }],
   };
@@ -746,7 +910,7 @@ test("FED_SWARM_CLOSE verification validates optional ready-DAG scheduler eviden
     { step_id: "followup", task_id: "task_2", receipt_digest: "1".repeat(64) },
   ];
   const frameFor = (scheduler) => {
-    const closeBody = { swarm_id: "swarm://node-test/scheduler", step_receipts: stepReceipts, scheduler };
+    const closeBody = { format: "asp-swarm-close/v1", swarm_id: "swarm://node-test/scheduler", step_receipts: stepReceipts, scheduler };
     return {
       type: "FED_SWARM_CLOSE",
       swarm_id: closeBody.swarm_id,
@@ -776,6 +940,7 @@ test("FED_SWARM_CLOSE verification validates optional ready-DAG scheduler eviden
 test("FED_SWARM_CLOSE verification rejects migration log entries for missing step receipts in Node", async () => {
   const zone = createZone("zone://swarm-close-migration-step-test");
   const closeBody = {
+    format: "asp-swarm-close/v1",
     swarm_id: "swarm://node-test/migration-step",
     step_receipts: [{ step_id: "summary", task_id: "task_1", receipt_digest: "0".repeat(64) }],
     migration_log: [{
@@ -817,6 +982,7 @@ test("FED_SWARM_CLOSE verification rejects conflict resolutions with missing can
     signature: signObject(zone.privateKey, resolutionBody),
   };
   const closeBody = {
+    format: "asp-swarm-close/v1",
     swarm_id: resolutionBody.swarm_id,
     step_receipts: [{ step_id: "summary", task_id: "task_1", receipt_digest: "0".repeat(64), worker }],
     conflict_resolutions: [resolution],
@@ -845,6 +1011,7 @@ test("FED_SWARM_CLOSE verification rejects missing frame objects in Node", async
 test("FED_SWARM_CLOSE verification rejects missing trusted Zone stores in Node", async () => {
   const zone = createZone("zone://swarm-close-missing-trust-store-test");
   const closeBody = {
+    format: "asp-swarm-close/v1",
     swarm_id: "swarm://node-test/missing-trust-store",
     step_receipts: [{ step_id: "summary", task_id: "task_1", receipt_digest: "0".repeat(64) }],
   };
@@ -864,6 +1031,7 @@ test("FED_SWARM_CLOSE verification rejects missing trusted Zone stores in Node",
 test("FED_SWARM_CLOSE verification rejects missing signing zones in Node", async () => {
   const zone = createZone("zone://swarm-close-missing-zone-test");
   const closeBody = {
+    format: "asp-swarm-close/v1",
     swarm_id: "swarm://node-test/missing-zone",
     step_receipts: [{ step_id: "summary", task_id: "task_1", receipt_digest: "0".repeat(64) }],
   };
@@ -883,6 +1051,7 @@ test("FED_SWARM_CLOSE verification rejects missing signing zones in Node", async
 test("FED_SWARM_CLOSE verification rejects missing close signatures in Node", async () => {
   const zone = createZone("zone://swarm-close-missing-signature-test");
   const closeBody = {
+    format: "asp-swarm-close/v1",
     swarm_id: "swarm://node-test/missing-signature",
     step_receipts: [{ step_id: "summary", task_id: "task_1", receipt_digest: "0".repeat(64) }],
   };
@@ -896,7 +1065,7 @@ test("FED_SWARM_CLOSE verification rejects missing close signatures in Node", as
 
   assert.throws(
     () => verifySwarmClose(frame, trustedZones),
-    /swarm close signature missing/,
+    /swarm close v1 fields invalid/,
   );
 });
 
@@ -918,6 +1087,7 @@ test("FED_SWARM_CLOSE verification rejects missing close proofs in Node", async 
 test("FED_SWARM_CLOSE verification rejects empty close proofs in Node", async () => {
   const zone = createZone("zone://swarm-close-empty-test");
   const closeBody = {
+    format: "asp-swarm-close/v1",
     swarm_id: "swarm://node-test/empty",
     step_receipts: [],
   };
@@ -938,6 +1108,7 @@ test("FED_SWARM_CLOSE verification rejects empty close proofs in Node", async ()
 test("FED_SWARM_CLOSE verification rejects duplicate step receipts in Node", async () => {
   const zone = createZone("zone://swarm-close-duplicate-step-test");
   const closeBody = {
+    format: "asp-swarm-close/v1",
     swarm_id: "swarm://node-test/duplicate-step",
     step_receipts: [
       { step_id: "summary", task_id: "task_1", receipt_digest: "0".repeat(64) },
@@ -961,6 +1132,7 @@ test("FED_SWARM_CLOSE verification rejects duplicate step receipts in Node", asy
 test("FED_SWARM_CLOSE verification rejects malformed step receipt entries in Node", async () => {
   const zone = createZone("zone://swarm-close-malformed-step-test");
   const closeBody = {
+    format: "asp-swarm-close/v1",
     swarm_id: "swarm://node-test/malformed-step",
     step_receipts: [null],
   };
@@ -974,13 +1146,14 @@ test("FED_SWARM_CLOSE verification rejects malformed step receipt entries in Nod
 
   assert.throws(
     () => verifySwarmClose(frame, trustedZones),
-    /swarm close step receipt missing/,
+    /swarm close v1 step fields invalid/,
   );
 });
 
 test("FED_SWARM_CLOSE verification rejects missing Swarm identity in Node", async () => {
   const zone = createZone("zone://swarm-close-missing-id-test");
   const closeBody = {
+    format: "asp-swarm-close/v1",
     step_receipts: [{ step_id: "summary", task_id: "task_1", receipt_digest: "0".repeat(64) }],
   };
   const frame = {
@@ -992,7 +1165,7 @@ test("FED_SWARM_CLOSE verification rejects missing Swarm identity in Node", asyn
 
   assert.throws(
     () => verifySwarmClose(frame, trustedZones),
-    /swarm close identity missing/,
+    /swarm close v1 fields invalid/,
   );
 });
 
@@ -1000,10 +1173,12 @@ test("FED_SWARM_CLOSE verification rejects NUL-bearing Swarm identities in Node"
   const zone = createZone("zone://swarm-close-nul-test");
   const trustedZones = new Map([[zone.descriptor.zid, zone.descriptor]]);
   const nulSwarmBody = {
+    format: "asp-swarm-close/v1",
     swarm_id: "swarm://node-test/nul\0shadow",
     step_receipts: [{ step_id: "summary", task_id: "task_1", receipt_digest: "0".repeat(64) }],
   };
   const nulStepBody = {
+    format: "asp-swarm-close/v1",
     swarm_id: "swarm://node-test/nul-step",
     step_receipts: [{ step_id: "summary\0shadow", task_id: "task_1", receipt_digest: "0".repeat(64) }],
   };
@@ -1024,6 +1199,7 @@ test("FED_SWARM_CLOSE verification rejects NUL-bearing Swarm identities in Node"
 test("FED_SWARM_CLOSE verification rejects unsafe task ids in Node", async () => {
   const zone = createZone("zone://swarm-close-unsafe-task-test");
   const closeBody = {
+    format: "asp-swarm-close/v1",
     swarm_id: "swarm://node-test/unsafe-task",
     step_receipts: [{ step_id: "summary", task_id: "../bad/task", receipt_digest: "0".repeat(64) }],
   };
@@ -1041,10 +1217,12 @@ test("FED_SWARM_CLOSE verification rejects unsafe task ids in Node", async () =>
   );
 });
 
-test("FED_SWARM_CLOSE conformance vector verifies in Node", async () => {
+test("Explicit legacy v1 close vector verifies in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v10.38-fed-swarm-close.json", "utf8"));
   const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
   const verified = verifySwarmClose(vector.frame, trustedZones);
+  assert.equal(verified.format, "asp-swarm-close/v1");
+  assert.equal(verified.legacy, true);
 
   assert.equal(verified.closeDigest, vector.expected.swarm_close_digest);
   assert.equal(canonical(vector.close_body), vector.close_canonical);

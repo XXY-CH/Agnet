@@ -5,7 +5,7 @@ import { lstat, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { AUDIT_ZERO_HASH, auditEntry, canonical, createZone, loadOrCreateAgent, loadOrCreateZone, publicKeyFromDescriptor, signObject, swarmExecutionBinding, swarmPlan, verifyObject, verifySwarmClose, verifySwarmPlan, verifyZoneTrustDelegation, writeTrustedZones, zoneBinding, zoneRevocation, zoneTrustDelegation } from "./asp-core.mjs";
+import { AUDIT_ZERO_HASH, auditEntry, canonical, createZone, loadOrCreateAgent, loadOrCreateZone, publicKeyFromDescriptor, signObject, signedReceiptDigest, swarmExecutionBinding, swarmPlan, verifyObject, verifySwarmClose, verifySwarmPlan, verifyZoneTrustDelegation, writeTrustedZones, zoneBinding, zoneRevocation, zoneTrustDelegation } from "./asp-core.mjs";
 import { queryMatch } from "./federation-gateway.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -549,6 +549,97 @@ test("rejects unsigned or substituted executable Swarm before execution", async 
   }
 });
 
+test("derives final_output only from one terminal result in gateway v2 close", async () => {
+  const port = 9034;
+  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/fed-zone-a-requester.pkcs8");
+  await writeTrustedZones("state/zone-b-u3-final-output-trust.json", [zoneA]);
+  const gateway = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-u3-final-output-trust.json"], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  try {
+    await waitForGateway(gateway);
+    const taskFor = (taskId, intent) => {
+      const body = {
+        task_id: taskId,
+        from: requester.aid,
+        to: "agent://zone-b/summarizer",
+        intent,
+        scope: { network: false },
+        budget: { time_seconds: 30 },
+      };
+      return { ...body, signature: signObject(requester.privateKey, body) };
+    };
+    const frame = withSwarmExecutionBinding(zoneA, {
+      type: "FED_SWARM_SCHEDULE",
+      origin_zone: zoneA.descriptor,
+      requester: requester.descriptor,
+      requester_zone_binding: zoneBinding(zoneA, requester.descriptor),
+      swarm: {
+        swarm_id: "swarm://local/node_u3_final_output",
+        steps: [
+          { step_id: "final", after: ["draft"], task: taskFor("node_u3_final", "Produce the terminal result.") },
+          { step_id: "draft", task: taskFor("node_u3_draft", "Produce the dependency result.") },
+        ],
+      },
+    });
+    const frames = await exchangeFramesUntil(port, frame, zoneA, "FED_SWARM_CLOSE");
+    assert.notEqual(frames.at(-1).type, "FED_TASK_ERROR", frames.at(-1).error);
+    const receiptFrames = frames.filter((candidate) => candidate.type === "FED_RECEIPT");
+    assert.deepEqual(receiptFrames.map((candidate) => candidate.receipt.swarm.step_id), ["draft", "final"]);
+    const receipts = new Map(receiptFrames.map((candidate) => [candidate.receipt.swarm.step_id, candidate.receipt]));
+    for (const receipt of receipts.values()) {
+      assert.deepEqual(receipt.result_artifact, {
+        uri: receipt.artifact_manifests[0].uri,
+        sha256: receipt.artifact_manifests[0].sha256,
+        manifest_hash: receipt.artifact_manifests[0].manifest_hash,
+      });
+    }
+
+    const closeFrame = frames.at(-1);
+    const close = closeFrame.close;
+    assert.equal(close.format, "asp-swarm-close/v2");
+    assert.equal(close.plan_digest, frame.swarm.plan.plan.plan_digest);
+    assert.equal(close.execution_graph_digest, frame.swarm.execution_binding.execution_graph_digest);
+    assert.deepEqual(close.step_receipts.map((step) => step.step_id), ["final", "draft"]);
+    assert.deepEqual(close.scheduler.step_order, ["draft", "final"]);
+    for (const step of close.step_receipts) {
+      assert.equal(step.signed_receipt_digest, signedReceiptDigest(receipts.get(step.step_id)));
+      assert.equal(step.receipt_digest, undefined);
+    }
+    const finalReceipt = receipts.get("final");
+    assert.deepEqual(close.final_output, {
+      step_id: "final",
+      task_id: finalReceipt.task_id,
+      signed_receipt_digest: signedReceiptDigest(finalReceipt),
+      artifact: finalReceipt.result_artifact,
+      selection_rule: "single-terminal-result",
+    });
+    const verified = verifySwarmClose(closeFrame, new Map([[zoneB.zid, zoneB.descriptor]]));
+    assert.equal(verified.closeDigest, createHash("sha256").update(canonical(close)).digest("hex"));
+
+    const resigned = (mutate) => {
+      const candidate = structuredClone(closeFrame);
+      const { close_signature: _signature, ...body } = candidate.close;
+      mutate(body);
+      candidate.close = { ...body, close_signature: signObject(zoneB.privateKey, body) };
+      return candidate;
+    };
+    assert.throws(() => verifySwarmClose(resigned((body) => delete body.format), new Map([[zoneB.zid, zoneB.descriptor]])), /swarm close format missing/);
+    assert.throws(() => verifySwarmClose(resigned((body) => delete body.execution_graph_digest), new Map([[zoneB.zid, zoneB.descriptor]])), /swarm close v2 fields invalid/);
+    assert.throws(() => verifySwarmClose(resigned((body) => { body.unexpected = true; }), new Map([[zoneB.zid, zoneB.descriptor]])), /swarm close v2 fields invalid/);
+    assert.throws(() => verifySwarmClose(resigned((body) => { body.final_output.unexpected = true; }), new Map([[zoneB.zid, zoneB.descriptor]])), /swarm close final output fields invalid/);
+    assert.throws(() => verifySwarmClose(resigned((body) => { body.final_output.artifact.unexpected = true; }), new Map([[zoneB.zid, zoneB.descriptor]])), /swarm close final output artifact fields invalid/);
+    assert.throws(() => verifySwarmClose(resigned((body) => { body.final_output.signed_receipt_digest = "8".repeat(64); }), new Map([[zoneB.zid, zoneB.descriptor]])), /swarm close final output receipt digest mismatch/);
+    assert.throws(() => verifySwarmClose(resigned((body) => { body.format = "asp-swarm-close/v1"; }), new Map([[zoneB.zid, zoneB.descriptor]])), /swarm close v1 fields invalid/);
+  } finally {
+    gateway.kill("SIGINT");
+  }
+});
+
 test("Swarm decomposition plan verifies and links to close plan digest", async () => {
   const port = 9021;
   const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
@@ -678,7 +769,7 @@ test("Federation Gateway schedules out-of-order Swarm steps in deterministic rea
         swarm_id: "swarm://local/node_ready_dag",
         steps: [
           { step_id: "preface", task: { ...prefaceTask, signature: signObject(requester.privateKey, prefaceTask) } },
-          { step_id: "followup", after: ["summary"], task: { ...followupTask, signature: signObject(requester.privateKey, followupTask) } },
+          { step_id: "followup", after: ["preface", "summary"], task: { ...followupTask, signature: signObject(requester.privateKey, followupTask) } },
           { step_id: "summary", task: { ...summaryTask, signature: signObject(requester.privateKey, summaryTask) } },
         ],
       },
@@ -688,7 +779,8 @@ test("Federation Gateway schedules out-of-order Swarm steps in deterministic rea
     assert.deepEqual(frames.filter((frame) => frame.type === "FED_RECEIPT").map((frame) => frame.receipt.swarm.step_id), ["preface", "summary", "followup"]);
     const closeFrame = frames.at(-1);
     assert.deepEqual(closeFrame.close.scheduler, { mode: "ready-dag", step_order: ["preface", "summary", "followup"] });
-    assert.deepEqual(closeFrame.close.step_receipts.map((step) => step.step_id), ["preface", "summary", "followup"]);
+    assert.deepEqual(closeFrame.close.step_receipts.map((step) => step.step_id), ["preface", "followup", "summary"]);
+    assert.equal(closeFrame.close.format, "asp-swarm-close/v2");
     assert.deepEqual(verifySwarmClose(closeFrame, new Map([[zoneB.zid, zoneB.descriptor]])).close.scheduler, closeFrame.close.scheduler);
   } finally {
     child.kill();

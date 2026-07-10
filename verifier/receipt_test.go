@@ -522,3 +522,210 @@ func TestArtifactManifestRejectsMalformedListEntries(t *testing.T) {
 		t.Fatalf("got %v, want artifact refs invalid", err)
 	}
 }
+
+func TestVerifyFederatedReceiptV2ResultArtifact(t *testing.T) {
+	zonePub, zoneKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workerPub, workerKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zone := signedDescriptor(t, zoneKey, "zone_signature", map[string]any{
+		"zid":             zidFromSPKI(spkiBytes(t, zonePub)),
+		"public_key_spki": spki(t, zonePub),
+	})
+	worker := signedDescriptor(t, workerKey, "descriptor_signature", map[string]any{
+		"aid":             aidFromSPKI(spkiBytes(t, workerPub)),
+		"alias":           "agent://u3/result-worker",
+		"public_key_spki": spki(t, workerPub),
+	})
+	binding := signNodeCanonical(t, zoneKey, "signature", map[string]any{
+		"zone":  zone["zid"],
+		"alias": worker["alias"],
+		"aid":   worker["aid"],
+	})
+	manifestFor := func(uri, digit, mediaType string) map[string]any {
+		body := map[string]any{
+			"uri":        uri,
+			"sha256":     strings.Repeat(digit, 64),
+			"size":       float64(7),
+			"media_type": mediaType,
+			"afp":        "afp:sha256:" + strings.Repeat(digit, 64),
+		}
+		body["manifest_hash"] = digestNodeCanonical(body)
+		return body
+	}
+	resultManifest := manifestFor("artifact://local/u3/result.txt", "1", "text/plain")
+	transcriptManifest := manifestFor("artifact://local/u3/transcript.jsonl", "2", "application/x-ndjson")
+	pointer := map[string]any{
+		"uri":           resultManifest["uri"],
+		"sha256":        resultManifest["sha256"],
+		"manifest_hash": resultManifest["manifest_hash"],
+	}
+	signedTask := signNodeCanonical(t, workerKey, "signature", map[string]any{
+		"task_id": "u3_result_receipt",
+		"intent":  "Verify one signed result pointer.",
+	})
+	receiptBody := map[string]any{
+		"task_id":            "u3_result_receipt",
+		"task_digest":        digestNodeCanonical(signedTask),
+		"origin_zone":        zone["zid"],
+		"executing_zone":     zone["zid"],
+		"to":                 worker["aid"],
+		"artifact_refs":      []any{resultManifest["uri"], transcriptManifest["uri"]},
+		"artifact_manifests": []any{resultManifest, transcriptManifest},
+		"result_artifact":    pointer,
+	}
+	receipt := signNodeCanonical(t, workerKey, "signature", receiptBody)
+	frame := map[string]any{"type": "FED_RECEIPT", "zone": zone, "worker": worker, "zone_binding": binding, "receipt": receipt}
+	trusted := map[string]map[string]any{zone["zid"].(string): zone}
+	if err := VerifyFederatedReceipt(frame, trusted, signedTask); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := VerifyResultArtifact(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if digestNodeCanonical(selected) != digestNodeCanonical(pointer) {
+		t.Fatalf("selected result = %#v, want %#v", selected, pointer)
+	}
+	withoutResult := map[string]any{"artifact_refs": receiptBody["artifact_refs"], "artifact_manifests": receiptBody["artifact_manifests"]}
+	if selected, err := VerifyResultArtifact(withoutResult); err != nil || selected != nil {
+		t.Fatalf("zero result pointer = %#v, %v", selected, err)
+	}
+
+	for _, tc := range []struct {
+		name    string
+		value   any
+		wantErr string
+	}{
+		{name: "array", value: []any{pointer, pointer}, wantErr: "result artifact invalid"},
+		{name: "unknown field", value: map[string]any{"uri": pointer["uri"], "sha256": pointer["sha256"], "manifest_hash": pointer["manifest_hash"], "media_type": "text/plain"}, wantErr: "result artifact fields invalid"},
+		{name: "unknown manifest", value: map[string]any{"uri": "artifact://local/u3/missing.txt", "sha256": pointer["sha256"], "manifest_hash": pointer["manifest_hash"]}, wantErr: "result artifact manifest mismatch"},
+		{name: "sha mismatch", value: map[string]any{"uri": pointer["uri"], "sha256": strings.Repeat("3", 64), "manifest_hash": pointer["manifest_hash"]}, wantErr: "result artifact manifest mismatch"},
+		{name: "manifest hash mismatch", value: map[string]any{"uri": pointer["uri"], "sha256": pointer["sha256"], "manifest_hash": strings.Repeat("4", 64)}, wantErr: "result artifact manifest mismatch"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			candidate := map[string]any{"artifact_refs": receiptBody["artifact_refs"], "artifact_manifests": receiptBody["artifact_manifests"], "result_artifact": tc.value}
+			if _, err := VerifyResultArtifact(candidate); err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("got %v, want %s", err, tc.wantErr)
+			}
+		})
+	}
+
+	mismatchedBody := map[string]any{}
+	for key, value := range receiptBody {
+		mismatchedBody[key] = value
+	}
+	mismatchedBody["result_artifact"] = map[string]any{"uri": pointer["uri"], "sha256": strings.Repeat("5", 64), "manifest_hash": pointer["manifest_hash"]}
+	mismatchedFrame := map[string]any{"type": "FED_RECEIPT", "zone": zone, "worker": worker, "zone_binding": binding, "receipt": signNodeCanonical(t, workerKey, "signature", mismatchedBody)}
+	if err := VerifyFederatedReceipt(mismatchedFrame, trusted, signedTask); err == nil || !strings.Contains(err.Error(), "result artifact manifest mismatch") {
+		t.Fatalf("got %v, want result artifact manifest mismatch", err)
+	}
+}
+
+func TestDeriveSwarmFinalOutput(t *testing.T) {
+	swarmID := "swarm://go-test/final-output"
+	planDigest := strings.Repeat("a", 64)
+	steps := []any{
+		map[string]any{"step_id": "draft", "depends_on": []any{}, "capability": "summarize.text", "task_digest": strings.Repeat("c", 64)},
+		map[string]any{"step_id": "final", "depends_on": []any{"draft"}, "capability": "summarize.text", "task_digest": strings.Repeat("d", 64)},
+	}
+	graphDigest := digestNodeCanonical(map[string]any{"swarm_id": swarmID, "plan_digest": planDigest, "steps": steps})
+	binding := map[string]any{
+		"format":                 "asp-swarm-execution-binding/v1",
+		"swarm_id":               swarmID,
+		"plan_digest":            planDigest,
+		"steps":                  steps,
+		"execution_graph_digest": graphDigest,
+		"binding_signature":      "coordinator-signature",
+	}
+	manifestFor := func(stepID, digit string) map[string]any {
+		body := map[string]any{
+			"uri":        "artifact://local/" + stepID + "/result.txt",
+			"sha256":     strings.Repeat(digit, 64),
+			"size":       float64(8),
+			"media_type": "text/plain",
+			"afp":        "afp:sha256:" + strings.Repeat(digit, 64),
+		}
+		body["manifest_hash"] = digestNodeCanonical(body)
+		return body
+	}
+	receiptFor := func(step map[string]any, digit string, includeResult bool) map[string]any {
+		stepID := step["step_id"].(string)
+		manifest := manifestFor(stepID, digit)
+		receipt := map[string]any{
+			"task_id":            "task_" + stepID,
+			"task_digest":        step["task_digest"],
+			"artifact_refs":      []any{manifest["uri"]},
+			"artifact_manifests": []any{manifest},
+			"swarm": map[string]any{
+				"swarm_id":               swarmID,
+				"step_id":                stepID,
+				"after":                  step["depends_on"],
+				"plan_digest":            planDigest,
+				"execution_graph_digest": graphDigest,
+				"capability":             step["capability"],
+				"task_digest":            step["task_digest"],
+			},
+			"signature": "worker-signature-" + stepID,
+		}
+		if includeResult {
+			receipt["result_artifact"] = map[string]any{"uri": manifest["uri"], "sha256": manifest["sha256"], "manifest_hash": manifest["manifest_hash"]}
+		}
+		return receipt
+	}
+	draftReceipt := receiptFor(steps[0].(map[string]any), "6", true)
+	finalReceipt := receiptFor(steps[1].(map[string]any), "7", true)
+	completed := map[string]map[string]any{"draft": draftReceipt, "final": finalReceipt}
+	got, err := DeriveSwarmFinalOutput(binding, completed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{
+		"step_id":               "final",
+		"task_id":               "task_final",
+		"signed_receipt_digest": digestNodeCanonical(finalReceipt),
+		"artifact":              finalReceipt["result_artifact"],
+		"selection_rule":        "single-terminal-result",
+	}
+	if digestNodeCanonical(got) != digestNodeCanonical(want) {
+		t.Fatalf("final output = %#v, want %#v", got, want)
+	}
+
+	clone := func(value map[string]any) map[string]any {
+		data, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out map[string]any
+		if err := json.Unmarshal(data, &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	wantError := func(name, message string, candidateBinding map[string]any, candidateCompleted map[string]map[string]any) {
+		t.Helper()
+		if _, err := DeriveSwarmFinalOutput(candidateBinding, candidateCompleted); err == nil || !strings.Contains(err.Error(), message) {
+			t.Fatalf("%s: got %v, want %s", name, err, message)
+		}
+	}
+	missingResult := clone(finalReceipt)
+	delete(missingResult, "result_artifact")
+	wantError("missing terminal result", "terminal result artifact missing", binding, map[string]map[string]any{"draft": draftReceipt, "final": missingResult})
+	multipleTerminalBinding := clone(binding)
+	multipleTerminalSteps := multipleTerminalBinding["steps"].([]any)
+	multipleTerminalSteps[1].(map[string]any)["depends_on"] = []any{}
+	multipleTerminalBinding["execution_graph_digest"] = digestNodeCanonical(map[string]any{"swarm_id": swarmID, "plan_digest": planDigest, "steps": multipleTerminalSteps})
+	wantError("multiple terminals", "single terminal step required", multipleTerminalBinding, completed)
+	wrongTaskDigest := clone(finalReceipt)
+	wrongTaskDigest["task_digest"] = strings.Repeat("e", 64)
+	wantError("wrong task digest", "receipt task digest mismatch", binding, map[string]map[string]any{"draft": draftReceipt, "final": wrongTaskDigest})
+	wrongGraphDigest := clone(finalReceipt)
+	wrongGraphDigest["swarm"].(map[string]any)["execution_graph_digest"] = strings.Repeat("f", 64)
+	wantError("wrong graph digest", "receipt execution graph digest mismatch", binding, map[string]map[string]any{"draft": draftReceipt, "final": wrongGraphDigest})
+	wantError("missing receipt", "completed receipt missing", binding, map[string]map[string]any{"draft": draftReceipt})
+	wantError("extra receipt", "completed receipt count mismatch", binding, map[string]map[string]any{"draft": draftReceipt, "final": finalReceipt, "extra": finalReceipt})
+}

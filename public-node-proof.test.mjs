@@ -111,6 +111,7 @@ test("public node proof starts a public-listen gateway", async (t) => {
   assert.equal(closeFrame.swarm_id, result.swarm_id);
   assert.equal(closeFrame.close.swarm_id, result.swarm_id);
   assert.equal(closeFrame.close.plan_digest, result.swarm_plan_digest);
+  assert.equal(closeFrame.close.format, "asp-swarm-close/v2");
   assert.equal(closeFrame.close.execution_graph_digest, result.swarm_execution_graph_digest);
   assert.equal(closeTrustedZones.zones[0].zid, closeFrame.zone.zid);
 
@@ -120,10 +121,9 @@ test("public node proof starts a public-listen gateway", async (t) => {
     .split("\n")
     .map((line) => JSON.parse(line))
     .findLast((entry) => entry.record?.kind === "go_swarm_close")?.record;
-  const { close_signature, ...closeBody } = closeRecord.close;
-  assert.equal(result.swarm_close_digest, createHash("sha256").update(canonical(closeBody)).digest("hex"));
-  const { close_signature: frameCloseSignature, ...frameCloseBody } = closeFrame.close;
-  assert.equal(result.swarm_close_digest, createHash("sha256").update(canonical(frameCloseBody)).digest("hex"));
+  assert.equal(result.swarm_close_digest, createHash("sha256").update(canonical(closeRecord.close)).digest("hex"));
+  assert.equal(result.swarm_close_digest, createHash("sha256").update(canonical(closeFrame.close)).digest("hex"));
+  assert.equal(closeFrame.close.final_output.selection_rule, "single-terminal-result");
 
   const { signature, ...receiptBody } = receiptFrame.receipt;
   const artifactSha256 = receiptFrame.receipt.artifact_manifests[0].sha256;

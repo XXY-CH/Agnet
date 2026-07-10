@@ -820,11 +820,11 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 			"step_id":  "downstream",
 			"after":    []string{"upstream"},
 			"input_artifacts": []map[string]any{{
-				"step_id":        "upstream",
-				"uri":            upstreamManifest["uri"],
-				"sha256":         strings.Repeat("0", 64),
-				"manifest_hash":  upstreamManifest["manifest_hash"],
-				"receipt_digest": digestHex(upstreamReceipt),
+				"step_id":               "upstream",
+				"uri":                   upstreamManifest["uri"],
+				"sha256":                strings.Repeat("0", 64),
+				"manifest_hash":         upstreamManifest["manifest_hash"],
+				"signed_receipt_digest": digestHex(upstreamReceipt),
 			}},
 		},
 	})
@@ -834,11 +834,11 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 			"step_id":  "downstream",
 			"after":    []any{"upstream", map[string]any{"step_id": "ghost"}},
 			"input_artifacts": []map[string]any{{
-				"step_id":        "upstream",
-				"uri":            upstreamManifest["uri"],
-				"sha256":         upstreamManifest["sha256"],
-				"manifest_hash":  upstreamManifest["manifest_hash"],
-				"receipt_digest": digestHex(upstreamReceipt),
+				"step_id":               "upstream",
+				"uri":                   upstreamManifest["uri"],
+				"sha256":                upstreamManifest["sha256"],
+				"manifest_hash":         upstreamManifest["manifest_hash"],
+				"signed_receipt_digest": digestHex(upstreamReceipt),
 			}},
 		},
 	})
@@ -860,11 +860,11 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 			"after":    []any{"upstream"},
 			"input_artifacts": []any{
 				map[string]any{
-					"step_id":        "upstream",
-					"uri":            upstreamManifest["uri"],
-					"sha256":         upstreamManifest["sha256"],
-					"manifest_hash":  upstreamManifest["manifest_hash"],
-					"receipt_digest": digestHex(upstreamReceipt),
+					"step_id":               "upstream",
+					"uri":                   upstreamManifest["uri"],
+					"sha256":                upstreamManifest["sha256"],
+					"manifest_hash":         upstreamManifest["manifest_hash"],
+					"signed_receipt_digest": digestHex(upstreamReceipt),
 				},
 				"bad-input",
 			},
@@ -895,7 +895,7 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 	}
 
 	downstreamReceipt["swarm"].(map[string]any)["input_artifacts"].([]map[string]any)[0]["sha256"] = upstreamManifest["sha256"]
-	downstreamReceipt["swarm"].(map[string]any)["input_artifacts"].([]map[string]any)[0]["receipt_digest"] = strings.Repeat("1", 64)
+	downstreamReceipt["swarm"].(map[string]any)["input_artifacts"].([]map[string]any)[0]["signed_receipt_digest"] = strings.Repeat("1", 64)
 	downstreamBadReceiptDigest := signBody(downstreamKey, receiptBodyWithoutSignature(downstreamReceipt))
 	badDigestLog := &AuditLog{Path: "bad-digest-audit.log", Head: auditZeroHash}
 	if err := badDigestLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": upstreamReceipt}); err != nil {
@@ -905,8 +905,8 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = verifyAuditFile("bad-digest-audit.log", "")
-	if err == nil || !strings.Contains(err.Error(), "swarm input receipt digest mismatch") {
-		t.Fatalf("got %v, want swarm input receipt digest mismatch", err)
+	if err == nil || !strings.Contains(err.Error(), "swarm input signed receipt digest mismatch") {
+		t.Fatalf("got %v, want swarm input signed receipt digest mismatch", err)
 	}
 
 	downstreamStepMismatchReceipt := testSignedReceipt(t, zone, zoneKey, downstreamWorker, downstreamKey, "swarm_down_wrong_step", []map[string]any{downstreamManifest}, map[string]any{
@@ -915,11 +915,11 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 			"step_id":  "downstream",
 			"after":    []string{"upstream"},
 			"input_artifacts": []map[string]any{{
-				"step_id":        "other",
-				"uri":            otherManifest["uri"],
-				"sha256":         otherManifest["sha256"],
-				"manifest_hash":  otherManifest["manifest_hash"],
-				"receipt_digest": digestHex(otherReceipt),
+				"step_id":               "other",
+				"uri":                   otherManifest["uri"],
+				"sha256":                otherManifest["sha256"],
+				"manifest_hash":         otherManifest["manifest_hash"],
+				"signed_receipt_digest": digestHex(otherReceipt),
 			}},
 		},
 	})
@@ -952,11 +952,11 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 			"step_id":  "downstream",
 			"after":    []string{"upstream"},
 			"input_artifacts": []map[string]any{{
-				"step_id":        "upstream",
-				"uri":            otherManifest["uri"],
-				"sha256":         otherManifest["sha256"],
-				"manifest_hash":  otherManifest["manifest_hash"],
-				"receipt_digest": digestHex(duplicateStepReceipt),
+				"step_id":               "upstream",
+				"uri":                   otherManifest["uri"],
+				"sha256":                otherManifest["sha256"],
+				"manifest_hash":         otherManifest["manifest_hash"],
+				"signed_receipt_digest": digestHex(duplicateStepReceipt),
 			}},
 		},
 	})
@@ -985,6 +985,7 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 	}))
 	noArtifactReceiptBody["artifact_refs"] = []string{}
 	noArtifactReceiptBody["artifact_manifests"] = []map[string]any{}
+	delete(noArtifactReceiptBody, "result_artifact")
 	noArtifactReceipt := signBody(upstreamKey, noArtifactReceiptBody)
 	duplicateNoArtifactLog := &AuditLog{Path: "duplicate-no-artifact-audit.log", Head: auditZeroHash}
 	if err := duplicateNoArtifactLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": noArtifactReceipt}); err != nil {
@@ -998,7 +999,7 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 		t.Fatalf("got %v, want duplicate swarm step receipt", err)
 	}
 
-	downstreamReceipt["swarm"].(map[string]any)["input_artifacts"].([]map[string]any)[0]["receipt_digest"] = digestHex(upstreamReceipt)
+	downstreamReceipt["swarm"].(map[string]any)["input_artifacts"].([]map[string]any)[0]["signed_receipt_digest"] = digestHex(upstreamReceipt)
 	downstreamRecord := signBody(downstreamKey, receiptBodyWithoutSignature(downstreamReceipt))
 	cleanLog := &AuditLog{Path: "clean-audit.log", Head: auditZeroHash}
 	if err := cleanLog.Append(map[string]any{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": upstreamReceipt}); err != nil {
@@ -1008,6 +1009,7 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	cleanClose := signBodyWithKey(zoneKey, map[string]any{
+		"format":   "asp-swarm-close/v1",
 		"swarm_id": "swarm://test",
 		"step_receipts": []map[string]any{
 			{"step_id": "upstream", "task_id": "swarm_up", "receipt_digest": digestHex(upstreamReceipt)},
@@ -1022,6 +1024,7 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 	}
 
 	malformedClose := signBodyWithKey(zoneKey, map[string]any{
+		"format":   "asp-swarm-close/v1",
 		"swarm_id": "swarm://test",
 		"step_receipts": []any{
 			map[string]any{"step_id": "upstream", "task_id": "swarm_up", "receipt_digest": digestHex(upstreamReceipt)},
@@ -1063,6 +1066,7 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 	}
 
 	unknownSwarmClose := signBodyWithKey(zoneKey, map[string]any{
+		"format":        "asp-swarm-close/v1",
 		"swarm_id":      "swarm://unknown",
 		"step_receipts": []map[string]any{},
 	}, "close_signature")
@@ -1076,6 +1080,7 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 	}
 
 	reversedClose := signBodyWithKey(zoneKey, map[string]any{
+		"format":   "asp-swarm-close/v1",
 		"swarm_id": "swarm://test",
 		"step_receipts": []map[string]any{
 			{"step_id": "downstream", "task_id": "swarm_down", "receipt_digest": digestHex(downstreamRecord)},
@@ -1098,6 +1103,7 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 	}
 
 	incompleteClose := signBodyWithKey(zoneKey, map[string]any{
+		"format":   "asp-swarm-close/v1",
 		"swarm_id": "swarm://test",
 		"step_receipts": []map[string]any{
 			{"step_id": "upstream", "task_id": "swarm_up", "receipt_digest": digestHex(upstreamReceipt)},
@@ -1119,6 +1125,7 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 	}
 
 	duplicateClose := signBodyWithKey(zoneKey, map[string]any{
+		"format":   "asp-swarm-close/v1",
 		"swarm_id": "swarm://test",
 		"step_receipts": []map[string]any{
 			{"step_id": "upstream", "task_id": "swarm_up", "receipt_digest": digestHex(upstreamReceipt)},
@@ -1138,6 +1145,7 @@ func TestVerifyAuditRejectsSwarmInputArtifactMismatch(t *testing.T) {
 	}
 
 	badClose := signBodyWithKey(zoneKey, map[string]any{
+		"format":   "asp-swarm-close/v1",
 		"swarm_id": "swarm://test",
 		"step_receipts": []map[string]any{
 			{"step_id": "upstream", "task_id": "swarm_up", "receipt_digest": strings.Repeat("2", 64)},
@@ -1424,6 +1432,7 @@ func testSignedReceipt(t *testing.T, zone map[string]any, zoneKey ed25519.Privat
 		"to":                 worker["aid"],
 		"artifact_refs":      refs,
 		"artifact_manifests": manifests,
+		"result_artifact":    map[string]any{"uri": manifests[0]["uri"], "sha256": manifests[0]["sha256"], "manifest_hash": manifests[0]["manifest_hash"]},
 		"tool_output_digest": manifests[0]["sha256"],
 		"event_count":        float64(1),
 		"approvals":          []string{},
@@ -2128,4 +2137,220 @@ func testZoneDescriptor(t *testing.T, name string) (map[string]any, ed25519.Priv
 		"public_key_spki": encoded,
 	}
 	return signBodyWithKey(privateKey, body, "zone_signature"), privateKey
+}
+
+func TestVerifyAuditV2FinalOutput(t *testing.T) {
+	t.Chdir(t.TempDir())
+	zone, zoneKey := testZoneDescriptor(t, "zone://u3-audit")
+	_, upstreamKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, finalKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstreamWorker, err := agentDescriptor(upstreamKey, "agent://u3-audit/upstream")
+	if err != nil {
+		t.Fatal(err)
+	}
+	finalWorker, err := agentDescriptor(finalKey, "agent://u3-audit/final")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := Fixture{Authority: zone, AuthorityPrivateKey: zoneKey}
+	upstreamManifest, err := writeArtifact("artifact://local/u3-audit/upstream.txt", "upstream\n", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	finalManifest, err := writeArtifact("artifact://local/u3-audit/final.txt", "final\n", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resultPointer := func(manifest map[string]any) map[string]any {
+		return map[string]any{"uri": manifest["uri"], "sha256": manifest["sha256"], "manifest_hash": manifest["manifest_hash"]}
+	}
+	swarmID := "swarm://u3-audit/final-output"
+	planDigest := strings.Repeat("a", 64)
+	upstreamTaskDigest := digestHex(map[string]any{"task_id": "u3_audit_upstream"})
+	finalTaskDigest := digestHex(map[string]any{"task_id": "u3_audit_final"})
+	bindingSteps := []map[string]any{
+		{"step_id": "final", "depends_on": []string{"upstream"}, "capability": "summarize.text", "task_digest": finalTaskDigest},
+		{"step_id": "upstream", "depends_on": []string{}, "capability": "summarize.text", "task_digest": upstreamTaskDigest},
+	}
+	graphDigest := digestHex(map[string]any{"swarm_id": swarmID, "plan_digest": planDigest, "steps": bindingSteps})
+	upstreamReceipt := testSignedReceipt(t, zone, zoneKey, upstreamWorker, upstreamKey, "u3_audit_upstream", []map[string]any{upstreamManifest}, map[string]any{
+		"result_artifact": resultPointer(upstreamManifest),
+		"swarm": map[string]any{
+			"swarm_id":               swarmID,
+			"step_id":                "upstream",
+			"after":                  []string{},
+			"input_artifacts":        []map[string]any{},
+			"plan_digest":            planDigest,
+			"execution_graph_digest": graphDigest,
+			"capability":             "summarize.text",
+			"task_digest":            upstreamTaskDigest,
+		},
+	})
+	upstreamSignedDigest := digestHex(upstreamReceipt)
+	finalReceipt := testSignedReceipt(t, zone, zoneKey, finalWorker, finalKey, "u3_audit_final", []map[string]any{finalManifest}, map[string]any{
+		"result_artifact": resultPointer(finalManifest),
+		"swarm": map[string]any{
+			"swarm_id": swarmID,
+			"step_id":  "final",
+			"after":    []string{"upstream"},
+			"input_artifacts": []map[string]any{{
+				"step_id":               "upstream",
+				"uri":                   upstreamManifest["uri"],
+				"sha256":                upstreamManifest["sha256"],
+				"manifest_hash":         upstreamManifest["manifest_hash"],
+				"signed_receipt_digest": upstreamSignedDigest,
+			}},
+			"plan_digest":            planDigest,
+			"execution_graph_digest": graphDigest,
+			"capability":             "summarize.text",
+			"task_digest":            finalTaskDigest,
+		},
+	})
+	finalSignedDigest := digestHex(finalReceipt)
+	finalOutput := map[string]any{
+		"step_id":               "final",
+		"task_id":               "u3_audit_final",
+		"signed_receipt_digest": finalSignedDigest,
+		"artifact":              resultPointer(finalManifest),
+		"selection_rule":        "single-terminal-result",
+	}
+	closeBody := map[string]any{
+		"format":                 "asp-swarm-close/v2",
+		"swarm_id":               swarmID,
+		"plan_digest":            planDigest,
+		"execution_graph_digest": graphDigest,
+		"step_receipts": []map[string]any{
+			{"step_id": "final", "task_id": "u3_audit_final", "signed_receipt_digest": finalSignedDigest},
+			{"step_id": "upstream", "task_id": "u3_audit_upstream", "signed_receipt_digest": upstreamSignedDigest},
+		},
+		"final_output": finalOutput,
+		"scheduler":    map[string]any{"mode": "ready-dag", "step_order": []string{"upstream", "final"}},
+	}
+	baseClose := signBodyWithKey(zoneKey, closeBody, "close_signature")
+	clone := func(value map[string]any) map[string]any {
+		data, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out map[string]any
+		if err := json.Unmarshal(data, &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	resign := func(mutate func(map[string]any)) map[string]any {
+		body := clone(baseClose)
+		delete(body, "close_signature")
+		mutate(body)
+		return signBodyWithKey(zoneKey, body, "close_signature")
+	}
+	verifyClose := func(name string, close map[string]any) error {
+		log := &AuditLog{Path: name + ".log", Head: auditZeroHash}
+		for _, record := range []map[string]any{
+			{"kind": "go_fed_receipt", "zone": zone, "worker": upstreamWorker, "zone_binding": fixture.zoneBindingForDescriptor(upstreamWorker), "receipt": upstreamReceipt},
+			{"kind": "go_fed_receipt", "zone": zone, "worker": finalWorker, "zone_binding": fixture.zoneBindingForDescriptor(finalWorker), "receipt": finalReceipt},
+			{"kind": "go_swarm_close", "zone": zone, "close": close},
+		} {
+			if err := log.Append(record); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return verifyAuditFile(log.Path, "")
+	}
+	if err := verifyClose("u3-v2-clean", baseClose); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name    string
+		wantErr string
+		mutate  func(map[string]any)
+	}{
+		{name: "missing format", wantErr: "swarm close format missing", mutate: func(body map[string]any) { delete(body, "format") }},
+		{name: "unknown format", wantErr: "unsupported swarm close format", mutate: func(body map[string]any) { body["format"] = "asp-swarm-close/v3" }},
+		{name: "stripped plan digest", wantErr: "swarm close v2 fields invalid", mutate: func(body map[string]any) { delete(body, "plan_digest") }},
+		{name: "stripped graph digest", wantErr: "swarm close v2 fields invalid", mutate: func(body map[string]any) { delete(body, "execution_graph_digest") }},
+		{name: "stripped final output", wantErr: "swarm close v2 fields invalid", mutate: func(body map[string]any) { delete(body, "final_output") }},
+		{name: "unknown close field", wantErr: "swarm close v2 fields invalid", mutate: func(body map[string]any) { body["unexpected"] = true }},
+		{name: "unknown step field", wantErr: "swarm close v2 step fields invalid", mutate: func(body map[string]any) {
+			body["step_receipts"].([]any)[0].(map[string]any)["receipt_digest"] = finalSignedDigest
+		}},
+		{name: "unknown final output field", wantErr: "swarm close final output fields invalid", mutate: func(body map[string]any) {
+			body["final_output"].(map[string]any)["unexpected"] = true
+		}},
+		{name: "unknown final artifact field", wantErr: "swarm close final output artifact fields invalid", mutate: func(body map[string]any) {
+			body["final_output"].(map[string]any)["artifact"].(map[string]any)["unexpected"] = true
+		}},
+		{name: "null scheduler", wantErr: "swarm close scheduler invalid", mutate: func(body map[string]any) {
+			body["scheduler"] = nil
+		}},
+		{name: "unknown scheduler field", wantErr: "swarm close scheduler invalid", mutate: func(body map[string]any) {
+			body["scheduler"].(map[string]any)["unexpected"] = true
+		}},
+		{name: "wrong scheduler mode", wantErr: "swarm close scheduler mode invalid", mutate: func(body map[string]any) {
+			body["scheduler"].(map[string]any)["mode"] = "serial"
+		}},
+		{name: "duplicate scheduler step", wantErr: "swarm close scheduler step duplicate", mutate: func(body map[string]any) {
+			body["scheduler"].(map[string]any)["step_order"] = []any{"upstream", "upstream"}
+		}},
+		{name: "missing scheduler step", wantErr: "swarm close scheduler step missing", mutate: func(body map[string]any) {
+			body["scheduler"].(map[string]any)["step_order"] = []any{"upstream", "missing"}
+		}},
+		{name: "scheduler contradicts observed receipt order", wantErr: "swarm close scheduler observed order mismatch", mutate: func(body map[string]any) {
+			body["scheduler"].(map[string]any)["step_order"] = []any{"final", "upstream"}
+		}},
+		{name: "stripped scheduler for reordered execution", wantErr: "swarm close scheduler evidence required", mutate: func(body map[string]any) {
+			delete(body, "scheduler")
+		}},
+		{name: "wrong plan digest", wantErr: "swarm close plan digest mismatch", mutate: func(body map[string]any) { body["plan_digest"] = strings.Repeat("b", 64) }},
+		{name: "wrong graph digest", wantErr: "swarm close execution graph digest mismatch", mutate: func(body map[string]any) { body["execution_graph_digest"] = strings.Repeat("c", 64) }},
+		{name: "reordered signed links", wantErr: "swarm close execution graph digest mismatch", mutate: func(body map[string]any) {
+			steps := body["step_receipts"].([]any)
+			body["step_receipts"] = []any{steps[1], steps[0]}
+		}},
+		{name: "wrong task id", wantErr: "swarm close task mismatch", mutate: func(body map[string]any) { body["step_receipts"].([]any)[0].(map[string]any)["task_id"] = "wrong_task" }},
+		{name: "wrong signed receipt digest", wantErr: "swarm close signed receipt digest mismatch", mutate: func(body map[string]any) {
+			body["step_receipts"].([]any)[0].(map[string]any)["signed_receipt_digest"] = strings.Repeat("d", 64)
+		}},
+		{name: "non-terminal final output", wantErr: "swarm close final output mismatch", mutate: func(body map[string]any) {
+			body["final_output"] = map[string]any{"step_id": "upstream", "task_id": "u3_audit_upstream", "signed_receipt_digest": upstreamSignedDigest, "artifact": resultPointer(upstreamManifest), "selection_rule": "single-terminal-result"}
+		}},
+		{name: "wrong final artifact", wantErr: "swarm close final output mismatch", mutate: func(body map[string]any) {
+			body["final_output"].(map[string]any)["artifact"] = resultPointer(upstreamManifest)
+		}},
+		{name: "v2 stripped into v1", wantErr: "swarm close v1 fields invalid", mutate: func(body map[string]any) { body["format"] = "asp-swarm-close/v1" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := verifyClose("u3-v2-"+strings.ReplaceAll(tc.name, " ", "-"), resign(tc.mutate)); err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("got %v, want %s", err, tc.wantErr)
+			}
+		})
+	}
+
+	legacyBody := map[string]any{
+		"format":   "asp-swarm-close/v1",
+		"swarm_id": swarmID,
+		"step_receipts": []map[string]any{
+			{"step_id": "upstream", "task_id": "u3_audit_upstream", "receipt_digest": upstreamSignedDigest},
+			{"step_id": "final", "task_id": "u3_audit_final", "receipt_digest": finalSignedDigest},
+		},
+	}
+	if err := verifyClose("u3-v1-explicit", signBodyWithKey(zoneKey, legacyBody, "close_signature")); err != nil {
+		t.Fatalf("explicit v1 close rejected: %v", err)
+	}
+	legacyNullScheduler := clone(legacyBody)
+	legacyNullScheduler["scheduler"] = nil
+	if err := verifyClose("u3-v1-null-scheduler", signBodyWithKey(zoneKey, legacyNullScheduler, "close_signature")); err == nil || !strings.Contains(err.Error(), "swarm close scheduler invalid") {
+		t.Fatalf("null-scheduler legacy close = %v", err)
+	}
+	delete(legacyBody, "format")
+	if err := verifyClose("u3-v1-missing-format", signBodyWithKey(zoneKey, legacyBody, "close_signature")); err == nil || !strings.Contains(err.Error(), "swarm close format missing") {
+		t.Fatalf("missing-format legacy close = %v", err)
+	}
 }

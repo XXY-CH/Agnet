@@ -10,6 +10,7 @@
     }
   ],
   "close_body": {
+    "format": "asp-swarm-close/v1",
     "swarm_id": "swarm://conformance/two-step",
     "step_receipts": [
       {
@@ -24,7 +25,7 @@
       }
     ]
   },
-  "close_canonical": "{\"step_receipts\":[{\"receipt_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"step_id\":\"summary\",\"task_id\":\"fed_swarm_conformance_summary\"},{\"receipt_digest\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"step_id\":\"dependent\",\"task_id\":\"fed_swarm_conformance_dependent\"}],\"swarm_id\":\"swarm://conformance/two-step\"}",
+  "close_canonical": "{\"format\":\"asp-swarm-close/v1\",\"step_receipts\":[{\"receipt_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"step_id\":\"summary\",\"task_id\":\"fed_swarm_conformance_summary\"},{\"receipt_digest\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"step_id\":\"dependent\",\"task_id\":\"fed_swarm_conformance_dependent\"}],\"swarm_id\":\"swarm://conformance/two-step\"}",
   "frame": {
     "type": "FED_SWARM_CLOSE",
     "swarm_id": "swarm://conformance/two-step",
@@ -35,6 +36,7 @@
       "zone_signature": "Hdb64jZX0HM1CI3DUqpvE9eOArhfkpIoLURlVa03YHpFvV7Irl3NXfqeJpIWkQ0afVq1Q6mYcnO4t-WRCo1dAg"
     },
     "close": {
+      "format": "asp-swarm-close/v1",
       "swarm_id": "swarm://conformance/two-step",
       "step_receipts": [
         {
@@ -48,7 +50,7 @@
           "receipt_digest": "2222222222222222222222222222222222222222222222222222222222222222"
         }
       ],
-      "close_signature": "7dYVANVNFcc3S_o-l2-vYtU_-gMfKxmm7x-YSGjG0t5GgKj3E8lBNeh5b0xlZnApvPtiZ3-mBMJnovzF5SKlCw"
+      "close_signature": "-9uI7eP4N2GQWAKWewmlMeAD_OslDxoDu7qddOXOLhrU6h0fU7b3d7qnsAs8E9JgxhO9OPIC90tUvJNuUMtWCQ"
     }
   },
   "expected": {
@@ -58,6 +60,6 @@
       "summary",
       "dependent"
     ],
-    "swarm_close_digest": "2dc1dc100ae7412c16a3a13fdf5b8a9138c75311a447d437bc5ee9a0b7d0363e"
+    "swarm_close_digest": "26da3e9ccf2b6bf5f4188170814e998ba3a1ebb3d4952e16674b2413d1b55560"
   }
 }

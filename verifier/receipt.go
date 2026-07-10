@@ -70,7 +70,11 @@ func VerifyFederatedReceipt(frame map[string]any, trusted map[string]map[string]
 	if err := verifyMapSignature(workerKey, receipt, "signature"); err != nil {
 		return errors.New("remote receipt signature verification failed")
 	}
-	return verifyReceiptArtifactManifests(receipt)
+	if err := verifyReceiptArtifactManifests(receipt); err != nil {
+		return err
+	}
+	_, err = verifyResultArtifactPointer(receipt)
+	return err
 }
 
 type swarmExecutionPlanStep struct {
@@ -95,6 +99,171 @@ func SignedReceiptDigest(signedReceipt map[string]any) (string, error) {
 		return "", errors.New("signed receipt signature missing")
 	}
 	return canonicalDigest(signedReceipt)
+}
+
+func VerifyResultArtifact(receipt map[string]any) (map[string]any, error) {
+	if err := verifyReceiptArtifactManifests(receipt); err != nil {
+		return nil, err
+	}
+	return verifyResultArtifactPointer(receipt)
+}
+
+func verifyResultArtifactPointer(receipt map[string]any) (map[string]any, error) {
+	if receipt == nil {
+		return nil, errors.New("result artifact receipt invalid")
+	}
+	raw, exists := receipt["result_artifact"]
+	if !exists {
+		return nil, nil
+	}
+	pointer, ok := raw.(map[string]any)
+	if !ok || pointer == nil {
+		return nil, errors.New("result artifact invalid")
+	}
+	if !hasExactMapFields(pointer, []string{"uri", "sha256", "manifest_hash"}) {
+		return nil, errors.New("result artifact fields invalid")
+	}
+	uri, ok := pointer["uri"].(string)
+	if !ok || uri == "" {
+		return nil, errors.New("result artifact uri invalid")
+	}
+	for _, field := range []string{"sha256", "manifest_hash"} {
+		value, ok := pointer[field].(string)
+		if !ok || !isHexDigest(value) {
+			return nil, errors.New("result artifact " + field + " invalid")
+		}
+	}
+	manifests, err := artifactManifestsFromAny(receipt["artifact_manifests"])
+	if err != nil {
+		return nil, err
+	}
+	matches := 0
+	for _, manifest := range manifests {
+		if manifest["uri"] == pointer["uri"] && manifest["sha256"] == pointer["sha256"] && manifest["manifest_hash"] == pointer["manifest_hash"] {
+			matches++
+		}
+	}
+	if matches != 1 {
+		return nil, errors.New("result artifact manifest mismatch")
+	}
+	return map[string]any{"uri": pointer["uri"], "sha256": pointer["sha256"], "manifest_hash": pointer["manifest_hash"]}, nil
+}
+
+func DeriveSwarmFinalOutput(binding map[string]any, completedReceipts map[string]map[string]any) (map[string]any, error) {
+	steps, err := validateSwarmExecutionBinding(binding)
+	if err != nil {
+		return nil, err
+	}
+	expectedGraphDigest, err := canonicalDigest(map[string]any{"swarm_id": binding["swarm_id"], "plan_digest": binding["plan_digest"], "steps": binding["steps"]})
+	if err != nil {
+		return nil, err
+	}
+	if binding["execution_graph_digest"] != expectedGraphDigest {
+		return nil, errors.New("execution binding graph digest mismatch")
+	}
+	stepByID := make(map[string]swarmExecutionBindingStep, len(steps))
+	for _, step := range steps {
+		stepByID[step.stepID] = step
+	}
+	for _, step := range steps {
+		if receipt, ok := completedReceipts[step.stepID]; !ok || receipt == nil {
+			return nil, errors.New("completed receipt missing: " + step.stepID)
+		}
+	}
+	if len(completedReceipts) != len(steps) {
+		return nil, errors.New("completed receipt count mismatch")
+	}
+	referenced := map[string]bool{}
+	for _, step := range steps {
+		for _, dependency := range step.dependsOn {
+			if _, ok := stepByID[dependency]; !ok {
+				return nil, errors.New("verified execution binding dependency missing")
+			}
+			referenced[dependency] = true
+		}
+	}
+	terminalStepIDs := []string{}
+	for _, step := range steps {
+		if !referenced[step.stepID] {
+			terminalStepIDs = append(terminalStepIDs, step.stepID)
+		}
+	}
+	if len(terminalStepIDs) != 1 {
+		return nil, errors.New("single terminal step required")
+	}
+
+	selectedByStep := map[string]map[string]any{}
+	for _, step := range steps {
+		receipt, ok := completedReceipts[step.stepID]
+		if !ok || receipt == nil {
+			return nil, errors.New("completed receipt missing: " + step.stepID)
+		}
+		if _, err := SignedReceiptDigest(receipt); err != nil {
+			return nil, err
+		}
+		taskID, ok := receipt["task_id"].(string)
+		if !ok || taskID == "" || strings.ContainsRune(taskID, '\x00') {
+			return nil, errors.New("receipt task id invalid")
+		}
+		if receipt["task_digest"] != step.taskDigest {
+			return nil, errors.New("receipt task digest mismatch")
+		}
+		swarm, ok := receipt["swarm"].(map[string]any)
+		if !ok || swarm == nil {
+			return nil, errors.New("receipt swarm binding missing")
+		}
+		if swarm["swarm_id"] != binding["swarm_id"] {
+			return nil, errors.New("receipt swarm_id mismatch")
+		}
+		if swarm["step_id"] != step.stepID {
+			return nil, errors.New("receipt step mismatch")
+		}
+		after, err := exactStringList(swarm["after"], true, "receipt dependency invalid", "receipt dependency duplicate")
+		if err != nil {
+			return nil, err
+		}
+		if !sameStringSlice(after, step.dependsOn) {
+			return nil, errors.New("receipt dependency mismatch")
+		}
+		if swarm["plan_digest"] != binding["plan_digest"] {
+			return nil, errors.New("receipt plan digest mismatch")
+		}
+		if swarm["execution_graph_digest"] != binding["execution_graph_digest"] {
+			return nil, errors.New("receipt execution graph digest mismatch")
+		}
+		if swarm["capability"] != step.capability {
+			return nil, errors.New("receipt capability mismatch")
+		}
+		if swarm["task_digest"] != step.taskDigest {
+			return nil, errors.New("receipt swarm task digest mismatch")
+		}
+		if err := verifyReceiptArtifactManifests(receipt); err != nil {
+			return nil, err
+		}
+		selected, err := verifyResultArtifactPointer(receipt)
+		if err != nil {
+			return nil, err
+		}
+		selectedByStep[step.stepID] = selected
+	}
+
+	terminalStepID := terminalStepIDs[0]
+	terminalReceipt := completedReceipts[terminalStepID]
+	artifact := selectedByStep[terminalStepID]
+	if artifact == nil {
+		return nil, errors.New("terminal result artifact missing")
+	}
+	digest, err := SignedReceiptDigest(terminalReceipt)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"step_id":               terminalStepID,
+		"task_id":               terminalReceipt["task_id"],
+		"signed_receipt_digest": digest,
+		"artifact":              artifact,
+		"selection_rule":        "single-terminal-result",
+	}, nil
 }
 
 func VerifySwarmExecutionBinding(binding, verifiedPlan map[string]any, executableSteps, resolvedWorkers []map[string]any) (string, error) {

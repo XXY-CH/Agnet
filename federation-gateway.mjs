@@ -7,6 +7,7 @@ import {
   b64url,
   canonical,
   capabilityCredential,
+  deriveSwarmFinalOutput,
   enforcePolicy,
   loadOrCreateAgent,
   loadOrCreateZone,
@@ -14,9 +15,11 @@ import {
   publicKeyFromDescriptor,
   resolveAgent,
   signObject,
+  signedReceiptDigest,
   validateTaskId,
   verifyFederatedReceipt,
   verifyFederatedTaskOpen,
+  verifyResultArtifact,
   verifySwarmExecutionBinding,
   verifySwarmPlan,
   verifyObject,
@@ -471,6 +474,7 @@ async function executeLocalTask(socket, zone, originZone, worker, signedTask, ta
     status: "completed",
     artifact_refs: [artifactUri],
     artifact_manifests: [artifact.manifest],
+    result_artifact: { uri: artifact.manifest.uri, sha256: artifact.manifest.sha256, manifest_hash: artifact.manifest.manifest_hash },
     event_count: approvals.length > 0 ? 7 : 5,
     approvals,
     ...receiptExtra,
@@ -623,6 +627,7 @@ function preflightSwarmExecution(trustedZones, frame, workers, readyDag) {
     planDigest: verifiedBinding.planDigest,
     executionGraphDigest: verifiedBinding.executionGraphDigest,
     signedSteps: Object.freeze([...verifiedSteps]),
+    binding: verifiedBinding,
     executionSteps: Object.freeze([...executionSteps]),
     scheduler: scheduled?.scheduler ?? null,
   });
@@ -632,7 +637,7 @@ async function executeSwarm(socket, trustedZones, zone, workers, frame, agentSco
   workers = Array.isArray(workers) ? workers : [workers];
   const context = preflightSwarmExecution(trustedZones, frame, workers, readyDag);
   const completed = new Map();
-  const stepReceipts = [];
+  const completedWorkers = new Map();
   const microContracts = [];
   const migrationLog = [];
   for (const step of context.executionSteps) {
@@ -640,14 +645,14 @@ async function executeSwarm(socket, trustedZones, zone, workers, frame, agentSco
     for (const dependency of step.dependsOn) {
       const receipt = completed.get(dependency);
       if (!receipt) throw new Error(`swarm dependency not completed: ${dependency}`);
-      const manifest = receipt.artifact_manifests?.[0];
+      const manifest = verifyResultArtifact(receipt);
       if (!manifest) throw new Error(`swarm dependency artifact missing: ${dependency}`);
       inputArtifacts.push({
         step_id: dependency,
         uri: manifest.uri,
         sha256: manifest.sha256,
         manifest_hash: manifest.manifest_hash,
-        receipt_digest: digestHex(receipt),
+        signed_receipt_digest: signedReceiptDigest(receipt),
       });
     }
     const swarmProof = {
@@ -668,7 +673,7 @@ async function executeSwarm(socket, trustedZones, zone, workers, frame, agentSco
         const signedReceipt = await executeLocalTask(socket, zone, context.originZone, step.originalWorker, step.signedTask, step.task, { swarm: swarmProof });
         microContracts.push(microContract);
         completed.set(step.stepId, signedReceipt);
-        stepReceipts.push({ step_id: step.stepId, task_id: signedReceipt.task_id, receipt_digest: digestHex(signedReceipt), worker: step.originalWorker.descriptor });
+        completedWorkers.set(step.stepId, step.originalWorker.descriptor);
         continue;
       } catch (error) {
         failure = error;
@@ -681,7 +686,7 @@ async function executeSwarm(socket, trustedZones, zone, workers, frame, agentSco
     const signedReceipt = await executeLocalTask(socket, zone, context.originZone, step.migrationWorker, step.signedTask, step.task, { swarm: swarmProof });
     microContracts.push(microContract);
     completed.set(step.stepId, signedReceipt);
-    stepReceipts.push({ step_id: step.stepId, task_id: signedReceipt.task_id, receipt_digest: digestHex(signedReceipt), worker: step.migrationWorker.descriptor });
+    completedWorkers.set(step.stepId, step.migrationWorker.descriptor);
     migrationLog.push({
       step_id: step.stepId,
       original_worker_aid: step.originalWorker.aid,
@@ -690,13 +695,26 @@ async function executeSwarm(socket, trustedZones, zone, workers, frame, agentSco
       migration_at: new Date().toISOString(),
     });
   }
+  const stepReceipts = context.binding.steps.map((step) => {
+    const signedReceipt = completed.get(step.step_id);
+    const worker = completedWorkers.get(step.step_id);
+    if (!signedReceipt || !worker) throw new Error(`swarm completed receipt missing: ${step.step_id}`);
+    return {
+      step_id: step.step_id,
+      task_id: signedReceipt.task_id,
+      signed_receipt_digest: signedReceiptDigest(signedReceipt),
+      worker,
+    };
+  });
   const conflictResolutions = swarmConflictResolutions(zone, context.swarmId, completed, stepReceipts, agentScores);
   for (const resolution of conflictResolutions) await sendEvent(socket, resolution);
   const closeBody = {
+    format: "asp-swarm-close/v2",
     swarm_id: context.swarmId,
     plan_digest: context.planDigest,
     execution_graph_digest: context.executionGraphDigest,
     step_receipts: stepReceipts,
+    final_output: deriveSwarmFinalOutput(context.binding, completed),
     micro_contracts: microContracts,
     migration_log: migrationLog,
     ...(conflictResolutions.length > 0 ? { conflict_resolutions: conflictResolutions } : {}),

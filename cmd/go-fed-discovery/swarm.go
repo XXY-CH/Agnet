@@ -220,6 +220,7 @@ type verifiedSwarmExecution struct {
 	swarmID              string
 	planDigest           string
 	executionGraphDigest string
+	binding              map[string]any
 	signedOrder          []string
 	executionSteps       []*verifiedSwarmStep
 	scheduler            map[string]any
@@ -419,6 +420,7 @@ func (f Fixture) preflightSwarmExecution(origin, frame map[string]any, readyDAG 
 		swarmID:              swarmID,
 		planDigest:           optionalString(binding["plan_digest"]),
 		executionGraphDigest: graphDigest,
+		binding:              binding,
 		signedOrder:          signedOrder,
 		executionSteps:       executionSteps,
 		scheduler:            scheduler,
@@ -431,7 +433,7 @@ func (f Fixture) executeSwarmWithScheduler(send sendFunc, origin, frame map[stri
 		return err
 	}
 	completed := map[string]map[string]any{}
-	stepReceipts := []map[string]any{}
+	completedWorkers := map[string]map[string]any{}
 	microContracts := []map[string]any{}
 	migrationLog := []map[string]any{}
 	for _, step := range context.executionSteps {
@@ -441,17 +443,23 @@ func (f Fixture) executeSwarmWithScheduler(send sendFunc, origin, frame map[stri
 			if !ok {
 				return errors.New("swarm dependency not completed: " + dependency)
 			}
-			manifests := mapsFromAny(receipt["artifact_manifests"])
-			if len(manifests) == 0 {
+			manifest, err := verifier.VerifyResultArtifact(receipt)
+			if err != nil {
+				return err
+			}
+			if manifest == nil {
 				return errors.New("swarm dependency artifact missing: " + dependency)
 			}
-			manifest := manifests[0]
+			signedDependencyDigest, err := verifier.SignedReceiptDigest(receipt)
+			if err != nil {
+				return err
+			}
 			inputArtifacts = append(inputArtifacts, map[string]any{
-				"step_id":        dependency,
-				"uri":            manifest["uri"],
-				"sha256":         manifest["sha256"],
-				"manifest_hash":  manifest["manifest_hash"],
-				"receipt_digest": digestHex(receipt),
+				"step_id":               dependency,
+				"uri":                   manifest["uri"],
+				"sha256":                manifest["sha256"],
+				"manifest_hash":         manifest["manifest_hash"],
+				"signed_receipt_digest": signedDependencyDigest,
 			})
 		}
 		proof := map[string]any{
@@ -472,7 +480,7 @@ func (f Fixture) executeSwarmWithScheduler(send sendFunc, origin, frame map[stri
 			}
 			executeErr = f.executeTask(send, origin, step.originalWorker, step.signedTask, nil, "", nil, false, map[string]any{"swarm": proof}, func(receipt map[string]any) error {
 				completed[step.stepID] = receipt
-				stepReceipts = append(stepReceipts, map[string]any{"step_id": step.stepID, "task_id": receipt["task_id"], "receipt_digest": digestHex(receipt), "worker": step.originalWorker.Descriptor})
+				completedWorkers[step.stepID] = step.originalWorker.Descriptor
 				return nil
 			})
 			if executeErr == nil {
@@ -489,13 +497,30 @@ func (f Fixture) executeSwarmWithScheduler(send sendFunc, origin, frame map[stri
 		}
 		if err := f.executeTask(send, origin, step.migrationWorker, step.signedTask, nil, "", nil, false, map[string]any{"swarm": proof}, func(receipt map[string]any) error {
 			completed[step.stepID] = receipt
-			stepReceipts = append(stepReceipts, map[string]any{"step_id": step.stepID, "task_id": receipt["task_id"], "receipt_digest": digestHex(receipt), "worker": step.migrationWorker.Descriptor})
+			completedWorkers[step.stepID] = step.migrationWorker.Descriptor
 			return nil
 		}); err != nil {
 			return err
 		}
 		microContracts = append(microContracts, migratedMicroContract)
 		migrationLog = append(migrationLog, migrationLogEntry(step.stepID, step.originalWorker, executeErr.Error(), step.migrationWorker))
+	}
+	stepReceipts := make([]map[string]any, 0, len(context.signedOrder))
+	for _, stepID := range context.signedOrder {
+		receipt := completed[stepID]
+		worker := completedWorkers[stepID]
+		if receipt == nil || worker == nil {
+			return errors.New("swarm completed receipt missing: " + stepID)
+		}
+		receiptDigest, err := verifier.SignedReceiptDigest(receipt)
+		if err != nil {
+			return err
+		}
+		stepReceipts = append(stepReceipts, map[string]any{"step_id": stepID, "task_id": receipt["task_id"], "signed_receipt_digest": receiptDigest, "worker": worker})
+	}
+	finalOutput, err := verifier.DeriveSwarmFinalOutput(context.binding, completed)
+	if err != nil {
+		return err
 	}
 	conflictResolutions := f.swarmConflictResolutions(context.swarmID, completed, stepReceipts)
 	for _, resolution := range conflictResolutions {
@@ -504,10 +529,12 @@ func (f Fixture) executeSwarmWithScheduler(send sendFunc, origin, frame map[stri
 		}
 	}
 	closeBody := map[string]any{
+		"format":                 "asp-swarm-close/v2",
 		"swarm_id":               context.swarmID,
 		"plan_digest":            context.planDigest,
 		"execution_graph_digest": context.executionGraphDigest,
 		"step_receipts":          stepReceipts,
+		"final_output":           finalOutput,
 		"micro_contracts":        microContracts,
 		"migration_log":          migrationLog,
 	}

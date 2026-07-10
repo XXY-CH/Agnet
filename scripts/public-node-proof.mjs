@@ -5,7 +5,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname } from "node:path";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
-import { canonical, createAgent, createZone, publicKeyFromDescriptor, signObject, swarmExecutionBinding, swarmPlan, verifyObject, zoneBinding } from "../asp-core.mjs";
+import { canonical, createAgent, createZone, publicKeyFromDescriptor, signObject, signedReceiptDigest, swarmExecutionBinding, swarmPlan, verifyObject, zoneBinding } from "../asp-core.mjs";
 
 const execFileAsync = promisify(execFile);
 await mkdir("state", { recursive: true });
@@ -300,7 +300,7 @@ function openSwarm(port, zone) {
       const expected = receipts.map((receipt) => ({
         step_id: receipt.swarm.step_id,
         task_id: receipt.task_id,
-        receipt_digest: digestJson(receipt),
+        signed_receipt_digest: signedReceiptDigest(receipt),
       }));
       return {
         swarmId: close.swarm_id,
@@ -309,7 +309,7 @@ function openSwarm(port, zone) {
         closeReceipts: sameStepReceipts(close.step_receipts, expected),
         planDigest: close.plan_digest,
         executionGraphDigest: close.execution_graph_digest,
-        closeDigest: digestJson(body),
+        closeDigest: digestJson(close),
         closeFrame: { ...frame, zone: fixture.authority },
       };
     },
@@ -320,7 +320,7 @@ function sameStepReceipts(actual, expected) {
   return actual.length === expected.length && actual.every((step, index) =>
     step.step_id === expected[index].step_id &&
     step.task_id === expected[index].task_id &&
-    step.receipt_digest === expected[index].receipt_digest
+    step.signed_receipt_digest === expected[index].signed_receipt_digest
   );
 }
 

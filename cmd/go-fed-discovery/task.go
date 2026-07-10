@@ -237,6 +237,7 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		"to":                 worker.Descriptor["aid"],
 		"artifact_refs":      artifactRefs,
 		"artifact_manifests": artifactManifests,
+		"result_artifact":    map[string]any{"uri": artifactManifest["uri"], "sha256": artifactManifest["sha256"], "manifest_hash": artifactManifest["manifest_hash"]},
 		"tool_output_digest": artifactManifest["sha256"],
 		"event_count":        float64(5 + len(approvals)*2),
 		"approvals":          approvals,
