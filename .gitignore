@@ -2,3 +2,8 @@ artifacts/
 state/
 
 .compound-engineering/
+
+# Local OS and Python cache files
+.DS_Store
+__pycache__/
+*.py[cod]

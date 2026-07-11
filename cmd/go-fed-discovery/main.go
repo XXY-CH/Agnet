@@ -33,8 +33,12 @@ func main() {
 	artifactStoreDir := flag.String("artifact-store", "", "optional filesystem artifact mirror directory")
 	fixturePath := flag.String("fixture", "test-vectors/asp-v1.5-capability-credential.json", "signed descriptor fixture")
 	trustPath := flag.String("trusted", "state/go-fed-trusted-zones.json", "trusted origin zones")
-	authorityKeyPath := flag.String("authority-key", "state/keys/go-fed-authority.seed", "authority seed key file")
-	workerKeyPath := flag.String("worker-key", "state/keys/go-fed-worker.seed", "worker seed key file")
+	authorityStorePath := flag.String("authority-store", "state/keys/go-fed-authority", "managed authority key store directory")
+	authorityPassphrasePath := flag.String("authority-passphrase-file", "state/keys/go-fed-authority.passphrase", "managed authority passphrase file")
+	authorityRecordDigest := flag.String("authority-record-digest", "", "optional exact authority managed generation record digest")
+	workerStorePath := flag.String("worker-store", "state/keys/go-fed-worker", "managed worker key store directory")
+	workerPassphrasePath := flag.String("worker-passphrase-file", "state/keys/go-fed-worker.passphrase", "managed worker passphrase file")
+	workerRecordDigest := flag.String("worker-record-digest", "", "optional exact worker managed generation record digest")
 	auditPath := flag.String("audit", "state/go-fed-audit.log", "audit JSONL file")
 	verifyAudit := flag.Bool("verify-audit", false, "verify audit JSONL file and exit")
 	verifyReceiptPath := flag.String("verify-receipt", "", "verify one receipt record JSON file and exit")
@@ -49,12 +53,12 @@ func main() {
 	flag.Parse()
 
 	if *printZone {
-		authorityKey, err := loadPrivateKey(*authorityKeyPath, "authority")
+		authority, err := loadManagedIdentity(ManagedKeyConfig{StorePath: *authorityStorePath, PassphraseFile: *authorityPassphrasePath, RecordDigest: *authorityRecordDigest}, "zid")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		zone, err := zoneDescriptor(authorityKey, "zone://go-client")
+		zone, err := zoneDescriptor(authority.PrivateKey, "zone://go-client")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -66,12 +70,12 @@ func main() {
 		return
 	}
 	if *interopRequestPort != "" {
-		authorityKey, err := loadPrivateKey(*authorityKeyPath, "authority")
+		authority, err := loadManagedIdentity(ManagedKeyConfig{StorePath: *authorityStorePath, PassphraseFile: *authorityPassphrasePath, RecordDigest: *authorityRecordDigest}, "zid")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		requesterKey, err := loadPrivateKey(*workerKeyPath, "requester")
+		requester, err := loadManagedIdentity(ManagedKeyConfig{StorePath: *workerStorePath, PassphraseFile: *workerPassphrasePath, RecordDigest: *workerRecordDigest}, "aid")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -81,7 +85,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		result, err := interopRequestNode(*interopRequestPort, trusted, authorityKey, requesterKey)
+		result, err := interopRequestNode(*interopRequestPort, trusted, authority.PrivateKey, requester.PrivateKey)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -174,7 +178,11 @@ func main() {
 		return
 	}
 
-	if err := serve(*listenHost, *port, *wsPort, *humanPort, *humanToken, *humanActorPolicyPath, *tlsCertPath, *tlsKeyPath, *tlsClientCAPath, *artifactStoreDir, *fixturePath, *trustPath, *authorityKeyPath, *workerKeyPath, *auditPath); err != nil {
+	runtimeKeys := ManagedRuntimeConfig{
+		Authority: ManagedKeyConfig{StorePath: *authorityStorePath, PassphraseFile: *authorityPassphrasePath, RecordDigest: *authorityRecordDigest},
+		Worker:    ManagedKeyConfig{StorePath: *workerStorePath, PassphraseFile: *workerPassphrasePath, RecordDigest: *workerRecordDigest},
+	}
+	if err := serve(*listenHost, *port, *wsPort, *humanPort, *humanToken, *humanActorPolicyPath, *tlsCertPath, *tlsKeyPath, *tlsClientCAPath, *artifactStoreDir, *fixturePath, *trustPath, runtimeKeys, *auditPath); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -430,16 +438,8 @@ func trustedZonesMapFromBundle(value map[string]any) (map[string]map[string]any,
 	return out, nil
 }
 
-func serve(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, tlsClientCAPath, artifactStoreDir, fixturePath, trustPath, authorityKeyPath, workerKeyPath, auditPath string) error {
-	authorityKey, err := loadPrivateKey(authorityKeyPath, "authority")
-	if err != nil {
-		return err
-	}
-	workerKey, err := loadPrivateKey(workerKeyPath, "worker")
-	if err != nil {
-		return err
-	}
-	fixture, err := loadFixture(fixturePath, authorityKey, workerKey)
+func serve(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, tlsClientCAPath, artifactStoreDir, fixturePath, trustPath string, runtimeKeys ManagedRuntimeConfig, auditPath string) error {
+	fixture, err := loadManagedFixture(fixturePath, runtimeKeys)
 	if err != nil {
 		return err
 	}

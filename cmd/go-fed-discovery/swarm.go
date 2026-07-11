@@ -432,11 +432,17 @@ func (f Fixture) executeSwarmWithScheduler(send sendFunc, origin, frame map[stri
 	if err != nil {
 		return err
 	}
+	if err := f.verifySwarmGenerationPins(); err != nil {
+		return err
+	}
 	completed := map[string]map[string]any{}
 	completedWorkers := map[string]map[string]any{}
 	microContracts := []map[string]any{}
 	migrationLog := []map[string]any{}
 	for _, step := range context.executionSteps {
+		if err := f.verifySwarmGenerationPins(); err != nil {
+			return err
+		}
 		inputArtifacts := []map[string]any{}
 		for _, dependency := range step.after {
 			receipt, ok := completed[dependency]

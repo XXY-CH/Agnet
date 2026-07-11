@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"agnet/internal/managedkey"
 	"crypto/ed25519"
 	"regexp"
 	"sync"
@@ -10,11 +11,14 @@ import (
 type Fixture struct {
 	Authority           map[string]any      `json:"authority"`
 	WorkerProfile       WorkerProfile       `json:"worker_profile"`
+	WorkerDescriptor    map[string]any      `json:"worker"`
 	WorkerProfiles      []WorkerProfile     `json:"worker_profiles"`
 	Workers             []Worker            `json:"-"`
 	Credential          map[string]any      `json:"credential"`
 	Revocations         []any               `json:"revocations"`
 	AuthorityPrivateKey ed25519.PrivateKey  `json:"-"`
+	AuthorityGeneration    managedkey.KeyGenerationRef `json:"key_generation"`
+	AuthorityGenerationPin WorkerGenerationPin       `json:"authority_generation_pin"`
 	Audit               *AuditLog           `json:"-"`
 	TaskStateDir        string              `json:"-"`
 	QueueDir            string              `json:"-"`
@@ -39,22 +43,55 @@ const credentialValidUntilPattern = `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d
 var ed25519MultikeyPrefix = []byte{0xed, 0x01}
 var credentialValidUntilRegexp = regexp.MustCompile(credentialValidUntilPattern)
 
+type ManagedKeyConfig struct {
+	StorePath      string `json:"store_path,omitempty"`
+	PassphraseFile string `json:"passphrase_file,omitempty"`
+	RecordDigest   string `json:"record_digest,omitempty"`
+}
+
+type ManagedRuntimeConfig struct {
+	Authority ManagedKeyConfig
+	Worker    ManagedKeyConfig
+}
+
+type WorkerGenerationPin struct {
+	StorePath      string `json:"store_path"`
+	PassphraseFile string `json:"passphrase_file"`
+	RecordDigest   string `json:"record_digest"`
+}
+
 type WorkerProfile struct {
-	KeyFile      string         `json:"key_file,omitempty"`
-	Alias        string         `json:"alias"`
-	Tool         string         `json:"tool,omitempty"`
-	ToolName     string         `json:"tool_name,omitempty"`
-	ToolCommand  []string       `json:"tool_command,omitempty"`
-	SandboxClaim string         `json:"sandbox_claim,omitempty"`
-	Transports   []string       `json:"transports"`
-	Capabilities []string       `json:"capabilities"`
-	Policy       map[string]any `json:"policy"`
+	KeyFile        string         `json:"key_file,omitempty"`
+	KeyStore       string         `json:"key_store,omitempty"`
+	PassphraseFile string         `json:"passphrase_file,omitempty"`
+	KeyGeneration  WorkerGenerationPin `json:"key_generation,omitempty"`
+	Alias          string         `json:"alias"`
+	Tool           string         `json:"tool,omitempty"`
+	ToolName       string         `json:"tool_name,omitempty"`
+	ToolCommand    []string       `json:"tool_command,omitempty"`
+	SandboxClaim   string         `json:"sandbox_claim,omitempty"`
+	Docker         *DockerWorkerProfile `json:"docker,omitempty"`
+	Transports     []string       `json:"transports"`
+	Capabilities   []string       `json:"capabilities"`
+	Policy         map[string]any `json:"policy"`
+}
+
+// ToolResult stages a tool's bytes and supporting evidence until task execution
+// has completed enough to publish artifacts.
+type ToolResult struct {
+	Result              []byte
+	MediaType           string
+	Transcript          []byte
+	TranscriptMediaType string
+	Evidence            map[string]any
 }
 
 type Worker struct {
-	Profile    WorkerProfile
-	Descriptor map[string]any
-	PrivateKey ed25519.PrivateKey
+	Profile             WorkerProfile
+	Descriptor          map[string]any
+	PrivateKey          ed25519.PrivateKey
+	GenerationRef       managedkey.KeyGenerationRef
+	WorkerGenerationPin WorkerGenerationPin
 }
 
 type TrustStore struct {

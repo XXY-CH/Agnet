@@ -9,8 +9,6 @@ import {
   capabilityCredential,
   deriveSwarmFinalOutput,
   enforcePolicy,
-  loadOrCreateAgent,
-  loadOrCreateZone,
   loadTrustedZones,
   publicKeyFromDescriptor,
   resolveAgent,
@@ -32,6 +30,48 @@ import {
   verifyZoneBinding,
   zoneRevocation,
 } from "./asp-core.mjs";
+import { loadManagedAgent, loadManagedZone } from "./managed-key-runtime.mjs";
+
+async function loadGatewayConfig(configFile = process.env.AGNET_MANAGED_RUNTIME_CONFIG ?? "state/federation-managed-runtime.json") {
+  if (typeof configFile !== "string" || configFile.length === 0 || configFile.includes("\0")) throw new Error("managed runtime config path invalid");
+  let config;
+  try {
+    config = JSON.parse(await readFile(configFile, "utf8"));
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new Error("managed runtime config invalid");
+    throw error;
+  }
+  if (config === null || typeof config !== "object" || Array.isArray(config)) throw new Error("managed runtime config invalid");
+  return config;
+}
+
+function sameGeneration(left, right) {
+  return left?.generation === right?.generation && left?.record_digest === right?.record_digest && left?.identity_kind === right?.identity_kind && left?.identity_value === right?.identity_value && left?.envelope_sha256 === right?.envelope_sha256 && left?.descriptor_digest === right?.descriptor_digest;
+}
+
+function pinManagedIdentity(identity, config) {
+  return { ...identity, managedRuntimeConfig: structuredClone(config), managedGenerationPin: identity.keyGeneration };
+}
+
+async function reloadPinnedAgent(worker) {
+  const config = worker?.managedRuntimeConfig;
+  if (!config || !worker.managedGenerationPin) throw new Error("managed worker generation pin missing");
+  const active = await loadManagedAgent(config);
+  if (!sameGeneration(active.keyGeneration, worker.managedGenerationPin)) throw new Error("managed key active generation changed during Swarm");
+  const pinned = await loadManagedAgent({ ...config, recordDigest: worker.managedGenerationPin.record_digest });
+  if (!sameGeneration(pinned.keyGeneration, worker.managedGenerationPin) || canonical(pinned.descriptor) !== canonical(worker.descriptor)) throw new Error("managed worker generation record mismatch");
+  return pinManagedIdentity(pinned, config);
+}
+
+async function reloadPinnedZone(zone) {
+  const config = zone?.managedRuntimeConfig;
+  if (!config || !zone.managedGenerationPin) throw new Error("managed Zone generation pin missing");
+  const active = await loadManagedZone(config);
+  if (!sameGeneration(active.keyGeneration, zone.managedGenerationPin)) throw new Error("managed key active generation changed during Swarm");
+  const pinned = await loadManagedZone({ ...config, recordDigest: zone.managedGenerationPin.record_digest });
+  if (!sameGeneration(pinned.keyGeneration, zone.managedGenerationPin) || canonical(pinned.descriptor) !== canonical(zone.descriptor)) throw new Error("managed Zone generation record mismatch");
+  return pinManagedIdentity(pinned, config);
+}
 
 function send(socket, frame) {
   socket.write(`${JSON.stringify(frame)}\n`);
@@ -668,12 +708,14 @@ async function executeSwarm(socket, trustedZones, zone, workers, frame, agentSco
     let failure = step.originalPolicyError;
     if (!failure) {
       try {
-        const microContract = microContractForStep(step.originalWorker, context.swarmId, step.stepId, step.task);
+        const liveZone = await reloadPinnedZone(zone);
+        const liveWorker = await reloadPinnedAgent(step.originalWorker);
+        const microContract = microContractForStep(liveWorker, context.swarmId, step.stepId, step.task);
         await sendEvent(socket, microContract);
-        const signedReceipt = await executeLocalTask(socket, zone, context.originZone, step.originalWorker, step.signedTask, step.task, { swarm: swarmProof });
+        const signedReceipt = await executeLocalTask(socket, liveZone, context.originZone, liveWorker, step.signedTask, step.task, { swarm: swarmProof });
         microContracts.push(microContract);
         completed.set(step.stepId, signedReceipt);
-        completedWorkers.set(step.stepId, step.originalWorker.descriptor);
+        completedWorkers.set(step.stepId, liveWorker.descriptor);
         continue;
       } catch (error) {
         failure = error;
@@ -681,12 +723,14 @@ async function executeSwarm(socket, trustedZones, zone, workers, frame, agentSco
     }
 
     if (!step.migrationWorker) throw failure;
-    const microContract = microContractForStep(step.migrationWorker, context.swarmId, step.stepId, step.task);
+    const liveZone = await reloadPinnedZone(zone);
+    const liveMigrationWorker = await reloadPinnedAgent(step.migrationWorker);
+    const microContract = microContractForStep(liveMigrationWorker, context.swarmId, step.stepId, step.task);
     await sendEvent(socket, microContract);
-    const signedReceipt = await executeLocalTask(socket, zone, context.originZone, step.migrationWorker, step.signedTask, step.task, { swarm: swarmProof });
+    const signedReceipt = await executeLocalTask(socket, liveZone, context.originZone, liveMigrationWorker, step.signedTask, step.task, { swarm: swarmProof });
     microContracts.push(microContract);
     completed.set(step.stepId, signedReceipt);
-    completedWorkers.set(step.stepId, step.migrationWorker.descriptor);
+    completedWorkers.set(step.stepId, liveMigrationWorker.descriptor);
     migrationLog.push({
       step_id: step.stepId,
       original_worker_aid: step.originalWorker.aid,
@@ -720,35 +764,19 @@ async function executeSwarm(socket, trustedZones, zone, workers, frame, agentSco
     ...(conflictResolutions.length > 0 ? { conflict_resolutions: conflictResolutions } : {}),
     ...(context.scheduler ? { scheduler: context.scheduler } : {}),
   };
-  const closeProof = { ...closeBody, close_signature: signObject(zone.privateKey, closeBody) };
-  await appendAudit({ kind: "fed_swarm_close", zone: zone.descriptor, close: closeProof });
-  send(socket, { type: "FED_SWARM_CLOSE", swarm_id: context.swarmId, zone: zone.descriptor, close: closeProof });
+  const liveZone = await reloadPinnedZone(zone);
+  const closeProof = { ...closeBody, close_signature: signObject(liveZone.privateKey, closeBody) };
+  await appendAudit({ kind: "fed_swarm_close", zone: liveZone.descriptor, close: closeProof });
+  send(socket, { type: "FED_SWARM_CLOSE", swarm_id: context.swarmId, zone: liveZone.descriptor, close: closeProof });
 }
 
-async function serve(port, trustedZonesFile) {
+async function serve(port, trustedZonesFile, configFile) {
+  const config = await loadGatewayConfig(configFile);
   const trustedZones = await loadTrustedZones(trustedZonesFile);
-  const zone = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
-  const worker = await loadOrCreateAgent(
-    "agent://zone-b/summarizer",
-    "state/keys/fed-zone-b-summarizer.pkcs8",
-    { allow_network: false, approval_required: ["write"], write_prefixes: ["artifact://local/"] },
-    [`fed+tcp://127.0.0.1:${port}`],
-    ["summarize.text", "migration.shared"],
-  );
-  const semanticWorker = await loadOrCreateAgent(
-    "agent://zone-b/semantic-summarize-text-fast",
-    "state/keys/fed-zone-b-semantic-summarizer.pkcs8",
-    { allow_network: false, approval_required: ["write"], write_prefixes: ["artifact://local/"] },
-    [`fed+tcp://127.0.0.1:${port}`],
-    ["summarize.text.fast", "migration.shared"],
-  );
-  const migrationWorker = await loadOrCreateAgent(
-    "agent://zone-b/migration-summarizer",
-    "state/keys/fed-zone-b-migration-summarizer.pkcs8",
-    { allow_network: true, approval_required: ["write"], write_prefixes: ["artifact://local/"] },
-    [`fed+tcp://127.0.0.1:${port}`],
-    ["summarize.text", "migration.shared"],
-  );
+  const zone = pinManagedIdentity(await loadManagedZone(config.server?.zone), config.server?.zone);
+  const worker = pinManagedIdentity(await loadManagedAgent(config.server?.worker), config.server?.worker);
+  const semanticWorker = pinManagedIdentity(await loadManagedAgent(config.server?.semanticWorker), config.server?.semanticWorker);
+  const migrationWorker = pinManagedIdentity(await loadManagedAgent(config.server?.migrationWorker), config.server?.migrationWorker);
   const knownWorkers = [worker, semanticWorker, migrationWorker];
   const receiptCounts = new Map(await Promise.all(
     knownWorkers.map(async (knownWorker) => [knownWorker.aid, await countCompletedReceiptsFromAudit("state/audit.log", knownWorker.aid)]),
@@ -823,10 +851,11 @@ async function serve(port, trustedZonesFile) {
   });
 }
 
-async function request(port, trustedZonesFile, alias = "agent://zone-b/summarizer") {
+async function request(port, trustedZonesFile, alias = "agent://zone-b/summarizer", configFile) {
+  const config = await loadGatewayConfig(configFile);
   const trustedZones = await loadTrustedZones(trustedZonesFile);
-  const zone = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/fed-zone-a-requester.pkcs8");
+  const zone = await loadManagedZone(config.client?.zone);
+  const requester = await loadManagedAgent(config.client?.requester);
   const task = {
     task_id: `fed_task_${Date.now()}`,
     from: requester.aid,
@@ -865,9 +894,10 @@ async function request(port, trustedZonesFile, alias = "agent://zone-b/summarize
   console.log(JSON.stringify({ zone: zone.zid, requester: requester.aid, events, receipt }, null, 2));
 }
 
-async function resolveRemote(port, trustedZonesFile, alias = "agent://zone-b/summarizer") {
+async function resolveRemote(port, trustedZonesFile, alias = "agent://zone-b/summarizer", configFile) {
+  const config = await loadGatewayConfig(configFile);
   const trustedZones = await loadTrustedZones(trustedZonesFile);
-  const zone = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const zone = await loadManagedZone(config.client?.zone);
   const socket = net.createConnection(port, "127.0.0.1");
   let result;
   const done = new Promise((resolve, reject) => {
@@ -898,9 +928,10 @@ async function resolveRemote(port, trustedZonesFile, alias = "agent://zone-b/sum
   console.log(JSON.stringify(result, null, 2));
 }
 
-async function queryRemote(port, trustedZonesFile, capability = "summarize.text", print = true, intent) {
+async function queryRemote(port, trustedZonesFile, capability = "summarize.text", print = true, intent, configFile) {
+  const config = await loadGatewayConfig(configFile);
   const trustedZones = await loadTrustedZones(trustedZonesFile);
-  const zone = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const zone = await loadManagedZone(config.client?.zone);
   const socket = net.createConnection(port, "127.0.0.1");
   let result;
   const done = new Promise((resolve, reject) => {
@@ -958,10 +989,11 @@ async function queryRemote(port, trustedZonesFile, capability = "summarize.text"
   return result;
 }
 
-async function auditRemote(port, trustedZonesFile, taskId) {
+async function auditRemote(port, trustedZonesFile, taskId, configFile) {
   if (!taskId) throw new Error("audit task_id missing");
+  const config = await loadGatewayConfig(configFile);
   const trustedZones = await loadTrustedZones(trustedZonesFile);
-  const zone = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  const zone = await loadManagedZone(config.client?.zone);
   const socket = net.createConnection(port, "127.0.0.1");
   let result;
   const done = new Promise((resolve, reject) => {
@@ -994,31 +1026,30 @@ async function auditRemote(port, trustedZonesFile, taskId) {
   console.log(JSON.stringify(result, null, 2));
 }
 
-async function requestCapability(port, trustedZonesFile, capability = "summarize.text") {
-  const result = await queryRemote(port, trustedZonesFile, capability, false);
+async function requestCapability(port, trustedZonesFile, capability = "summarize.text", configFile) {
+  const result = await queryRemote(port, trustedZonesFile, capability, false, undefined, configFile);
   const [match] = result.matches;
   if (!match) throw new Error(`no remote capability match: ${capability}`);
-  await request(port, trustedZonesFile, match.alias);
+  await request(port, trustedZonesFile, match.alias, configFile);
 }
 
 async function main() {
   const [mode, portArg, trustedZonesFile, value, ...rest] = process.argv.slice(2);
+  const configFile = process.env.AGNET_MANAGED_RUNTIME_CONFIG ?? "state/federation-managed-runtime.json";
   if (mode === "serve") {
-    await serve(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json");
+    await serve(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", configFile);
   } else if (mode === "request") {
-    await request(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value);
+    await request(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value, configFile);
   } else if (mode === "resolve") {
-    await resolveRemote(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value);
+    await resolveRemote(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value, configFile);
   } else if (mode === "query") {
-    await queryRemote(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value, true, rest.join(" ") || undefined);
+    await queryRemote(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value, true, rest.join(" ") || undefined, configFile);
   } else if (mode === "audit") {
-    await auditRemote(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value);
+    await auditRemote(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value, configFile);
   } else if (mode === "request-capability") {
-    await requestCapability(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value);
+    await requestCapability(Number(portArg ?? 8990), trustedZonesFile ?? "state/trusted-zones.json", value, configFile);
   } else {
-    console.error(
-      "usage: node federation-gateway.mjs serve <port> <trusted-zones.json> | request <port> <trusted-zones.json> [agent://alias] | resolve <port> <trusted-zones.json> [agent://alias] | query <port> <trusted-zones.json> [capability] | audit <port> <trusted-zones.json> <task_id> | request-capability <port> <trusted-zones.json> [capability]",
-    );
+    console.error("usage: AGNET_MANAGED_RUNTIME_CONFIG=<managed-runtime.json> node federation-gateway.mjs serve <port> <trusted-zones.json>");
     process.exitCode = 2;
   }
 }

@@ -271,7 +271,11 @@ function normalizeRotationProof(value) {
 }
 
 function normalizeGenerationRebinding(value) {
-  const proof = requireExactFields(value, ["format", "zone", "alias", "previous_aid", "next_aid", "generation", "record_digest", "zone_signature"], "generation rebinding");
+  const hasZoneGeneration = value !== null && typeof value === "object" && !Array.isArray(value) && Object.hasOwn(value, "zone_generation");
+  const fields = hasZoneGeneration
+    ? ["format", "zone", "alias", "previous_aid", "next_aid", "generation", "record_digest", "zone_generation", "zone_record_digest", "zone_signature"]
+    : ["format", "zone", "alias", "previous_aid", "next_aid", "generation", "record_digest", "zone_signature"];
+  const proof = requireExactFields(value, fields, "generation rebinding");
   if (proof.format !== KEY_GENERATION_REBINDING_FORMAT) throw new Error("generation rebinding format invalid");
   validateIdentity({ kind: IDENTITY_ZID, value: proof.zone });
   if (typeof proof.alias !== "string" || proof.alias === "" || proof.alias.includes("\0")) throw new Error("generation rebinding alias invalid");
@@ -279,6 +283,10 @@ function normalizeGenerationRebinding(value) {
   validateIdentity({ kind: IDENTITY_AID, value: proof.next_aid });
   if (!Number.isSafeInteger(proof.generation) || proof.generation < 1) throw new Error("generation rebinding generation invalid");
   requireHexDigest(proof.record_digest, "generation rebinding record digest");
+  if (hasZoneGeneration) {
+    if (!Number.isSafeInteger(proof.zone_generation) || proof.zone_generation < 1) throw new Error("generation rebinding Zone generation invalid");
+    requireHexDigest(proof.zone_record_digest, "generation rebinding Zone record digest");
+  }
   decodeBase64UrlExact(proof.zone_signature, "generation rebinding zone signature");
   return Object.freeze({ ...proof });
 }
@@ -378,9 +386,9 @@ export function createSignedGenerationRecord({ body, privateKey }) {
   return Object.freeze({ body: normalizedBody, record_digest: digest, identity_signature: signObject(privateKey, generationSignaturePayload(normalizedBody, digest)) });
 }
 
-function generationRebindingBody({ zoneDescriptor, previousDescriptor, nextDescriptor, generation, digest }) {
+function generationRebindingBody({ zoneDescriptor, previousDescriptor, nextDescriptor, generation, digest, zoneGeneration = undefined, zoneRecordDigest = undefined }) {
   if (previousDescriptor.alias !== nextDescriptor.alias || typeof previousDescriptor.alias !== "string" || previousDescriptor.alias === "") throw new Error("generation rebinding requires matching aliases");
-  return {
+  const body = {
     format: KEY_GENERATION_REBINDING_FORMAT,
     zone: zoneDescriptor.zid,
     alias: previousDescriptor.alias,
@@ -389,14 +397,18 @@ function generationRebindingBody({ zoneDescriptor, previousDescriptor, nextDescr
     generation,
     record_digest: digest,
   };
+  if (zoneGeneration === undefined && zoneRecordDigest === undefined) return body;
+  if (!Number.isSafeInteger(zoneGeneration) || zoneGeneration < 1) throw new Error("generation rebinding Zone generation invalid");
+  requireHexDigest(zoneRecordDigest, "generation rebinding Zone record digest");
+  return { ...body, zone_generation: zoneGeneration, zone_record_digest: zoneRecordDigest };
 }
 
-export function generationRebindingProof({ zone, previousDescriptor, nextDescriptor, generation, recordDigest: digest }) {
-  const body = generationRebindingBody({ zoneDescriptor: zone.descriptor, previousDescriptor, nextDescriptor, generation, digest });
+export function generationRebindingProof({ zone, previousDescriptor, nextDescriptor, generation, recordDigest: digest, zoneGeneration, zoneRecordDigest }) {
+  const body = generationRebindingBody({ zoneDescriptor: zone.descriptor, previousDescriptor, nextDescriptor, generation, digest, zoneGeneration, zoneRecordDigest });
   return Object.freeze({ ...body, zone_signature: signObject(zone.privateKey, body) });
 }
 
-export function createRotationGenerationRecord({ body, previousAgent, nextAgent, zone }) {
+export function createRotationGenerationRecord({ body, previousAgent, nextAgent, zone, zoneGeneration, zoneRecordDigest }) {
   const normalizedBody = normalizeGenerationBody(body);
   if (normalizedBody.operation !== GENERATION_ROTATE || normalizedBody.identity_kind !== IDENTITY_AID || normalizedBody.identity_value !== nextAgent.aid) throw new Error("rotate generation identity mismatch");
   const digest = recordDigest(normalizedBody);
@@ -406,15 +418,33 @@ export function createRotationGenerationRecord({ body, previousAgent, nextAgent,
     previous_descriptor: structuredClone(previousAgent.descriptor),
     next_descriptor: structuredClone(nextAgent.descriptor),
     agent_rotation_proof: rotationProof(previousAgent, nextAgent),
-    generation_rebinding: generationRebindingProof({ zone, previousDescriptor: previousAgent.descriptor, nextDescriptor: nextAgent.descriptor, generation: normalizedBody.generation, recordDigest: digest }),
+    generation_rebinding: generationRebindingProof({ zone, previousDescriptor: previousAgent.descriptor, nextDescriptor: nextAgent.descriptor, generation: normalizedBody.generation, recordDigest: digest, zoneGeneration, zoneRecordDigest }),
   });
 }
 
-export function verifyGenerationRebinding(proof, { zoneDescriptor, previousDescriptor, nextDescriptor, generation, recordDigest: digest }) {
+function verifyZoneGenerationAuthorization(zoneRecord, zoneDescriptor, zoneGeneration, zoneRecordDigest) {
+  const normalizedRecord = normalizedGenerationRecord(zoneRecord);
+  const { publicKey } = verifyZoneDescriptor(zoneDescriptor);
+  if (normalizedRecord.body.operation === GENERATION_ROTATE || normalizedRecord.body.identity_kind !== IDENTITY_ZID || normalizedRecord.body.identity_value !== zoneDescriptor.zid) throw new Error("Zone generation identity invalid");
+  if (normalizedRecord.body.generation !== zoneGeneration || normalizedRecord.record_digest !== zoneRecordDigest || recordDigest(normalizedRecord.body) !== normalizedRecord.record_digest) throw new Error("Zone generation record mismatch");
+  if (normalizedRecord.body.descriptor_digest !== digestCanonical(zoneDescriptor)) throw new Error("Zone generation descriptor mismatch");
+  if (!verifyObject(publicKey, generationSignaturePayload(normalizedRecord.body, normalizedRecord.record_digest), normalizedRecord.identity_signature)) throw new Error("Zone generation signature invalid");
+}
+
+export function verifyGenerationRebinding(proof, { zoneDescriptor, previousDescriptor, nextDescriptor, generation, recordDigest: digest, zoneGeneration = undefined, zoneRecordDigest = undefined, zoneRecord = undefined }) {
   try {
     const normalized = normalizeGenerationRebinding(proof);
     const { publicKey } = verifyZoneDescriptor(zoneDescriptor);
-    const body = generationRebindingBody({ zoneDescriptor, previousDescriptor, nextDescriptor, generation, digest });
+    const hasZoneGeneration = Object.hasOwn(normalized, "zone_generation");
+    if (hasZoneGeneration) verifyZoneGenerationAuthorization(zoneRecord, zoneDescriptor, zoneGeneration, zoneRecordDigest);
+    const body = generationRebindingBody({
+      zoneDescriptor,
+      previousDescriptor,
+      nextDescriptor,
+      generation,
+      digest,
+      ...(hasZoneGeneration ? { zoneGeneration, zoneRecordDigest } : {}),
+    });
     return Object.keys(body).every((key) => normalized[key] === body[key]) && verifyObject(publicKey, body, normalized.zone_signature);
   } catch {
     return false;
@@ -448,20 +478,30 @@ export function verifyGenerationRecord(record, context) {
     const previousDescriptor = requireObject(context?.previousDescriptor, "previous descriptor");
     if (normalized.body.identity_value === previous.body.identity_value) throw new Error("rotation must change agent identity");
     const zoneDescriptor = requireObject(context?.zoneDescriptor, "zone descriptor");
+    const zoneRecord = context?.zoneRecord;
     if (canonical(normalized.previous_descriptor) !== canonical(previousDescriptor) || canonical(normalized.next_descriptor) !== canonical(descriptor)) throw new Error("rotation descriptor substitution");
     if (previous.body.identity_kind !== IDENTITY_AID || previous.body.identity_value !== previousDescriptor.aid) throw new Error("rotation previous identity mismatch");
     verifyIdentityDescriptor(previousDescriptor, { kind: IDENTITY_AID, value: previousDescriptor.aid });
     if (digestCanonical(previousDescriptor) !== previous.body.descriptor_digest) throw new Error("previous descriptor digest mismatch");
     if (previousDescriptor.alias !== descriptor.alias) throw new Error("rotation alias mismatch");
     if (!verifyRotationProof(normalized.agent_rotation_proof, previousDescriptor, descriptor)) throw new Error("agent rotation proof invalid");
-    if (!verifyGenerationRebinding(normalized.generation_rebinding, { zoneDescriptor, previousDescriptor, nextDescriptor: descriptor, generation: normalized.body.generation, recordDigest: normalized.record_digest })) throw new Error("generation rebinding invalid");
+    if (!verifyGenerationRebinding(normalized.generation_rebinding, {
+      zoneDescriptor,
+      previousDescriptor,
+      nextDescriptor: descriptor,
+      generation: normalized.body.generation,
+      recordDigest: normalized.record_digest,
+      zoneGeneration: normalized.generation_rebinding.zone_generation,
+      zoneRecordDigest: normalized.generation_rebinding.zone_record_digest,
+      zoneRecord,
+    })) throw new Error("generation rebinding invalid");
   } else if (!verifyObject(descriptorKey, generationSignaturePayload(normalized.body, normalized.record_digest), normalized.identity_signature)) {
     throw new Error("generation identity signature invalid");
   }
   return normalized;
 }
 
-export function verifyGenerationChain(records, envelopes, { descriptors, previousDescriptors = [], zoneDescriptors = [], activePointer = undefined }) {
+export function verifyGenerationChain(records, envelopes, { descriptors, previousDescriptors = [], zoneDescriptors = [], zoneRecords = [], activePointer = undefined }) {
   if (!Array.isArray(records) || !Array.isArray(envelopes) || !Array.isArray(descriptors) || records.length === 0 || records.length !== envelopes.length || records.length !== descriptors.length) throw new Error("generation chain inputs invalid");
   const verified = [];
   const digests = new Set();
@@ -472,6 +512,7 @@ export function verifyGenerationChain(records, envelopes, { descriptors, previou
       previousRecord: index === 0 ? undefined : verified[index - 1],
       previousDescriptor: previousDescriptors[index],
       zoneDescriptor: zoneDescriptors[index],
+      zoneRecord: zoneRecords[index],
       activePointer: index === records.length - 1 ? activePointer : undefined,
     });
     if (digests.has(record.record_digest)) throw new Error("generation replay detected");

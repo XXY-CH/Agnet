@@ -5,7 +5,7 @@ import { lstat, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { AUDIT_ZERO_HASH, auditEntry, canonical, createZone, loadOrCreateAgent, loadOrCreateZone, publicKeyFromDescriptor, signObject, signedReceiptDigest, swarmExecutionBinding, swarmPlan, verifyObject, verifySwarmClose, verifySwarmPlan, verifyZoneTrustDelegation, writeTrustedZones, zoneBinding, zoneRevocation, zoneTrustDelegation } from "./asp-core.mjs";
+import { AUDIT_ZERO_HASH, auditEntry, canonical, createZone, publicKeyFromDescriptor, signObject, signedReceiptDigest, swarmExecutionBinding, swarmPlan, verifyObject, verifySwarmClose, verifySwarmPlan, verifyZoneTrustDelegation, writeTrustedZones, zoneBinding, zoneRevocation, zoneTrustDelegation } from "./asp-core.mjs";
 import { queryMatch } from "./federation-gateway.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -83,6 +83,22 @@ function waitForGateway(child) {
     });
   });
 }
+
+test("Federation Gateway rejects absent managed runtime configuration before listening", async () => {
+  const port = 9137;
+  const gateway = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/does-not-matter.json"], {
+    cwd: process.cwd(),
+    env: { ...process.env, AGNET_MANAGED_RUNTIME_CONFIG: "/definitely/not/a/managed-runtime.json" },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const [code] = await new Promise((resolve) => gateway.once("exit", (...args) => resolve(args)));
+  assert.equal(code, 1);
+  await assert.rejects(new Promise((resolve, reject) => {
+    const socket = net.createConnection(port, "127.0.0.1");
+    socket.once("connect", () => { socket.end(); resolve(); });
+    socket.once("error", reject);
+  }));
+});
 
 function exchangeRawFrame(port, frame) {
   return new Promise((resolve, reject) => {

@@ -72,11 +72,13 @@ func generationIdentityValue(t *testing.T, kind string, spki []byte) string {
 }
 
 type generationChainFixture struct {
-	Previous  generationIdentityFixture
-	Next      generationIdentityFixture
-	Zone      generationIdentityFixture
-	Envelopes [][]byte
-	Records   []GenerationRecord
+	Previous    generationIdentityFixture
+	Next        generationIdentityFixture
+	Zone        generationIdentityFixture
+	Envelopes   [][]byte
+	Records     []GenerationRecord
+	ZoneEnvelope []byte
+	ZoneRecord  GenerationRecord
 }
 
 func newGenerationChainFixture(t *testing.T) generationChainFixture {
@@ -87,6 +89,20 @@ func newGenerationChainFixture(t *testing.T) generationChainFixture {
 	previousPlaintext := testPKCS8(testSeed(0))
 	nextPlaintext := testPKCS8(testSeed(64))
 	previousIdentity := Identity{Kind: IdentityAID, Value: previous.Descriptor["aid"].(string)}
+	zonePlaintext := testPKCS8(testSeed(128))
+	zoneIdentity := Identity{Kind: IdentityZID, Value: zone.Descriptor["zid"].(string)}
+	zoneEnvelope, err := SealEnvelope(SealOptions{KeyType: KeyTypePKCS8, Plaintext: zonePlaintext, Identity: zoneIdentity, Passphrase: testPassphrase, Iterations: 100000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	zoneBody, err := BuildGenerationBody(GenerationBodyOptions{Identity: zoneIdentity, Generation: 1, Operation: GenerationMigrate, EnvelopeBytes: zoneEnvelope, Descriptor: zone.Descriptor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	zoneRecord, err := NewSignedGenerationRecord(zoneBody, zone.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
 	nextIdentity := Identity{Kind: IdentityAID, Value: next.Descriptor["aid"].(string)}
 	envelope1, err := SealEnvelope(SealOptions{KeyType: KeyTypePKCS8, Plaintext: previousPlaintext, Identity: previousIdentity, Passphrase: testPassphrase, Iterations: 100000})
 	if err != nil {
@@ -120,11 +136,11 @@ func newGenerationChainFixture(t *testing.T) generationChainFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	record3, err := NewRotationGenerationRecord(body3, previous.Descriptor, next.Descriptor, previous.Key, next.Key, zone.Descriptor, zone.Key)
+	record3, err := NewRotationGenerationRecord(body3, previous.Descriptor, next.Descriptor, previous.Key, next.Key, zone.Descriptor, zone.Key, KeyGenerationRef{IdentityKind: IdentityZID, IdentityValue: zone.Descriptor["zid"].(string), Generation: 1, RecordDigest: zoneRecord.RecordDigest, EnvelopeSHA256: zoneBody.EnvelopeSHA256, DescriptorDigest: zoneBody.DescriptorDigest})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return generationChainFixture{Previous: previous, Next: next, Zone: zone, Envelopes: [][]byte{envelope1, envelope2, envelope3}, Records: []GenerationRecord{record1, record2, record3}}
+	return generationChainFixture{Previous: previous, Next: next, Zone: zone, Envelopes: [][]byte{envelope1, envelope2, envelope3}, Records: []GenerationRecord{record1, record2, record3}, ZoneEnvelope: zoneEnvelope, ZoneRecord: zoneRecord}
 }
 
 func generationContext(fixture generationChainFixture, index int) GenerationVerificationContext {
@@ -136,6 +152,8 @@ func generationContext(fixture generationChainFixture, index int) GenerationVeri
 	if index == 2 {
 		context.Descriptor = fixture.Next.Descriptor
 		context.PreviousDescriptor = fixture.Previous.Descriptor
+		context.ZoneGeneration = fixture.ZoneRecord.Body.Generation
+		context.ZoneRecordDigest = fixture.ZoneRecord.RecordDigest
 		context.ZoneDescriptor = fixture.Zone.Descriptor
 	}
 	return context

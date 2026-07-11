@@ -4,7 +4,8 @@
   "type": "module",
   "license": "UNLICENSED",
   "bin": {
-    "asp-verify": "./asp-verify.mjs"
+    "asp-verify": "./asp-verify.mjs",
+    "agnet-key": "./agnet-key.mjs"
   },
   "exports": {
     ".": "./asp-core.mjs"
@@ -12,6 +13,11 @@
   "files": [
     "asp-core.mjs",
     "asp-verify.mjs",
+    "agnet-key.mjs",
+    "managed-key.mjs",
+    "managed-key-store.mjs",
+    "secure-input.mjs",
+    "secure-input-openat.py",
     "README.md"
   ]
 }

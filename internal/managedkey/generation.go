@@ -65,6 +65,8 @@ type GenerationVerificationContext struct {
 	PreviousRecord     *GenerationRecord
 	PreviousDescriptor map[string]any
 	ZoneDescriptor     map[string]any
+	ZoneGeneration     int
+	ZoneRecordDigest   string
 	ActivePointer      *GenerationPointer
 }
 
@@ -81,6 +83,8 @@ type GenerationRebindingContext struct {
 	NextDescriptor     map[string]any
 	Generation         int
 	RecordDigest       string
+	ZoneGeneration     int
+	ZoneRecordDigest   string
 }
 
 func digestCanonical(value any) (string, error) {
@@ -351,14 +355,22 @@ func generationRebindingBody(context GenerationRebindingContext) (map[string]any
 	if !ok || alias == "" || context.NextDescriptor["alias"] != alias {
 		return nil, errors.New("generation rebinding requires matching aliases")
 	}
-	return map[string]any{
+	body := map[string]any{
 		"format": GenerationRebindingFormat, "zone": context.ZoneDescriptor["zid"], "alias": alias,
 		"previous_aid": context.PreviousDescriptor["aid"], "next_aid": context.NextDescriptor["aid"],
 		"generation": context.Generation, "record_digest": context.RecordDigest,
-	}, nil
+	}
+	if context.ZoneGeneration != 0 || context.ZoneRecordDigest != "" {
+		if context.ZoneGeneration < 1 || !isGenerationDigest(context.ZoneRecordDigest) {
+			return nil, errors.New("generation rebinding zone generation invalid")
+		}
+		body["zone_generation"] = context.ZoneGeneration
+		body["zone_record_digest"] = context.ZoneRecordDigest
+	}
+	return body, nil
 }
 
-func NewRotationGenerationRecord(body GenerationBody, previousDescriptor, nextDescriptor map[string]any, previousKey, nextKey ed25519.PrivateKey, zoneDescriptor map[string]any, zoneKey ed25519.PrivateKey) (GenerationRecord, error) {
+func NewRotationGenerationRecord(body GenerationBody, previousDescriptor, nextDescriptor map[string]any, previousKey, nextKey ed25519.PrivateKey, zoneDescriptor map[string]any, zoneKey ed25519.PrivateKey, zoneGeneration KeyGenerationRef) (GenerationRecord, error) {
 	var zero GenerationRecord
 	if err := validateGenerationBody(body); err != nil {
 		return zero, err
@@ -366,12 +378,15 @@ func NewRotationGenerationRecord(body GenerationBody, previousDescriptor, nextDe
 	if body.Operation != GenerationRotate || body.IdentityKind != IdentityAID || body.IdentityValue != nextDescriptor["aid"] {
 		return zero, errors.New("rotate generation identity mismatch")
 	}
+	if zoneGeneration.IdentityKind != IdentityZID || zoneGeneration.IdentityValue != zoneDescriptor["zid"] || zoneGeneration.Generation < 1 || !isGenerationDigest(zoneGeneration.RecordDigest) {
+		return zero, errors.New("rotate generation zone authorization invalid")
+	}
 	digest := RecordDigest(body)
 	rotationProof, err := newAgentRotationProof(previousDescriptor, nextDescriptor, previousKey, nextKey)
 	if err != nil {
 		return zero, err
 	}
-	context := GenerationRebindingContext{ZoneDescriptor: zoneDescriptor, PreviousDescriptor: previousDescriptor, NextDescriptor: nextDescriptor, Generation: body.Generation, RecordDigest: digest}
+	context := GenerationRebindingContext{ZoneDescriptor: zoneDescriptor, PreviousDescriptor: previousDescriptor, NextDescriptor: nextDescriptor, Generation: body.Generation, RecordDigest: digest, ZoneGeneration: zoneGeneration.Generation, ZoneRecordDigest: zoneGeneration.RecordDigest}
 	rebindingBody, err := generationRebindingBody(context)
 	if err != nil {
 		return zero, err
@@ -492,7 +507,18 @@ func ParseGenerationRecord(data []byte) (GenerationRecord, error) {
 	if err != nil {
 		return zero, err
 	}
-	rebinding, err := parseExactGenerationMap(root["generation_rebinding"], []string{"format", "zone", "alias", "previous_aid", "next_aid", "generation", "record_digest", "zone_signature"}, "generation rebinding")
+	rebindingFields := []string{"format", "zone", "alias", "previous_aid", "next_aid", "generation", "record_digest", "zone_signature"}
+	if proof, ok := root["generation_rebinding"].(map[string]any); ok {
+		_, hasGeneration := proof["zone_generation"]
+		_, hasDigest := proof["zone_record_digest"]
+		if hasGeneration != hasDigest {
+			return zero, errors.New("generation rebinding zone authorization invalid")
+		}
+		if hasGeneration {
+			rebindingFields = append(rebindingFields, "zone_generation", "zone_record_digest")
+		}
+	}
+	rebinding, err := parseExactGenerationMap(root["generation_rebinding"], rebindingFields, "generation rebinding")
 	if err != nil {
 		return zero, err
 	}
@@ -571,7 +597,32 @@ func verifyAgentRotationProof(proof, previousDescriptor, nextDescriptor map[stri
 	return verifyGenerationSignature(nextKey, body, nextSignature)
 }
 func VerifyGenerationRebinding(proof map[string]any, context GenerationRebindingContext) error {
-	if _, err := exactObject(proof, []string{"format", "zone", "alias", "previous_aid", "next_aid", "generation", "record_digest", "zone_signature"}, "generation rebinding"); err != nil {
+	fields := []string{"format", "zone", "alias", "previous_aid", "next_aid", "generation", "record_digest", "zone_signature"}
+	_, hasGeneration := proof["zone_generation"]
+	_, hasDigest := proof["zone_record_digest"]
+	if hasGeneration != hasDigest {
+		return errors.New("generation rebinding zone authorization invalid")
+	}
+	if hasGeneration {
+		fields = append(fields, "zone_generation", "zone_record_digest")
+		if context.ZoneGeneration == 0 && context.ZoneRecordDigest == "" {
+			var err error
+			context.ZoneGeneration, err = exactInteger(proof["zone_generation"], "generation rebinding zone generation")
+			if err != nil {
+				return err
+			}
+			context.ZoneRecordDigest, err = exactString(proof["zone_record_digest"], "generation rebinding zone record digest")
+			if err != nil {
+				return err
+			}
+		}
+	}
+	if context.ZoneGeneration > 0 || context.ZoneRecordDigest != "" {
+		if !hasGeneration || context.ZoneGeneration < 1 || !isGenerationDigest(context.ZoneRecordDigest) {
+			return errors.New("generation rebinding zone authorization invalid")
+		}
+	}
+	if _, err := exactObject(proof, fields, "generation rebinding"); err != nil {
 		return err
 	}
 	if proof["format"] != GenerationRebindingFormat {
@@ -699,7 +750,7 @@ func VerifyGenerationRecord(record GenerationRecord, context GenerationVerificat
 	if err := verifyAgentRotationProof(normalized.AgentRotationProof, context.PreviousDescriptor, context.Descriptor); err != nil {
 		return zero, err
 	}
-	if err := VerifyGenerationRebinding(normalized.GenerationRebinding, GenerationRebindingContext{ZoneDescriptor: context.ZoneDescriptor, PreviousDescriptor: context.PreviousDescriptor, NextDescriptor: context.Descriptor, Generation: normalized.Body.Generation, RecordDigest: normalized.RecordDigest}); err != nil {
+	if err := VerifyGenerationRebinding(normalized.GenerationRebinding, GenerationRebindingContext{ZoneDescriptor: context.ZoneDescriptor, PreviousDescriptor: context.PreviousDescriptor, NextDescriptor: context.Descriptor, Generation: normalized.Body.Generation, RecordDigest: normalized.RecordDigest, ZoneGeneration: context.ZoneGeneration, ZoneRecordDigest: context.ZoneRecordDigest}); err != nil {
 		return zero, err
 	}
 	return normalized, nil

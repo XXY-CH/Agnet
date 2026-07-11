@@ -141,6 +141,9 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	f.Runtime.Register(taskID, cancelRun)
 	defer cancelRun()
 	defer f.Runtime.Unregister(taskID)
+	if err := worker.reloadPinnedGeneration(); err != nil {
+		return err
+	}
 	if err := f.sendTaskEvent(send, map[string]any{"type": "task.accepted", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
 		return err
 	}
@@ -194,7 +197,7 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	if err != nil {
 		return err
 	}
-	toolName, artifactText, sandbox, err := runTool(ctx, worker.Profile, task, origin, f.ArtifactStoreDir, f.LiveTranscriptDir)
+	toolName, toolResult, sandbox, err := runTool(ctx, worker.Profile, task, origin, f.ArtifactStoreDir, f.LiveTranscriptDir)
 	if err != nil {
 		if f.Runtime.WasCancelled(taskID) {
 			return err
@@ -202,22 +205,37 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		_ = f.writeTaskState(taskID, "failed", worker, map[string]any{"error": err.Error()})
 		return err
 	}
+	if toolResult.MediaType == "" {
+		return errors.New("tool result media type missing")
+	}
+	if len(toolResult.Transcript) > 0 && toolResult.TranscriptMediaType == "" {
+		return errors.New("tool transcript media type missing")
+	}
+	for key, value := range toolResult.Evidence {
+		if key == "mode" {
+			return errors.New("tool result evidence cannot override sandbox mode")
+		}
+		sandbox[key] = value
+	}
 	sandboxClaim := worker.Profile.SandboxClaim
 	if sandboxClaim != "" && sandbox["mode"] != sandboxClaim {
 		return errors.New("sandbox claim mismatch")
 	}
-	artifactManifest, err := writeArtifact(artifactURI, artifactText, f.ArtifactStoreDir)
+	artifactManifest, err := writeArtifactBytes(artifactURI, toolResult.Result, toolResult.MediaType, f.ArtifactStoreDir)
 	if err != nil {
 		return err
 	}
 	artifactRefs := []string{artifactURI}
 	artifactManifests := []map[string]any{artifactManifest}
-	if transcriptRef := optionalString(sandbox["tool_transcript_ref"]); transcriptRef != "" {
-		transcriptManifest, ok := sandbox["tool_transcript_manifest"].(map[string]any)
-		if !ok {
-			return errors.New("tool transcript manifest missing")
+	if len(toolResult.Transcript) > 0 {
+		transcriptURI := "artifact://local/" + taskID + "/tool-transcript.json"
+		transcriptManifest, err := writeArtifactBytes(transcriptURI, toolResult.Transcript, toolResult.TranscriptMediaType, f.ArtifactStoreDir)
+		if err != nil {
+			return err
 		}
-		artifactRefs = append(artifactRefs, transcriptRef)
+		sandbox["tool_transcript_ref"] = transcriptURI
+		sandbox["tool_transcript_manifest"] = transcriptManifest
+		artifactRefs = append(artifactRefs, transcriptURI)
 		artifactManifests = append(artifactManifests, transcriptManifest)
 	}
 	if err := f.sendTaskEvent(send, map[string]any{"type": "artifact.created", "task_id": taskID, "uri": artifactURI, "manifest": artifactManifest}); err != nil {

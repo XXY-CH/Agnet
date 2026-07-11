@@ -1,6 +1,6 @@
 import { appendFile, chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomUUID, sign, verify } from "node:crypto";
+import { createHash, createPublicKey, generateKeyPairSync, randomUUID, sign, verify } from "node:crypto";
 
 const AGENT_DOMAIN = Buffer.from("asp-agent-id-v1\0");
 const ZONE_DOMAIN = Buffer.from("asp-zone-id-v1\0");
@@ -605,26 +605,6 @@ export async function loadTrustedZones(file) {
   );
 }
 
-export async function loadOrCreatePrivateKey(file) {
-  try {
-    return createPrivateKey({ key: await readFile(file), format: "der", type: "pkcs8" });
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-  }
-  const { privateKey } = generateKeyPairSync("ed25519");
-  await mkdir(dirname(file), { recursive: true });
-  await writeFile(file, privateKeyDer(privateKey), { mode: 0o600 });
-  await chmod(file, 0o600);
-  return privateKey;
-}
-
-export async function loadOrCreateAgent(alias, keyFile, policy = {}, transports = ["asp+local://demo"], capabilities = []) {
-  return agentFromPrivateKey(alias, await loadOrCreatePrivateKey(keyFile), policy, transports, capabilities);
-}
-
-export async function loadOrCreateZone(name, keyFile) {
-  return zoneFromPrivateKey(name, await loadOrCreatePrivateKey(keyFile));
-}
 
 function zoneTrustDelegationBody(delegation) {
   if (!delegation || typeof delegation !== "object" || Array.isArray(delegation)) throw new Error("zone trust delegation missing");

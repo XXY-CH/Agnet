@@ -16,27 +16,68 @@ import (
 	"time"
 )
 
-func runTool(ctx context.Context, profile WorkerProfile, task, origin map[string]any, artifactStoreDir, liveTranscriptDir string) (string, string, map[string]any, error) {
+func runTool(ctx context.Context, profile WorkerProfile, task, origin map[string]any, artifactStoreDir, liveTranscriptDir string) (string, ToolResult, map[string]any, error) {
+	return runToolWithDockerAdapter(ctx, nil, profile, task, origin, artifactStoreDir, liveTranscriptDir)
+}
+
+// runToolWithDockerAdapter is the sole container execution seam. Passing a nil
+// adapter deliberately rejects a container profile rather than falling through
+// to a host, external, or MCP tool.
+func runToolWithDockerAdapter(ctx context.Context, adapter DockerAdapter, profile WorkerProfile, task, origin map[string]any, artifactStoreDir, liveTranscriptDir string) (string, ToolResult, map[string]any, error) {
 	tool := profile.Tool
 	if tool == "" {
 		tool = "text.echo"
 	}
+	if profile.SandboxClaim == "container-namespace" {
+		result, sandbox, err := runDockerTool(ctx, adapter, profile)
+		return tool, result, sandbox, err
+	}
+	if profile.Docker != nil {
+		return tool, ToolResult{}, nil, errors.New("docker profile requires container-namespace sandbox claim")
+	}
 	taskID := fmt.Sprint(task["task_id"])
 	intent := fmt.Sprint(task["intent"])
+	textResult := func(text string) ToolResult {
+		return ToolResult{Result: []byte(text), MediaType: "text/markdown; charset=utf-8"}
+	}
 	switch tool {
 	case "summarize.mock":
-		return tool, "# Go Tool Summary\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nSummary: " + intent + "\n", inProcessSandbox(), nil
+		return tool, textResult("# Go Tool Summary\n\nTask: "+taskID+"\nOrigin: "+fmt.Sprint(origin["zid"])+"\nSummary: "+intent+"\n"), inProcessSandbox(), nil
 	case "translate.mock":
-		return tool, "# Go Tool Translation\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nTranslation: " + strings.ToUpper(intent) + "\n", inProcessSandbox(), nil
+		return tool, textResult("# Go Tool Translation\n\nTask: "+taskID+"\nOrigin: "+fmt.Sprint(origin["zid"])+"\nTranslation: "+strings.ToUpper(intent)+"\n"), inProcessSandbox(), nil
 	case "external.stdio":
-		text, sandbox, err := runExternalTool(ctx, profile, task, origin, artifactStoreDir, liveTranscriptDir)
-		return tool, text, sandbox, err
+		result, sandbox, err := runExternalTool(ctx, profile, task, origin, artifactStoreDir, liveTranscriptDir)
+		return tool, result, sandbox, err
 	case "mcp.stdio":
-		text, sandbox, err := runMCPTool(ctx, profile, task, origin, artifactStoreDir, liveTranscriptDir)
-		return tool, text, sandbox, err
+		result, sandbox, err := runMCPTool(ctx, profile, task, origin, artifactStoreDir, liveTranscriptDir)
+		return tool, result, sandbox, err
 	default:
-		return tool, "# Go Tool Output\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nOutput: " + intent + "\n", inProcessSandbox(), nil
+		return tool, textResult("# Go Tool Output\n\nTask: "+taskID+"\nOrigin: "+fmt.Sprint(origin["zid"])+"\nOutput: "+intent+"\n"), inProcessSandbox(), nil
 	}
+}
+
+func runDockerTool(ctx context.Context, adapter DockerAdapter, profile WorkerProfile) (ToolResult, map[string]any, error) {
+	if profile.Docker == nil {
+		return ToolResult{}, nil, errors.New("container-namespace sandbox claim requires docker profile")
+	}
+	request, err := validateDockerWorkerProfile(*profile.Docker)
+	if err != nil {
+		return ToolResult{}, nil, err
+	}
+	if adapter == nil {
+		return ToolResult{}, nil, errors.New("container-namespace sandbox adapter is not configured")
+	}
+	dockerResult, err := adapter.Run(ctx, request)
+	if err != nil {
+		return ToolResult{}, nil, err
+	}
+	return ToolResult{
+		Result:              dockerResult.Result,
+		MediaType:           dockerResult.MediaType,
+		Transcript:          dockerResult.Transcript,
+		TranscriptMediaType: dockerResult.TranscriptMediaType,
+		Evidence:            dockerResult.Evidence,
+	}, map[string]any{"mode": "container-namespace"}, nil
 }
 
 func inProcessSandbox() map[string]any {
@@ -44,6 +85,16 @@ func inProcessSandbox() map[string]any {
 }
 
 func validateSandboxClaim(profile WorkerProfile) error {
+	if profile.Docker != nil && profile.SandboxClaim != "container-namespace" {
+		return errors.New("docker profile requires container-namespace sandbox claim")
+	}
+	if profile.SandboxClaim == "container-namespace" {
+		if profile.Docker == nil {
+			return errors.New("container-namespace sandbox claim requires docker profile")
+		}
+		_, err := validateDockerWorkerProfile(*profile.Docker)
+		return err
+	}
 	if profile.SandboxClaim == "" {
 		return nil
 	}
@@ -90,31 +141,11 @@ func sandboxClaimProbe(claim string) map[string]any {
 }
 
 func containerNamespaceProbe(claim string) map[string]any {
-	probe := map[string]any{
-		"claim":              claim,
-		"supported":          false,
-		"runtime_configured": false,
-		"runtime_available":  false,
+	return map[string]any{
+		"claim":     claim,
+		"supported": false,
+		"reason":    "container namespace execution requires a DockerAdapter",
 	}
-	runtimeCommand := strings.TrimSpace(os.Getenv("AGNET_CONTAINER_RUNTIME"))
-	if runtimeCommand == "" {
-		probe["reason"] = "container namespace sandbox runtime is not configured"
-		return probe
-	}
-	probe["runtime_configured"] = true
-	probe["runtime_command"] = runtimeCommand
-	runtimePath, err := exec.LookPath(runtimeCommand)
-	if err != nil {
-		probe["reason"] = "container namespace sandbox runtime is not available"
-		return probe
-	}
-	probe["runtime_available"] = true
-	probe["runtime_path"] = runtimePath
-	if data, err := os.ReadFile(runtimePath); err == nil {
-		probe["runtime_sha256"] = digestBytesHex(data)
-	}
-	probe["reason"] = "container namespace sandbox execution is not implemented"
-	return probe
 }
 
 func newToolSandbox(kind string, toolCommand []string) (string, map[string]any, func(), error) {
@@ -203,13 +234,13 @@ func (w *liveTranscriptWriter) WriteMCPResponse(method string, response map[stri
 	return nil
 }
 
-func runExternalTool(parent context.Context, profile WorkerProfile, task, origin map[string]any, artifactStoreDir, liveTranscriptDir string) (string, map[string]any, error) {
+func runExternalTool(parent context.Context, profile WorkerProfile, task, origin map[string]any, _ string, liveTranscriptDir string) (ToolResult, map[string]any, error) {
 	if len(profile.ToolCommand) == 0 {
-		return "", nil, errors.New("external.stdio tool_command missing")
+		return ToolResult{}, nil, errors.New("external.stdio tool_command missing")
 	}
 	dir, sandbox, cleanup, err := newToolSandbox("external", profile.ToolCommand)
 	if err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	defer cleanup()
 	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
@@ -226,22 +257,22 @@ func runExternalTool(parent context.Context, profile WorkerProfile, task, origin
 	}
 	data, err := json.Marshal(input)
 	if err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	cmd.Stdin = bytes.NewReader(data)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	liveWriter, closeLive, err := newLiveTranscriptWriter(liveTranscriptDir, fmt.Sprint(task["task_id"]))
 	if err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	defer closeLive()
 	if err := cmd.Start(); err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	var output bytes.Buffer
 	writers := []io.Writer{&output}
@@ -258,10 +289,10 @@ func runExternalTool(parent context.Context, profile WorkerProfile, task, origin
 		err = copyErr
 	}
 	if ctx.Err() == context.Canceled {
-		return "", nil, errors.New("external tool cancelled")
+		return ToolResult{}, nil, errors.New("external tool cancelled")
 	}
 	if ctx.Err() == context.DeadlineExceeded {
-		return "", nil, errors.New("external tool timed out")
+		return ToolResult{}, nil, errors.New("external tool timed out")
 	}
 	transcriptData := output.Bytes()
 	sandbox["tool_transcript_digest"] = digestBytesHex(transcriptData)
@@ -270,37 +301,35 @@ func runExternalTool(parent context.Context, profile WorkerProfile, task, origin
 		if message == "" {
 			message = err.Error()
 		}
-		return "", nil, errors.New("external tool failed: " + message)
+		return ToolResult{}, nil, errors.New("external tool failed: " + message)
 	}
-	transcriptURI := "artifact://local/" + fmt.Sprint(task["task_id"]) + "/tool-transcript.json"
-	transcriptManifest, err := writeArtifactBytes(transcriptURI, transcriptData, "application/json; charset=utf-8", artifactStoreDir)
-	if err != nil {
-		return "", nil, err
-	}
-	sandbox["tool_transcript_ref"] = transcriptURI
-	sandbox["tool_transcript_manifest"] = transcriptManifest
 	var result map[string]any
 	if err := json.Unmarshal(transcriptData, &result); err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	text, ok := result["text"].(string)
 	if !ok || text == "" {
-		return "", nil, errors.New("external tool text missing")
+		return ToolResult{}, nil, errors.New("external tool text missing")
 	}
-	return text, sandbox, nil
+	return ToolResult{
+		Result:              []byte(text),
+		MediaType:           "text/markdown; charset=utf-8",
+		Transcript:          transcriptData,
+		TranscriptMediaType: "application/json; charset=utf-8",
+	}, sandbox, nil
 }
 
-func runMCPTool(parent context.Context, profile WorkerProfile, task, origin map[string]any, artifactStoreDir, liveTranscriptDir string) (string, map[string]any, error) {
+func runMCPTool(parent context.Context, profile WorkerProfile, task, origin map[string]any, _ string, liveTranscriptDir string) (ToolResult, map[string]any, error) {
 	if len(profile.ToolCommand) == 0 {
-		return "", nil, errors.New("mcp.stdio tool_command missing")
+		return ToolResult{}, nil, errors.New("mcp.stdio tool_command missing")
 	}
 	toolName := profile.ToolName
 	if toolName == "" {
-		return "", nil, errors.New("mcp.stdio tool_name missing")
+		return ToolResult{}, nil, errors.New("mcp.stdio tool_name missing")
 	}
 	dir, sandbox, cleanup, err := newToolSandbox("mcp", profile.ToolCommand)
 	if err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	defer cleanup()
 	ctx, cancel := context.WithTimeout(parent, 3*time.Second)
@@ -310,21 +339,21 @@ func runMCPTool(parent context.Context, profile WorkerProfile, task, origin map[
 	cmd.Env = sandboxEnv(dir)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	liveWriter, closeLive, err := newLiveTranscriptWriter(liveTranscriptDir, fmt.Sprint(task["task_id"]))
 	if err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	defer closeLive()
 	if err := cmd.Start(); err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	scanner := bufio.NewScanner(stdout)
 	writeRPC := func(message map[string]any) error {
@@ -345,14 +374,14 @@ func runMCPTool(parent context.Context, profile WorkerProfile, task, origin map[
 			"clientInfo":      map[string]any{"name": "agnet-go", "version": "v3.7"},
 		},
 	}); err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	initializeResponse, err := readRPCResponse(scanner, 1)
 	if err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	if err := liveWriter.WriteMCPResponse("initialize", initializeResponse); err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	if result, ok := initializeResponse["result"].(map[string]any); ok {
 		sandbox["mcp_session"] = map[string]any{
@@ -361,21 +390,21 @@ func runMCPTool(parent context.Context, profile WorkerProfile, task, origin map[
 		}
 	}
 	if err := writeRPC(map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized", "params": map[string]any{}}); err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	if _, err := recordMCPListEvidence(writeRPC, scanner, liveWriter, sandbox, 2, "resources/list", "resources", "mcp_resources"); err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	if _, err := recordMCPListEvidence(writeRPC, scanner, liveWriter, sandbox, 3, "prompts/list", "prompts", "mcp_prompts"); err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	tools, err := recordMCPListEvidence(writeRPC, scanner, liveWriter, sandbox, 4, "tools/list", "tools", "mcp_tools")
 	if err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	schema, err := recordMCPSelectedToolEvidence(sandbox, tools, toolName)
 	if err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	args := map[string]any{
 		"task_id": task["task_id"],
@@ -385,7 +414,7 @@ func runMCPTool(parent context.Context, profile WorkerProfile, task, origin map[
 	}
 	sandbox["mcp_tool_arguments_digest"] = digestHex(args)
 	if err := validateMCPRequiredArguments(schema, args); err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	if err := writeRPC(map[string]any{
 		"jsonrpc": "2.0",
@@ -393,43 +422,44 @@ func runMCPTool(parent context.Context, profile WorkerProfile, task, origin map[
 		"method":  "tools/call",
 		"params":  map[string]any{"name": toolName, "arguments": args},
 	}); err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	response, err := readRPCResponse(scanner, 5)
 	if err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	if err := liveWriter.WriteMCPResponse("tools/call", response); err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	transcriptData, err := json.Marshal(response)
 	if err != nil {
-		return "", nil, err
+		return ToolResult{}, nil, err
 	}
 	sandbox["tool_transcript_digest"] = digestBytesHex(transcriptData)
-	transcriptURI := "artifact://local/" + fmt.Sprint(task["task_id"]) + "/tool-transcript.json"
-	transcriptManifest, err := writeArtifactBytes(transcriptURI, transcriptData, "application/json; charset=utf-8", artifactStoreDir)
-	if err != nil {
-		return "", nil, err
-	}
-	sandbox["tool_transcript_ref"] = transcriptURI
-	sandbox["tool_transcript_manifest"] = transcriptManifest
 	_ = stdin.Close()
 	if ctx.Err() == context.Canceled {
-		return "", nil, errors.New("mcp tool cancelled")
+		return ToolResult{}, nil, errors.New("mcp tool cancelled")
 	}
 	if err := cmd.Wait(); err != nil && ctx.Err() == nil {
 		message := strings.TrimSpace(stderr.String())
 		if message == "" {
 			message = err.Error()
 		}
-		return "", nil, errors.New("mcp tool failed: " + message)
+		return ToolResult{}, nil, errors.New("mcp tool failed: " + message)
 	}
 	if ctx.Err() == context.DeadlineExceeded {
-		return "", nil, errors.New("mcp tool timed out")
+		return ToolResult{}, nil, errors.New("mcp tool timed out")
 	}
 	text, err := mcpText(response)
-	return text, sandbox, err
+	if err != nil {
+		return ToolResult{}, nil, err
+	}
+	return ToolResult{
+		Result:              []byte(text),
+		MediaType:           "text/markdown; charset=utf-8",
+		Transcript:          transcriptData,
+		TranscriptMediaType: "application/json; charset=utf-8",
+	}, sandbox, nil
 }
 
 func recordMCPListEvidence(writeRPC func(map[string]any) error, scanner *bufio.Scanner, liveWriter *liveTranscriptWriter, sandbox map[string]any, id float64, method, field, prefix string) ([]any, error) {

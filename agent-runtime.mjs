@@ -1,12 +1,11 @@
 import net from "node:net";
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import {
   appendAudit,
   approvalReasons,
   canonical,
   enforcePolicy,
-  loadOrCreateAgent,
-  loadOrCreateZone,
   loadRegistry,
   publicKeyFromDescriptor,
   resolveAgent,
@@ -15,6 +14,7 @@ import {
   writeArtifact,
   writeRegistry,
 } from "./asp-core.mjs";
+import { loadManagedAgent, loadManagedZone } from "./managed-key-runtime.mjs";
 
 function send(socket, frame) {
   socket.write(`${JSON.stringify(frame)}\n`);
@@ -43,21 +43,29 @@ function digestHex(value) {
   return createHash("sha256").update(canonical(value)).digest("hex");
 }
 
+async function loadRuntimeConfig(configFile) {
+  if (typeof configFile !== "string" || configFile.length === 0 || configFile.includes("\0")) throw new Error("managed runtime config path invalid");
+  let config;
+  try {
+    config = JSON.parse(await readFile(configFile, "utf8"));
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new Error("managed runtime config invalid");
+    throw error;
+  }
+  if (config === null || typeof config !== "object" || Array.isArray(config)) throw new Error("managed runtime config invalid");
+  return config;
+}
+
 async function sendEvent(socket, event) {
   await appendAudit({ kind: "event", ...event });
   send(socket, { type: "TASK_EVENT", event });
 }
 
-async function runWorker(port = 8787) {
-  const worker = await loadOrCreateAgent(
-    "agent://local/summarizer",
-    "state/keys/agent-local-summarizer.pkcs8",
-    { allow_network: false, approval_required: ["write"], write_prefixes: ["artifact://local/"] },
-    [`asp+tcp://127.0.0.1:${port}`],
-    ["summarize.text"],
-  );
-  const zone = await loadOrCreateZone("zone://local", "state/keys/zone-local.pkcs8");
-  await writeRegistry("state/registry.json", zone, [worker.descriptor]);
+export async function runWorker(port = 8787, configFile) {
+  const config = await loadRuntimeConfig(configFile);
+  const worker = await loadManagedAgent(config.worker);
+  const zone = await loadManagedZone(config.zone);
+  await writeRegistry(config.registryPath ?? "state/registry.json", zone, [worker.descriptor]);
 
   const server = net.createServer((socket) => {
     readFrames(socket, async (frame) => {
@@ -115,13 +123,15 @@ async function runWorker(port = 8787) {
   });
 
   server.listen(port, "127.0.0.1", () => {
-    console.log(JSON.stringify({ worker: worker.aid, registry: "state/registry.json", listening: port }));
+    console.log(JSON.stringify({ worker: worker.aid, registry: config.registryPath ?? "state/registry.json", listening: port }));
   });
+  return server;
 }
 
-async function runRequest(alias = "agent://local/summarizer") {
-  const requester = await loadOrCreateAgent("agent://local/requester", "state/keys/agent-local-requester.pkcs8");
-  const registry = await loadRegistry("state/registry.json");
+export async function runRequest(alias = "agent://local/summarizer", configFile) {
+  const config = await loadRuntimeConfig(configFile);
+  const requester = await loadManagedAgent(config.requester);
+  const registry = await loadRegistry(config.registryPath ?? "state/registry.json");
   const { descriptor } = resolveAgent(registry, alias);
   const transport = descriptor.transports.find((item) => item.startsWith("asp+tcp://"));
   if (!transport) throw new Error(`no asp+tcp transport for ${alias}`);
@@ -158,12 +168,12 @@ async function runRequest(alias = "agent://local/summarizer") {
   console.log(JSON.stringify({ requester: requester.aid, worker: descriptor.aid, events, receipt }, null, 2));
 }
 
-const [mode, arg] = process.argv.slice(2);
+const [mode, arg, configFile] = process.argv.slice(2);
 if (mode === "worker") {
-  await runWorker(Number(arg ?? 8787));
+  await runWorker(Number(arg ?? 8787), configFile);
 } else if (mode === "request") {
-  await runRequest(arg);
+  await runRequest(arg, configFile);
 } else {
-  console.error("usage: node agent-runtime.mjs worker [port] | request [agent://alias]");
+  console.error("usage: node agent-runtime.mjs worker <port> <managed-runtime.json> | request <agent://alias> <managed-runtime.json>");
   process.exitCode = 2;
 }

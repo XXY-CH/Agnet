@@ -1,6 +1,7 @@
 package main
 
 import (
+	"agnet/internal/managedkey"
 	"agnet/verifier"
 	"bufio"
 	"bytes"
@@ -2648,5 +2649,176 @@ func TestU7VectorFilesUseExplicitPhaseAFormats(t *testing.T) {
 	}
 	if legacy["schema_format"] != "asp-swarm-close-vector/legacy-v1" || legacy["legacy"] != true {
 		t.Fatalf("legacy close vector is not explicitly marked: %v", legacy)
+	}
+}
+
+func writeManagedRuntimeStore(t *testing.T, dir, name string, descriptor map[string]any, seed []byte, identityKind, keyType string) ManagedKeyConfig {
+	t.Helper()
+	storePath := filepath.Join(dir, name+"-store")
+	keyPath := filepath.Join(dir, name+".key")
+	descriptorPath := filepath.Join(dir, name+".descriptor.json")
+	passphrasePath := filepath.Join(dir, name+".passphrase")
+	passphrase := []byte(name + " managed runtime passphrase\n")
+	keyBytes := append([]byte(nil), seed...)
+	if keyType == managedkey.KeyTypePKCS8 {
+		privateKey := ed25519.NewKeyFromSeed(seed)
+		var err error
+		keyBytes, err = x509.MarshalPKCS8PrivateKey(privateKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for path, data := range map[string][]byte{keyPath: keyBytes, passphrasePath: passphrase} {
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	descriptorBytes, err := json.Marshal(descriptor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(descriptorPath, descriptorBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := managedkey.OpenStore(storePath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := managedkey.Migrate(managedkey.MigrateOptions{Store: store, SourceKeyPath: keyPath, SourceKeyType: keyType, IdentityKind: identityKind, DescriptorPath: descriptorPath, PassphrasePath: passphrasePath, Iterations: 100000}); err != nil {
+		t.Fatal(err)
+	}
+	return ManagedKeyConfig{StorePath: storePath, PassphraseFile: passphrasePath}
+}
+
+func managedRuntimeFixture(t *testing.T, workerKeyType string) (string, ManagedRuntimeConfig) {
+	t.Helper()
+	fixturePath := filepath.Join("..", "..", "test-vectors", "asp-v1.5-capability-credential.json")
+	data, err := os.ReadFile(fixturePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw struct {
+		Authority        map[string]any `json:"authority"`
+		Worker           map[string]any `json:"worker"`
+		AuthoritySeedHex string         `json:"authority_seed_hex"`
+		WorkerSeedHex    string         `json:"worker_seed_hex"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	authoritySeed, err := hex.DecodeString(raw.AuthoritySeedHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workerSeed, err := hex.DecodeString(raw.WorkerSeedHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	return fixturePath, ManagedRuntimeConfig{
+		Authority: writeManagedRuntimeStore(t, dir, "authority", raw.Authority, authoritySeed, managedkey.IdentityZID, managedkey.KeyTypeSeed),
+		Worker:    writeManagedRuntimeStore(t, dir, "worker", raw.Worker, workerSeed, managedkey.IdentityAID, workerKeyType),
+	}
+}
+
+func TestLoadFixtureRequiresManaged(t *testing.T) {
+	fixturePath, runtimeKeys := managedRuntimeFixture(t, managedkey.KeyTypeSeed)
+	fixture, err := loadManagedFixture(fixturePath, runtimeKeys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fixture.AuthorityGeneration.RecordDigest == "" || len(fixture.Workers) != 1 || fixture.Workers[0].GenerationRef.RecordDigest == "" {
+		t.Fatalf("managed generation references missing: authority=%+v workers=%+v", fixture.AuthorityGeneration, fixture.Workers)
+	}
+	reloaded, err := loadVerifiedKeyGeneration(fixture.Workers[0].WorkerGenerationPin.StorePath, fixture.Workers[0].WorkerGenerationPin.RecordDigest, fixture.Workers[0].WorkerGenerationPin.PassphraseFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(reloaded.PrivateKey)
+	if !sameGeneration(reloaded.KeyGeneration, fixture.Workers[0].GenerationRef) {
+		t.Fatalf("record-digest-pinned worker reload drifted: got=%+v want=%+v", reloaded.KeyGeneration, fixture.Workers[0].GenerationRef)
+	}
+	if _, err := loadManagedFixture(fixturePath, ManagedRuntimeConfig{}); err == nil || !strings.Contains(err.Error(), "managed key store") {
+		t.Fatalf("bare authority/worker configuration accepted: %v", err)
+	}
+	data, err := os.ReadFile(fixturePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mismatched map[string]any
+	if err := json.Unmarshal(data, &mismatched); err != nil {
+		t.Fatal(err)
+	}
+	mismatched["worker_profile"].(map[string]any)["alias"] = "agent://wrong/profile"
+	mismatchedPath := filepath.Join(t.TempDir(), "mismatched-fixture.json")
+	mismatchedData, err := json.Marshal(mismatched)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(mismatchedPath, mismatchedData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadManagedFixture(mismatchedPath, runtimeKeys); err == nil || !strings.Contains(err.Error(), "worker profile") {
+		t.Fatalf("worker profile substitution accepted: %v", err)
+	}
+	mismatched["worker_profile"].(map[string]any)["alias"] = fixture.Workers[0].Profile.Alias
+	mismatched["worker_profile"].(map[string]any)["key_file"] = filepath.Join(t.TempDir(), "bare.seed")
+	mismatchedData, err = json.Marshal(mismatched)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(mismatchedPath, mismatchedData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadManagedFixture(mismatchedPath, runtimeKeys); err == nil || !strings.Contains(err.Error(), "key_file") {
+		t.Fatalf("bare worker key fallback accepted: %v", err)
+	}
+}
+
+func TestSwarmRejectsManagedPointerDrift(t *testing.T) {
+	fixturePath, runtimeKeys := managedRuntimeFixture(t, managedkey.KeyTypeSeed)
+	fixture, err := loadManagedFixture(fixturePath, runtimeKeys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workerStore, err := managedkey.OpenStore(runtimeKeys.Worker.StorePath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := managedkey.Rewrap(managedkey.RewrapOptions{Store: workerStore, IdentityKind: managedkey.IdentityAID, DescriptorPath: filepath.Join(filepath.Dir(runtimeKeys.Worker.PassphraseFile), "worker.descriptor.json"), PassphrasePath: runtimeKeys.Worker.PassphraseFile, NewPassphrasePath: runtimeKeys.Worker.PassphraseFile, Iterations: 100001}); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.verifySwarmGenerationPins(); err == nil || !strings.Contains(err.Error(), "active generation changed during Swarm") {
+		t.Fatalf("managed pointer drift accepted: %v", err)
+	}
+}
+
+func TestServeRejectsInvalidManaged(t *testing.T) {
+	fixturePath, runtimeKeys := managedRuntimeFixture(t, managedkey.KeyTypeSeed)
+	runtimeKeys.Authority.RecordDigest = strings.Repeat("0", 64)
+	if err := serve("127.0.0.1", "0", "", "", "", "", "", "", "", "", fixturePath, "", runtimeKeys, filepath.Join(t.TempDir(), "audit.log")); err == nil {
+		t.Fatal("invalid managed authority reached listener initialization")
+	}
+}
+
+func TestGoSignsNodeManagedGeneration(t *testing.T) {
+	fixturePath, runtimeKeys := managedRuntimeFixture(t, managedkey.KeyTypePKCS8)
+	fixture, err := loadManagedFixture(fixturePath, runtimeKeys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker := fixture.Workers[0]
+	body := map[string]any{"interop": "go-signs-node-managed-generation", "record_digest": worker.GenerationRef.RecordDigest}
+	signed := signBody(worker.PrivateKey, body)
+	spki, _, err := publicKeySPKI(worker.PrivateKey.Public().(ed25519.PublicKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey, _, err := publicKey(map[string]any{"public_key_spki": spki})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyMapSignature(publicKey, signed, "signature"); err != nil {
+		t.Fatalf("Go signature from Node PKCS8 managed generation did not verify: %v", err)
 	}
 }

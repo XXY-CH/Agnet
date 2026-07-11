@@ -34,8 +34,9 @@ test("npm package exposes the existing verifier CLI and core exports", async () 
   assert.equal(pkg.type, "module");
   assert.equal(pkg.license, "UNLICENSED");
   assert.equal(pkg.bin["asp-verify"], "./asp-verify.mjs");
+  assert.equal(pkg.bin["agnet-key"], "./agnet-key.mjs");
   assert.equal(pkg.exports["."], "./asp-core.mjs");
-  assert.deepEqual(pkg.files, ["asp-core.mjs", "asp-verify.mjs", "README.md"]);
+  assert.deepEqual(pkg.files, ["asp-core.mjs", "asp-verify.mjs", "agnet-key.mjs", "managed-key.mjs", "managed-key-store.mjs", "secure-input.mjs", "secure-input-openat.py", "README.md"]);
 
   const vector = JSON.parse(await readFile("test-vectors/asp-v9.25-fed-receipt.json", "utf8"));
   const framePath = "state/npm-fed-receipt-frame.json";
@@ -78,7 +79,7 @@ test("package proof creates an npm tarball artifact", async () => {
   assert.equal(proof_digest, createHash("sha256").update(canonical(proofBody)).digest("hex"));
   assert.equal(verifyObject(publicKeyFromDescriptor(proof.signer), proofBody, signature), true);
   assert.equal(tarball.size, proof.size);
-  assert.deepEqual(proof.files, ["README.md", "asp-core.mjs", "asp-verify.mjs", "package.json"]);
+  assert.deepEqual(proof.files, ["README.md", "agnet-key.mjs", "asp-core.mjs", "asp-verify.mjs", "managed-key-store.mjs", "managed-key.mjs", "package.json", "secure-input-openat.py", "secure-input.mjs"]);
   assert.deepEqual(JSON.parse(await readFile(manifestPath, "utf8")), proof);
 
   const verified = JSON.parse((await execFileAsync(process.execPath, ["asp-verify.mjs", "package-proof", manifestPath])).stdout);

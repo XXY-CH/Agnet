@@ -1,16 +1,19 @@
 package main
 
 import (
+	"agnet/internal/managedkey"
 	"context"
 	"crypto/ed25519"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
-	"strings"
 )
 
-func loadFixture(path string, authorityKey, workerKey ed25519.PrivateKey) (Fixture, error) {
+func loadManagedFixture(path string, runtimeKeys ManagedRuntimeConfig) (Fixture, error) {
+	authority, err := loadManagedIdentity(runtimeKeys.Authority, managedkey.IdentityZID)
+	if err != nil {
+		return Fixture{}, err
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Fixture{}, err
@@ -22,11 +25,13 @@ func loadFixture(path string, authorityKey, workerKey ed25519.PrivateKey) (Fixtu
 	if err := verifyZoneDescriptor(fixture.Authority); err != nil {
 		return Fixture{}, err
 	}
-	fixture.AuthorityPrivateKey = authorityKey
-	if err := fixture.verifyAuthoritySeed(); err != nil {
+	if err := verifyManagedDescriptor(authority, fixture.Authority, managedkey.IdentityZID); err != nil {
 		return Fixture{}, err
 	}
-	workers, err := fixture.loadWorkers(workerKey)
+	fixture.AuthorityPrivateKey = authority.PrivateKey
+	fixture.AuthorityGeneration = authority.KeyGeneration
+	fixture.AuthorityGenerationPin = WorkerGenerationPin{StorePath: runtimeKeys.Authority.StorePath, PassphraseFile: runtimeKeys.Authority.PassphraseFile, RecordDigest: authority.KeyGeneration.RecordDigest}
+	workers, err := fixture.loadWorkers(runtimeKeys.Worker)
 	if err != nil {
 		return Fixture{}, err
 	}
@@ -53,23 +58,60 @@ func loadHumanActorPolicy(path string) (map[string][]string, map[string][]string
 	return policy.QueueActions, policy.ApprovalActions, policy.ApprovalSessions, nil
 }
 
-func loadPrivateKey(path, label string) (ed25519.PrivateKey, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
+func loadManagedIdentity(config ManagedKeyConfig, expectedKind string) (managedkey.LoadedIdentity, error) {
+	var zero managedkey.LoadedIdentity
+	if config.StorePath == "" || config.PassphraseFile == "" {
+		return zero, errors.New("managed key store and passphrase file are required")
 	}
-	return privateKeyFromSeedHex(strings.TrimSpace(string(data)), label)
+	store, err := managedkey.OpenStore(config.StorePath, nil)
+	if err != nil {
+		return zero, err
+	}
+	passphrase, err := managedkey.ReadRestrictedFile(config.PassphraseFile, managedkey.RestrictedFileOptions{Label: "managed key passphrase", MaxBytes: 64 * 1024})
+	if err != nil {
+		return zero, err
+	}
+	defer clear(passphrase.Bytes)
+	var loaded managedkey.LoadedIdentity
+	if config.RecordDigest == "" {
+		loaded, err = store.LoadActive(passphrase.Bytes)
+	} else {
+		loaded, err = store.LoadGeneration(passphrase.Bytes, config.RecordDigest)
+	}
+	if err != nil {
+		return zero, err
+	}
+	clear(loaded.Plaintext)
+	if expectedKind != "" && loaded.Identity.Kind != expectedKind {
+		clear(loaded.PrivateKey)
+		return zero, errors.New("managed key identity kind mismatch")
+	}
+	return loaded, nil
 }
 
-func privateKeyFromSeedHex(seedHex, label string) (ed25519.PrivateKey, error) {
-	seed, err := hex.DecodeString(seedHex)
+func loadVerifiedKeyGeneration(storePath, recordDigest, passphraseFile string) (managedkey.LoadedIdentity, error) {
+	if recordDigest == "" {
+		return managedkey.LoadedIdentity{}, errors.New("managed key generation record digest required")
+	}
+	return loadManagedIdentity(ManagedKeyConfig{StorePath: storePath, PassphraseFile: passphraseFile, RecordDigest: recordDigest}, "")
+}
+
+func verifyManagedDescriptor(loaded managedkey.LoadedIdentity, descriptor map[string]any, identityKind string) error {
+	if loaded.Identity.Kind != identityKind || descriptor[identityKind] != loaded.Identity.Value {
+		return errors.New("managed key identity does not match descriptor")
+	}
+	if digestHex(descriptor) != loaded.KeyGeneration.DescriptorDigest {
+		return errors.New("managed key generation descriptor mismatch")
+	}
+	publicKey := loaded.PrivateKey.Public().(ed25519.PublicKey)
+	encoded, _, err := publicKeySPKI(publicKey)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if len(seed) != ed25519.SeedSize {
-		return nil, errors.New(label + " seed must be 32 bytes")
+	if descriptor["public_key_spki"] != encoded {
+		return errors.New("managed key public key does not match descriptor")
 	}
-	return ed25519.NewKeyFromSeed(seed), nil
+	return nil
 }
 
 func (r *TaskRuntime) Register(taskID string, cancel context.CancelFunc) {
@@ -115,36 +157,37 @@ func (r *TaskRuntime) WasCancelled(taskID string) bool {
 }
 
 func (f Fixture) verifyAuthoritySeed() error {
-	publicKey := f.AuthorityPrivateKey.Public().(ed25519.PublicKey)
-	encoded, _, err := publicKeySPKI(publicKey)
-	if err != nil {
-		return err
-	}
-	if encoded != f.Authority["public_key_spki"] {
-		return errors.New("authority seed does not match authority descriptor")
-	}
-	return nil
+	loaded := managedkey.LoadedIdentity{PrivateKey: f.AuthorityPrivateKey, KeyGeneration: f.AuthorityGeneration, Identity: managedkey.Identity{Kind: managedkey.IdentityZID, Value: optionalString(f.Authority["zid"])}}
+	return verifyManagedDescriptor(loaded, f.Authority, managedkey.IdentityZID)
 }
 
-func (f Fixture) loadWorkers(defaultKey ed25519.PrivateKey) ([]Worker, error) {
+func (f Fixture) loadWorkers(defaultConfig ManagedKeyConfig) ([]Worker, error) {
 	profiles := f.WorkerProfiles
 	if len(profiles) == 0 {
 		profiles = []WorkerProfile{f.WorkerProfile}
 	}
-	workers := []Worker{}
+	workers := make([]Worker, 0, len(profiles))
 	seen := map[string]bool{}
 	for _, profile := range profiles {
-		key := defaultKey
-		var err error
-		if profile.KeyFile != "" {
-			key, err = loadPrivateKey(profile.KeyFile, "worker")
+		config, err := managedWorkerConfig(defaultConfig, profile)
+		if err != nil {
+			return nil, err
+		}
+		loaded, err := loadManagedIdentity(config, managedkey.IdentityAID)
+		if err != nil {
+			return nil, err
+		}
+		var descriptor map[string]any
+		if len(profiles) == 1 && f.WorkerDescriptor != nil {
+			descriptor = f.WorkerDescriptor
+			if err := verifyWorkerProfileDescriptor(profile, descriptor); err != nil {
+				return nil, err
+			}
+		} else {
+			descriptor, err = workerDescriptor(profile, loaded.PrivateKey)
 			if err != nil {
 				return nil, err
 			}
-		}
-		descriptor, err := workerDescriptor(profile, key)
-		if err != nil {
-			return nil, err
 		}
 		if seen[profile.Alias] {
 			return nil, errors.New("duplicate worker alias: " + profile.Alias)
@@ -153,9 +196,81 @@ func (f Fixture) loadWorkers(defaultKey ed25519.PrivateKey) ([]Worker, error) {
 		if err := verifyAgentDescriptor(descriptor); err != nil {
 			return nil, err
 		}
-		workers = append(workers, Worker{Profile: profile, Descriptor: descriptor, PrivateKey: key})
+		if err := verifyManagedDescriptor(loaded, descriptor, managedkey.IdentityAID); err != nil {
+			return nil, err
+		}
+		workers = append(workers, Worker{Profile: profile, Descriptor: descriptor, PrivateKey: loaded.PrivateKey, GenerationRef: loaded.KeyGeneration, WorkerGenerationPin: WorkerGenerationPin{StorePath: config.StorePath, PassphraseFile: config.PassphraseFile, RecordDigest: loaded.KeyGeneration.RecordDigest}})
 	}
 	return workers, nil
+}
+
+func managedWorkerConfig(defaultConfig ManagedKeyConfig, profile WorkerProfile) (ManagedKeyConfig, error) {
+	if profile.KeyFile != "" {
+		return ManagedKeyConfig{}, errors.New("worker key_file is not supported; use managed key store")
+	}
+	if profile.KeyStore == "" && profile.PassphraseFile == "" && profile.KeyGeneration.RecordDigest == "" {
+		return defaultConfig, nil
+	}
+	if profile.KeyStore == "" || profile.PassphraseFile == "" {
+		return ManagedKeyConfig{}, errors.New("worker managed key store and passphrase file are required")
+	}
+	return ManagedKeyConfig{StorePath: profile.KeyStore, PassphraseFile: profile.PassphraseFile, RecordDigest: profile.KeyGeneration.RecordDigest}, nil
+}
+
+func verifyWorkerProfileDescriptor(profile WorkerProfile, descriptor map[string]any) error {
+	policy := profile.Policy
+	if policy == nil {
+		policy = map[string]any{}
+	}
+	expected := map[string]any{"alias": profile.Alias, "transports": profile.Transports, "capabilities": profile.Capabilities, "policy": policy}
+	actual := map[string]any{"alias": descriptor["alias"], "transports": descriptor["transports"], "capabilities": descriptor["capabilities"], "policy": descriptor["policy"]}
+	if digestHex(expected) != digestHex(actual) {
+		return errors.New("worker profile does not match fixture descriptor")
+	}
+	return nil
+}
+
+func sameGeneration(left, right managedkey.KeyGenerationRef) bool {
+	return left.IdentityKind == right.IdentityKind && left.IdentityValue == right.IdentityValue && left.Generation == right.Generation && left.RecordDigest == right.RecordDigest && left.EnvelopeSHA256 == right.EnvelopeSHA256 && left.DescriptorDigest == right.DescriptorDigest
+}
+
+func (worker Worker) reloadPinnedGeneration() error {
+	loaded, err := loadVerifiedKeyGeneration(worker.WorkerGenerationPin.StorePath, worker.WorkerGenerationPin.RecordDigest, worker.WorkerGenerationPin.PassphraseFile)
+	if err != nil {
+		return err
+	}
+	defer clear(loaded.PrivateKey)
+	if !sameGeneration(loaded.KeyGeneration, worker.GenerationRef) {
+		return errors.New("worker managed generation record mismatch")
+	}
+	return verifyManagedDescriptor(loaded, worker.Descriptor, managedkey.IdentityAID)
+}
+
+func activeGenerationMatches(pin WorkerGenerationPin, expected managedkey.KeyGenerationRef, identityKind string) error {
+	loaded, err := loadManagedIdentity(ManagedKeyConfig{StorePath: pin.StorePath, PassphraseFile: pin.PassphraseFile}, identityKind)
+	if err != nil {
+		return err
+	}
+	defer clear(loaded.PrivateKey)
+	if !sameGeneration(loaded.KeyGeneration, expected) {
+		return errors.New("managed key active generation changed during Swarm")
+	}
+	return nil
+}
+
+func (f Fixture) verifySwarmGenerationPins() error {
+	if err := activeGenerationMatches(f.AuthorityGenerationPin, f.AuthorityGeneration, managedkey.IdentityZID); err != nil {
+		return err
+	}
+	for _, worker := range f.Workers {
+		if err := activeGenerationMatches(worker.WorkerGenerationPin, worker.GenerationRef, managedkey.IdentityAID); err != nil {
+			return err
+		}
+		if err := worker.reloadPinnedGeneration(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func workerDescriptor(profile WorkerProfile, key ed25519.PrivateKey) (map[string]any, error) {
