@@ -13,6 +13,7 @@ import (
 	"math"
 	"math/big"
 	"strings"
+	"unicode/utf8"
 )
 
 const base58BTCAlphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
@@ -57,8 +58,14 @@ func VerifyFederatedReceipt(frame map[string]any, trusted map[string]map[string]
 	if !isHexDigest(optionalString(receipt["task_digest"])) {
 		return errors.New("receipt task_digest missing")
 	}
-	if len(signedTasks) > 0 && digestHex(signedTasks[0]) != optionalString(receipt["task_digest"]) {
-		return errors.New("receipt task_digest mismatch")
+	if len(signedTasks) > 0 {
+		taskDigest, err := canonicalDigest(signedTasks[0])
+		if err != nil {
+			return err
+		}
+		if taskDigest != optionalString(receipt["task_digest"]) {
+			return errors.New("receipt task_digest mismatch")
+		}
 	}
 	if receipt["to"] != worker["aid"] {
 		return errors.New("receipt worker mismatch")
@@ -731,7 +738,11 @@ func verifyReceiptArtifactManifests(receipt map[string]any) error {
 				body[k] = v
 			}
 		}
-		if manifest["manifest_hash"] != digestHex(body) {
+		manifestDigest, err := canonicalDigest(body)
+		if err != nil {
+			return err
+		}
+		if manifest["manifest_hash"] != manifestDigest {
 			return errors.New("artifact manifest hash mismatch")
 		}
 	}
@@ -782,12 +793,28 @@ func artifactManifestsFromAny(value any) ([]map[string]any, error) {
 	return out, nil
 }
 
+func decodeBase64URLExact(encoded, label string) ([]byte, error) {
+	if encoded == "" {
+		return nil, fmt.Errorf("%s must use exact unpadded base64url", label)
+	}
+	for _, char := range encoded {
+		if !((char >= 'A' && char <= 'Z') || (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || char == '-' || char == '_') {
+			return nil, fmt.Errorf("%s must use exact unpadded base64url", label)
+		}
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil || base64.RawURLEncoding.EncodeToString(decoded) != encoded {
+		return nil, fmt.Errorf("%s must use exact unpadded base64url", label)
+	}
+	return decoded, nil
+}
+
 func publicKey(value map[string]any) (ed25519.PublicKey, []byte, error) {
 	encoded, ok := value["public_key_spki"].(string)
 	if !ok {
 		return nil, nil, errors.New("missing public_key_spki")
 	}
-	der, err := base64.RawURLEncoding.DecodeString(encoded)
+	der, err := decodeBase64URLExact(encoded, "public_key_spki")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -817,7 +844,7 @@ func verifyMapSignature(key ed25519.PublicKey, value map[string]any, signatureKe
 	if err != nil {
 		return err
 	}
-	decoded, err := base64.RawURLEncoding.DecodeString(signature)
+	decoded, err := decodeBase64URLExact(signature, signatureKey)
 	if err != nil {
 		return err
 	}
@@ -857,6 +884,58 @@ func optionalString(value any) string {
 	return text
 }
 
+func validateCanonicalStringDomain(value string) error {
+	if !utf8.ValidString(value) {
+		return errors.New("canonical string domain requires Unicode scalar values")
+	}
+	if strings.ContainsRune(value, '\u2028') || strings.ContainsRune(value, '\u2029') {
+		return errors.New("canonical string domain excludes U+2028/U+2029")
+	}
+	return nil
+}
+
+func validateCanonicalValue(value any) error {
+	switch typed := value.(type) {
+	case nil, bool, float64, json.Number:
+		return nil
+	case string:
+		return validateCanonicalStringDomain(typed)
+	case map[string]any:
+		for key, item := range typed {
+			if err := validateCanonicalStringDomain(key); err != nil {
+				return err
+			}
+			if err := validateCanonicalValue(item); err != nil {
+				return err
+			}
+		}
+		return nil
+	case []any:
+		for _, item := range typed {
+			if err := validateCanonicalValue(item); err != nil {
+				return err
+			}
+		}
+		return nil
+	case []string:
+		for _, item := range typed {
+			if err := validateCanonicalStringDomain(item); err != nil {
+				return err
+			}
+		}
+		return nil
+	case []map[string]any:
+		for _, item := range typed {
+			if err := validateCanonicalValue(item); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		return nil
+	}
+}
+
 func digestHex(value any) string {
 	data, _ := canonicalJSON(value)
 	hash := sha256.Sum256(data)
@@ -864,6 +943,9 @@ func digestHex(value any) string {
 }
 
 func canonicalJSON(value any) ([]byte, error) {
+	if err := validateCanonicalValue(value); err != nil {
+		return nil, err
+	}
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
@@ -888,7 +970,7 @@ func zidFromSPKI(der []byte) string {
 }
 
 func didKeyFromPublicKeySPKI(encoded string) (string, error) {
-	der, err := base64.RawURLEncoding.DecodeString(encoded)
+	der, err := decodeBase64URLExact(encoded, "public_key_spki")
 	if err != nil {
 		return "", err
 	}

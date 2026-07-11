@@ -14,13 +14,39 @@ export function b64url(bytes) {
   return Buffer.from(bytes).toString("base64url");
 }
 
+export function assertCanonicalStringDomain(value, label = "canonical string domain") {
+  if (typeof value !== "string") throw new Error(`${label} invalid`);
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code === 0x2028 || code === 0x2029) throw new Error(`${label} excludes U+2028/U+2029`);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!Number.isInteger(next) || next < 0xdc00 || next > 0xdfff) throw new Error(`${label} requires Unicode scalar values`);
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      throw new Error(`${label} requires Unicode scalar values`);
+    }
+  }
+  return value;
+}
+
+export function decodeBase64UrlExact(value, label = "base64url value") {
+  if (typeof value !== "string" || value.length === 0 || !/^[A-Za-z0-9_-]+$/.test(value)) {
+    throw new Error(`${label} must use exact unpadded base64url`);
+  }
+  const decoded = Buffer.from(value, "base64url");
+  if (decoded.toString("base64url") !== value) throw new Error(`${label} must use exact unpadded base64url`);
+  return decoded;
+}
+
 export function canonical(value) {
+  if (typeof value === "string") return JSON.stringify(assertCanonicalStringDomain(value));
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  return `{${Object.keys(value)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`)
-    .join(",")}}`;
+  const keys = Object.keys(value)
+    .map((key) => ({ key: assertCanonicalStringDomain(key), bytes: Buffer.from(key) }))
+    .sort((left, right) => Buffer.compare(left.bytes, right.bytes));
+  return `{${keys.map(({ key }) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`;
 }
 
 export function publicKeyDer(publicKey) {
@@ -75,7 +101,12 @@ export function didKeyFromPublicKey(publicKey) {
 
 export function didKeyFromPublicKeySPKI(publicKeySPKI) {
   if (typeof publicKeySPKI !== "string" || publicKeySPKI === "") throw new Error("expected ed25519 public_key_spki");
-  const der = Buffer.from(publicKeySPKI, "base64url");
+  let der;
+  try {
+    der = decodeBase64UrlExact(publicKeySPKI, "ed25519 public_key_spki");
+  } catch {
+    throw new Error("expected ed25519 public_key_spki");
+  }
   if (der.length !== ED25519_SPKI_PREFIX.length + 32 || !der.subarray(0, ED25519_SPKI_PREFIX.length).equals(ED25519_SPKI_PREFIX)) {
     throw new Error("expected ed25519 public_key_spki");
   }
@@ -103,7 +134,7 @@ export function computeZid(publicKey) {
 export function publicKeyFromDescriptor(descriptor) {
   if (typeof descriptor?.public_key_spki !== "string" || descriptor.public_key_spki === "") throw new Error("descriptor public key missing");
   return createPublicKey({
-    key: Buffer.from(descriptor.public_key_spki, "base64url"),
+    key: decodeBase64UrlExact(descriptor.public_key_spki, "descriptor public_key_spki"),
     type: "spki",
     format: "der",
   });
@@ -115,7 +146,11 @@ export function signObject(privateKey, payload) {
 
 export function verifyObject(publicKey, payload, signature) {
   if (typeof signature !== "string" || signature === "") return false;
-  return verify(null, Buffer.from(canonical(payload)), publicKey, Buffer.from(signature, "base64url"));
+  try {
+    return verify(null, Buffer.from(canonical(payload)), publicKey, decodeBase64UrlExact(signature, "signature"));
+  } catch {
+    return false;
+  }
 }
 
 export function descriptorBody(descriptor) {
