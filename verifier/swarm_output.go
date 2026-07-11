@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -34,6 +35,171 @@ type VerifiedSwarmOutput struct {
 	CloseBytes        []byte
 	ProofBytes        []byte
 	FinalOutput       map[string]any
+	VerificationID    string
+	VerifiedAt        string
+	VerifierAID       string
+	VerifierZone      string
+}
+
+type VerificationReplayRecord struct {
+	VerificationID       string         `json:"verification_id"`
+	CanonicalProofSHA256 string         `json:"canonical_proof_sha256"`
+	CanonicalCloseSHA256 string         `json:"canonical_close_sha256"`
+	CanonicalProofBytes  []byte         `json:"canonical_proof_bytes"`
+	CanonicalCloseBytes  []byte         `json:"canonical_close_bytes"`
+	StoredCloseDigest    string         `json:"stored_close_digest"`
+	ProofCloseDigest     string         `json:"proof_close_digest"`
+	ProofDigest          string         `json:"proof_digest"`
+	TrustInputsDigest    string         `json:"trust_inputs_digest"`
+	FinalOutput          map[string]any `json:"final_output"`
+	VerifiedAt           string         `json:"verified_at"`
+	VerifierAID          string         `json:"verifier_aid"`
+	VerifierZone         string         `json:"verifier_zone"`
+}
+
+type VerificationReplayStore interface {
+	LookupVerificationReplay(verificationID string) (VerificationReplayRecord, bool, error)
+	PutVerificationReplayIfAbsent(record VerificationReplayRecord) (VerificationReplayRecord, bool, error)
+}
+
+type SwarmOutputSchedulerCompletion struct {
+	VerificationID       string         `json:"verification_id"`
+	CanonicalProofSHA256 string         `json:"canonical_proof_sha256"`
+	CanonicalCloseSHA256 string         `json:"canonical_close_sha256"`
+	ReplayDecision       string         `json:"replay_decision"`
+	StoredCloseDigest    string         `json:"stored_close_digest"`
+	ProofCloseDigest     string         `json:"proof_close_digest"`
+	StoreMutated         bool           `json:"store_mutated"`
+	CloseDigest          string         `json:"closeDigest"`
+	ProofDigest          string         `json:"proofDigest"`
+	TrustInputsDigest    string         `json:"trustInputsDigest"`
+	CloseBytes           []byte         `json:"CloseBytes"`
+	ProofBytes           []byte         `json:"ProofBytes"`
+	FinalOutput          map[string]any `json:"finalOutput"`
+	CompletionGate       bool           `json:"completion_gate"`
+}
+
+func ApplySwarmOutputVerification(evidence OutputEvidence, trust TrustInputs, store VerificationReplayStore, now time.Time, expectedCloseDigest string) (SwarmOutputSchedulerCompletion, error) {
+	var zero SwarmOutputSchedulerCompletion
+	if store == nil {
+		return zero, errors.New("verification replay store invalid")
+	}
+	verified, err := VerifySwarmOutput(evidence, trust, now)
+	if err != nil {
+		return zero, err
+	}
+	if expectedCloseDigest != "" {
+		if !isHexDigest(expectedCloseDigest) {
+			return zero, errors.New("expected close digest invalid")
+		}
+		if expectedCloseDigest != verified.CloseDigest {
+			return zero, errors.New("verification replay close digest mismatch")
+		}
+	}
+	record, err := verificationReplayRecord(verified)
+	if err != nil {
+		return zero, err
+	}
+	recordForStore, err := CloneVerificationReplayRecord(record)
+	if err != nil {
+		return zero, err
+	}
+	stored, inserted, err := store.PutVerificationReplayIfAbsent(recordForStore)
+	if err != nil {
+		return zero, err
+	}
+	stored, err = CloneVerificationReplayRecord(stored)
+	if err != nil {
+		return zero, err
+	}
+	decision := "accepted"
+	if !inserted {
+		decision = classifyVerificationReplay(stored, record)
+	}
+	return schedulerCompletionFromReplay(verified, record, stored, decision, inserted), nil
+}
+
+func verificationReplayRecord(verified VerifiedSwarmOutput) (VerificationReplayRecord, error) {
+	finalOutput, err := cloneMap(verified.FinalOutput)
+	if err != nil {
+		return VerificationReplayRecord{}, err
+	}
+	return VerificationReplayRecord{
+		VerificationID:       verified.VerificationID,
+		CanonicalProofSHA256: digestBytesHex(verified.ProofBytes),
+		CanonicalCloseSHA256: digestBytesHex(verified.CloseBytes),
+		CanonicalProofBytes:  append([]byte(nil), verified.ProofBytes...),
+		CanonicalCloseBytes:  append([]byte(nil), verified.CloseBytes...),
+		StoredCloseDigest:    verified.CloseDigest,
+		ProofCloseDigest:     verified.CloseDigest,
+		ProofDigest:          verified.ProofDigest,
+		TrustInputsDigest:    verified.TrustInputsDigest,
+		FinalOutput:          finalOutput,
+		VerifiedAt:           verified.VerifiedAt,
+		VerifierAID:          verified.VerifierAID,
+		VerifierZone:         verified.VerifierZone,
+	}, nil
+}
+
+func classifyVerificationReplay(stored, record VerificationReplayRecord) string {
+	if stored.CanonicalProofSHA256 == record.CanonicalProofSHA256 && stored.CanonicalCloseSHA256 == record.CanonicalCloseSHA256 && stored.StoredCloseDigest == record.StoredCloseDigest && stored.StoredCloseDigest == record.ProofCloseDigest && stored.ProofCloseDigest == record.ProofCloseDigest && stored.ProofDigest == record.ProofDigest && stored.TrustInputsDigest == record.TrustInputsDigest && bytes.Equal(stored.CanonicalProofBytes, record.CanonicalProofBytes) && bytes.Equal(stored.CanonicalCloseBytes, record.CanonicalCloseBytes) && canonicalAnyEqual(stored.FinalOutput, record.FinalOutput) {
+		return "idempotent"
+	}
+	return "conflict"
+}
+
+func schedulerCompletionFromReplay(verified VerifiedSwarmOutput, record, stored VerificationReplayRecord, decision string, inserted bool) SwarmOutputSchedulerCompletion {
+	if inserted {
+		stored = record
+	}
+	storedCloseDigest := stored.StoredCloseDigest
+	gateDecision := decision == "accepted" || decision == "idempotent"
+	finalOutput, _ := cloneMap(verified.FinalOutput)
+	return SwarmOutputSchedulerCompletion{
+		VerificationID:       record.VerificationID,
+		CanonicalProofSHA256: record.CanonicalProofSHA256,
+		CanonicalCloseSHA256: record.CanonicalCloseSHA256,
+		ReplayDecision:       decision,
+		StoredCloseDigest:    storedCloseDigest,
+		ProofCloseDigest:     record.ProofCloseDigest,
+		StoreMutated:         inserted,
+		CloseDigest:          verified.CloseDigest,
+		ProofDigest:          verified.ProofDigest,
+		TrustInputsDigest:    verified.TrustInputsDigest,
+		CloseBytes:           append([]byte(nil), verified.CloseBytes...),
+		ProofBytes:           append([]byte(nil), verified.ProofBytes...),
+		FinalOutput:          finalOutput,
+		CompletionGate:       gateDecision && storedCloseDigest == verified.CloseDigest,
+	}
+}
+
+func CloneVerificationReplayRecord(record VerificationReplayRecord) (VerificationReplayRecord, error) {
+	finalOutput, err := cloneMap(record.FinalOutput)
+	if err != nil {
+		return VerificationReplayRecord{}, err
+	}
+	clone := record
+	clone.CanonicalProofBytes = append([]byte(nil), record.CanonicalProofBytes...)
+	clone.CanonicalCloseBytes = append([]byte(nil), record.CanonicalCloseBytes...)
+	clone.FinalOutput = finalOutput
+	return clone, nil
+}
+
+func cloneMap(value map[string]any) (map[string]any, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]any{}
+	if err := json.Unmarshal(data, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func digestBytesHex(data []byte) string {
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:])
 }
 
 func VerifySwarmOutput(evidence OutputEvidence, trust TrustInputs, now time.Time) (VerifiedSwarmOutput, error) {
@@ -110,7 +276,18 @@ func VerifySwarmOutput(evidence OutputEvidence, trust TrustInputs, now time.Time
 	if !canonicalAnyEqual(proofBody["final_output"], finalOutput) {
 		return zero, errors.New("proof final output mismatch")
 	}
-	return VerifiedSwarmOutput{CloseDigest: closeDigest, ProofDigest: proofDigest, TrustInputsDigest: trust.TrustInputsDigest, CloseBytes: closeBytes, ProofBytes: proofBytes, FinalOutput: finalOutput}, nil
+	return VerifiedSwarmOutput{
+		CloseDigest:       closeDigest,
+		ProofDigest:       proofDigest,
+		TrustInputsDigest: trust.TrustInputsDigest,
+		CloseBytes:        closeBytes,
+		ProofBytes:        proofBytes,
+		FinalOutput:       finalOutput,
+		VerificationID:    fmt.Sprint(proofBody["verification_id"]),
+		VerifiedAt:        fmt.Sprint(proofBody["verified_at"]),
+		VerifierAID:       fmt.Sprint(proofBody["verifier_aid"]),
+		VerifierZone:      fmt.Sprint(proofBody["verifier_zone"]),
+	}, nil
 }
 
 func verifySwarmOutputPlan(frame map[string]any, trusted map[string]map[string]any) (map[string]any, error) {
@@ -386,10 +563,7 @@ func verifySwarmOutputProof(frame map[string]any, trust TrustInputs, now time.Ti
 	if err != nil {
 		return nil, "", nil, err
 	}
-	digestValue, err := canonicalDigest(proof)
-	if err != nil {
-		return nil, "", nil, err
-	}
+	digestValue := digestBytesHex(bytesValue)
 	body := map[string]any{}
 	for k, v := range proof {
 		if k != "proof_signature" {

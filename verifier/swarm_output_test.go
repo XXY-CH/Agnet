@@ -520,3 +520,223 @@ func TestVerifySwarmOutputRecomputesProofAndRejectsMismatchMatrix(t *testing.T) 
 		})
 	}
 }
+
+type replayTestStore struct {
+	records map[string]VerificationReplayRecord
+	tracer  []string
+	put     func(VerificationReplayRecord) (VerificationReplayRecord, bool, error)
+}
+
+func newReplayTestStore() *replayTestStore {
+	return &replayTestStore{records: map[string]VerificationReplayRecord{}}
+}
+
+func (s *replayTestStore) LookupVerificationReplay(verificationID string) (VerificationReplayRecord, bool, error) {
+	s.tracer = append(s.tracer, "lookup")
+	record, ok := s.records[verificationID]
+	if !ok {
+		return VerificationReplayRecord{}, false, nil
+	}
+	clone, err := CloneVerificationReplayRecord(record)
+	if err != nil {
+		return VerificationReplayRecord{}, false, err
+	}
+	return clone, true, nil
+}
+
+func (s *replayTestStore) PutVerificationReplayIfAbsent(record VerificationReplayRecord) (VerificationReplayRecord, bool, error) {
+	s.tracer = append(s.tracer, "put")
+	if s.put != nil {
+		return s.put(record)
+	}
+	if existing, ok := s.records[record.VerificationID]; ok {
+		clone, err := CloneVerificationReplayRecord(existing)
+		if err != nil {
+			return VerificationReplayRecord{}, false, err
+		}
+		return clone, false, nil
+	}
+	stored, err := CloneVerificationReplayRecord(record)
+	if err != nil {
+		return VerificationReplayRecord{}, false, err
+	}
+	s.records[record.VerificationID] = stored
+	clone, err := CloneVerificationReplayRecord(stored)
+	if err != nil {
+		return VerificationReplayRecord{}, false, err
+	}
+	return clone, true, nil
+}
+
+func TestApplySwarmOutputVerificationReplay(t *testing.T) {
+	now := time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)
+	fixture := newSwarmOutputFixture(t)
+	verified, err := VerifySwarmOutput(fixture.evidence, fixture.trust, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := newReplayTestStore()
+
+	accepted, err := ApplySwarmOutputVerification(fixture.evidence, fixture.trust, store, now, verified.CloseDigest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accepted.ReplayDecision != "accepted" || !accepted.StoreMutated || accepted.VerificationID != "u5-go-positive" {
+		t.Fatalf("accepted=%+v", accepted)
+	}
+	if accepted.CanonicalProofSHA256 != digestBytesHex(verified.ProofBytes) || accepted.StoredCloseDigest != verified.CloseDigest || accepted.ProofCloseDigest != verified.CloseDigest {
+		t.Fatalf("unexpected replay digests: %+v", accepted)
+	}
+	if accepted.CloseDigest != verified.CloseDigest || accepted.ProofDigest != verified.ProofDigest || accepted.TrustInputsDigest != verified.TrustInputsDigest {
+		t.Fatalf("unexpected scheduler digests: %+v", accepted)
+	}
+	if !bytes.Equal(accepted.CloseBytes, verified.CloseBytes) || !bytes.Equal(accepted.ProofBytes, verified.ProofBytes) || accepted.FinalOutput["selection_rule"] != "single-terminal-result" || !accepted.CompletionGate {
+		t.Fatalf("unexpected scheduler completion: %+v", accepted)
+	}
+	if strings.Join(store.tracer, ",") != "put" {
+		t.Fatalf("mutation ordering = %v", store.tracer)
+	}
+
+	formattingOnly := cloneJSONMap(t, fixture.evidence.Proof)
+	fixture.evidence.Proof = formattingOnly
+	idempotent, err := ApplySwarmOutputVerification(fixture.evidence, fixture.trust, store, now, verified.CloseDigest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idempotent.ReplayDecision != "idempotent" || idempotent.StoreMutated || idempotent.CanonicalProofSHA256 != accepted.CanonicalProofSHA256 {
+		t.Fatalf("idempotent=%+v", idempotent)
+	}
+
+	changed := fixture
+	changed.evidence.Proof = cloneJSONMap(t, fixture.proof)
+	proofBody := cloneJSONMap(t, changed.evidence.Proof["proof"].(map[string]any))
+	delete(proofBody, "proof_signature")
+	proofBody["verified_at"] = "2026-07-11T11:58:59Z"
+	changed.evidence.Proof["proof"] = signNodeCanonical(t, fixture.trustFixture.verifierKey, "proof_signature", proofBody)
+	conflict, err := ApplySwarmOutputVerification(changed.evidence, changed.trust, store, now, verified.CloseDigest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if conflict.ReplayDecision != "conflict" || conflict.StoreMutated || conflict.CompletionGate || len(store.records) != 1 {
+		t.Fatalf("conflict=%+v records=%d", conflict, len(store.records))
+	}
+
+	for _, storedCloseDigest := range []string{"", strings.Repeat("0", 64)} {
+		corruptStore := newReplayTestStore()
+		if _, err := ApplySwarmOutputVerification(fixture.evidence, fixture.trust, corruptStore, now, verified.CloseDigest); err != nil {
+			t.Fatal(err)
+		}
+		corrupt := corruptStore.records["u5-go-positive"]
+		corrupt.StoredCloseDigest = storedCloseDigest
+		corruptStore.records["u5-go-positive"] = corrupt
+		completion, err := ApplySwarmOutputVerification(fixture.evidence, fixture.trust, corruptStore, now, verified.CloseDigest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if completion.ReplayDecision != "conflict" || completion.StoreMutated || completion.CompletionGate {
+			t.Fatalf("stored_close_digest %q completion=%+v", storedCloseDigest, completion)
+		}
+	}
+
+	recordFixture := newSwarmOutputFixture(t)
+	recordVerified, err := VerifySwarmOutput(recordFixture.evidence, recordFixture.trust, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayProofBody := recordFixture.evidence.Proof["proof"].(map[string]any)
+	replayProofBody["verification_id"] = "mutated-after-verify"
+	replayProofBody["verified_at"] = "2020-01-01T00:00:00Z"
+	replayProofBody["verifier_aid"] = "aid:ed25519:mutated"
+	replayProofBody["verifier_zone"] = "zid:mutated"
+	replayProofBody["proof_signature"] = "mutated-signature"
+	snapshotRecord, err := verificationReplayRecord(recordVerified)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshotRecord.VerificationID != "u5-go-positive" || snapshotRecord.VerifiedAt != "2026-07-11T11:59:00Z" || snapshotRecord.VerifierAID != recordFixture.trustFixture.verifier["aid"] || snapshotRecord.VerifierZone != recordFixture.trustFixture.zone["zid"] || !bytes.Equal(snapshotRecord.CanonicalProofBytes, recordVerified.ProofBytes) || bytes.Contains(snapshotRecord.CanonicalProofBytes, []byte("mutated-signature")) {
+		t.Fatalf("record re-read mutable proof after verify: %+v", snapshotRecord)
+	}
+
+	aliasStore := newReplayTestStore()
+	aliasRecord, err := verificationReplayRecord(verified)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, inserted, err := aliasStore.PutVerificationReplayIfAbsent(aliasRecord); err != nil || !inserted {
+		t.Fatalf("put inserted=%v err=%v", inserted, err)
+	}
+	aliasRecord.CanonicalProofBytes[0] ^= 0xff
+	aliasRecord.CanonicalCloseBytes[0] ^= 0xff
+	aliasRecord.FinalOutput["selection_rule"] = "mutated-original"
+	lookupAlias, ok, err := aliasStore.LookupVerificationReplay("u5-go-positive")
+	if err != nil || !ok {
+		t.Fatalf("lookup ok=%v err=%v", ok, err)
+	}
+	lookupAlias.CanonicalProofBytes[0] ^= 0xff
+	lookupAlias.CanonicalCloseBytes[0] ^= 0xff
+	lookupAlias.FinalOutput["selection_rule"] = "mutated-lookup"
+	lookupAgain, ok, err := aliasStore.LookupVerificationReplay("u5-go-positive")
+	if err != nil || !ok {
+		t.Fatalf("second lookup ok=%v err=%v", ok, err)
+	}
+	if !bytes.Equal(lookupAgain.CanonicalProofBytes, verified.ProofBytes) || !bytes.Equal(lookupAgain.CanonicalCloseBytes, verified.CloseBytes) || lookupAgain.FinalOutput["selection_rule"] != "single-terminal-result" {
+		t.Fatalf("lookup aliased mutable state: %+v", lookupAgain)
+	}
+	aliasAccepted, err := ApplySwarmOutputVerification(fixture.evidence, fixture.trust, aliasStore, now, verified.CloseDigest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if aliasAccepted.ReplayDecision != "idempotent" || !aliasAccepted.CompletionGate {
+		t.Fatalf("alias idempotent=%+v", aliasAccepted)
+	}
+	aliasAccepted.CloseBytes[0] ^= 0xff
+	aliasAccepted.ProofBytes[0] ^= 0xff
+	aliasAccepted.FinalOutput["selection_rule"] = "mutated-return"
+	aliasReturn, err := ApplySwarmOutputVerification(fixture.evidence, fixture.trust, aliasStore, now, verified.CloseDigest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if aliasReturn.ReplayDecision != "idempotent" || !aliasReturn.CompletionGate || aliasReturn.FinalOutput["selection_rule"] != "single-terminal-result" {
+		t.Fatalf("alias return=%+v", aliasReturn)
+	}
+
+	mismatchStore := newReplayTestStore()
+	_, err = ApplySwarmOutputVerification(fixture.evidence, fixture.trust, mismatchStore, now, strings.Repeat("f", 64))
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "close digest mismatch") || len(mismatchStore.records) != 0 {
+		t.Fatalf("mismatch err=%v records=%d", err, len(mismatchStore.records))
+	}
+	otherClose := newTwoStepSwarmOutputFixture(t)
+	otherVerified, err := VerifySwarmOutput(otherClose.evidence, otherClose.trust, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherCloseStore := newReplayTestStore()
+	_, err = ApplySwarmOutputVerification(fixture.evidence, fixture.trust, otherCloseStore, now, otherVerified.CloseDigest)
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "close digest mismatch") || len(otherCloseStore.records) != 0 {
+		t.Fatalf("other close err=%v records=%d", err, len(otherCloseStore.records))
+	}
+
+	invalidStore := newReplayTestStore()
+	invalid := newSwarmOutputFixture(t)
+	invalid.evidence.Proof["proof"].(map[string]any)["proof_signature"] = "bad"
+	_, err = ApplySwarmOutputVerification(invalid.evidence, invalid.trust, invalidStore, now, digestNodeCanonical(invalid.evidence.CloseFrame["close"]))
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "proof signature") || len(invalidStore.records) != 0 {
+		t.Fatalf("invalid err=%v records=%d", err, len(invalidStore.records))
+	}
+
+	raceStore := newReplayTestStore()
+	raceStore.put = func(record VerificationReplayRecord) (VerificationReplayRecord, bool, error) {
+		existing := record
+		existing.CanonicalProofSHA256 = strings.Repeat("0", 64)
+		existing.CanonicalProofBytes = []byte("different")
+		raceStore.records[record.VerificationID] = existing
+		return existing, false, nil
+	}
+	race, err := ApplySwarmOutputVerification(fixture.evidence, fixture.trust, raceStore, now, verified.CloseDigest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if race.ReplayDecision != "conflict" || race.StoreMutated {
+		t.Fatalf("race=%+v", race)
+	}
+}

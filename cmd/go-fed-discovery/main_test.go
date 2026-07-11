@@ -1,6 +1,7 @@
 package main
 
 import (
+	"agnet/verifier"
 	"bufio"
 	"bytes"
 	"context"
@@ -2352,5 +2353,259 @@ func TestVerifyAuditV2FinalOutput(t *testing.T) {
 	delete(legacyBody, "format")
 	if err := verifyClose("u3-v1-missing-format", signBodyWithKey(zoneKey, legacyBody, "close_signature")); err == nil || !strings.Contains(err.Error(), "swarm close format missing") {
 		t.Fatalf("missing-format legacy close = %v", err)
+	}
+}
+
+type cliReplayStore struct {
+	records map[string]verifier.VerificationReplayRecord
+}
+
+func newCLIReplayStore() *cliReplayStore {
+	return &cliReplayStore{records: map[string]verifier.VerificationReplayRecord{}}
+}
+
+func (s *cliReplayStore) LookupVerificationReplay(verificationID string) (verifier.VerificationReplayRecord, bool, error) {
+	record, ok := s.records[verificationID]
+	if !ok {
+		return verifier.VerificationReplayRecord{}, false, nil
+	}
+	clone, err := verifier.CloneVerificationReplayRecord(record)
+	if err != nil {
+		return verifier.VerificationReplayRecord{}, false, err
+	}
+	return clone, true, nil
+}
+
+func (s *cliReplayStore) PutVerificationReplayIfAbsent(record verifier.VerificationReplayRecord) (verifier.VerificationReplayRecord, bool, error) {
+	if existing, ok := s.records[record.VerificationID]; ok {
+		clone, err := verifier.CloneVerificationReplayRecord(existing)
+		if err != nil {
+			return verifier.VerificationReplayRecord{}, false, err
+		}
+		return clone, false, nil
+	}
+	stored, err := verifier.CloneVerificationReplayRecord(record)
+	if err != nil {
+		return verifier.VerificationReplayRecord{}, false, err
+	}
+	s.records[record.VerificationID] = stored
+	clone, err := verifier.CloneVerificationReplayRecord(stored)
+	if err != nil {
+		return verifier.VerificationReplayRecord{}, false, err
+	}
+	return clone, true, nil
+}
+
+func cloneCLIJSONMap(t *testing.T, value map[string]any) map[string]any {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]any{}
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func TestMemoryVerificationReplayStoreClonesRecords(t *testing.T) {
+	store := newMemoryVerificationReplayStore()
+	record := verifier.VerificationReplayRecord{
+		VerificationID:       "u6-memory-alias",
+		CanonicalProofSHA256: strings.Repeat("1", 64),
+		CanonicalCloseSHA256: strings.Repeat("2", 64),
+		CanonicalProofBytes:  []byte("proof-bytes"),
+		CanonicalCloseBytes:  []byte("close-bytes"),
+		StoredCloseDigest:    strings.Repeat("3", 64),
+		ProofCloseDigest:     strings.Repeat("3", 64),
+		ProofDigest:          strings.Repeat("4", 64),
+		TrustInputsDigest:    strings.Repeat("5", 64),
+		FinalOutput:          map[string]any{"artifact": map[string]any{"uri": "artifact://local/u6-memory"}, "selection_rule": "single-terminal-result"},
+	}
+	if _, inserted, err := store.PutVerificationReplayIfAbsent(record); err != nil || !inserted {
+		t.Fatalf("put inserted=%v err=%v", inserted, err)
+	}
+	record.CanonicalProofBytes[0] = 'X'
+	record.CanonicalCloseBytes[0] = 'Y'
+	record.FinalOutput["selection_rule"] = "mutated-original"
+	lookup, ok, err := store.LookupVerificationReplay("u6-memory-alias")
+	if err != nil || !ok {
+		t.Fatalf("lookup ok=%v err=%v", ok, err)
+	}
+	lookup.CanonicalProofBytes[0] = 'Z'
+	lookup.CanonicalCloseBytes[0] = 'W'
+	lookup.FinalOutput["selection_rule"] = "mutated-lookup"
+	lookupAgain, ok, err := store.LookupVerificationReplay("u6-memory-alias")
+	if err != nil || !ok {
+		t.Fatalf("second lookup ok=%v err=%v", ok, err)
+	}
+	if string(lookupAgain.CanonicalProofBytes) != "proof-bytes" || string(lookupAgain.CanonicalCloseBytes) != "close-bytes" || lookupAgain.FinalOutput["selection_rule"] != "single-terminal-result" {
+		t.Fatalf("store returned aliased record: %+v", lookupAgain)
+	}
+}
+
+func writeCLIJSON(t *testing.T, dir, name string, value any) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	data, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = append(data, '\n')
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestVerifySwarmOutputCLIProducesSchedulerGate(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	verifierZone, verifierZoneKey := testZoneDescriptor(t, "zone://u6-cli/verifier-zone")
+	_, verifierKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifierAgent, err := agentDescriptor(verifierKey, "agent://u6-cli/verifier")
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifierAgent["capabilities"] = []any{"self.declared.only"}
+	verifierAgent["policy"] = map[string]any{"allow_network": false, "write_prefixes": []any{"artifact://local/"}}
+	verifierAgent = signBodyWithKey(verifierKey, map[string]any{"alias": verifierAgent["alias"], "aid": verifierAgent["aid"], "did_key": verifierAgent["did_key"], "public_key_spki": verifierAgent["public_key_spki"], "transports": []any{"asp+local://u6-cli"}, "capabilities": verifierAgent["capabilities"], "policy": verifierAgent["policy"]}, "descriptor_signature")
+	verifierBinding := signBodyWithKey(verifierZoneKey, map[string]any{"zone": verifierZone["zid"], "alias": verifierAgent["alias"], "aid": verifierAgent["aid"]}, "signature")
+	allowlist := map[string]any{"format": "asp-swarm-output-verifier-allowlist/v1", "verifiers": []any{map[string]any{"descriptor": verifierAgent, "zone_binding": verifierBinding, "authorizations": []any{"swarm.output.verify"}}}}
+	trustedVerifierZones := map[string]any{"format": "asp-swarm-output-trusted-zones/v1", "zones": []any{verifierZone}}
+	revocations := map[string]any{"format": "asp-swarm-output-revocations/v1", "revocations": []any{signBodyWithKey(verifierZoneKey, map[string]any{"zone": verifierZone["zid"], "subject": "aid:ed25519:retired-u6-cli", "reason": "retired"}, "signature")}}
+	trust, err := verifier.NewTrustInputsForTest(allowlist, trustedVerifierZones, revocations)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	coordinator, coordinatorKey := testZoneDescriptor(t, "zone://u6-cli/coordinator")
+	_, workerKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := agentDescriptor(workerKey, "agent://u6-cli/worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker["policy"] = map[string]any{"allow_network": false, "write_prefixes": []any{"artifact://local/"}}
+	worker = signBodyWithKey(workerKey, map[string]any{"alias": worker["alias"], "aid": worker["aid"], "did_key": worker["did_key"], "public_key_spki": worker["public_key_spki"], "transports": []any{"asp+local://u6-cli"}, "capabilities": []any{"summarize.text"}, "policy": worker["policy"]}, "descriptor_signature")
+	steps := []any{map[string]any{"step_id": "summary", "capability": "summarize.text", "depends_on": []any{}}}
+	intent := "Produce a Go scheduler gate result."
+	planDigest := digestHex(map[string]any{"intent": intent, "steps": steps})
+	swarmID := "swarm://u6-cli/scheduler-gate"
+	planBody := map[string]any{"swarm_id": swarmID, "intent": intent, "steps": steps, "policy_digest": strings.Repeat("a", 64), "plan_digest": planDigest}
+	planFrame := map[string]any{"type": "FED_SWARM_PLAN", "zone": coordinator, "plan": signBodyWithKey(coordinatorKey, planBody, "plan_signature")}
+	taskBody := map[string]any{"task_id": "u6_cli_summary", "from": worker["aid"], "to": worker["alias"], "intent": "Complete summary."}
+	signedTask := signBodyWithKey(workerKey, taskBody, "signature")
+	bindingSteps := []any{map[string]any{"step_id": "summary", "depends_on": []any{}, "capability": "summarize.text", "task_digest": digestHex(signedTask)}}
+	graphDigest := digestHex(map[string]any{"swarm_id": swarmID, "plan_digest": planDigest, "steps": bindingSteps})
+	binding := signBodyWithKey(coordinatorKey, map[string]any{"format": "asp-swarm-execution-binding/v1", "swarm_id": swarmID, "plan_digest": planDigest, "steps": bindingSteps, "execution_graph_digest": graphDigest}, "binding_signature")
+	artifactBytes := []byte("u6 cli result bytes\n")
+	artifactHash := sha256.Sum256(artifactBytes)
+	artifactSHA := hex.EncodeToString(artifactHash[:])
+	artifactURI := "artifact://local/u6-cli/result.txt"
+	manifestBody := map[string]any{"uri": artifactURI, "sha256": artifactSHA, "size": float64(len(artifactBytes)), "media_type": "text/plain", "afp": "afp:sha256:" + artifactSHA}
+	manifest := map[string]any{"uri": artifactURI, "sha256": artifactSHA, "size": float64(len(artifactBytes)), "media_type": "text/plain", "afp": "afp:sha256:" + artifactSHA, "manifest_hash": digestHex(manifestBody)}
+	resultArtifact := map[string]any{"uri": artifactURI, "sha256": artifactSHA, "manifest_hash": manifest["manifest_hash"]}
+	receiptBody := map[string]any{"task_id": signedTask["task_id"], "task_digest": digestHex(signedTask), "origin_zone": coordinator["zid"], "executing_zone": coordinator["zid"], "to": worker["aid"], "artifact_refs": []any{artifactURI}, "artifact_manifests": []any{manifest}, "result_artifact": resultArtifact, "swarm": map[string]any{"swarm_id": swarmID, "step_id": "summary", "after": []any{}, "plan_digest": planDigest, "execution_graph_digest": graphDigest, "capability": "summarize.text", "task_digest": digestHex(signedTask)}}
+	receipt := signBodyWithKey(workerKey, receiptBody, "signature")
+	receiptFrame := map[string]any{"type": "FED_RECEIPT", "zone": coordinator, "worker": worker, "zone_binding": signBodyWithKey(coordinatorKey, map[string]any{"zone": coordinator["zid"], "alias": worker["alias"], "aid": worker["aid"]}, "signature"), "receipt": receipt}
+	signedReceiptDigest, err := verifier.SignedReceiptDigest(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finalOutput := map[string]any{"step_id": "summary", "task_id": signedTask["task_id"], "signed_receipt_digest": signedReceiptDigest, "artifact": resultArtifact, "selection_rule": "single-terminal-result"}
+	closeBody := map[string]any{"format": "asp-swarm-close/v2", "swarm_id": swarmID, "plan_digest": planDigest, "execution_graph_digest": graphDigest, "step_receipts": []any{map[string]any{"step_id": "summary", "task_id": signedTask["task_id"], "signed_receipt_digest": signedReceiptDigest}}, "final_output": finalOutput}
+	closeFrame := map[string]any{"type": "FED_SWARM_CLOSE", "swarm_id": swarmID, "zone": coordinator, "close": signBodyWithKey(coordinatorKey, closeBody, "close_signature")}
+	closeDigest := digestHex(closeFrame["close"])
+	proofBody := map[string]any{"format": "asp-swarm-output-verification/v1", "verification_id": "u6-go-cli-scheduler", "verified_at": "2026-07-11T11:59:00Z", "swarm_id": swarmID, "plan_digest": planDigest, "execution_graph_digest": graphDigest, "close_digest": closeDigest, "final_output": finalOutput, "verifier_aid": verifierAgent["aid"], "verifier_zone": verifierZone["zid"], "trust_inputs_digest": trust.TrustInputsDigest}
+	proof := map[string]any{"type": "FED_SWARM_OUTPUT_VERIFICATION", "verifier": verifierAgent, "verifier_zone": verifierZone, "verifier_zone_binding": verifierBinding, "proof": signBodyWithKey(verifierKey, proofBody, "proof_signature")}
+	artifactPath := filepath.Join(dir, "result.txt")
+	if err := os.WriteFile(artifactPath, artifactBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"proof":         writeCLIJSON(t, dir, "proof.json", proof),
+		"plan":          writeCLIJSON(t, dir, "plan.json", planFrame),
+		"binding":       writeCLIJSON(t, dir, "binding.json", binding),
+		"steps":         writeCLIJSON(t, dir, "steps.json", []any{map[string]any{"step_id": "summary", "depends_on": []any{}, "task": signedTask}}),
+		"workers":       writeCLIJSON(t, dir, "workers.json", []any{worker}),
+		"close":         writeCLIJSON(t, dir, "close.json", closeFrame),
+		"receipts":      writeCLIJSON(t, dir, "receipts.json", []any{receiptFrame}),
+		"zones":         writeCLIJSON(t, dir, "trusted-zones.json", map[string]any{"zones": []any{coordinator}}),
+		"allowlist":     writeCLIJSON(t, dir, "allowlist.json", allowlist),
+		"verifierZones": writeCLIJSON(t, dir, "verifier-zones.json", trustedVerifierZones),
+		"revocations":   writeCLIJSON(t, dir, "revocations.json", revocations),
+	}
+	_ = files
+	bundlePath := writeCLIJSON(t, dir, "bundle.json", map[string]any{"format": "asp-swarm-output-verification-cli/v1", "proof": "proof.json", "plan": "plan.json", "execution_binding": "binding.json", "executable_steps": "steps.json", "resolved_workers": "workers.json", "close": "close.json", "receipts": "receipts.json", "trusted_zones": "trusted-zones.json", "trust_inputs": map[string]any{"allowlist": "allowlist.json", "trustedZones": "verifier-zones.json", "revocations": "revocations.json"}, "artifacts": []any{map[string]any{"uri": artifactURI, "path": filepath.Base(artifactPath)}}})
+
+	store := newCLIReplayStore()
+	var out bytes.Buffer
+	if err := runVerifySwarmOutputSchedulerGate([]string{bundlePath}, store, &out, time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	var gate map[string]any
+	if err := json.Unmarshal(out.Bytes(), &gate); err != nil {
+		t.Fatal(err)
+	}
+	if gate["replay_decision"] != "accepted" || gate["stored_close_digest"] != closeDigest || gate["proof_close_digest"] != closeDigest || gate["closeDigest"] != closeDigest || gate["trustInputsDigest"] != trust.TrustInputsDigest || gate["completion_gate"] != true {
+		t.Fatalf("gate=%v", gate)
+	}
+	if _, ok := gate["CloseBytes"].(string); !ok {
+		t.Fatalf("CloseBytes missing exact byte payload: %v", gate)
+	}
+	var second bytes.Buffer
+	if err := runVerifySwarmOutputSchedulerGate([]string{bundlePath}, store, &second, time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	var secondGate map[string]any
+	if err := json.Unmarshal(second.Bytes(), &secondGate); err != nil {
+		t.Fatal(err)
+	}
+	if secondGate["replay_decision"] != "idempotent" {
+		t.Fatalf("second gate=%v", secondGate)
+	}
+	changedProof := cloneCLIJSONMap(t, proof)
+	changedProofBody := cloneCLIJSONMap(t, changedProof["proof"].(map[string]any))
+	delete(changedProofBody, "proof_signature")
+	changedProofBody["verified_at"] = "2026-07-11T11:58:59Z"
+	changedProof["proof"] = signBodyWithKey(verifierKey, changedProofBody, "proof_signature")
+	writeCLIJSON(t, dir, "proof.json", changedProof)
+	var conflictOut bytes.Buffer
+	if err := runVerifySwarmOutputSchedulerGate([]string{bundlePath}, store, &conflictOut, time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	var conflictGate map[string]any
+	if err := json.Unmarshal(conflictOut.Bytes(), &conflictGate); err != nil {
+		t.Fatal(err)
+	}
+	if conflictGate["replay_decision"] != "conflict" || conflictGate["store_mutated"] != false || conflictGate["completion_gate"] != false {
+		t.Fatalf("conflict gate=%v", conflictGate)
+	}
+
+	duplicateBundlePath := writeCLIJSON(t, dir, "duplicate-bundle.json", map[string]any{"format": "asp-swarm-output-verification-cli/v1", "proof": "proof.json", "plan": "plan.json", "execution_binding": "binding.json", "executable_steps": "steps.json", "resolved_workers": "workers.json", "close": "close.json", "receipts": "receipts.json", "trusted_zones": "trusted-zones.json", "trust_inputs": map[string]any{"allowlist": "allowlist.json", "trustedZones": "verifier-zones.json", "revocations": "revocations.json"}, "artifacts": []any{map[string]any{"uri": artifactURI, "path": filepath.Base(artifactPath)}, map[string]any{"uri": artifactURI, "path": "other-result.txt"}}})
+	beforeDuplicateRecords := len(store.records)
+	if err := runVerifySwarmOutputSchedulerGate([]string{duplicateBundlePath}, store, &bytes.Buffer{}, time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)); err == nil || !strings.Contains(err.Error(), "duplicate artifact uri") {
+		t.Fatalf("duplicate artifact err=%v", err)
+	}
+	if len(store.records) != beforeDuplicateRecords {
+		t.Fatalf("duplicate artifact mutated store: before=%d after=%d", beforeDuplicateRecords, len(store.records))
+	}
+	if err := runVerifySwarmOutputSchedulerGate(nil, store, &bytes.Buffer{}, time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)); err == nil || !strings.Contains(err.Error(), "usage") {
+		t.Fatalf("missing arity err=%v", err)
+	}
+	if err := runVerifySwarmOutputSchedulerGate([]string{bundlePath, bundlePath}, store, &bytes.Buffer{}, time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)); err == nil || !strings.Contains(err.Error(), "usage") {
+		t.Fatalf("extra arity err=%v", err)
 	}
 }

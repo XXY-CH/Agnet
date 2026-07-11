@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 
 import { canonical, createAgent, createZone, decodeBase64UrlExact, deriveSwarmFinalOutput, signObject, signedReceiptDigest, swarmExecutionBinding, swarmPlan, verifySwarmExecutionBinding, verifySwarmPlan, zoneBinding, zoneRevocation } from "./asp-core.mjs";
 import { safeOpenOwnedJson } from "./secure-input.mjs";
-import { createSwarmOutputTrustInputsForTest, createSwarmOutputVerification, loadSwarmOutputTrustInputs, verifySwarmOutputVerification } from "./swarm-output-verification.mjs";
+import { applySwarmOutputVerificationReplay, createSwarmOutputTrustInputsForTest, createSwarmOutputVerification, loadSwarmOutputTrustInputs, verifySwarmOutputVerification } from "./swarm-output-verification.mjs";
 
 const MAX_INPUT_BYTES = 1024 * 1024;
 const execFileAsync = promisify(execFile);
@@ -923,6 +923,219 @@ test("FED_SWARM_OUTPUT_VERIFICATION CLI verifies proof and rejects byte tamper a
   await assert.rejects(
     () => execFileAsync("node", ["asp-verify.mjs", "swarm-output", files.bundle, "extra.json"], { env: { ...process.env, ASP_VERIFY_NOW: now.toISOString() } }),
     (error) => /usage: node asp-verify.mjs/.test(error.stderr),
+  );
+});
+
+test("replay is idempotent and conflicts by bytes", async () => {
+  const now = new Date("2026-07-11T12:00:00Z");
+  const makeStore = () => {
+    const records = new Map();
+    return {
+      records,
+      async lookup(verificationId) {
+        return records.get(verificationId) ?? null;
+      },
+      async putIfAbsent(record) {
+        const existing = records.get(record.verification_id);
+        if (existing) return { inserted: false, record: existing };
+        records.set(record.verification_id, record);
+        return { inserted: true, record };
+      },
+    };
+  };
+  const base = await u5Fixture();
+  const created = await createSwarmOutputVerification(base.evidence, base.trust, base.verifier, { verificationId: "u6-node-replay", verifiedAt: "2026-07-11T11:59:00Z", now });
+  const store = makeStore();
+
+  const accepted = await applySwarmOutputVerificationReplay(created.proof, base.evidence, base.trust, store, { now, expectedCloseDigest: created.closeDigest });
+  assert.equal(accepted.replay_decision, "accepted");
+  assert.equal(accepted.store_mutated, true);
+  assert.equal(accepted.verification_id, "u6-node-replay");
+  assert.equal(accepted.canonical_proof_sha256, createHash("sha256").update(canonical(created.proof.proof)).digest("hex"));
+  assert.equal(accepted.stored_close_digest, created.closeDigest);
+  assert.equal(accepted.proof_close_digest, created.closeDigest);
+  assert.equal(accepted.closeDigest, created.closeDigest);
+  assert.equal(accepted.proofDigest, created.proofDigest);
+  assert.equal(accepted.trustInputsDigest, created.trustInputsDigest);
+  assert.deepEqual(accepted.CloseBytes, Buffer.from(canonical(base.evidence.closeFrame.close)));
+  assert.deepEqual(accepted.ProofBytes, Buffer.from(canonical(created.proof.proof)));
+  assert.deepEqual(accepted.finalOutput, created.finalOutput);
+  assert.equal(accepted.completion_gate, true);
+
+  const formattingOnly = JSON.parse(JSON.stringify(reverseKeys(created.proof)));
+  const idempotent = await applySwarmOutputVerificationReplay(formattingOnly, base.evidence, base.trust, store, { now, expectedCloseDigest: created.closeDigest });
+  assert.equal(idempotent.replay_decision, "idempotent");
+  assert.equal(idempotent.store_mutated, false);
+  assert.equal(idempotent.canonical_proof_sha256, accepted.canonical_proof_sha256);
+  assert.equal(idempotent.completion_gate, true);
+
+  const changedSignedBytes = resignU5Proof(created.proof, base.verifier.privateKey, (body) => { body.verified_at = "2026-07-11T11:58:59Z"; });
+  const conflict = await applySwarmOutputVerificationReplay(changedSignedBytes, base.evidence, base.trust, store, { now, expectedCloseDigest: created.closeDigest });
+  assert.equal(conflict.replay_decision, "conflict");
+  assert.equal(conflict.store_mutated, false);
+  assert.equal(conflict.completion_gate, false);
+  assert.equal(store.records.size, 1);
+
+  for (const storedCloseDigest of ["", "0".repeat(64)]) {
+    const corruptStore = makeStore();
+    await applySwarmOutputVerificationReplay(created.proof, base.evidence, base.trust, corruptStore, { now, expectedCloseDigest: created.closeDigest });
+    corruptStore.records.set(created.proof.proof.verification_id, { ...corruptStore.records.get(created.proof.proof.verification_id), stored_close_digest: storedCloseDigest });
+    const corrupt = await applySwarmOutputVerificationReplay(created.proof, base.evidence, base.trust, corruptStore, { now, expectedCloseDigest: created.closeDigest });
+    assert.equal(corrupt.replay_decision, "conflict");
+    assert.equal(corrupt.store_mutated, false);
+    assert.equal(corrupt.completion_gate, false);
+  }
+
+  const aliasStore = makeStore();
+  const aliasAccepted = await applySwarmOutputVerificationReplay(created.proof, base.evidence, base.trust, aliasStore, { now, expectedCloseDigest: created.closeDigest });
+  const storedAlias = aliasStore.records.get(created.proof.proof.verification_id);
+  if (Buffer.isBuffer(storedAlias.canonical_proof_bytes)) storedAlias.canonical_proof_bytes[0] ^= 0xff;
+  if (Buffer.isBuffer(storedAlias.canonical_close_bytes)) storedAlias.canonical_close_bytes[0] ^= 0xff;
+  aliasAccepted.CloseBytes[0] ^= 0xff;
+  aliasAccepted.ProofBytes[0] ^= 0xff;
+  assert.throws(() => { aliasAccepted.finalOutput.artifact.uri = "artifact://local/mutated-return.txt"; }, /read only|Cannot assign/);
+  const aliasIdempotent = await applySwarmOutputVerificationReplay(created.proof, base.evidence, base.trust, aliasStore, { now, expectedCloseDigest: created.closeDigest });
+  assert.equal(aliasIdempotent.replay_decision, "idempotent");
+  assert.equal(aliasIdempotent.completion_gate, true);
+  assert.deepEqual(aliasIdempotent.finalOutput, created.finalOutput);
+
+  const mismatchStore = makeStore();
+  await assert.rejects(
+    () => applySwarmOutputVerificationReplay(created.proof, base.evidence, base.trust, mismatchStore, { now, expectedCloseDigest: "f".repeat(64) }),
+    /close digest mismatch/i,
+  );
+  assert.equal(mismatchStore.records.size, 0);
+  const otherClose = await u5Fixture({ dependencyChain: true });
+  const otherCreated = await createSwarmOutputVerification(otherClose.evidence, otherClose.trust, otherClose.verifier, { verificationId: "u6-node-other-close", verifiedAt: "2026-07-11T11:59:00Z", now });
+  const otherCloseStore = makeStore();
+  await assert.rejects(
+    () => applySwarmOutputVerificationReplay(created.proof, base.evidence, base.trust, otherCloseStore, { now, expectedCloseDigest: otherCreated.closeDigest }),
+    /close digest mismatch/i,
+  );
+  assert.equal(otherCloseStore.records.size, 0);
+
+
+  const invalidStore = makeStore();
+  const invalid = structuredClone(created.proof);
+  invalid.proof.proof_signature = "bad";
+  await assert.rejects(
+    () => applySwarmOutputVerificationReplay(invalid, base.evidence, base.trust, invalidStore, { now, expectedCloseDigest: created.closeDigest }),
+    /proof signature/i,
+  );
+  assert.equal(invalidStore.records.size, 0);
+
+  const raceStore = {
+    records: new Map(),
+    async lookup() { return null; },
+    async putIfAbsent(record) {
+      const existing = { ...record, canonical_proof_sha256: "0".repeat(64), canonical_proof_bytes: Buffer.from("different"), proof_close_digest: record.proof_close_digest };
+      this.records.set(record.verification_id, existing);
+      return { inserted: false, record: existing };
+    },
+  };
+  const race = await applySwarmOutputVerificationReplay(created.proof, base.evidence, base.trust, raceStore, { now, expectedCloseDigest: created.closeDigest });
+  assert.equal(race.replay_decision, "conflict");
+  assert.equal(race.store_mutated, false);
+});
+
+test("replay records use immutable verified proof snapshot across artifact await", async () => {
+  const now = new Date("2026-07-11T12:00:00Z");
+  const base = await u5Fixture();
+  const created = await createSwarmOutputVerification(base.evidence, base.trust, base.verifier, { verificationId: "u6-node-snapshot-original", verifiedAt: "2026-07-11T11:59:00Z", now });
+  const proof = structuredClone(created.proof);
+  const originalProofBytes = Buffer.from(canonical(proof.proof));
+  const originalProofDigest = createHash("sha256").update(canonical(proof.proof)).digest("hex");
+  const originalSignature = proof.proof.proof_signature;
+  const originalVerifiedAt = proof.proof.verified_at;
+  const originalVerifierAID = proof.proof.verifier_aid;
+  const originalVerifierZone = proof.proof.verifier_zone;
+  const storeRecords = new Map();
+  const store = {
+    async putIfAbsent(record) {
+      storeRecords.set(record.verification_id, record);
+      return { inserted: true, record };
+    },
+  };
+  base.evidence.loadArtifactBytes = async ({ uri }) => {
+    await Promise.resolve();
+    proof.proof.verification_id = "u6-node-snapshot-mutated";
+    proof.proof.verified_at = "2020-01-01T00:00:00Z";
+    proof.proof.verifier_aid = "aid:ed25519:mutated";
+    proof.proof.verifier_zone = "zid:mutated";
+    proof.proof.proof_signature = "mutated-signature";
+    return base.artifactBytesByUri.get(uri);
+  };
+
+  const accepted = await applySwarmOutputVerificationReplay(proof, base.evidence, base.trust, store, { now, expectedCloseDigest: created.closeDigest });
+
+  assert.equal(accepted.verification_id, "u6-node-snapshot-original");
+  assert.equal(accepted.proofDigest, originalProofDigest);
+  assert.deepEqual(accepted.ProofBytes, originalProofBytes);
+  assert.equal(storeRecords.has("u6-node-snapshot-original"), true);
+  assert.equal(storeRecords.has("u6-node-snapshot-mutated"), false);
+  const record = storeRecords.get("u6-node-snapshot-original");
+  assert.equal(record.verification_id, "u6-node-snapshot-original");
+  assert.equal(record.canonical_proof_sha256, originalProofDigest);
+  assert.deepEqual(record.canonical_proof_bytes, originalProofBytes.toString("utf8"));
+  assert.equal(record.proof_digest, originalProofDigest);
+  assert.equal(record.verified_at, originalVerifiedAt);
+  assert.equal(record.verifier_aid, originalVerifierAID);
+  assert.equal(record.verifier_zone, originalVerifierZone);
+  assert.notEqual(record.canonical_proof_bytes.includes("mutated-signature"), true);
+  assert.equal(proof.proof.proof_signature, "mutated-signature");
+  assert.equal(originalSignature.length > 0, true);
+});
+
+test("FED_SWARM_OUTPUT_VERIFICATION CLI rejects duplicate artifact bindings before verification", async (t) => {
+  const base = await u5Fixture();
+  const now = new Date("2026-07-11T12:00:00Z");
+  const created = await createSwarmOutputVerification(base.evidence, base.trust, base.verifier, { verificationId: "u6-cli-duplicate-artifact", verifiedAt: "2026-07-11T11:59:00Z", now });
+  const dir = await workspace(t, "agnet-u6-cli-duplicate-");
+  await writeFile(join(dir, "result.txt"), base.artifactBytesByUri.get(created.finalOutput.artifact.uri));
+  await writeFile(join(dir, "other.txt"), Buffer.from("other bytes\n"));
+  const files = {
+    bundle: join(dir, "bundle.json"),
+    proof: join(dir, "proof.json"),
+    plan: join(dir, "plan.json"),
+    binding: join(dir, "binding.json"),
+    steps: join(dir, "steps.json"),
+    workers: join(dir, "workers.json"),
+    close: join(dir, "close.json"),
+    receipts: join(dir, "receipts.json"),
+    zones: join(dir, "trusted-zones.json"),
+    allowlist: join(dir, "allowlist.json"),
+    verifierZones: join(dir, "verifier-zones.json"),
+    revocations: join(dir, "revocations.json"),
+  };
+  await Promise.all([
+    writeSecureJson(files.proof, created.proof),
+    writeSecureJson(files.plan, base.evidence.planFrame),
+    writeSecureJson(files.binding, base.evidence.executionBinding),
+    writeSecureJson(files.steps, base.evidence.executableSteps),
+    writeSecureJson(files.workers, base.evidence.resolvedWorkers),
+    writeSecureJson(files.close, base.evidence.closeFrame),
+    writeSecureJson(files.receipts, base.evidence.receiptFrames),
+    writeSecureJson(files.zones, { zones: [...base.evidence.trustedZones.values()] }),
+    writeSecureJson(files.allowlist, base.trustValues.allowlist),
+    writeSecureJson(files.verifierZones, base.trustValues.trustedZones),
+    writeSecureJson(files.revocations, base.trustValues.revocations),
+  ]);
+  await writeSecureJson(files.bundle, {
+    format: "asp-swarm-output-verification-cli/v1",
+    proof: "proof.json",
+    plan: "plan.json",
+    execution_binding: "binding.json",
+    executable_steps: "steps.json",
+    resolved_workers: "workers.json",
+    close: "close.json",
+    receipts: "receipts.json",
+    trusted_zones: "trusted-zones.json",
+    trust_inputs: { allowlist: "allowlist.json", trustedZones: "verifier-zones.json", revocations: "revocations.json" },
+    artifacts: [{ uri: created.finalOutput.artifact.uri, path: "result.txt" }, { uri: created.finalOutput.artifact.uri, path: "other.txt" }],
+  });
+  await assert.rejects(
+    () => execFileAsync("node", ["asp-verify.mjs", "swarm-output", files.bundle], { env: { ...process.env, ASP_VERIFY_NOW: now.toISOString() } }),
+    (error) => /duplicate artifact uri/i.test(error.stderr),
   );
 });
 

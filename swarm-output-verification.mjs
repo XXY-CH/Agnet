@@ -275,7 +275,7 @@ function digest(value) {
 }
 
 function deepFreeze(value) {
-  if (value === null || typeof value !== "object" || Object.isFrozen(value)) return value;
+  if (value === null || typeof value !== "object" || Object.isFrozen(value) || ArrayBuffer.isView(value)) return value;
   for (const item of Object.values(value)) deepFreeze(item);
   return Object.freeze(value);
 }
@@ -431,6 +431,10 @@ async function recomputeSwarmOutput(evidence, trustInputs) {
   return { closeVerified, finalOutput };
 }
 
+function snapshotProofFrame(proofFrame) {
+  return structuredClone(proofFrame);
+}
+
 function proofBodyFromFrame(proofFrame, trustInputs, now) {
   const { verifier } = findPinnedVerifier(proofFrame, trustInputs);
   requireExactFields(proofFrame.proof, OUTPUT_VERIFICATION_BODY_FIELDS, "swarm output verification proof");
@@ -451,12 +455,21 @@ function proofBodyFromFrame(proofFrame, trustInputs, now) {
   return body;
 }
 
-function buildResult(proof, closeVerified, finalOutput, trustInputs) {
+function buildResult(proofSnapshot, proofBody, closeVerified, finalOutput, trustInputs) {
+  const closeBytes = Buffer.from(canonical(closeVerified.close));
+  const proofBytes = Buffer.from(canonical(proofSnapshot.proof));
+  const proofDigest = createHash("sha256").update(proofBytes).digest("hex");
   return deepFreeze({
-    proof,
-    proofDigest: digest(proof.proof),
+    proof: proofSnapshot,
+    verificationID: proofBody.verification_id,
+    verifiedAt: proofBody.verified_at,
+    verifierAID: proofBody.verifier_aid,
+    verifierZone: proofBody.verifier_zone,
+    proofDigest,
     closeDigest: closeVerified.closeDigest,
     trustInputsDigest: trustInputs.trust_inputs_digest,
+    CloseBytes: closeBytes,
+    ProofBytes: proofBytes,
     finalOutput,
   });
 }
@@ -485,12 +498,14 @@ export async function createSwarmOutputVerification(evidence, trustInputs, verif
     verifier_zone_binding: verifier.zone_binding,
     proof: { ...proofBody, proof_signature: signObject(verifier.privateKey, proofBody) },
   };
-  proofBodyFromFrame(proof, trustInputs, options.now ?? new Date());
-  return buildResult(proof, closeVerified, finalOutput, trustInputs);
+  const proofSnapshot = snapshotProofFrame(proof);
+  const proofBodySnapshot = proofBodyFromFrame(proofSnapshot, trustInputs, options.now ?? new Date());
+  return buildResult(proofSnapshot, proofBodySnapshot, closeVerified, finalOutput, trustInputs);
 }
 
 export async function verifySwarmOutputVerification(proof, evidence, trustInputs, options = {}) {
-  const body = proofBodyFromFrame(proof, trustInputs, options.now ?? new Date());
+  const proofSnapshot = snapshotProofFrame(proof);
+  const body = proofBodyFromFrame(proofSnapshot, trustInputs, options.now ?? new Date());
   const { finalOutput, closeVerified } = await recomputeSwarmOutput(evidence, trustInputs);
   if (body.trust_inputs_digest !== trustInputs.trust_inputs_digest) throw new Error("trust inputs digest mismatch");
   if (body.swarm_id !== closeVerified.close.swarm_id) throw new Error("proof swarm_id mismatch");
@@ -498,5 +513,97 @@ export async function verifySwarmOutputVerification(proof, evidence, trustInputs
   if (body.execution_graph_digest !== closeVerified.close.execution_graph_digest) throw new Error("proof execution graph digest mismatch");
   if (body.close_digest !== closeVerified.closeDigest) throw new Error("proof close digest mismatch");
   if (!canonicalEqual(body.final_output, finalOutput)) throw new Error("proof final output mismatch");
-  return buildResult(proof, closeVerified, finalOutput, trustInputs);
+  return buildResult(proofSnapshot, body, closeVerified, finalOutput, trustInputs);
+}
+
+function cloneReplayJSON(value) {
+  return structuredClone(value);
+}
+
+function proofReplayRecordFromVerification(verified) {
+  const canonicalProofText = Buffer.from(verified.ProofBytes).toString("utf8");
+  const canonicalCloseText = Buffer.from(verified.CloseBytes).toString("utf8");
+  return deepFreeze({
+    verification_id: verified.verificationID,
+    canonical_proof_sha256: createHash("sha256").update(canonicalProofText, "utf8").digest("hex"),
+    canonical_close_sha256: createHash("sha256").update(canonicalCloseText, "utf8").digest("hex"),
+    canonical_proof_bytes: canonicalProofText,
+    canonical_close_bytes: canonicalCloseText,
+    proof_close_digest: verified.closeDigest,
+    stored_close_digest: verified.closeDigest,
+    proof_digest: verified.proofDigest,
+    trust_inputs_digest: verified.trustInputsDigest,
+    final_output: cloneReplayJSON(verified.finalOutput),
+    verified_at: verified.verifiedAt,
+    verifier_aid: verified.verifierAID,
+    verifier_zone: verified.verifierZone,
+  });
+}
+
+function replayBytesEqual(left, right) {
+  if (Buffer.isBuffer(right)) return left.equals(right);
+  if (right instanceof Uint8Array) return left.equals(Buffer.from(right));
+  if (Array.isArray(right)) return left.equals(Buffer.from(right));
+  if (typeof right === "string") return left.equals(Buffer.from(right));
+  return false;
+}
+
+function classifyReplay(existing, record) {
+  if (!existing) return "accepted";
+  return existing.canonical_proof_sha256 === record.canonical_proof_sha256
+    && existing.canonical_close_sha256 === record.canonical_close_sha256
+    && existing.stored_close_digest === record.stored_close_digest
+    && existing.stored_close_digest === record.proof_close_digest
+    && existing.proof_close_digest === record.proof_close_digest
+    && existing.proof_digest === record.proof_digest
+    && existing.trust_inputs_digest === record.trust_inputs_digest
+    && replayBytesEqual(Buffer.from(record.canonical_proof_bytes, "utf8"), existing.canonical_proof_bytes)
+    && replayBytesEqual(Buffer.from(record.canonical_close_bytes, "utf8"), existing.canonical_close_bytes)
+    && canonicalEqual(existing.final_output, record.final_output)
+    ? "idempotent"
+    : "conflict";
+}
+
+function buildSchedulerCompletion(verified, record, replayDecision, storeMutated, storedRecord = record) {
+  const storedCloseDigest = storedRecord.stored_close_digest;
+  const gateDecision = replayDecision === "accepted" || replayDecision === "idempotent";
+  return deepFreeze({
+    verification_id: record.verification_id,
+    canonical_proof_sha256: record.canonical_proof_sha256,
+    canonical_close_sha256: record.canonical_close_sha256,
+    replay_decision: replayDecision,
+    stored_close_digest: storedCloseDigest,
+    proof_close_digest: record.proof_close_digest,
+    store_mutated: storeMutated,
+    closeDigest: verified.closeDigest,
+    proofDigest: verified.proofDigest,
+    trustInputsDigest: verified.trustInputsDigest,
+    CloseBytes: Buffer.from(verified.CloseBytes),
+    ProofBytes: Buffer.from(verified.ProofBytes),
+    finalOutput: cloneReplayJSON(verified.finalOutput),
+    completion_gate: gateDecision && storedCloseDigest === verified.closeDigest,
+  });
+}
+
+function replayPut(store) {
+  return store.putVerificationReplayIfAbsent ?? store.putIfAbsent;
+}
+
+export async function applySwarmOutputVerificationReplay(proof, evidence, trustInputs, store, options = {}) {
+  const putIfAbsent = replayPut(store);
+  if (!store || typeof putIfAbsent !== "function") {
+    throw new Error("verification replay store invalid");
+  }
+  const verified = await verifySwarmOutputVerification(proof, evidence, trustInputs, options);
+  if (options.expectedCloseDigest !== undefined) {
+    requireHexDigest(options.expectedCloseDigest, "expected close digest");
+    if (options.expectedCloseDigest !== verified.closeDigest) throw new Error("verification replay close digest mismatch");
+  }
+  const record = proofReplayRecordFromVerification(verified);
+  const putResult = await putIfAbsent.call(store, record);
+  const inserted = putResult === true || putResult?.inserted === true;
+  const storedRecord = putResult?.record ?? putResult?.existing ?? (inserted ? record : undefined);
+  if (!inserted && !storedRecord) throw new Error("verification replay store did not return existing record");
+  const replayDecision = inserted ? "accepted" : classifyReplay(storedRecord, record);
+  return buildSchedulerCompletion(verified, record, replayDecision, inserted, storedRecord ?? record);
 }

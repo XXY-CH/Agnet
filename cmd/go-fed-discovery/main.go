@@ -1,6 +1,7 @@
 package main
 
 import (
+	"agnet/verifier"
 	"bufio"
 	"context"
 	"crypto/tls"
@@ -9,12 +10,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -42,6 +45,7 @@ func main() {
 	sandboxRequire := flag.String("sandbox-require", "", "require sandbox runtime support for a claim and exit")
 	printZone := flag.Bool("print-zone", false, "print the authority Zone descriptor and exit")
 	interopRequestPort := flag.String("interop-request", "", "send one FED_TASK_OPEN request to a Node federation gateway port and exit")
+	verifySwarmOutputSchedulerGate := flag.Bool("verify-swarm-output-scheduler-gate", false, "verify Swarm output proof and print scheduler completion gate JSON")
 	flag.Parse()
 
 	if *printZone {
@@ -83,6 +87,24 @@ func main() {
 			os.Exit(1)
 		}
 		if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *verifySwarmOutputSchedulerGate {
+		store := newMemoryVerificationReplayStore()
+		now := time.Now().UTC()
+		if fixed := os.Getenv("ASP_VERIFY_NOW"); fixed != "" {
+			parsed, err := time.Parse(time.RFC3339Nano, fixed)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			now = parsed
+		}
+		if err := runVerifySwarmOutputSchedulerGate(flag.Args(), store, os.Stdout, now); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
@@ -156,6 +178,256 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+type memoryVerificationReplayStore struct {
+	records map[string]verifier.VerificationReplayRecord
+}
+
+func newMemoryVerificationReplayStore() *memoryVerificationReplayStore {
+	return &memoryVerificationReplayStore{records: map[string]verifier.VerificationReplayRecord{}}
+}
+
+func (s *memoryVerificationReplayStore) LookupVerificationReplay(verificationID string) (verifier.VerificationReplayRecord, bool, error) {
+	record, ok := s.records[verificationID]
+	if !ok {
+		return verifier.VerificationReplayRecord{}, false, nil
+	}
+	clone, err := verifier.CloneVerificationReplayRecord(record)
+	if err != nil {
+		return verifier.VerificationReplayRecord{}, false, err
+	}
+	return clone, true, nil
+}
+
+func (s *memoryVerificationReplayStore) PutVerificationReplayIfAbsent(record verifier.VerificationReplayRecord) (verifier.VerificationReplayRecord, bool, error) {
+	if existing, ok := s.records[record.VerificationID]; ok {
+		clone, err := verifier.CloneVerificationReplayRecord(existing)
+		if err != nil {
+			return verifier.VerificationReplayRecord{}, false, err
+		}
+		return clone, false, nil
+	}
+	stored, err := verifier.CloneVerificationReplayRecord(record)
+	if err != nil {
+		return verifier.VerificationReplayRecord{}, false, err
+	}
+	s.records[record.VerificationID] = stored
+	clone, err := verifier.CloneVerificationReplayRecord(stored)
+	if err != nil {
+		return verifier.VerificationReplayRecord{}, false, err
+	}
+	return clone, true, nil
+}
+
+func runVerifySwarmOutputSchedulerGate(args []string, store verifier.VerificationReplayStore, out io.Writer, now time.Time) error {
+	if len(args) != 1 {
+		return errors.New("usage: go-fed-discovery --verify-swarm-output-scheduler-gate <bundle.json>")
+	}
+	completion, err := verifySwarmOutputSchedulerGateBundle(args[0], store, now)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(out).Encode(completion)
+}
+
+func verifySwarmOutputSchedulerGateBundle(bundlePathValue string, store verifier.VerificationReplayStore, now time.Time) (verifier.SwarmOutputSchedulerCompletion, error) {
+	var zero verifier.SwarmOutputSchedulerCompletion
+	baseDir := filepath.Dir(bundlePathValue)
+	bundle, err := readJSONMapFile(bundlePathValue)
+	if err != nil {
+		return zero, err
+	}
+	if !hasRequiredAllowedMapFields(bundle, []string{"artifacts", "close", "executable_steps", "execution_binding", "format", "plan", "proof", "receipts", "resolved_workers", "trust_inputs", "trusted_zones"}, nil) {
+		return zero, errors.New("swarm output bundle fields invalid")
+	}
+	if bundle["format"] != "asp-swarm-output-verification-cli/v1" {
+		return zero, errors.New("swarm output bundle format invalid")
+	}
+	trustInputs, ok := bundle["trust_inputs"].(map[string]any)
+	if !ok || !hasRequiredAllowedMapFields(trustInputs, []string{"allowlist", "trustedZones", "revocations"}, nil) {
+		return zero, errors.New("swarm output trust inputs fields invalid")
+	}
+	readBundleJSON := func(name string, target any) (map[string]any, error) {
+		path, err := bundlePath(baseDir, name, target)
+		if err != nil {
+			return nil, err
+		}
+		return readJSONMapFile(path)
+	}
+	proof, err := readBundleJSON("proof", bundle["proof"])
+	if err != nil {
+		return zero, err
+	}
+	planFrame, err := readBundleJSON("plan", bundle["plan"])
+	if err != nil {
+		return zero, err
+	}
+	executionBinding, err := readBundleJSON("execution_binding", bundle["execution_binding"])
+	if err != nil {
+		return zero, err
+	}
+	closeFrame, err := readBundleJSON("close", bundle["close"])
+	if err != nil {
+		return zero, err
+	}
+	stepsPath, err := bundlePath(baseDir, "executable_steps", bundle["executable_steps"])
+	if err != nil {
+		return zero, err
+	}
+	executableSteps, err := readJSONMapListFile(stepsPath)
+	if err != nil {
+		return zero, err
+	}
+	workersPath, err := bundlePath(baseDir, "resolved_workers", bundle["resolved_workers"])
+	if err != nil {
+		return zero, err
+	}
+	resolvedWorkers, err := readJSONMapListFile(workersPath)
+	if err != nil {
+		return zero, err
+	}
+	receiptsPath, err := bundlePath(baseDir, "receipts", bundle["receipts"])
+	if err != nil {
+		return zero, err
+	}
+	receiptFrames, err := readJSONMapListFile(receiptsPath)
+	if err != nil {
+		return zero, err
+	}
+	zonesPath, err := bundlePath(baseDir, "trusted_zones", bundle["trusted_zones"])
+	if err != nil {
+		return zero, err
+	}
+	zonesFile, err := readJSONMapFile(zonesPath)
+	if err != nil {
+		return zero, err
+	}
+	trustedZones, err := trustedZonesMapFromBundle(zonesFile)
+	if err != nil {
+		return zero, err
+	}
+	allowlistPath, err := bundlePath(baseDir, "allowlist", trustInputs["allowlist"])
+	if err != nil {
+		return zero, err
+	}
+	trustedVerifierZonesPath, err := bundlePath(baseDir, "trustedZones", trustInputs["trustedZones"])
+	if err != nil {
+		return zero, err
+	}
+	revocationsPath, err := bundlePath(baseDir, "revocations", trustInputs["revocations"])
+	if err != nil {
+		return zero, err
+	}
+	trust, err := verifier.LoadSwarmOutputTrustInputs(verifier.TrustInputPaths{Allowlist: allowlistPath, TrustedZones: trustedVerifierZonesPath, Revocations: revocationsPath})
+	if err != nil {
+		return zero, err
+	}
+	artifacts, ok := bundle["artifacts"].([]any)
+	if !ok {
+		return zero, errors.New("swarm output artifacts invalid")
+	}
+	artifactPaths := map[string]string{}
+	seenArtifactPaths := map[string]struct{}{}
+	for _, item := range artifacts {
+		entry, ok := item.(map[string]any)
+		if !ok || !hasRequiredAllowedMapFields(entry, []string{"path", "uri"}, nil) {
+			return zero, errors.New("swarm output artifact fields invalid")
+		}
+		uri, ok := entry["uri"].(string)
+		if !ok || uri == "" {
+			return zero, errors.New("swarm output artifact uri invalid")
+		}
+		rawPath, ok := entry["path"].(string)
+		if !ok || rawPath == "" {
+			return zero, errors.New("swarm output artifact path invalid")
+		}
+		if _, exists := artifactPaths[uri]; exists {
+			return zero, fmt.Errorf("duplicate artifact uri: %s", uri)
+		}
+		if _, exists := seenArtifactPaths[rawPath]; exists {
+			return zero, fmt.Errorf("duplicate artifact path: %s", rawPath)
+		}
+		path, err := bundlePath(baseDir, "artifact", rawPath)
+		if err != nil {
+			return zero, err
+		}
+		artifactPaths[uri] = path
+		seenArtifactPaths[rawPath] = struct{}{}
+	}
+	evidence := verifier.OutputEvidence{Proof: proof, PlanFrame: planFrame, ExecutionBinding: executionBinding, ExecutableSteps: executableSteps, ResolvedWorkers: resolvedWorkers, CloseFrame: closeFrame, ReceiptFrames: receiptFrames, TrustedZones: trustedZones, ArtifactBytes: func(artifact map[string]any) ([]byte, error) {
+		artifactPath := artifactPaths[fmt.Sprint(artifact["uri"])]
+		if artifactPath == "" {
+			return nil, fmt.Errorf("artifact path missing: %v", artifact["uri"])
+		}
+		return os.ReadFile(artifactPath)
+	}}
+	verified, err := verifier.VerifySwarmOutput(evidence, trust, now)
+	if err != nil {
+		return zero, err
+	}
+	return verifier.ApplySwarmOutputVerification(evidence, trust, store, now, verified.CloseDigest)
+}
+
+func bundlePath(baseDir, name string, target any) (string, error) {
+	text, ok := target.(string)
+	if !ok || text == "" || strings.Contains(text, "\\") || filepath.IsAbs(text) {
+		return "", fmt.Errorf("bundle %s path invalid", name)
+	}
+	for _, part := range strings.Split(text, "/") {
+		if part == "" || part == "." || part == ".." {
+			return "", fmt.Errorf("bundle %s path invalid", name)
+		}
+	}
+	return filepath.Join(baseDir, text), nil
+}
+
+func readJSONMapFile(path string) (map[string]any, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]any
+	if err := json.Unmarshal(data, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func readJSONMapListFile(path string) ([]map[string]any, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var raw []any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(raw))
+	for _, item := range raw {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			return nil, errors.New("JSON list entry invalid")
+		}
+		out = append(out, entry)
+	}
+	return out, nil
+}
+
+func trustedZonesMapFromBundle(value map[string]any) (map[string]map[string]any, error) {
+	items, ok := value["zones"].([]any)
+	if !ok {
+		return nil, errors.New("trusted zones invalid")
+	}
+	out := map[string]map[string]any{}
+	for _, item := range items {
+		zone, ok := item.(map[string]any)
+		if !ok {
+			return nil, errors.New("trusted zone entry invalid")
+		}
+		out[fmt.Sprint(zone["zid"])] = zone
+	}
+	return out, nil
 }
 
 func serve(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, tlsClientCAPath, artifactStoreDir, fixturePath, trustPath, authorityKeyPath, workerKeyPath, auditPath string) error {

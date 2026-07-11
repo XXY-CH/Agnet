@@ -277,10 +277,17 @@ try {
       revocations: bundlePath(baseDir, "revocations", bundle.trust_inputs.revocations),
     });
     const trustedZones = await loadTrustedZones(bundlePath(baseDir, "trusted_zones", bundle.trusted_zones));
-    const artifactsByURI = new Map(bundle.artifacts.map((entry) => {
+    const artifactsByURI = new Map();
+    const artifactPaths = new Set();
+    for (const entry of bundle.artifacts) {
       exact(entry, ["path", "uri"], "swarm output artifact");
-      return [entry.uri, bundlePath(baseDir, "artifact", entry.path)];
-    }));
+      if (typeof entry.uri !== "string" || entry.uri.length === 0) throw new Error("swarm output artifact uri invalid");
+      if (typeof entry.path !== "string" || entry.path.length === 0) throw new Error("swarm output artifact path invalid");
+      if (artifactsByURI.has(entry.uri)) throw new Error(`duplicate artifact uri: ${entry.uri}`);
+      if (artifactPaths.has(entry.path)) throw new Error(`duplicate artifact path: ${entry.path}`);
+      artifactsByURI.set(entry.uri, bundlePath(baseDir, "artifact", entry.path));
+      artifactPaths.add(entry.path);
+    }
     const now = process.env.ASP_VERIFY_NOW ? new Date(process.env.ASP_VERIFY_NOW) : new Date();
     const verified = await verifySwarmOutputVerification(proof, {
       planFrame,
