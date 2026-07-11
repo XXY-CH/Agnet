@@ -1,5 +1,7 @@
 {
   "version": "asp-v10.38-fed-swarm-close",
+  "schema_format": "asp-swarm-close-vector/legacy-v1",
+  "legacy": true,
   "worker_zone_seed_hex": "c0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf",
   "trusted_zones": [
     {

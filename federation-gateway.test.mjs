@@ -1128,7 +1128,7 @@ test("Federation Gateway queries exact remote capabilities", async () => {
     assert.equal(hitResult.zone, zoneB.zid);
     assert.equal(hitResult.matches.length, 1);
     assert.equal(hitResult.matches[0].alias, "agent://zone-b/summarizer");
-    assert.deepEqual(hitResult.matches[0].capabilities, ["summarize.text"]);
+    assert.deepEqual(hitResult.matches[0].capabilities, ["summarize.text", "migration.shared"]);
     assert.equal(hitResult.matches[0].credentials[0].capability, "summarize.text");
     assert.equal(hitResult.matches[0].credentials[0].claims.level, "L1");
 
@@ -1453,6 +1453,15 @@ test("Federation Gateway resolves conflicting Swarm artifact refs by higher repu
       scope: { network: false, write: [artifactRef] },
       budget: { time_seconds: 30 },
     };
+    const finalTask = {
+      task_id: "node_swarm_conflict_final",
+      from: requester.aid,
+      to: "agent://zone-b/migration-summarizer",
+      intent: "Publish the resolved Swarm conflict result.",
+      artifact_ref: "artifact://local/swarm-conflict/final-summary.md",
+      scope: { network: false, write: ["artifact://local/swarm-conflict/final-summary.md"] },
+      budget: { time_seconds: 30 },
+    };
     const frames = await exchangeFramesUntil(port, withSwarmExecutionBinding(zoneA, {
       type: "FED_SWARM_OPEN",
       origin_zone: zoneA.descriptor,
@@ -1463,6 +1472,7 @@ test("Federation Gateway resolves conflicting Swarm artifact refs by higher repu
         steps: [
           { step_id: "low", task: { ...lowTask, signature: signObject(requester.privateKey, lowTask) } },
           { step_id: "high", task: { ...highTask, signature: signObject(requester.privateKey, highTask) } },
+          { step_id: "final", after: ["low", "high"], task: { ...finalTask, signature: signObject(requester.privateKey, finalTask) } },
         ],
       },
     }), zoneA, "FED_SWARM_CLOSE");
@@ -1485,6 +1495,9 @@ test("Federation Gateway resolves conflicting Swarm artifact refs by higher repu
     assert.equal(resolution_digest, createHash("sha256").update(canonical(resolutionBody)).digest("hex"));
     assert.equal(verifyObject(publicKeyFromDescriptor(zoneB.descriptor), resolutionBody, signature), true);
     assert.equal(verifySwarmClose(closeFrame, new Map([[zoneB.zid, zoneB.descriptor]])).close.conflict_resolutions[0].chosen_step_id, "high");
+    assert.equal(close.final_output.step_id, "final");
+    assert.equal(close.final_output.task_id, finalTask.task_id);
+    assert.deepEqual(close.step_receipts.map((step) => step.step_id), ["low", "high", "final"]);
 
     const tampered = structuredClone(closeFrame);
     tampered.close.conflict_resolutions[0].signature = "bad";

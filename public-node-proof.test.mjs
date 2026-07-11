@@ -102,6 +102,14 @@ test("public node proof starts a public-listen gateway", async (t) => {
   assert.match(result.swarm_execution_graph_digest, /^[a-f0-9]{64}$/);
   assert.equal(result.swarm_close_frame, "state/public-node-proof-swarm-close.json");
   assert.equal(result.swarm_close_trusted_zones, "state/public-node-proof-swarm-close-trusted-zones.json");
+  assert.equal(result.output_proof_frame, "state/public-node-proof-output-proof.json");
+  assert.equal(result.output_proof_bundle, "state/public-node-proof-output-bundle.json");
+  assert.match(result.output_proof_digest, /^[a-f0-9]{64}$/);
+  assert.equal(result.output_proof_close_digest, result.swarm_close_digest);
+  assert.match(result.output_proof_trust_inputs_digest, /^[a-f0-9]{64}$/);
+  assert.equal(result.output_proof_replay_decision, "accepted");
+  assert.equal(result.output_proof_completion_gate, true);
+  assert.equal(result.verifier_identity_scope, "same-host independent verifier");
 
   const receiptFrame = JSON.parse(await readFile(result.receipt_frame, "utf8"));
   const bundle = JSON.parse(await readFile(result.bundle_manifest, "utf8"));
@@ -157,6 +165,15 @@ test("public node proof starts a public-listen gateway", async (t) => {
   assert.deepEqual(JSON.parse(verifiedArtifacts.stdout), { fed_receipt_artifacts_verify: "ok", task_id: "public_node_probe_task", artifact_count: 1, artifact_uris: result.artifact_uris, artifact_sha256s: [artifactSha256], artifact_manifest_hashes: [artifactManifestHash], receipt_digest: receiptDigest });
   const verifiedSwarmClose = await execFileAsync(process.execPath, ["asp-verify.mjs", "swarm-close", result.swarm_close_frame, result.swarm_close_trusted_zones]);
   assert.deepEqual(JSON.parse(verifiedSwarmClose.stdout), { swarm_close_verify: "ok", swarm_id: result.swarm_id, swarm_close_digest: result.swarm_close_digest });
+  const verifiedOutputProof = await execFileAsync("state/public-node-proof-go", ["--verify-swarm-output-scheduler-gate", result.output_proof_bundle], {
+    env: { ...process.env, ASP_VERIFY_NOW: "2026-07-11T13:00:00Z" },
+  });
+  const outputProof = JSON.parse(verifiedOutputProof.stdout);
+  assert.equal(outputProof.closeDigest, result.swarm_close_digest);
+  assert.equal(outputProof.proofDigest, result.output_proof_digest);
+  assert.equal(outputProof.trustInputsDigest, result.output_proof_trust_inputs_digest);
+  assert.equal(outputProof.replay_decision, "accepted");
+  assert.equal(outputProof.completion_gate, true);
   const verifiedBundle = await execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", result.bundle_manifest]);
   const tamperedBundlePath = "state/public-node-proof-bundle-tampered.json";
   const externalBundlePath = "state/public-node-proof-bundle-external.json";

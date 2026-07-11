@@ -2609,3 +2609,44 @@ func TestVerifySwarmOutputCLIProducesSchedulerGate(t *testing.T) {
 		t.Fatalf("extra arity err=%v", err)
 	}
 }
+
+func TestU7VectorFilesUseExplicitPhaseAFormats(t *testing.T) {
+	for _, path := range []string{
+		filepath.Join("..", "..", "test-vectors", "asp-u7-node-created-swarm-output.json"),
+		filepath.Join("..", "..", "test-vectors", "asp-u7-go-created-swarm-output.json"),
+	} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var vector map[string]any
+		if err := json.Unmarshal(data, &vector); err != nil {
+			t.Fatal(err)
+		}
+		if vector["format"] != "asp-swarm-output-vector/v1" {
+			t.Fatalf("%s format = %v", path, vector["format"])
+		}
+		evidence := vector["evidence"].(map[string]any)
+		closeFrame := evidence["close_frame"].(map[string]any)
+		closeProof := closeFrame["close"].(map[string]any)
+		if closeProof["format"] != "asp-swarm-close/v2" {
+			t.Fatalf("%s close format = %v", path, closeProof["format"])
+		}
+		proofFrame := vector["proof_frame"].(map[string]any)
+		proof := proofFrame["proof"].(map[string]any)
+		if proof["format"] != "asp-swarm-output-verification/v1" {
+			t.Fatalf("%s proof format = %v", path, proof["format"])
+		}
+	}
+	legacyData, err := os.ReadFile(filepath.Join("..", "..", "test-vectors", "asp-v10.38-fed-swarm-close.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var legacy map[string]any
+	if err := json.Unmarshal(legacyData, &legacy); err != nil {
+		t.Fatal(err)
+	}
+	if legacy["schema_format"] != "asp-swarm-close-vector/legacy-v1" || legacy["legacy"] != true {
+		t.Fatalf("legacy close vector is not explicitly marked: %v", legacy)
+	}
+}

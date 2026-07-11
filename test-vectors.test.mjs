@@ -5,6 +5,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import { canonical, computeAid, createAgent, createZone, deriveSwarmFinalOutput, descriptorBody, didKeyFromDescriptor, didKeyFromPublicKeySPKI, publicKeyFromDescriptor, publicKeySPKIFromDidKey, signObject, signedReceiptDigest, swarmExecutionBinding, swarmPlan, verifyFederatedReceipt, verifyFederatedTaskOpen, verifyObject, verifyReceiptArtifactManifests, verifyResultArtifact, verifySwarmClose, verifySwarmExecutionBinding, verifySwarmPlan, writeArtifact, zoneBinding, zoneDescriptorBody } from "./asp-core.mjs";
+import { applySwarmOutputVerificationReplay, createSwarmOutputTrustInputsForTest, verifySwarmOutputVerification } from "./swarm-output-verification.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -1217,8 +1218,147 @@ test("FED_SWARM_CLOSE verification rejects unsafe task ids in Node", async () =>
   );
 });
 
+async function loadSwarmOutputVector(path) {
+  const vector = JSON.parse(await readFile(path, "utf8"));
+  const trustInputs = createSwarmOutputTrustInputsForTest(vector.trust.allowlist, vector.trust.trusted_zones, vector.trust.revocations);
+  const trustedZones = new Map(Object.entries(vector.evidence.trusted_zones));
+  const artifactBytesByUri = new Map(Object.entries(vector.evidence.artifacts).map(([uri, encoded]) => [uri, Buffer.from(encoded, "base64url")]));
+  const evidence = {
+    proof: vector.proof_frame,
+    planFrame: vector.evidence.plan_frame,
+    executionBinding: vector.evidence.execution_binding,
+    executableSteps: vector.evidence.executable_steps,
+    resolvedWorkers: vector.evidence.resolved_workers,
+    closeFrame: vector.evidence.close_frame,
+    receiptFrames: vector.evidence.receipt_frames,
+    trustedZones,
+    loadArtifactBytes: async (artifact) => {
+      const bytes = artifactBytesByUri.get(artifact.uri);
+      if (!bytes) throw new Error(`missing vector artifact bytes: ${artifact.uri}`);
+      return bytes;
+    },
+  };
+  return { vector, trustInputs, evidence };
+}
+
+function expectedReplayStore(record = undefined) {
+  let stored = record;
+  return {
+    async putVerificationReplayIfAbsent(candidate) {
+      if (stored === undefined) {
+        stored = structuredClone(candidate);
+        return { inserted: true, record: structuredClone(stored) };
+      }
+      return { inserted: false, existing: structuredClone(stored) };
+    },
+  };
+}
+
+async function assertSwarmOutputVectorVerifiesInNode(path, expectedOrigin) {
+  const { vector, trustInputs, evidence } = await loadSwarmOutputVector(path);
+  assert.equal(vector.format, "asp-swarm-output-vector/v1");
+  assert.equal(vector.vector_origin, expectedOrigin);
+  assert.equal(canonical(vector.evidence.execution_binding), vector.expected.canonical_binding);
+  assert.equal(vector.evidence.execution_binding.execution_graph_digest, vector.expected.execution_graph_digest);
+  assert.equal(vector.evidence.close_frame.close.final_output.signed_receipt_digest, vector.expected.signed_receipt_digest);
+  assert.equal(canonical(vector.evidence.close_frame.close), vector.expected.canonical_close);
+  assert.equal(createHash("sha256").update(vector.expected.canonical_close).digest("hex"), vector.expected.close_digest);
+  assert.equal(vector.trust.trust_inputs_digest, vector.expected.trust_inputs_digest);
+  assert.equal(canonical(vector.trust.normalized), vector.expected.normalized_trust_inputs);
+  assert.equal(canonical(vector.proof_frame.proof), vector.expected.canonical_proof);
+  assert.equal(createHash("sha256").update(vector.expected.canonical_proof).digest("hex"), vector.expected.proof_digest);
+  assert.match(vector.expected.canonical_close, /<>&/);
+  assert.match(vector.expected.canonical_proof, /<>&/);
+
+  const verified = await verifySwarmOutputVerification(vector.proof_frame, evidence, trustInputs, { now: vector.timestamps.now });
+  assert.equal(verified.closeDigest, vector.expected.close_digest);
+  assert.equal(verified.proofDigest, vector.expected.proof_digest);
+  assert.equal(verified.trustInputsDigest, vector.expected.trust_inputs_digest);
+  assert.equal(Buffer.from(verified.CloseBytes).toString("utf8"), vector.expected.canonical_close);
+  assert.equal(Buffer.from(verified.ProofBytes).toString("utf8"), vector.expected.canonical_proof);
+
+  const accepted = await applySwarmOutputVerificationReplay(vector.proof_frame, evidence, trustInputs, expectedReplayStore(), { now: vector.timestamps.now, expectedCloseDigest: vector.expected.close_digest });
+  assert.equal(accepted.replay_decision, "accepted");
+  assert.equal(accepted.completion_gate, true);
+  assert.equal(Buffer.from(accepted.CloseBytes).toString("utf8"), vector.expected.canonical_close);
+  assert.equal(Buffer.from(accepted.ProofBytes).toString("utf8"), vector.expected.canonical_proof);
+  return { vector, trustInputs, evidence, accepted };
+}
+
+function resignCloseVector(vector, mutate) {
+  const key = privateKeyFromSeed(vector.seeds.coordinator_zone);
+  const candidate = structuredClone(vector);
+  const { close_signature: _signature, ...body } = candidate.evidence.close_frame.close;
+  mutate(body);
+  candidate.evidence.close_frame.close = { ...body, close_signature: signObject(key, body) };
+  return candidate;
+}
+
+function resignProofVector(vector, mutate) {
+  const key = privateKeyFromSeed(vector.seeds.verifier_agent);
+  const candidate = structuredClone(vector);
+  const { proof_signature: _signature, ...body } = candidate.proof_frame.proof;
+  mutate(body);
+  candidate.proof_frame.proof = { ...body, proof_signature: signObject(key, body) };
+  return candidate;
+}
+
+async function rejectMutatedVectorInNode(vector, trustInputs, mutate, message) {
+  const candidate = mutate(structuredClone(vector));
+  const trustedZones = new Map(Object.entries(candidate.evidence.trusted_zones));
+  const artifacts = new Map(Object.entries(candidate.evidence.artifacts).map(([uri, encoded]) => [uri, Buffer.from(encoded, "base64url")]));
+  const evidence = {
+    proof: candidate.proof_frame,
+    planFrame: candidate.evidence.plan_frame,
+    executionBinding: candidate.evidence.execution_binding,
+    executableSteps: candidate.evidence.executable_steps,
+    resolvedWorkers: candidate.evidence.resolved_workers,
+    closeFrame: candidate.evidence.close_frame,
+    receiptFrames: candidate.evidence.receipt_frames,
+    trustedZones,
+    loadArtifactBytes: async (artifact) => artifacts.get(artifact.uri),
+  };
+  await assert.rejects(
+    () => verifySwarmOutputVerification(candidate.proof_frame, evidence, trustInputs, { now: candidate.timestamps.now }),
+    message,
+  );
+}
+
+test("Swarm output vector verifies Node-created proof in Node", async () => {
+  await assertSwarmOutputVectorVerifiesInNode("test-vectors/asp-u7-node-created-swarm-output.json", "node-created");
+});
+
+test("Swarm output vector verifies Go-created proof in Node", async () => {
+  await assertSwarmOutputVectorVerifiesInNode("test-vectors/asp-u7-go-created-swarm-output.json", "go-created");
+});
+
+test("Swarm output vector rejects malformed Phase A mutations in Node", async () => {
+  const { vector, trustInputs, accepted } = await assertSwarmOutputVectorVerifiesInNode("test-vectors/asp-u7-node-created-swarm-output.json", "node-created");
+  const cases = [
+    ["unknown close field", (base) => resignCloseVector(base, (body) => { body.unexpected = true; }), /swarm close v2 fields invalid/],
+    ["duplicate step receipt", (base) => resignCloseVector(base, (body) => { body.step_receipts = [body.step_receipts[0], body.step_receipts[0]]; }), /swarm close duplicate step receipt/],
+    ["missing close format", (base) => resignCloseVector(base, (body) => { delete body.format; }), /swarm close format missing|swarm close v2 fields invalid/],
+    ["v2 stripped into v1", (base) => resignCloseVector(base, (body) => { body.format = "asp-swarm-close/v1"; }), /swarm close v1 fields invalid/],
+    ["graph mutation", (base) => resignCloseVector(base, (body) => { body.execution_graph_digest = "0".repeat(64); }), /close execution graph digest mismatch/],
+    ["result mutation", (base) => resignCloseVector(base, (body) => { body.final_output.artifact.sha256 = "1".repeat(64); }), /swarm close final output receipt digest mismatch|final output mismatch/],
+    ["trust mutation", (base) => resignProofVector(base, (body) => { body.trust_inputs_digest = "2".repeat(64); }), /trust inputs digest mismatch/],
+    ["timestamp mutation", (base) => resignProofVector(base, (body) => { body.verified_at = "3026-07-11T00:00:00Z"; }), /verified_at future skew invalid/],
+  ];
+  for (const [name, mutate, message] of cases) {
+    await rejectMutatedVectorInNode(vector, trustInputs, mutate, message, name);
+  }
+
+  const conflicted = await applySwarmOutputVerificationReplay(vector.proof_frame, {
+    ...(await loadSwarmOutputVector("test-vectors/asp-u7-node-created-swarm-output.json")).evidence,
+  }, trustInputs, expectedReplayStore({ ...accepted, canonical_proof_sha256: "0".repeat(64), stored_close_digest: "0".repeat(64) }), { now: vector.timestamps.now, expectedCloseDigest: vector.expected.close_digest });
+  assert.equal(conflicted.replay_decision, "conflict");
+  assert.equal(conflicted.completion_gate, false);
+});
+
 test("Explicit legacy v1 close vector verifies in Node", async () => {
   const vector = JSON.parse(await readFile("test-vectors/asp-v10.38-fed-swarm-close.json", "utf8"));
+  assert.equal(vector.schema_format, "asp-swarm-close-vector/legacy-v1");
+  assert.equal(vector.legacy, true);
   const trustedZones = new Map(vector.trusted_zones.map((zone) => [zone.zid, zone]));
   const verified = verifySwarmClose(vector.frame, trustedZones);
   assert.equal(verified.format, "asp-swarm-close/v1");

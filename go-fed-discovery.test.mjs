@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { createHash, createPrivateKey, randomBytes } from "node:crypto";
-import { lstat, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
@@ -40,6 +40,68 @@ async function snapshotPersistentPath(path) {
 async function snapshotPersistentState(paths) {
   return Object.fromEntries(await Promise.all(paths.map(async (path) => [path, await snapshotPersistentPath(path)])));
 }
+
+test("Phase A output vector bundle verifies through go-fed-discovery scheduler gate", async () => {
+  const vector = JSON.parse(await readFile("test-vectors/asp-u7-node-created-swarm-output.json", "utf8"));
+  const prefix = "state/go-fed-u7-phase-a";
+  await mkdir("state", { recursive: true });
+  const paths = {
+    proof: `${prefix}-proof.json`,
+    plan: `${prefix}-plan.json`,
+    binding: `${prefix}-binding.json`,
+    steps: `${prefix}-steps.json`,
+    workers: `${prefix}-workers.json`,
+    close: `${prefix}-close.json`,
+    receipts: `${prefix}-receipts.json`,
+    zones: `${prefix}-trusted-zones.json`,
+    allowlist: `${prefix}-allowlist.json`,
+    verifierZones: `${prefix}-verifier-zones.json`,
+    revocations: `${prefix}-revocations.json`,
+    artifact: `${prefix}-artifact.txt`,
+    bundle: `${prefix}-bundle.json`,
+  };
+  const [artifactUri, artifactB64] = Object.entries(vector.evidence.artifacts)[0];
+  await writeFile(paths.proof, `${JSON.stringify(vector.proof_frame, null, 2)}\n`);
+  await writeFile(paths.plan, `${JSON.stringify(vector.evidence.plan_frame, null, 2)}\n`);
+  await writeFile(paths.binding, `${JSON.stringify(vector.evidence.execution_binding, null, 2)}\n`);
+  await writeFile(paths.steps, `${JSON.stringify(vector.evidence.executable_steps, null, 2)}\n`);
+  await writeFile(paths.workers, `${JSON.stringify(vector.evidence.resolved_workers, null, 2)}\n`);
+  await writeFile(paths.close, `${JSON.stringify(vector.evidence.close_frame, null, 2)}\n`);
+  await writeFile(paths.receipts, `${JSON.stringify(vector.evidence.receipt_frames, null, 2)}\n`);
+  await writeFile(paths.zones, `${JSON.stringify({ zones: Object.values(vector.evidence.trusted_zones) }, null, 2)}\n`);
+  await writeFile(paths.allowlist, `${JSON.stringify(vector.trust.allowlist, null, 2)}\n`);
+  await writeFile(paths.verifierZones, `${JSON.stringify(vector.trust.trusted_zones, null, 2)}\n`);
+  await writeFile(paths.revocations, `${JSON.stringify(vector.trust.revocations, null, 2)}\n`);
+  await Promise.all([paths.allowlist, paths.verifierZones, paths.revocations].map((path) => chmod(path, 0o600)));
+  await writeFile(paths.artifact, Buffer.from(artifactB64, "base64url"));
+  await writeFile(paths.bundle, `${JSON.stringify({
+    format: "asp-swarm-output-verification-cli/v1",
+    proof: paths.proof.split("/").pop(),
+    plan: paths.plan.split("/").pop(),
+    execution_binding: paths.binding.split("/").pop(),
+    executable_steps: paths.steps.split("/").pop(),
+    resolved_workers: paths.workers.split("/").pop(),
+    close: paths.close.split("/").pop(),
+    receipts: paths.receipts.split("/").pop(),
+    trusted_zones: paths.zones.split("/").pop(),
+    trust_inputs: {
+      allowlist: paths.allowlist.split("/").pop(),
+      trustedZones: paths.verifierZones.split("/").pop(),
+      revocations: paths.revocations.split("/").pop(),
+    },
+    artifacts: [{ uri: artifactUri, path: paths.artifact.split("/").pop() }],
+  }, null, 2)}\n`);
+
+  const { stdout } = await execFileAsync("go", ["run", "./cmd/go-fed-discovery", "--verify-swarm-output-scheduler-gate", paths.bundle], {
+    env: { ...process.env, ASP_VERIFY_NOW: vector.timestamps.now },
+  });
+  const result = JSON.parse(stdout);
+  assert.equal(result.closeDigest, vector.expected.close_digest);
+  assert.equal(result.proofDigest, vector.expected.proof_digest);
+  assert.equal(result.trustInputsDigest, vector.expected.trust_inputs_digest);
+  assert.equal(result.replay_decision, "accepted");
+  assert.equal(result.completion_gate, true);
+});
 
 async function assertPersistentPathAbsent(path, message) {
   await assert.rejects(lstat(path), (error) => error.code === "ENOENT", message);
@@ -922,6 +984,15 @@ test("Go discovery resolves conflicting Swarm artifact refs and Node verifies th
       scope: { network: false, write: [artifactRef] },
       budget: { time_seconds: 30 },
     };
+    const finalTask = {
+      task_id: "go_fed_swarm_conflict_final",
+      from: requester.aid,
+      to: "agent://zone-b/conflict-high-summarizer",
+      intent: "Publish the resolved Go Swarm conflict result.",
+      artifact_ref: "artifact://local/go-conflict/final-summary.md",
+      scope: { network: false, write: ["artifact://local/go-conflict/final-summary.md"] },
+      budget: { time_seconds: 30 },
+    };
     const frames = await exchangeFrames(port, withSwarmExecutionBinding(zoneA, {
       type: "FED_SWARM_OPEN",
       origin_zone: zoneA.descriptor,
@@ -931,6 +1002,7 @@ test("Go discovery resolves conflicting Swarm artifact refs and Node verifies th
         steps: [
           { step_id: "low", task: { ...lowTask, signature: signObject(requester.privateKey, lowTask) } },
           { step_id: "high", task: { ...highTask, signature: signObject(requester.privateKey, highTask) } },
+          { step_id: "final", after: ["low", "high"], task: { ...finalTask, signature: signObject(requester.privateKey, finalTask) } },
         ],
       },
     }), "FED_SWARM_CLOSE");
@@ -949,6 +1021,9 @@ test("Go discovery resolves conflicting Swarm artifact refs and Node verifies th
     assert.equal(resolution_digest, createHash("sha256").update(canonical(resolutionBody)).digest("hex"));
     assert.equal(verifyObject(publicKeyFromDescriptor(fixture.authority), resolutionBody, signature), true);
     assert.equal(verifySwarmClose(closeFrame, new Map([[fixture.authority.zid, fixture.authority]])).close.conflict_resolutions[0].chosen_step_id, "high");
+    assert.equal(close.final_output.step_id, "final");
+    assert.equal(close.final_output.task_id, finalTask.task_id);
+    assert.deepEqual(close.step_receipts.map((step) => step.step_id), ["low", "high", "final"]);
   } finally {
     try {
       process.kill(-gateway.pid, "SIGINT");

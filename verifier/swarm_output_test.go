@@ -5,8 +5,11 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"math"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -738,5 +741,225 @@ func TestApplySwarmOutputVerificationReplay(t *testing.T) {
 	}
 	if race.ReplayDecision != "conflict" || race.StoreMutated {
 		t.Fatalf("race=%+v", race)
+	}
+}
+
+type u7FrozenSwarmOutputVector struct {
+	Format       string `json:"format"`
+	VectorOrigin string `json:"vector_origin"`
+	Timestamps   struct {
+		Now string `json:"now"`
+	} `json:"timestamps"`
+	Seeds struct {
+		CoordinatorZone string `json:"coordinator_zone"`
+		VerifierAgent   string `json:"verifier_agent"`
+	} `json:"seeds"`
+	Trust struct {
+		Allowlist    map[string]any `json:"allowlist"`
+		TrustedZones map[string]any `json:"trusted_zones"`
+		Revocations  map[string]any `json:"revocations"`
+	} `json:"trust"`
+	Evidence struct {
+		PlanFrame        map[string]any            `json:"plan_frame"`
+		ExecutionBinding map[string]any            `json:"execution_binding"`
+		ExecutableSteps  []map[string]any          `json:"executable_steps"`
+		ResolvedWorkers  []map[string]any          `json:"resolved_workers"`
+		CloseFrame       map[string]any            `json:"close_frame"`
+		ReceiptFrames    []map[string]any          `json:"receipt_frames"`
+		TrustedZones     map[string]map[string]any `json:"trusted_zones"`
+		Artifacts        map[string]string         `json:"artifacts"`
+	} `json:"evidence"`
+	ProofFrame map[string]any `json:"proof_frame"`
+	Expected   struct {
+		CloseDigest       string `json:"close_digest"`
+		ProofDigest       string `json:"proof_digest"`
+		TrustInputsDigest string `json:"trust_inputs_digest"`
+		CanonicalClose    string `json:"canonical_close"`
+		CanonicalProof    string `json:"canonical_proof"`
+	} `json:"expected"`
+}
+
+func loadU7FrozenVector(t *testing.T, path string) (u7FrozenSwarmOutputVector, TrustInputs, OutputEvidence, time.Time) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vector u7FrozenSwarmOutputVector
+	if err := json.Unmarshal(data, &vector); err != nil {
+		t.Fatal(err)
+	}
+	if vector.Format != "asp-swarm-output-vector/v1" {
+		t.Fatalf("unexpected vector format: %s", vector.Format)
+	}
+	trust, evidence, now := u7FrozenVectorInputs(t, vector)
+	return vector, trust, evidence, now
+}
+
+func u7FrozenVectorInputs(t *testing.T, vector u7FrozenSwarmOutputVector) (TrustInputs, OutputEvidence, time.Time) {
+	t.Helper()
+	trust, err := NewTrustInputsForTest(vector.Trust.Allowlist, vector.Trust.TrustedZones, vector.Trust.Revocations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now, err := time.Parse(time.RFC3339Nano, vector.Timestamps.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence := OutputEvidence{
+		Proof:            vector.ProofFrame,
+		PlanFrame:        vector.Evidence.PlanFrame,
+		ExecutionBinding: vector.Evidence.ExecutionBinding,
+		ExecutableSteps:  vector.Evidence.ExecutableSteps,
+		ResolvedWorkers:  vector.Evidence.ResolvedWorkers,
+		CloseFrame:       vector.Evidence.CloseFrame,
+		ReceiptFrames:    vector.Evidence.ReceiptFrames,
+		TrustedZones:     vector.Evidence.TrustedZones,
+		ArtifactBytes: func(artifact map[string]any) ([]byte, error) {
+			return base64.RawURLEncoding.DecodeString(vector.Evidence.Artifacts[artifact["uri"].(string)])
+		},
+	}
+	return trust, evidence, now
+}
+
+func cloneU7FrozenVector(t *testing.T, vector u7FrozenSwarmOutputVector) u7FrozenSwarmOutputVector {
+	t.Helper()
+	data, err := json.Marshal(vector)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var clone u7FrozenSwarmOutputVector
+	if err := json.Unmarshal(data, &clone); err != nil {
+		t.Fatal(err)
+	}
+	return clone
+}
+
+func u7PrivateKeyFromSeed(t *testing.T, seedHex string) ed25519.PrivateKey {
+	t.Helper()
+	seed, err := hex.DecodeString(seedHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(seed) != ed25519.SeedSize {
+		t.Fatalf("seed size = %d, want %d", len(seed), ed25519.SeedSize)
+	}
+	return ed25519.NewKeyFromSeed(seed)
+}
+
+func resignU7Close(t *testing.T, vector *u7FrozenSwarmOutputVector, mutate func(map[string]any)) {
+	t.Helper()
+	body := cloneJSONMap(t, vector.Evidence.CloseFrame["close"].(map[string]any))
+	delete(body, "close_signature")
+	mutate(body)
+	vector.Evidence.CloseFrame["close"] = signNodeCanonical(t, u7PrivateKeyFromSeed(t, vector.Seeds.CoordinatorZone), "close_signature", body)
+}
+
+func resignU7Proof(t *testing.T, vector *u7FrozenSwarmOutputVector, mutate func(map[string]any)) {
+	t.Helper()
+	body := cloneJSONMap(t, vector.ProofFrame["proof"].(map[string]any))
+	delete(body, "proof_signature")
+	mutate(body)
+	vector.ProofFrame["proof"] = signNodeCanonical(t, u7PrivateKeyFromSeed(t, vector.Seeds.VerifierAgent), "proof_signature", body)
+}
+
+func assertU7FrozenVectorVerifies(t *testing.T, path, origin string) VerifiedSwarmOutput {
+	t.Helper()
+	vector, trust, evidence, now := loadU7FrozenVector(t, path)
+	if vector.VectorOrigin != origin {
+		t.Fatalf("vector origin = %s, want %s", vector.VectorOrigin, origin)
+	}
+	verified, err := VerifySwarmOutput(evidence, trust, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verified.CloseDigest != vector.Expected.CloseDigest || string(verified.CloseBytes) != vector.Expected.CanonicalClose {
+		t.Fatalf("close canonical mismatch for %s", path)
+	}
+	if verified.ProofDigest != vector.Expected.ProofDigest || string(verified.ProofBytes) != vector.Expected.CanonicalProof {
+		t.Fatalf("proof canonical mismatch for %s", path)
+	}
+	if verified.TrustInputsDigest != vector.Expected.TrustInputsDigest {
+		t.Fatalf("trust digest = %s, want %s", verified.TrustInputsDigest, vector.Expected.TrustInputsDigest)
+	}
+	if !strings.Contains(vector.Expected.CanonicalProof, "<>&") || !strings.Contains(vector.Expected.CanonicalClose, "<>&") {
+		t.Fatal("vector canonical bytes must include literal <>&")
+	}
+	return verified
+}
+
+func TestU7FrozenSwarmOutputVectorsVerifyInVerifier(t *testing.T) {
+	assertU7FrozenVectorVerifies(t, "../test-vectors/asp-u7-node-created-swarm-output.json", "node-created")
+	assertU7FrozenVectorVerifies(t, "../test-vectors/asp-u7-go-created-swarm-output.json", "go-created")
+}
+
+func TestU7FrozenSwarmOutputVectorMutationParity(t *testing.T) {
+	vector, _, _, _ := loadU7FrozenVector(t, "../test-vectors/asp-u7-node-created-swarm-output.json")
+	tests := []struct {
+		name   string
+		mutate func(*u7FrozenSwarmOutputVector)
+		want   string
+	}{
+		{name: "unknown close field", mutate: func(candidate *u7FrozenSwarmOutputVector) {
+			resignU7Close(t, candidate, func(body map[string]any) { body["unexpected"] = true })
+		}, want: "swarm close v2 fields invalid"},
+		{name: "duplicate step receipt", mutate: func(candidate *u7FrozenSwarmOutputVector) {
+			resignU7Close(t, candidate, func(body map[string]any) {
+				receipts := body["step_receipts"].([]any)
+				body["step_receipts"] = []any{receipts[0], receipts[0]}
+			})
+		}, want: "swarm close duplicate step receipt"},
+		{name: "missing close format", mutate: func(candidate *u7FrozenSwarmOutputVector) {
+			resignU7Close(t, candidate, func(body map[string]any) { delete(body, "format") })
+		}, want: "swarm close v2 fields invalid"},
+		{name: "v2 stripped into v1", mutate: func(candidate *u7FrozenSwarmOutputVector) {
+			resignU7Close(t, candidate, func(body map[string]any) { body["format"] = "asp-swarm-close/v1" })
+		}, want: "swarm close v2 format invalid"},
+		{name: "graph mutation", mutate: func(candidate *u7FrozenSwarmOutputVector) {
+			resignU7Close(t, candidate, func(body map[string]any) { body["execution_graph_digest"] = strings.Repeat("0", 64) })
+		}, want: "close execution graph digest mismatch"},
+		{name: "result mutation", mutate: func(candidate *u7FrozenSwarmOutputVector) {
+			resignU7Close(t, candidate, func(body map[string]any) {
+				body["final_output"].(map[string]any)["artifact"].(map[string]any)["sha256"] = strings.Repeat("1", 64)
+			})
+		}, want: "final output"},
+		{name: "trust mutation", mutate: func(candidate *u7FrozenSwarmOutputVector) {
+			resignU7Proof(t, candidate, func(body map[string]any) { body["trust_inputs_digest"] = strings.Repeat("2", 64) })
+		}, want: "trust inputs digest mismatch"},
+		{name: "timestamp mutation", mutate: func(candidate *u7FrozenSwarmOutputVector) {
+			resignU7Proof(t, candidate, func(body map[string]any) { body["verified_at"] = "3026-07-11T00:00:00Z" })
+		}, want: "verified_at future skew invalid"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			candidate := cloneU7FrozenVector(t, vector)
+			tt.mutate(&candidate)
+			trust, evidence, now := u7FrozenVectorInputs(t, candidate)
+			_, err := VerifySwarmOutput(evidence, trust, now)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("err = %v, want containing %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestU7FrozenSwarmOutputVectorReplayConflictRejects(t *testing.T) {
+	vector, trust, evidence, now := loadU7FrozenVector(t, "../test-vectors/asp-u7-node-created-swarm-output.json")
+	store := newReplayTestStore()
+	accepted, err := ApplySwarmOutputVerification(evidence, trust, store, now, vector.Expected.CloseDigest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conflicting := cloneU7FrozenVector(t, vector)
+	resignU7Proof(t, &conflicting, func(body map[string]any) {
+		body["verified_at"] = "2026-07-11T12:34:55Z"
+	})
+	conflictTrust, conflictEvidence, conflictNow := u7FrozenVectorInputs(t, conflicting)
+	replayed, err := ApplySwarmOutputVerification(conflictEvidence, conflictTrust, store, conflictNow, vector.Expected.CloseDigest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accepted.VerificationID != replayed.VerificationID || replayed.ReplayDecision != "conflict" || replayed.StoreMutated || replayed.CompletionGate {
+		t.Fatalf("replay decision = %s mutated=%v gate=%v id=%s, want conflict false false id=%s", replayed.ReplayDecision, replayed.StoreMutated, replayed.CompletionGate, replayed.VerificationID, accepted.VerificationID)
 	}
 }
