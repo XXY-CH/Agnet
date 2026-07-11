@@ -1,0 +1,31 @@
+{
+  "format": "agnet-key-envelope-test-v1",
+  "cases": [
+    {
+      "aad_canonical": "{\"cipher\":{\"name\":\"aes-256-gcm\",\"nonce\":\"72TAC3HcRkvEEgOg\",\"tag_bytes\":16},\"format\":\"agnet-key-envelope/v1\",\"identity\":{\"kind\":\"aid\",\"value\":\"aid:ed25519:VZK4n6fL2PQc8YN8n9aWV9UbOiEaAWh-V2O_JO-X08g\"},\"kdf\":{\"derived_key_bytes\":32,\"iterations\":100000,\"name\":\"pbkdf2-hmac-sha256\",\"salt\":\"956P12OBeZiswhBWtq1lAA\"},\"key_type\":\"ed25519-pkcs8\"}",
+      "aad_sha256": "7cf3fe200672ef11f852045ffbcc7b8b266dca52ca25745f5102122d8036d5e8",
+      "envelope_canonical": "{\"cipher\":{\"name\":\"aes-256-gcm\",\"nonce\":\"72TAC3HcRkvEEgOg\",\"tag_bytes\":16},\"ciphertext\":\"ygmMWZsHL-5iyEo6PqwaSyPQFoVTTCF_50r3Lm51tPDG4ho5oYtAfehscxpQnto8\",\"format\":\"agnet-key-envelope/v1\",\"identity\":{\"kind\":\"aid\",\"value\":\"aid:ed25519:VZK4n6fL2PQc8YN8n9aWV9UbOiEaAWh-V2O_JO-X08g\"},\"kdf\":{\"derived_key_bytes\":32,\"iterations\":100000,\"name\":\"pbkdf2-hmac-sha256\",\"salt\":\"956P12OBeZiswhBWtq1lAA\"},\"key_type\":\"ed25519-pkcs8\",\"tag\":\"bMu7jXGSblZyKqCLwXwh1g\"}",
+      "identity": {
+        "kind": "aid",
+        "value": "aid:ed25519:VZK4n6fL2PQc8YN8n9aWV9UbOiEaAWh-V2O_JO-X08g"
+      },
+      "key_type": "ed25519-pkcs8",
+      "origin": "node-created",
+      "passphrase": "dTggZGV0ZXJtaW5pc3RpYyBwYXNzcGhyYXNlIDw-Jgo",
+      "plaintext": "MC4CAQAwBQYDK2VwBCIEIAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f"
+    },
+    {
+      "aad_canonical": "{\"cipher\":{\"name\":\"aes-256-gcm\",\"nonce\":\"sLGys7S1tre4ubq7\",\"tag_bytes\":16},\"format\":\"agnet-key-envelope/v1\",\"identity\":{\"kind\":\"zid\",\"value\":\"zid:ed25519:oFoZsL62aG5skBOfrG1HUf5-e_9CAH-Tpalv2QIVFrc\"},\"kdf\":{\"derived_key_bytes\":32,\"iterations\":100000,\"name\":\"pbkdf2-hmac-sha256\",\"salt\":\"oKGio6SlpqeoqaqrrK2urw\"},\"key_type\":\"ed25519-seed\"}",
+      "aad_sha256": "8b305cb9dd6921042a2b8a6eff18f071dc80698f7c5d8dfa24d7a771bbb4b315",
+      "envelope_canonical": "{\"cipher\":{\"name\":\"aes-256-gcm\",\"nonce\":\"sLGys7S1tre4ubq7\",\"tag_bytes\":16},\"ciphertext\":\"IT5_TyRnP3oQSg46rQ2JI2wQaJn_Zf2uiAlIxu9FfcM\",\"format\":\"agnet-key-envelope/v1\",\"identity\":{\"kind\":\"zid\",\"value\":\"zid:ed25519:oFoZsL62aG5skBOfrG1HUf5-e_9CAH-Tpalv2QIVFrc\"},\"kdf\":{\"derived_key_bytes\":32,\"iterations\":100000,\"name\":\"pbkdf2-hmac-sha256\",\"salt\":\"oKGio6SlpqeoqaqrrK2urw\"},\"key_type\":\"ed25519-seed\",\"tag\":\"tM3NmvE9CCE5_qYCUx1DeA\"}",
+      "identity": {
+        "kind": "zid",
+        "value": "zid:ed25519:oFoZsL62aG5skBOfrG1HUf5-e_9CAH-Tpalv2QIVFrc"
+      },
+      "key_type": "ed25519-seed",
+      "origin": "go-created",
+      "passphrase": "dTggZGV0ZXJtaW5pc3RpYyBwYXNzcGhyYXNlIDw-Jgo",
+      "plaintext": "QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8"
+    }
+  ]
+}

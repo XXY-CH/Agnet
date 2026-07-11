@@ -12,13 +12,13 @@ const MAX_HELPER_OUTPUT_BYTES = 2 * 1024 * 1024;
 const SECURE_OPEN_HELPER = fileURLToPath(new URL("./secure-input-openat.py", import.meta.url));
 const SYSTEM_PYTHON = process.platform === "darwin" || process.platform === "linux" ? "/usr/bin/python3" : null;
 
-async function readOwnedJsonWithOpenAt(path, expectedUID, testHooks) {
+async function readOwnedJsonWithOpenAt(path, expectedUID, maxBytes, testHooks) {
   if (SYSTEM_PYTHON === null) throw new Error(`owned JSON secure open unsupported on ${process.platform}`);
   const hooks = Object.fromEntries(
     Object.entries(testHooks ?? {}).filter(([name, callback]) =>
       ["afterParentVerified", "afterInitialStat", "afterRead"].includes(name) && typeof callback === "function"),
   );
-  const child = spawn(SYSTEM_PYTHON, ["-I", SECURE_OPEN_HELPER, path, String(expectedUID), String(MAX_OWNED_JSON_BYTES)], {
+  const child = spawn(SYSTEM_PYTHON, ["-I", SECURE_OPEN_HELPER, path, String(expectedUID), String(maxBytes)], {
     env: { AGNET_SECURE_OPEN_HOOKS: Object.keys(hooks).join(",") },
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -250,23 +250,29 @@ class DuplicateSafeJsonParser {
   }
 }
 
-function parseDuplicateSafeJson(text) {
+export function parseDuplicateSafeJson(text) {
   return new DuplicateSafeJsonParser(text).parse();
 }
 
-export async function safeOpenOwnedJson(path, testHooks = undefined) {
+export async function safeOpenOwnedBytes(path, options = {}) {
   if (typeof path !== "string" || path.length === 0 || path.includes("\0")) throw new Error("owned JSON path invalid");
   if (typeof process.getuid !== "function") throw new Error("owned JSON current UID unavailable");
+  const maxBytes = options.maxBytes ?? MAX_OWNED_JSON_BYTES;
+  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0 || maxBytes > MAX_OWNED_JSON_BYTES) throw new Error("owned JSON maxBytes invalid");
   const absolutePath = resolve(path);
-  const opened = await readOwnedJsonWithOpenAt(absolutePath, process.getuid(), testHooks);
-  const bytes = Buffer.from(opened.data, "base64url");
+  const opened = await readOwnedJsonWithOpenAt(absolutePath, process.getuid(), maxBytes, options.testHooks);
+  return Object.freeze({ bytes: Buffer.from(opened.data, "base64url"), evidence: Object.freeze(opened.evidence) });
+}
+
+export async function safeOpenOwnedJson(path, testHooks = undefined) {
+  const opened = await safeOpenOwnedBytes(path, { maxBytes: MAX_OWNED_JSON_BYTES, testHooks });
   let text;
   try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    text = new TextDecoder("utf-8", { fatal: true }).decode(opened.bytes);
   } catch {
     throw new Error("owned JSON must be valid UTF-8");
   }
   const value = parseDuplicateSafeJson(text);
   if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("owned JSON root must be an object");
-  return Object.freeze({ value, evidence: Object.freeze(opened.evidence) });
+  return Object.freeze({ value, evidence: opened.evidence });
 }
