@@ -152,7 +152,7 @@ func exactInteger(value any, label string) (int, error) {
 		return 0, fmt.Errorf("%s invalid", label)
 	}
 	integer, err := strconv.ParseInt(string(number), 10, 64)
-	if err != nil || integer < math.MinInt || integer > math.MaxInt {
+	if err != nil || integer < math.MinInt || integer > math.MaxInt || integer < -9007199254740991 || integer > 9007199254740991 {
 		return 0, fmt.Errorf("%s invalid", label)
 	}
 	return int(integer), nil
@@ -193,6 +193,12 @@ func appendCanonicalJSON(buffer *bytes.Buffer, value any) error {
 			return err
 		}
 		buffer.Write(bytes.TrimSuffix(encoded.Bytes(), []byte("\n")))
+	case json.Number:
+		text := string(typed)
+		if _, err := strconv.ParseInt(text, 10, 64); err != nil {
+			return errors.New("canonical JSON integer invalid")
+		}
+		buffer.WriteString(text)
 	case int:
 		buffer.WriteString(strconv.Itoa(typed))
 	case bool:
