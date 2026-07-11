@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { BlockList, isIP } from "node:net";
 import { basename, dirname, join } from "node:path";
 import { canonical, loadTrustedZones, publicKeyFromDescriptor, resolveAgent, verifyFederatedReceipt, verifyLocalArtifact, verifyObject, verifySwarmClose } from "./asp-core.mjs";
+import { loadSwarmOutputTrustInputs, verifySwarmOutputVerification } from "./swarm-output-verification.mjs";
 
 const args = process.argv.slice(2);
 const [command, file, trustedFile, taskFile] = args;
@@ -249,6 +250,53 @@ try {
     const frame = JSON.parse(await readFile(file, "utf8"));
     const verified = verifySwarmClose(frame, await loadTrustedZones(trustedFile));
     console.log(JSON.stringify({ swarm_close_verify: "ok", swarm_id: verified.close.swarm_id, swarm_close_digest: verified.closeDigest }));
+  } else if (command === "swarm-output" && file && args.length === 2) {
+    const baseDir = dirname(file);
+    const bundle = JSON.parse(await readFile(file, "utf8"));
+    const exact = (value, fields, label) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} invalid`);
+      const actual = Object.keys(value).sort();
+      const expected = [...fields].sort();
+      if (actual.length !== expected.length || actual.some((field, index) => field !== expected[index])) throw new Error(`${label} fields invalid`);
+    };
+    exact(bundle, ["artifacts", "close", "executable_steps", "execution_binding", "format", "plan", "proof", "receipts", "resolved_workers", "trust_inputs", "trusted_zones"], "swarm output bundle");
+    if (bundle.format !== "asp-swarm-output-verification-cli/v1") throw new Error("swarm output bundle format invalid");
+    exact(bundle.trust_inputs, ["allowlist", "revocations", "trustedZones"], "swarm output trust inputs");
+    if (!Array.isArray(bundle.artifacts)) throw new Error("swarm output artifacts invalid");
+    const readBundleJSON = async (name, target) => JSON.parse(await readFile(bundlePath(baseDir, name, target), "utf8"));
+    const proof = await readBundleJSON("proof", bundle.proof);
+    const planFrame = await readBundleJSON("plan", bundle.plan);
+    const executionBinding = await readBundleJSON("execution_binding", bundle.execution_binding);
+    const executableSteps = await readBundleJSON("executable_steps", bundle.executable_steps);
+    const resolvedWorkers = await readBundleJSON("resolved_workers", bundle.resolved_workers);
+    const closeFrame = await readBundleJSON("close", bundle.close);
+    const receiptFrames = await readBundleJSON("receipts", bundle.receipts);
+    const trust = await loadSwarmOutputTrustInputs({
+      allowlist: bundlePath(baseDir, "allowlist", bundle.trust_inputs.allowlist),
+      trustedZones: bundlePath(baseDir, "trustedZones", bundle.trust_inputs.trustedZones),
+      revocations: bundlePath(baseDir, "revocations", bundle.trust_inputs.revocations),
+    });
+    const trustedZones = await loadTrustedZones(bundlePath(baseDir, "trusted_zones", bundle.trusted_zones));
+    const artifactsByURI = new Map(bundle.artifacts.map((entry) => {
+      exact(entry, ["path", "uri"], "swarm output artifact");
+      return [entry.uri, bundlePath(baseDir, "artifact", entry.path)];
+    }));
+    const now = process.env.ASP_VERIFY_NOW ? new Date(process.env.ASP_VERIFY_NOW) : new Date();
+    const verified = await verifySwarmOutputVerification(proof, {
+      planFrame,
+      executionBinding,
+      executableSteps,
+      resolvedWorkers,
+      closeFrame,
+      receiptFrames,
+      trustedZones,
+      loadArtifactBytes: async ({ uri }) => {
+        const artifactPath = artifactsByURI.get(uri);
+        if (!artifactPath) throw new Error(`artifact path missing: ${uri}`);
+        return readFile(artifactPath);
+      },
+    }, trust, { now });
+    console.log(JSON.stringify({ swarm_output_verify: "ok", verification_id: verified.proof.proof.verification_id, verified_at: verified.proof.proof.verified_at, swarm_id: verified.proof.proof.swarm_id, plan_digest: verified.proof.proof.plan_digest, execution_graph_digest: verified.proof.proof.execution_graph_digest, close_digest: verified.closeDigest, signed_receipt_digest: verified.finalOutput.signed_receipt_digest, artifact_sha256: verified.finalOutput.artifact.sha256, manifest_hash: verified.finalOutput.artifact.manifest_hash, trust_inputs_digest: verified.trustInputsDigest, proof_digest: verified.proofDigest }));
   } else if (command === "sandbox-proof" && file && trustedFile && (args.length === 3 || args.length === 4)) {
     const frame = JSON.parse(await readFile(file, "utf8"));
     const verified = verifyFederatedReceipt(frame, await loadTrustedZones(trustedFile));
@@ -334,7 +382,7 @@ try {
     if (reachability) output.reachability_observer_zid = reachability.reachability_observer_zid;
     console.log(JSON.stringify(output));
   } else {
-    throw new Error("usage: node asp-verify.mjs artifact <manifest.json> | fed-receipt <frame.json> <trusted-zones.json> [task.json] | fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] | swarm-close <frame.json> <trusted-zones.json> | sandbox-proof <frame.json> <trusted-zones.json> [required-sandbox-class] | sandbox-attestation <frame.json> <trusted-zones.json> <attestation.json> <trusted-attestors.json> | package-proof <manifest.json> [trusted-signers.json] | release-trust <release-trust.json> [trusted-release-signers.json] | proof-bundle <bundle.json> [external-trusted-zones.json]");
+    throw new Error("usage: node asp-verify.mjs artifact <manifest.json> | fed-receipt <frame.json> <trusted-zones.json> [task.json] | fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] | swarm-close <frame.json> <trusted-zones.json> | swarm-output <bundle.json> | sandbox-proof <frame.json> <trusted-zones.json> [required-sandbox-class] | sandbox-attestation <frame.json> <trusted-zones.json> <attestation.json> <trusted-attestors.json> | package-proof <manifest.json> [trusted-signers.json] | release-trust <release-trust.json> [trusted-release-signers.json] | proof-bundle <bundle.json> [external-trusted-zones.json]");
   }
 } catch (error) {
   console.error(error.message);

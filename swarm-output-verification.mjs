@@ -1,10 +1,20 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   assertCanonicalStringDomain,
   canonical,
   decodeBase64UrlExact,
+  deriveSwarmFinalOutput,
+  publicKeyFromDescriptor,
   resolveAgent,
+  signObject,
+  signedReceiptDigest,
+  verifyFederatedReceipt,
+  verifyObject,
+  verifyResultArtifact,
+  verifySwarmClose,
+  verifySwarmExecutionBinding,
+  verifySwarmPlan,
   verifyZoneBinding,
   verifyZoneDescriptor,
   verifyZoneRevocation,
@@ -34,6 +44,24 @@ const TRUSTED_ZONES_FIELDS = ["format", "zones"];
 const ZONE_DESCRIPTOR_FIELDS = ["name", "public_key_spki", "zid", "zone_signature"];
 const REVOCATIONS_FIELDS = ["format", "revocations"];
 const REVOCATION_FIELDS = ["reason", "signature", "subject", "zone"];
+const OUTPUT_VERIFICATION_FORMAT = "asp-swarm-output-verification/v1";
+const OUTPUT_VERIFICATION_FRAME_FIELDS = ["proof", "type", "verifier", "verifier_zone", "verifier_zone_binding"];
+const OUTPUT_VERIFICATION_BODY_FIELDS = [
+  "close_digest",
+  "execution_graph_digest",
+  "final_output",
+  "format",
+  "plan_digest",
+  "proof_signature",
+  "swarm_id",
+  "trust_inputs_digest",
+  "verification_id",
+  "verified_at",
+  "verifier_aid",
+  "verifier_zone",
+];
+const FUTURE_SKEW_MS = 5 * 60 * 1000;
+const UTC_TIMESTAMP_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/;
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -295,4 +323,180 @@ export async function loadSwarmOutputTrustInputs(paths) {
       revocations: revocationsFile.evidence,
     },
   );
+}
+
+function requireHexDigest(value, label) {
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value)) throw new Error(`${label} invalid`);
+  return value;
+}
+
+function canonicalEqual(left, right) {
+  return canonical(left) === canonical(right);
+}
+
+function trustedZonesMapFromEvidence(evidence) {
+  const trustedZones = evidence?.trustedZones;
+  if (trustedZones instanceof Map) return trustedZones;
+  if (trustedZones && typeof trustedZones === "object" && !Array.isArray(trustedZones)) return new Map(Object.entries(trustedZones));
+  throw new Error("swarm output trusted zones missing");
+}
+
+function validateUTCNotFuture(value, now) {
+  const match = typeof value === "string" ? UTC_TIMESTAMP_PATTERN.exec(value) : null;
+  if (!match) throw new Error("verified_at invalid");
+  const [, year, month, day, hour, minute, second, ms = "0"] = match;
+  const millis = Number(ms.padEnd(3, "0"));
+  const parsed = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second), millis);
+  const date = new Date(parsed);
+  if (
+    date.getUTCFullYear() !== Number(year) ||
+    date.getUTCMonth() !== Number(month) - 1 ||
+    date.getUTCDate() !== Number(day) ||
+    date.getUTCHours() !== Number(hour) ||
+    date.getUTCMinutes() !== Number(minute) ||
+    date.getUTCSeconds() !== Number(second) ||
+    date.getUTCMilliseconds() !== millis
+  ) throw new Error("verified_at invalid");
+  const nowMs = now instanceof Date ? now.getTime() : new Date(now).getTime();
+  if (!Number.isFinite(nowMs)) throw new Error("verification clock invalid");
+  if (parsed - nowMs > FUTURE_SKEW_MS) throw new Error("verified_at future skew invalid");
+}
+
+function findPinnedVerifier(frame, trustInputs) {
+  if (!trustInputs || !Array.isArray(trustInputs.allowlist?.verifiers) || !Array.isArray(trustInputs.trusted_zones?.zones)) throw new Error("trust inputs missing");
+  requireExactFields(frame, OUTPUT_VERIFICATION_FRAME_FIELDS, "swarm output verification frame");
+  if (frame.type !== "FED_SWARM_OUTPUT_VERIFICATION") throw new Error("expected FED_SWARM_OUTPUT_VERIFICATION frame");
+  const verifier = normalizeAgentDescriptor(frame.verifier);
+  const verifierZone = normalizeZoneDescriptor(frame.verifier_zone);
+  const verifierZoneBinding = normalizeZoneBinding(frame.verifier_zone_binding);
+  const allowed = trustInputs.allowlist.verifiers.find((entry) => entry.descriptor.aid === verifier.aid && entry.zone_binding.zone === verifierZone.zid && entry.authorizations.includes(VERIFY_AUTHORIZATION));
+  if (!allowed) throw new Error("verifier allowlist tuple missing");
+  if (!canonicalEqual(allowed.descriptor, verifier)) throw new Error("verifier descriptor mismatch");
+  if (!canonicalEqual(allowed.zone_binding, verifierZoneBinding)) throw new Error("verifier zone binding mismatch");
+  const trustedZone = trustInputs.trusted_zones.zones.find((zone) => zone.zid === verifierZone.zid);
+  if (!trustedZone || !canonicalEqual(trustedZone, verifierZone)) throw new Error("verifier trusted Zone mismatch");
+  return { verifier, verifierZone, verifierZoneBinding };
+}
+
+async function verifyArtifactBytes(finalOutput, terminalReceipt, loadArtifactBytes) {
+  if (typeof loadArtifactBytes !== "function") throw new Error("artifact byte loader missing");
+  const artifact = finalOutput.artifact;
+  const manifests = terminalReceipt.artifact_manifests ?? [];
+  const manifest = manifests.find((item) => item.uri === artifact.uri && item.sha256 === artifact.sha256 && item.manifest_hash === artifact.manifest_hash);
+  if (!manifest) throw new Error("result artifact manifest mismatch");
+  const bytes = await loadArtifactBytes(artifact, manifest);
+  if (!(bytes instanceof Uint8Array) && !Buffer.isBuffer(bytes)) throw new Error("artifact bytes missing");
+  const buffer = Buffer.from(bytes);
+  if (buffer.length !== manifest.size) throw new Error("artifact bytes size mismatch");
+  if (createHash("sha256").update(buffer).digest("hex") !== artifact.sha256) throw new Error("artifact bytes digest mismatch");
+}
+
+async function recomputeSwarmOutput(evidence, trustInputs) {
+  if (!isObject(evidence)) throw new Error("swarm output evidence missing");
+  const trustedZones = trustedZonesMapFromEvidence(evidence);
+  const verifiedPlan = verifySwarmPlan(evidence.planFrame, trustedZones);
+  const verifiedBinding = verifySwarmExecutionBinding(evidence.executionBinding, verifiedPlan, evidence.executableSteps, evidence.resolvedWorkers);
+  const closeVerified = verifySwarmClose(evidence.closeFrame, trustedZones);
+  if (closeVerified.legacy || closeVerified.format !== "asp-swarm-close/v2") throw new Error("swarm output requires v2 close");
+  if (closeVerified.close.swarm_id !== verifiedBinding.swarmId) throw new Error("close swarm_id mismatch");
+  if (closeVerified.close.plan_digest !== verifiedBinding.planDigest) throw new Error("close plan digest mismatch");
+  if (closeVerified.close.execution_graph_digest !== verifiedBinding.executionGraphDigest) throw new Error("close execution graph digest mismatch");
+  if (!Array.isArray(evidence.receiptFrames) || evidence.receiptFrames.length !== verifiedBinding.steps.length) throw new Error("signed receipt count mismatch");
+  const signedReceiptsByStep = new Map();
+  for (const receiptFrame of evidence.receiptFrames) {
+    const stepID = receiptFrame?.receipt?.swarm?.step_id;
+    const executableStep = evidence.executableSteps.find((step) => step.step_id === stepID);
+    const verifiedReceipt = verifyFederatedReceipt(receiptFrame, trustedZones, executableStep?.task);
+    const receiptStepID = verifiedReceipt.receipt.swarm?.step_id;
+    if (signedReceiptsByStep.has(receiptStepID)) throw new Error("duplicate signed receipt step");
+    signedReceiptsByStep.set(receiptStepID, verifiedReceipt.signedReceipt);
+  }
+  const finalOutput = deriveSwarmFinalOutput(verifiedBinding, signedReceiptsByStep);
+  if (!canonicalEqual(finalOutput, closeVerified.close.final_output)) throw new Error("final output mismatch");
+  const closeSteps = new Map(closeVerified.close.step_receipts.map((step) => [step.step_id, step]));
+  if (closeSteps.size !== signedReceiptsByStep.size) throw new Error("close signed receipt count mismatch");
+  for (const stepID of closeSteps.keys()) {
+    if (!signedReceiptsByStep.has(stepID)) throw new Error(`close signed receipt missing: ${stepID}`);
+  }
+  for (const [stepID, signedReceipt] of signedReceiptsByStep) {
+    const closeStep = closeSteps.get(stepID);
+    if (!closeStep) throw new Error(`close signed receipt missing: ${stepID}`);
+    if (closeStep.task_id !== signedReceipt.task_id) throw new Error("close receipt task mismatch");
+    if (closeStep.signed_receipt_digest !== signedReceiptDigest(signedReceipt)) throw new Error("close signed receipt digest mismatch");
+  }
+  const terminalReceipt = signedReceiptsByStep.get(finalOutput.step_id);
+  const resultArtifact = verifyResultArtifact(terminalReceipt);
+  if (!canonicalEqual(resultArtifact, finalOutput.artifact)) throw new Error("final output artifact mismatch");
+  await verifyArtifactBytes(finalOutput, terminalReceipt, evidence.loadArtifactBytes);
+  return { closeVerified, finalOutput };
+}
+
+function proofBodyFromFrame(proofFrame, trustInputs, now) {
+  const { verifier } = findPinnedVerifier(proofFrame, trustInputs);
+  requireExactFields(proofFrame.proof, OUTPUT_VERIFICATION_BODY_FIELDS, "swarm output verification proof");
+  const { proof_signature: signature, ...body } = proofFrame.proof;
+  if (body.format !== OUTPUT_VERIFICATION_FORMAT) throw new Error("swarm output verification format invalid");
+  requireString(body.verification_id, "verification_id");
+  validateUTCNotFuture(body.verified_at, now);
+  requireString(body.swarm_id, "swarm_id");
+  requireHexDigest(body.plan_digest, "plan_digest");
+  requireHexDigest(body.execution_graph_digest, "execution_graph_digest");
+  requireHexDigest(body.close_digest, "close_digest");
+  requireHexDigest(body.trust_inputs_digest, "trust_inputs_digest");
+  if (!isObject(body.final_output)) throw new Error("final_output invalid");
+  if (body.verifier_aid !== verifier.aid) throw new Error("verifier aid mismatch");
+  if (body.verifier_zone !== proofFrame.verifier_zone.zid) throw new Error("verifier Zone mismatch");
+  if (typeof signature !== "string" || signature.length === 0) throw new Error("proof signature missing");
+  if (!verifyObject(publicKeyFromDescriptor(verifier), body, signature)) throw new Error("proof signature verification failed");
+  return body;
+}
+
+function buildResult(proof, closeVerified, finalOutput, trustInputs) {
+  return deepFreeze({
+    proof,
+    proofDigest: digest(proof.proof),
+    closeDigest: closeVerified.closeDigest,
+    trustInputsDigest: trustInputs.trust_inputs_digest,
+    finalOutput,
+  });
+}
+
+export async function createSwarmOutputVerification(evidence, trustInputs, verifier, options = {}) {
+  if (!isObject(verifier) || !verifier.privateKey) throw new Error("verifier signing key missing");
+  const { finalOutput, closeVerified } = await recomputeSwarmOutput(evidence, trustInputs);
+  const proofBody = {
+    format: OUTPUT_VERIFICATION_FORMAT,
+    verification_id: requireString(options.verificationId ?? `verification:${randomUUID()}`, "verification_id"),
+    verified_at: options.verifiedAt ?? new Date(options.now ?? Date.now()).toISOString().replace(".000Z", "Z"),
+    swarm_id: closeVerified.close.swarm_id,
+    plan_digest: closeVerified.close.plan_digest,
+    execution_graph_digest: closeVerified.close.execution_graph_digest,
+    close_digest: closeVerified.closeDigest,
+    final_output: finalOutput,
+    verifier_aid: verifier.descriptor?.aid,
+    verifier_zone: verifier.zone?.zid,
+    trust_inputs_digest: trustInputs.trust_inputs_digest,
+  };
+  validateUTCNotFuture(proofBody.verified_at, options.now ?? new Date());
+  const proof = {
+    type: "FED_SWARM_OUTPUT_VERIFICATION",
+    verifier: verifier.descriptor,
+    verifier_zone: verifier.zone,
+    verifier_zone_binding: verifier.zone_binding,
+    proof: { ...proofBody, proof_signature: signObject(verifier.privateKey, proofBody) },
+  };
+  proofBodyFromFrame(proof, trustInputs, options.now ?? new Date());
+  return buildResult(proof, closeVerified, finalOutput, trustInputs);
+}
+
+export async function verifySwarmOutputVerification(proof, evidence, trustInputs, options = {}) {
+  const body = proofBodyFromFrame(proof, trustInputs, options.now ?? new Date());
+  const { finalOutput, closeVerified } = await recomputeSwarmOutput(evidence, trustInputs);
+  if (body.trust_inputs_digest !== trustInputs.trust_inputs_digest) throw new Error("trust inputs digest mismatch");
+  if (body.swarm_id !== closeVerified.close.swarm_id) throw new Error("proof swarm_id mismatch");
+  if (body.plan_digest !== closeVerified.close.plan_digest) throw new Error("proof plan digest mismatch");
+  if (body.execution_graph_digest !== closeVerified.close.execution_graph_digest) throw new Error("proof execution graph digest mismatch");
+  if (body.close_digest !== closeVerified.closeDigest) throw new Error("proof close digest mismatch");
+  if (!canonicalEqual(body.final_output, finalOutput)) throw new Error("proof final output mismatch");
+  return buildResult(proof, closeVerified, finalOutput, trustInputs);
 }
