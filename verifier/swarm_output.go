@@ -41,6 +41,40 @@ type VerifiedSwarmOutput struct {
 	VerifierZone      string
 }
 
+// FrozenSwarmOutputEvidence is the immutable scheduler evidence to which an
+// output-verification proof must bind. Callers obtain it from their durable
+// authority, never from a verifier submission.
+type FrozenSwarmOutputEvidence struct {
+	SwarmID              string
+	PlanDigest           string
+	ExecutionGraphDigest string
+	StoredCloseDigest    string
+	FinalOutput          map[string]any
+}
+
+// VerifySwarmOutputProof verifies the verifier-signed portion of an output
+// gate against already-verified, immutable scheduler evidence. It is for
+// durable schedulers whose close, receipts, and artifacts are verified through
+// their own journal rather than supplied as caller-controlled frames.
+func VerifySwarmOutputProof(proof map[string]any, trust TrustInputs, frozen FrozenSwarmOutputEvidence, now time.Time) (VerifiedSwarmOutput, error) {
+	var zero VerifiedSwarmOutput
+	if frozen.SwarmID == "" || !isHexDigest(frozen.PlanDigest) || !isHexDigest(frozen.ExecutionGraphDigest) || !isHexDigest(frozen.StoredCloseDigest) || frozen.FinalOutput == nil {
+		return zero, errors.New("frozen swarm output evidence invalid")
+	}
+	finalOutput, err := cloneMap(frozen.FinalOutput)
+	if err != nil {
+		return zero, err
+	}
+	proofBody, proofDigest, proofBytes, err := verifySwarmOutputProof(proof, trust, now)
+	if err != nil {
+		return zero, err
+	}
+	if proofBody["trust_inputs_digest"] != trust.TrustInputsDigest || proofBody["swarm_id"] != frozen.SwarmID || proofBody["plan_digest"] != frozen.PlanDigest || proofBody["execution_graph_digest"] != frozen.ExecutionGraphDigest || proofBody["close_digest"] != frozen.StoredCloseDigest || !canonicalAnyEqual(proofBody["final_output"], finalOutput) {
+		return zero, errors.New("output proof does not bind frozen scheduler evidence")
+	}
+	return VerifiedSwarmOutput{CloseDigest: frozen.StoredCloseDigest, ProofDigest: proofDigest, TrustInputsDigest: trust.TrustInputsDigest, ProofBytes: proofBytes, FinalOutput: finalOutput, VerificationID: fmt.Sprint(proofBody["verification_id"]), VerifiedAt: fmt.Sprint(proofBody["verified_at"]), VerifierAID: fmt.Sprint(proofBody["verifier_aid"]), VerifierZone: fmt.Sprint(proofBody["verifier_zone"])}, nil
+}
+
 type VerificationReplayRecord struct {
 	VerificationID       string         `json:"verification_id"`
 	CanonicalProofSHA256 string         `json:"canonical_proof_sha256"`

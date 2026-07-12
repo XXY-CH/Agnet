@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+	"agnet/verifier"
 )
 
 const (
@@ -37,7 +38,13 @@ type LocalSwarmCoordinator struct {
 
 	LeaseTTL     time.Duration
 	PollInterval time.Duration
+
+	// outputVerificationTrust is loaded once from operator-owned files before
+	// accepting frames. Submissions cannot supply or replace trust inputs.
+	outputVerificationTrust verifier.TrustInputs
+	outputVerifier              swarmOutputProofVerifier
 }
+
 
 type localSwarmLaunchReservation struct {
 	coordinator *LocalSwarmCoordinator

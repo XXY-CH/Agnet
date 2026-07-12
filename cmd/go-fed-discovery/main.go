@@ -53,6 +53,9 @@ func main() {
 	printZone := flag.Bool("print-zone", false, "print the authority Zone descriptor and exit")
 	interopRequestPort := flag.String("interop-request", "", "send one FED_TASK_OPEN request to a Node federation gateway port and exit")
 	verifySwarmOutputSchedulerGate := flag.Bool("verify-swarm-output-scheduler-gate", false, "verify Swarm output proof and print scheduler completion gate JSON")
+	outputTrustAllowlist := flag.String("swarm-output-allowlist", "", "operator-owned output verifier allowlist JSON")
+	outputTrustZones := flag.String("swarm-output-trusted-zones", "", "operator-owned output verifier trusted Zones JSON")
+	outputTrustRevocations := flag.String("swarm-output-revocations", "", "operator-owned output verifier revocations JSON")
 	localSwarmWorker := flag.Bool("local-swarm-worker", false, "internal local Swarm worker mode")
 	flag.Parse()
 	if *localSwarmWorker {
@@ -193,7 +196,21 @@ func main() {
 		Authority: ManagedKeyConfig{StorePath: *authorityStorePath, PassphraseFile: *authorityPassphrasePath, RecordDigest: *authorityRecordDigest},
 		Worker:    ManagedKeyConfig{StorePath: *workerStorePath, PassphraseFile: *workerPassphrasePath, RecordDigest: *workerRecordDigest},
 	}
-	if err := serveWithSwarmStateDir(*listenHost, *port, *wsPort, *humanPort, *humanToken, *humanActorPolicyPath, *tlsCertPath, *tlsKeyPath, *tlsClientCAPath, *artifactStoreDir, *fixturePath, *trustPath, *swarmStorageRoot, *swarmID, *swarmStateDir, runtimeKeys, *auditPath); err != nil {
+	outputTrust := verifier.TrustInputs{}
+	configuredTrustFiles := *outputTrustAllowlist != "" || *outputTrustZones != "" || *outputTrustRevocations != ""
+	if configuredTrustFiles {
+		if *outputTrustAllowlist == "" || *outputTrustZones == "" || *outputTrustRevocations == "" {
+			fmt.Fprintln(os.Stderr, "all swarm output trust paths are required")
+			os.Exit(1)
+		}
+		var err error
+		outputTrust, err = verifier.LoadSwarmOutputTrustInputs(verifier.TrustInputPaths{Allowlist: *outputTrustAllowlist, TrustedZones: *outputTrustZones, Revocations: *outputTrustRevocations})
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	}
+	if err := serveWithSwarmStateDir(*listenHost, *port, *wsPort, *humanPort, *humanToken, *humanActorPolicyPath, *tlsCertPath, *tlsKeyPath, *tlsClientCAPath, *artifactStoreDir, *fixturePath, *trustPath, *swarmStorageRoot, *swarmID, *swarmStateDir, runtimeKeys, *auditPath, outputTrust); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -450,10 +467,11 @@ func trustedZonesMapFromBundle(value map[string]any) (map[string]map[string]any,
 }
 
 func serve(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, tlsClientCAPath, artifactStoreDir, fixturePath, trustPath, swarmStorageRoot, swarmID string, runtimeKeys ManagedRuntimeConfig, auditPath string) error {
-	return serveWithSwarmStateDir(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, tlsClientCAPath, artifactStoreDir, fixturePath, trustPath, swarmStorageRoot, swarmID, "state/go-fed-swarms", runtimeKeys, auditPath)
+	return serveWithSwarmStateDir(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, tlsClientCAPath, artifactStoreDir, fixturePath, trustPath, swarmStorageRoot, swarmID, "state/go-fed-swarms", runtimeKeys, auditPath, verifier.TrustInputs{})
 }
 
-func serveWithSwarmStateDir(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, tlsClientCAPath, artifactStoreDir, fixturePath, trustPath, swarmStorageRoot, swarmID, swarmStateDir string, runtimeKeys ManagedRuntimeConfig, auditPath string) error {
+
+func serveWithSwarmStateDir(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, tlsClientCAPath, artifactStoreDir, fixturePath, trustPath, swarmStorageRoot, swarmID, swarmStateDir string, runtimeKeys ManagedRuntimeConfig, auditPath string, outputTrust verifier.TrustInputs) error {
 	fixture, err := loadManagedFixture(fixturePath, runtimeKeys)
 	if err != nil {
 		return err
@@ -492,6 +510,7 @@ func serveWithSwarmStateDir(listenHost, port, wsPort, humanPort, humanToken, hum
 	if err != nil {
 		return err
 	}
+	coordinator.outputVerificationTrust = outputTrust
 	fixture.SwarmCoordinator = coordinator
 	if _, err := coordinator.ResumeAll(context.Background()); err != nil {
 		return err
@@ -622,6 +641,7 @@ func handle(conn net.Conn, fixture Fixture, trusted map[string]map[string]any) {
 		session.TransportPeerZoneIDs = certificateZoneIDs(certs)
 	}
 	scanner := bufio.NewScanner(conn)
+	scanner.Buffer(make([]byte, 0, 64<<10), maxSwarmOutputVerificationFrameBytes)
 	sendLine := func(frame map[string]any) { send(conn, frame) }
 	for scanner.Scan() {
 		var frame map[string]any
@@ -629,13 +649,22 @@ func handle(conn net.Conn, fixture Fixture, trusted map[string]map[string]any) {
 			sendLine(taskErrorFrame(err))
 			return
 		}
-		if !handleFrame(sendLine, frame, fixture, trusted, session) {
+		if !handleFrameBytes(sendLine, scanner.Bytes(), frame, fixture, trusted, session) {
 			return
 		}
 	}
 }
 
 func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted map[string]map[string]any, session *Session) bool {
+	raw, err := canonicalJSON(frame)
+	if err != nil {
+		send(taskErrorFrame(err))
+		return false
+	}
+	return handleFrameBytes(send, raw, frame, fixture, trusted, session)
+}
+
+func handleFrameBytes(send sendFunc, frameBytes []byte, frame map[string]any, fixture Fixture, trusted map[string]map[string]any, session *Session) bool {
 	switch frame["type"] {
 	case "HELLO":
 		if err := handleHello(send, frame, fixture, trusted, session); err != nil {
@@ -766,6 +795,17 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 		for _, response := range frames {
 			send(response)
 		}
+	case swarmOutputVerificationFrameType:
+		if fixture.SwarmCoordinator == nil {
+			send(taskErrorFrame(errors.New("durable swarm coordinator unavailable")))
+			return false
+		}
+		attempt, err := fixture.SwarmCoordinator.RecordOutputVerification(context.Background(), frameBytes)
+		if err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
+		send(map[string]any{"type": "FED_SWARM_OUTPUT_VERIFIED", "output": attempt})
 	case "FED_TASK_ENQUEUE":
 		taskID, workerID, err := fixture.enqueueQueueItem(origin, frame)
 		if err != nil {

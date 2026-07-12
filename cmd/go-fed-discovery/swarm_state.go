@@ -112,8 +112,21 @@ type SwarmState struct {
 	Leases             []LeaseClaim               `json:"leases,omitempty"`
 	CommittedArtifacts map[string]ArtifactTriple  `json:"committed_artifacts,omitempty"`
 	LastFence          LeaseFence                 `json:"last_fence"`
+	StoredClose        StoredSwarmClose           `json:"-"`
+	OutputVerification *SwarmOutputVerification   `json:"output_verification,omitempty"`
 }
 
+// SwarmOutputVerification is replay-derived proof metadata. The exact proof
+// and close bytes remain in the immutable journal event.
+type SwarmOutputVerification struct {
+	VerificationID    string `json:"verification_id"`
+	SubmissionDigest  string `json:"submission_digest"`
+	ProofDigest       string `json:"proof_digest"`
+	CloseDigest       string `json:"close_digest"`
+	TrustInputsDigest string `json:"trust_inputs_digest"`
+	VerifiedAt        string `json:"verified_at"`
+	CompletedAt       string `json:"completed_at"`
+}
 type durableSwarmSpecWire struct {
 	SchemaVersion       uint64                 `json:"schema_version"`
 	SwarmID             string                 `json:"swarm_id"`
@@ -288,7 +301,7 @@ func ReduceSwarmEntry(prior SwarmState, entry SwarmJournalEntry) (SwarmState, er
 	if entry.PriorStateVersion == math.MaxUint64 || entry.StateVersion != entry.PriorStateVersion+1 || entry.PriorStateVersion != prior.Version {
 		return SwarmState{}, errors.New("swarm state versions are not contiguous")
 	}
-	if prior.Version != 0 && ((prior.Status == SwarmStatusCompleted && entry.Kind != "close.stored") || prior.Status == SwarmStatusClosing || prior.Status == SwarmStatusCancelled) {
+	if prior.Version != 0 && (prior.Status == SwarmStatusCancelled || (prior.Status == SwarmStatusCompleted && entry.Kind != "close.stored") || (prior.Status == SwarmStatusClosing && entry.Kind != "output.verification_failed" && entry.Kind != "output.verified")) {
 		return SwarmState{}, errors.New("swarm is terminal")
 	}
 	next := cloneSwarmState(prior)
@@ -334,9 +347,30 @@ func ReduceSwarmEntry(prior SwarmState, entry SwarmJournalEntry) (SwarmState, er
 				return SwarmState{}, errors.New("illegal swarm close")
 			}
 		}
-		if _, err := storedSwarmCloseFromEntry(entry); err != nil {
+		stored, err := storedSwarmCloseFromEntry(entry)
+		if err != nil {
 			return SwarmState{}, err
 		}
+		next.StoredClose = stored
+	case "output.verification_failed":
+		var payload outputVerificationFailurePayload
+		if prior.Status != SwarmStatusClosing || prior.OutputVerification != nil || decodeStrictSwarmPayload(entry.Payload, &payload) != nil || payload.SchemaVersion != swarmStateSchemaVersion || !isHexDigest(payload.SubmissionDigest) || payload.ErrorCode != "output_proof_rejected" {
+			return SwarmState{}, errors.New("output verification failure invalid")
+		}
+	case "output.verified":
+		var payload outputVerifiedPayload
+		if prior.Status != SwarmStatusClosing || prior.OutputVerification != nil || decodeStrictSwarmPayload(entry.Payload, &payload) != nil || !validOutputVerifiedPayload(payload) || payload.SwarmID != prior.Spec.SwarmID || payload.PriorStatus != prior.Status || payload.NextStatus != SwarmStatusCompleted || payload.CloseDigest != prior.StoredClose.Digest || payload.CompletedAt != entry.Timestamp || verifyOutputVerifiedCompletionAuthorization(prior.Spec, payload) != nil {
+			return SwarmState{}, errors.New("output verification invalid")
+		}
+		_, final, err := storedOutputFinal(prior.StoredClose)
+		if err != nil {
+			return SwarmState{}, err
+		}
+		expectedFinal, err := canonicalJSON(final)
+		if err != nil || !bytes.Equal(payload.FinalOutput, expectedFinal) {
+			return SwarmState{}, errors.New("output verification final output conflicts with close")
+		}
+		next.OutputVerification = &SwarmOutputVerification{VerificationID: payload.VerificationID, SubmissionDigest: payload.SubmissionDigest, ProofDigest: payload.ProofDigest, CloseDigest: payload.CloseDigest, TrustInputsDigest: payload.TrustInputsDigest, VerifiedAt: payload.VerifiedAt, CompletedAt: payload.CompletedAt}
 	case "swarm.cancelled":
 		if prior.Version == 0 || prior.Status == SwarmStatusCompleted || prior.Status == SwarmStatusFailed || prior.Status == SwarmStatusCancelled {
 			return SwarmState{}, errors.New("illegal swarm cancellation")
@@ -361,8 +395,11 @@ func ReduceSwarmEntry(prior SwarmState, entry SwarmJournalEntry) (SwarmState, er
 	if entry.Kind == "swarm.cancelled" {
 		next.Status = SwarmStatusCancelled
 	}
-	if entry.Kind == "close.stored" {
+	if entry.Kind == "close.stored" || entry.Kind == "output.verification_failed" {
 		next.Status = SwarmStatusClosing
+	}
+	if entry.Kind == "output.verified" {
+		next.Status = SwarmStatusCompleted
 	}
 	return next, nil
 }
@@ -371,10 +408,10 @@ func ReduceSwarmEntry(prior SwarmState, entry SwarmJournalEntry) (SwarmState, er
 // by typed journals for future reducers, while unknown state namespaces fail closed.
 func isSwarmStateEntryKind(kind string) (bool, error) {
 	switch kind {
-	case "swarm.opened", "swarm.cancelled", "wave.ready", "wave.dispatched", "lease.renewed", "lease.observed", "lease.expired", "receipt.committed", "close.stored":
+	case "swarm.opened", "swarm.cancelled", "wave.ready", "wave.dispatched", "lease.renewed", "lease.observed", "lease.expired", "receipt.committed", "close.stored", "output.verification_failed", "output.verified":
 		return true, nil
 	default:
-		if strings.HasPrefix(kind, "swarm.") || strings.HasPrefix(kind, "step.") || strings.HasPrefix(kind, "receipt.") {
+		if strings.HasPrefix(kind, "swarm.") || strings.HasPrefix(kind, "step.") || strings.HasPrefix(kind, "receipt.") || strings.HasPrefix(kind, "output.") {
 			return false, errors.New("swarm entry kind invalid")
 		}
 		return false, nil
@@ -464,6 +501,11 @@ func deriveSwarmStatus(steps []SwarmStepState) SwarmStatus {
 
 func cloneSwarmState(state SwarmState) SwarmState {
 	clone := SwarmState{Version: state.Version, Status: state.Status, Spec: cloneDurableSwarmSpec(state.Spec), ReadyWave: cloneReadyWave(state.ReadyWave), Leases: cloneLeaseClaims(state.Leases), LastFence: state.LastFence}
+	clone.StoredClose = StoredSwarmClose{Bytes: append([]byte(nil), state.StoredClose.Bytes...), Digest: state.StoredClose.Digest}
+	if state.OutputVerification != nil {
+		value := *state.OutputVerification
+		clone.OutputVerification = &value
+	}
 	if state.CommittedArtifacts != nil {
 		clone.CommittedArtifacts = make(map[string]ArtifactTriple, len(state.CommittedArtifacts))
 		for stepID, artifact := range state.CommittedArtifacts {

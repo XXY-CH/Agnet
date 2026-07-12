@@ -963,3 +963,24 @@ func TestU7FrozenSwarmOutputVectorReplayConflictRejects(t *testing.T) {
 		t.Fatalf("replay decision = %s mutated=%v gate=%v id=%s, want conflict false false id=%s", replayed.ReplayDecision, replayed.StoreMutated, replayed.CompletionGate, replayed.VerificationID, accepted.VerificationID)
 	}
 }
+
+func TestVerifySwarmOutputProofBindsFrozenEvidence(t *testing.T) {
+	fixture := newSwarmOutputFixture(t)
+	now := time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)
+	verified, err := VerifySwarmOutput(fixture.evidence, fixture.trust, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := VerifySwarmOutputProof(fixture.evidence.Proof, fixture.trust, FrozenSwarmOutputEvidence{SwarmID: fixture.evidence.ExecutionBinding["swarm_id"].(string), PlanDigest: fixture.evidence.ExecutionBinding["plan_digest"].(string), ExecutionGraphDigest: fixture.evidence.ExecutionBinding["execution_graph_digest"].(string), StoredCloseDigest: verified.CloseDigest, FinalOutput: verified.FinalOutput}, now)
+	if err != nil || got.VerificationID != verified.VerificationID || got.ProofDigest != verified.ProofDigest {
+		t.Fatalf("frozen proof = %#v, %v", got, err)
+	}
+	if _, err := VerifySwarmOutputProof(fixture.evidence.Proof, fixture.trust, FrozenSwarmOutputEvidence{SwarmID: fixture.evidence.ExecutionBinding["swarm_id"].(string), PlanDigest: fixture.evidence.ExecutionBinding["plan_digest"].(string), ExecutionGraphDigest: fixture.evidence.ExecutionBinding["execution_graph_digest"].(string), StoredCloseDigest: strings.Repeat("0", 64), FinalOutput: verified.FinalOutput}, now); err == nil {
+		t.Fatal("proof accepted changed frozen close digest")
+	}
+	changedTrust := fixture.trust
+	changedTrust.TrustInputsDigest = strings.Repeat("0", 64)
+	if _, err := VerifySwarmOutputProof(fixture.evidence.Proof, changedTrust, FrozenSwarmOutputEvidence{SwarmID: fixture.evidence.ExecutionBinding["swarm_id"].(string), PlanDigest: fixture.evidence.ExecutionBinding["plan_digest"].(string), ExecutionGraphDigest: fixture.evidence.ExecutionBinding["execution_graph_digest"].(string), StoredCloseDigest: verified.CloseDigest, FinalOutput: verified.FinalOutput}, now); err == nil {
+		t.Fatal("proof accepted changed frozen trust inputs")
+	}
+}

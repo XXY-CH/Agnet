@@ -44,7 +44,7 @@ func handleWebSocket(conn net.Conn, fixture Fixture, trusted map[string]map[stri
 			sendWS(taskErrorFrame(err))
 			return
 		}
-		if !handleFrame(sendWS, frame, fixture, trusted, session) {
+		if !handleFrameBytes(sendWS, []byte(text), frame, fixture, trusted, session) {
 			return
 		}
 	}
@@ -105,6 +105,9 @@ func readWebSocketText(reader *bufio.Reader) (string, error) {
 			return "", err
 		}
 		length = binary.BigEndian.Uint64(buf[:])
+	}
+	if length > uint64(maxSwarmOutputVerificationFrameBytes) {
+		return "", errors.New("websocket frame exceeds maximum size")
 	}
 	var mask [4]byte
 	if masked {
