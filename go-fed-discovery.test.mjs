@@ -107,6 +107,40 @@ test("Phase A output vector bundle verifies through go-fed-discovery scheduler g
   assert.equal(result.completion_gate, true);
 });
 
+test("Go durable Swarm survives transport loss and replies from replayed state", async () => {
+  const [mainSource, swarmSource, coordinatorSource] = await Promise.all([
+    readFile("cmd/go-fed-discovery/main.go", "utf8"),
+    readFile("cmd/go-fed-discovery/swarm.go", "utf8"),
+    readFile("cmd/go-fed-discovery/swarm_coordinator.go", "utf8"),
+  ]);
+
+  const result = await execFileAsync("go", [
+    "test",
+    "./cmd/go-fed-discovery",
+    "-run",
+    "^TestLocalSwarmCoordinator(RunsWholeReadyWaveBeforeDependent|IgnoresDisconnectedCallerContext)$",
+    "-count=1",
+  ]);
+  assert.match(result.stdout, /ok\s+agnet\/cmd\/go-fed-discovery/);
+  assert.match(mainSource, /coordinator\.ResumeAll\(context\.Background\(\)\)/);
+  assert.match(mainSource, /OpenAndRun\(context\.Background\(\), origin, frame\)/);
+  assert.match(mainSource, /ExecSwarmWorkerLauncher\{\}/);
+  assert.match(coordinatorSource, /_ = ctx/);
+  assert.match(swarmSource, /ReadSwarmView\(journal\)/);
+  assert.match(swarmSource, /receipt\.committed/);
+});
+
+test("Go durable Swarm has no production serial execution callsite", async () => {
+  const [mainSource, swarmSource] = await Promise.all([
+    readFile("cmd/go-fed-discovery/main.go", "utf8"),
+    readFile("cmd/go-fed-discovery/swarm.go", "utf8"),
+  ]);
+
+  assert.doesNotMatch(mainSource, /execute(?:Scheduled)?Swarm\(/);
+  assert.doesNotMatch(swarmSource, /executeSwarmWithScheduler|scheduleSwarmSteps|executeTask\(send/);
+  assert.match(mainSource, /case "FED_SWARM_OPEN", "FED_SWARM_RESUME"/);
+});
+
 async function assertPersistentPathAbsent(path, message) {
   await assert.rejects(lstat(path), (error) => error.code === "ENOENT", message);
 }
@@ -1574,212 +1608,6 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     assert.equal(requestedResult.events.at(-1).type, "task.completed");
     assert.equal(requestedResult.receipt.artifact_refs.some((uri) => uri.endsWith("/go-summary.md")), true);
 
-    const swarmSummaryTask = {
-      task_id: "go_fed_swarm_summary",
-      from: requester.aid,
-      to: "agent://zone-b/summarizer",
-      intent: "Summarize as the first Swarm DAG step.",
-      scope: { network: false },
-      budget: { time_seconds: 30 },
-    };
-    const swarmTranslateTask = {
-      task_id: "go_fed_swarm_translate",
-      from: requester.aid,
-      to: "agent://zone-b/mock-translator",
-      intent: "Translate the Swarm summary artifact.",
-      scope: { network: false },
-      budget: { time_seconds: 30 },
-    };
-    const swarmFrames = await exchangeFrames(port, withSwarmExecutionBinding(zoneA, {
-      type: "FED_SWARM_OPEN",
-      origin_zone: zoneA.descriptor,
-      requester: requester.descriptor,
-      swarm: {
-        swarm_id: "swarm://local/go_fed_swarm_two_step",
-        steps: [
-          {
-            step_id: "summary",
-            task: { ...swarmSummaryTask, signature: signObject(requester.privateKey, swarmSummaryTask) },
-          },
-          {
-            step_id: "translation",
-            after: ["summary"],
-            task: { ...swarmTranslateTask, signature: signObject(requester.privateKey, swarmTranslateTask) },
-          },
-        ],
-      },
-    }), "FED_SWARM_CLOSE");
-    assert.deepEqual(swarmFrames.map((frame) => frame.type), [
-      "FED_TASK_EVENT",
-      "FED_TASK_EVENT",
-      "FED_TASK_EVENT",
-      "FED_TASK_EVENT",
-      "FED_TASK_EVENT",
-      "FED_TASK_EVENT",
-      "FED_RECEIPT",
-      "FED_TASK_CLOSE",
-      "FED_TASK_EVENT",
-      "FED_TASK_EVENT",
-      "FED_TASK_EVENT",
-      "FED_TASK_EVENT",
-      "FED_TASK_EVENT",
-      "FED_TASK_EVENT",
-      "FED_RECEIPT",
-      "FED_TASK_CLOSE",
-      "FED_SWARM_CLOSE",
-    ]);
-    const summaryReceipt = swarmFrames[6].receipt;
-    const translationReceipt = swarmFrames[14].receipt;
-    const summaryReceiptDigest = signedReceiptDigest(summaryReceipt);
-    const translationReceiptDigest = signedReceiptDigest(translationReceipt);
-    for (const receipt of [summaryReceipt, translationReceipt]) {
-      assert.deepEqual(receipt.result_artifact, {
-        uri: receipt.artifact_manifests[0].uri,
-        sha256: receipt.artifact_manifests[0].sha256,
-        manifest_hash: receipt.artifact_manifests[0].manifest_hash,
-      });
-    }
-    assert.equal(summaryReceipt.task_id, swarmSummaryTask.task_id);
-    assert.equal(translationReceipt.task_id, swarmTranslateTask.task_id);
-    assert.equal(summaryReceipt.swarm.swarm_id, "swarm://local/go_fed_swarm_two_step");
-    assert.equal(summaryReceipt.swarm.step_id, "summary");
-    assert.deepEqual(summaryReceipt.swarm.after, []);
-    assert.equal(translationReceipt.swarm.step_id, "translation");
-    assert.deepEqual(translationReceipt.swarm.after, ["summary"]);
-    assert.deepEqual(translationReceipt.swarm.input_artifacts, [{
-      step_id: "summary",
-      uri: summaryReceipt.artifact_manifests[0].uri,
-      sha256: summaryReceipt.artifact_manifests[0].sha256,
-      manifest_hash: summaryReceipt.artifact_manifests[0].manifest_hash,
-      signed_receipt_digest: summaryReceiptDigest,
-    }]);
-    const swarmClose = swarmFrames.at(-1).close;
-    assert.equal(swarmClose.swarm_id, "swarm://local/go_fed_swarm_two_step");
-    assert.equal(swarmClose.format, "asp-swarm-close/v2");
-    assert.deepEqual(swarmClose.step_receipts.map(({ step_id, task_id, signed_receipt_digest }) => ({ step_id, task_id, signed_receipt_digest })), [
-      { step_id: "summary", task_id: "go_fed_swarm_summary", signed_receipt_digest: summaryReceiptDigest },
-      { step_id: "translation", task_id: "go_fed_swarm_translate", signed_receipt_digest: translationReceiptDigest },
-    ]);
-    assert.deepEqual(swarmClose.final_output, {
-      step_id: "translation",
-      task_id: translationReceipt.task_id,
-      signed_receipt_digest: translationReceiptDigest,
-      artifact: translationReceipt.result_artifact,
-      selection_rule: "single-terminal-result",
-    });
-    assert.equal(swarmClose.step_receipts[0].worker.aid, summaryReceipt.to);
-    assert.equal(swarmClose.step_receipts[1].worker.aid, translationReceipt.to);
-    assert.equal(swarmClose.micro_contracts.length, 2);
-    assert.deepEqual(swarmClose.micro_contracts.map((contract) => contract.step_id), ["summary", "translation"]);
-    for (const contract of swarmClose.micro_contracts) {
-      assert.equal(contract.micro_contract, "ok");
-      assert.equal(contract.swarm_id, "swarm://local/go_fed_swarm_two_step");
-      assert.equal(contract.worker.aid, swarmClose.step_receipts.find((step) => step.step_id === contract.step_id).worker.aid);
-      assert.equal(typeof contract.cost_estimate.tokens, "number");
-      assert.equal(typeof contract.cost_estimate.seconds, "number");
-      assert.match(contract.capability_proof, /text|mock/);
-      assert.match(contract.policy_digest, /^[0-9a-f]{64}$/);
-      assert.match(contract.contract_digest, /^[0-9a-f]{64}$/);
-      assert.equal(typeof contract.signature, "string");
-      const { contract_digest, signature, ...contractBody } = contract;
-      assert.equal(contract_digest, createHash("sha256").update(canonical(contractBody)).digest("hex"));
-      assert.equal(verifyObject(publicKeyFromDescriptor(contract.worker), contractBody, signature), true);
-    }
-    const verifiedSwarmClose = verifySwarmClose(swarmFrames.at(-1), new Map([[fixture.authority.zid, fixture.authority]]));
-    assert.equal(verifiedSwarmClose.close.swarm_id, "swarm://local/go_fed_swarm_two_step");
-    assert.equal(verifiedSwarmClose.closeDigest, createHash("sha256").update(canonical(swarmClose)).digest("hex"));
-    const tamperedSwarmFrame = structuredClone(swarmFrames.at(-1));
-    tamperedSwarmFrame.close.micro_contracts[0].signature = "bad";
-    assert.throws(
-      () => verifySwarmClose(tamperedSwarmFrame, new Map([[fixture.authority.zid, fixture.authority]])),
-      /micro-contract signature verification failed/,
-    );
-    const swarmAuthorityPublicKey = publicKeyFromDescriptor(fixture.authority);
-    const { close_signature, ...swarmCloseBody } = swarmClose;
-    assert.equal(verifyObject(swarmAuthorityPublicKey, swarmCloseBody, close_signature), true);
-
-    const scheduledSummaryTask = {
-      ...swarmSummaryTask,
-      task_id: "go_fed_swarm_scheduled_summary",
-      intent: "Summarize as the scheduler-ready Swarm DAG step.",
-    };
-    const scheduledTranslateTask = {
-      ...swarmTranslateTask,
-      task_id: "go_fed_swarm_scheduled_translate",
-      intent: "Translate after scheduler resolves the dependency.",
-    };
-    const scheduledSwarmFrames = await exchangeFrames(port, withSwarmExecutionBinding(zoneA, {
-      type: "FED_SWARM_SCHEDULE",
-      origin_zone: zoneA.descriptor,
-      requester: requester.descriptor,
-      swarm: {
-        swarm_id: "swarm://local/go_fed_swarm_scheduled",
-        steps: [
-          {
-            step_id: "translation",
-            after: ["summary"],
-            task: { ...scheduledTranslateTask, signature: signObject(requester.privateKey, scheduledTranslateTask) },
-          },
-          {
-            step_id: "summary",
-            task: { ...scheduledSummaryTask, signature: signObject(requester.privateKey, scheduledSummaryTask) },
-          },
-        ],
-      },
-    }), "FED_SWARM_CLOSE");
-    assert.notEqual(scheduledSwarmFrames.at(-1).type, "FED_TASK_ERROR", scheduledSwarmFrames.at(-1).error);
-    const scheduledSummaryReceipt = scheduledSwarmFrames.find((frame) => frame.type === "FED_RECEIPT" && frame.receipt.task_id === scheduledSummaryTask.task_id).receipt;
-    const scheduledTranslationReceipt = scheduledSwarmFrames.find((frame) => frame.type === "FED_RECEIPT" && frame.receipt.task_id === scheduledTranslateTask.task_id).receipt;
-    const scheduledClose = scheduledSwarmFrames.at(-1).close;
-    assert.equal(scheduledClose.scheduler.mode, "ready-dag");
-    assert.deepEqual(scheduledClose.scheduler.step_order, ["summary", "translation"]);
-    assert.deepEqual(scheduledClose.step_receipts.map(({ step_id, task_id, signed_receipt_digest }) => ({ step_id, task_id, signed_receipt_digest })), [
-      { step_id: "translation", task_id: "go_fed_swarm_scheduled_translate", signed_receipt_digest: signedReceiptDigest(scheduledTranslationReceipt) },
-      { step_id: "summary", task_id: "go_fed_swarm_scheduled_summary", signed_receipt_digest: signedReceiptDigest(scheduledSummaryReceipt) },
-    ]);
-    assert.deepEqual(scheduledClose.final_output, {
-      step_id: "translation",
-      task_id: scheduledTranslationReceipt.task_id,
-      signed_receipt_digest: signedReceiptDigest(scheduledTranslationReceipt),
-      artifact: scheduledTranslationReceipt.result_artifact,
-      selection_rule: "single-terminal-result",
-    });
-    assert.equal(scheduledClose.micro_contracts.length, 2);
-    assert.deepEqual(scheduledTranslationReceipt.swarm.after, ["summary"]);
-
-    const badSwarmSummaryTask = {
-      ...swarmSummaryTask,
-      task_id: "go_fed_swarm_bad_after_summary",
-      intent: "Summarize before a malformed Swarm after list.",
-    };
-    const badSwarmTranslateTask = {
-      ...swarmTranslateTask,
-      task_id: "go_fed_swarm_bad_after_translate",
-      intent: "This malformed Swarm step should not execute.",
-    };
-    const badAfterFrame = withSwarmExecutionBinding(zoneA, {
-      type: "FED_SWARM_OPEN",
-      origin_zone: zoneA.descriptor,
-      requester: requester.descriptor,
-      swarm: {
-        swarm_id: "swarm://local/go_fed_swarm_bad_after",
-        steps: [
-          {
-            step_id: "summary",
-            task: { ...badSwarmSummaryTask, signature: signObject(requester.privateKey, badSwarmSummaryTask) },
-          },
-          {
-            step_id: "translation",
-            after: ["summary"],
-            task: { ...badSwarmTranslateTask, signature: signObject(requester.privateKey, badSwarmTranslateTask) },
-          },
-        ],
-      },
-    });
-    badAfterFrame.swarm.steps[1].after = ["summary", { step_id: "ghost" }];
-    const badAfterSwarmFrames = await exchangeFrames(port, badAfterFrame, "FED_SWARM_CLOSE");
-    assert.equal(badAfterSwarmFrames.at(-1).type, "FED_TASK_ERROR");
-    assert.match(badAfterSwarmFrames.at(-1).error, /swarm after invalid/);
 
     const unauthenticated = await exchangeUnauthenticatedFrame(port, {
       type: "FED_QUERY",
@@ -3152,8 +2980,6 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     );
     assert.ok(requestedReceiptEntry);
     assert.equal(requestedReceiptEntry.record.receipt.executing_zone, fixture.authority.zid);
-    const swarmCloseEntry = auditBody.entries.find((entry) => entry.record.kind === "go_swarm_close");
-    assert.deepEqual(swarmCloseEntry.record.close, swarmFrames.at(-1).close);
     const auditProofResponse = await fetch(`http://127.0.0.1:${humanPort}/api/audit?task_id=${encodeURIComponent(task.task_id)}`);
     assert.equal(auditProofResponse.status, 200);
     const auditProofBody = await auditProofResponse.json();

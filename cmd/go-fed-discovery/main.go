@@ -42,6 +42,7 @@ func main() {
 	auditPath := flag.String("audit", "state/go-fed-audit.log", "audit JSONL file")
 	swarmStorageRoot := flag.String("swarm-storage-root", "", "optional durable Swarm journal storage root for Human Gateway")
 	swarmID := flag.String("swarm-id", "", "optional durable Swarm identifier for Human Gateway")
+	swarmStateDir := flag.String("swarm-state-dir", "state/go-fed-swarms", "durable local Swarm state directory")
 	verifyAudit := flag.Bool("verify-audit", false, "verify audit JSONL file and exit")
 	verifyReceiptPath := flag.String("verify-receipt", "", "verify one receipt record JSON file and exit")
 	verifyTaskPath := flag.String("verify-task", "", "optional signed task JSON file for --verify-receipt task_digest check")
@@ -192,7 +193,7 @@ func main() {
 		Authority: ManagedKeyConfig{StorePath: *authorityStorePath, PassphraseFile: *authorityPassphrasePath, RecordDigest: *authorityRecordDigest},
 		Worker:    ManagedKeyConfig{StorePath: *workerStorePath, PassphraseFile: *workerPassphrasePath, RecordDigest: *workerRecordDigest},
 	}
-	if err := serve(*listenHost, *port, *wsPort, *humanPort, *humanToken, *humanActorPolicyPath, *tlsCertPath, *tlsKeyPath, *tlsClientCAPath, *artifactStoreDir, *fixturePath, *trustPath, *swarmStorageRoot, *swarmID, runtimeKeys, *auditPath); err != nil {
+	if err := serveWithSwarmStateDir(*listenHost, *port, *wsPort, *humanPort, *humanToken, *humanActorPolicyPath, *tlsCertPath, *tlsKeyPath, *tlsClientCAPath, *artifactStoreDir, *fixturePath, *trustPath, *swarmStorageRoot, *swarmID, *swarmStateDir, runtimeKeys, *auditPath); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -449,6 +450,10 @@ func trustedZonesMapFromBundle(value map[string]any) (map[string]map[string]any,
 }
 
 func serve(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, tlsClientCAPath, artifactStoreDir, fixturePath, trustPath, swarmStorageRoot, swarmID string, runtimeKeys ManagedRuntimeConfig, auditPath string) error {
+	return serveWithSwarmStateDir(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, tlsClientCAPath, artifactStoreDir, fixturePath, trustPath, swarmStorageRoot, swarmID, "state/go-fed-swarms", runtimeKeys, auditPath)
+}
+
+func serveWithSwarmStateDir(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, tlsClientCAPath, artifactStoreDir, fixturePath, trustPath, swarmStorageRoot, swarmID, swarmStateDir string, runtimeKeys ManagedRuntimeConfig, auditPath string) error {
 	fixture, err := loadManagedFixture(fixturePath, runtimeKeys)
 	if err != nil {
 		return err
@@ -477,6 +482,18 @@ func serve(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath
 	fixture.Runtime = &TaskRuntime{running: map[string]context.CancelFunc{}, cancelled: map[string]bool{}}
 	trusted, err := loadTrustedZones(trustPath)
 	if err != nil {
+		return err
+	}
+	absoluteSwarmStateDir, err := filepath.Abs(swarmStateDir)
+	if err != nil {
+		return err
+	}
+	coordinator, err := NewLocalSwarmCoordinator(fixture, absoluteSwarmStateDir, fmt.Sprintf("go-fed-discovery:%d", os.Getpid()), ExecSwarmWorkerLauncher{}, time.Now)
+	if err != nil {
+		return err
+	}
+	fixture.SwarmCoordinator = coordinator
+	if _, err := coordinator.ResumeAll(context.Background()); err != nil {
 		return err
 	}
 	listener, transport, err := listenFederation(listenHost, port, tlsCertPath, tlsKeyPath, tlsClientCAPath)
@@ -726,15 +743,28 @@ func handleFrame(send sendFunc, frame map[string]any, fixture Fixture, trusted m
 			send(taskErrorFrame(err))
 			return false
 		}
-	case "FED_SWARM_OPEN":
-		if err := fixture.executeSwarm(send, origin, frame); err != nil {
+	case "FED_SWARM_OPEN", "FED_SWARM_RESUME":
+		if fixture.SwarmCoordinator == nil {
+			send(taskErrorFrame(errors.New("durable swarm coordinator unavailable")))
+			return false
+		}
+		view, err := fixture.SwarmCoordinator.OpenAndRun(context.Background(), origin, frame)
+		if err != nil {
 			send(taskErrorFrame(err))
 			return false
 		}
-	case "FED_SWARM_SCHEDULE":
-		if err := fixture.executeScheduledSwarm(send, origin, frame); err != nil {
+		journal, err := OpenSwarmJournal(fixture.SwarmCoordinator.storageRoot, view.SwarmID)
+		if err != nil {
 			send(taskErrorFrame(err))
 			return false
+		}
+		frames, err := durableSwarmResponseFrames(journal, view)
+		if err != nil {
+			send(taskErrorFrame(err))
+			return false
+		}
+		for _, response := range frames {
+			send(response)
 		}
 	case "FED_TASK_ENQUEUE":
 		taskID, workerID, err := fixture.enqueueQueueItem(origin, frame)

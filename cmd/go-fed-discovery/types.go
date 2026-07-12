@@ -34,6 +34,7 @@ type Fixture struct {
 	ListenPort          string              `json:"-"`
 	Transport           string              `json:"-"`
 	PublicTransport     bool                `json:"-"`
+	SwarmCoordinator   *LocalSwarmCoordinator `json:"-"`
 }
 
 const requesterRegistryPath = "state/go-fed-discovery-requester-registry.json"
