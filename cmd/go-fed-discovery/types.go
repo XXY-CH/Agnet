@@ -1,40 +1,40 @@
 package main
 
 import (
-	"context"
 	"agnet/internal/managedkey"
+	"context"
 	"crypto/ed25519"
 	"regexp"
 	"sync"
 )
 
 type Fixture struct {
-	Authority           map[string]any      `json:"authority"`
-	WorkerProfile       WorkerProfile       `json:"worker_profile"`
-	WorkerDescriptor    map[string]any      `json:"worker"`
-	WorkerProfiles      []WorkerProfile     `json:"worker_profiles"`
-	Workers             []Worker            `json:"-"`
-	Credential          map[string]any      `json:"credential"`
-	Revocations         []any               `json:"revocations"`
-	AuthorityPrivateKey ed25519.PrivateKey  `json:"-"`
+	Authority              map[string]any              `json:"authority"`
+	WorkerProfile          WorkerProfile               `json:"worker_profile"`
+	WorkerDescriptor       map[string]any              `json:"worker"`
+	WorkerProfiles         []WorkerProfile             `json:"worker_profiles"`
+	Workers                []Worker                    `json:"-"`
+	Credential             map[string]any              `json:"credential"`
+	Revocations            []any                       `json:"revocations"`
+	AuthorityPrivateKey    ed25519.PrivateKey          `json:"-"`
 	AuthorityGeneration    managedkey.KeyGenerationRef `json:"key_generation"`
-	AuthorityGenerationPin WorkerGenerationPin       `json:"authority_generation_pin"`
-	Audit               *AuditLog           `json:"-"`
-	TaskStateDir        string              `json:"-"`
-	QueueDir            string              `json:"-"`
-	ApprovalDir         string              `json:"-"`
-	ArtifactStoreDir    string              `json:"-"`
-	LiveTranscriptDir   string              `json:"-"`
-	Runtime             *TaskRuntime        `json:"-"`
-	ContainerAdapter    DockerAdapter         `json:"-"`
-	QueueActorPolicy    map[string][]string `json:"-"`
-	ApprovalActorPolicy map[string][]string `json:"-"`
-	ApprovalSessions    map[string]string   `json:"-"`
-	ListenHost          string              `json:"-"`
-	ListenPort          string              `json:"-"`
-	Transport           string              `json:"-"`
-	PublicTransport     bool                `json:"-"`
-	SwarmCoordinator   *LocalSwarmCoordinator `json:"-"`
+	AuthorityGenerationPin WorkerGenerationPin         `json:"authority_generation_pin"`
+	Audit                  *AuditLog                   `json:"-"`
+	TaskStateDir           string                      `json:"-"`
+	QueueDir               string                      `json:"-"`
+	ApprovalDir            string                      `json:"-"`
+	ArtifactStoreDir       string                      `json:"-"`
+	LiveTranscriptDir      string                      `json:"-"`
+	Runtime                *TaskRuntime                `json:"-"`
+	ContainerAdapter       DockerAdapter               `json:"-"`
+	QueueActorPolicy       map[string][]string         `json:"-"`
+	ApprovalActorPolicy    map[string][]string         `json:"-"`
+	ApprovalSessions       map[string]string           `json:"-"`
+	ListenHost             string                      `json:"-"`
+	ListenPort             string                      `json:"-"`
+	Transport              string                      `json:"-"`
+	PublicTransport        bool                        `json:"-"`
+	SwarmCoordinator       *LocalSwarmCoordinator      `json:"-"`
 }
 
 const requesterRegistryPath = "state/go-fed-discovery-requester-registry.json"
@@ -63,19 +63,19 @@ type WorkerGenerationPin struct {
 }
 
 type WorkerProfile struct {
-	KeyFile        string         `json:"key_file,omitempty"`
-	KeyStore       string         `json:"key_store,omitempty"`
-	PassphraseFile string         `json:"passphrase_file,omitempty"`
-	KeyGeneration  WorkerGenerationPin `json:"key_generation,omitempty"`
-	Alias          string         `json:"alias"`
-	Tool           string         `json:"tool,omitempty"`
-	ToolName       string         `json:"tool_name,omitempty"`
-	ToolCommand    []string       `json:"tool_command,omitempty"`
-	SandboxClaim   string         `json:"sandbox_claim,omitempty"`
+	KeyFile        string               `json:"key_file,omitempty"`
+	KeyStore       string               `json:"key_store,omitempty"`
+	PassphraseFile string               `json:"passphrase_file,omitempty"`
+	KeyGeneration  WorkerGenerationPin  `json:"key_generation,omitempty"`
+	Alias          string               `json:"alias"`
+	Tool           string               `json:"tool,omitempty"`
+	ToolName       string               `json:"tool_name,omitempty"`
+	ToolCommand    []string             `json:"tool_command,omitempty"`
+	SandboxClaim   string               `json:"sandbox_claim,omitempty"`
 	Docker         *DockerWorkerProfile `json:"docker,omitempty"`
-	Transports     []string       `json:"transports"`
-	Capabilities   []string       `json:"capabilities"`
-	Policy         map[string]any `json:"policy"`
+	Transports     []string             `json:"transports"`
+	Capabilities   []string             `json:"capabilities"`
+	Policy         map[string]any       `json:"policy"`
 }
 
 // ToolResult stages a tool's bytes and supporting evidence until task execution

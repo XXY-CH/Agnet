@@ -217,14 +217,14 @@ func (a *AppleContainerCLIAdapter) cliIdentity(ctx context.Context) (appleCLIIde
 }
 
 type appleSystemStatus struct {
-	Status           string `json:"status"`
-	AppRoot          string `json:"appRoot"`
-	InstallRoot      string `json:"installRoot"`
+	Status           string  `json:"status"`
+	AppRoot          string  `json:"appRoot"`
+	InstallRoot      string  `json:"installRoot"`
 	LogRoot          *string `json:"logRoot"`
-	APIServerVersion string `json:"apiServerVersion"`
-	APIServerCommit  string `json:"apiServerCommit"`
-	APIServerBuild   string `json:"apiServerBuild"`
-	APIServerAppName string `json:"apiServerAppName"`
+	APIServerVersion string  `json:"apiServerVersion"`
+	APIServerCommit  string  `json:"apiServerCommit"`
+	APIServerBuild   string  `json:"apiServerBuild"`
+	APIServerAppName string  `json:"apiServerAppName"`
 }
 
 type appleAPIServerIdentity struct {

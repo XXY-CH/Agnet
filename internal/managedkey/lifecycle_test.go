@@ -52,7 +52,7 @@ func TestMigratePreservesGoSeedAndIdentity(t *testing.T) {
 	writeLifecycleDescriptor(t, descriptorPath, identity.Descriptor)
 	writeLifecycleRestricted(t, passphrasePath, passphrase)
 
-result, err := Migrate(MigrateOptions{Store: store, SourceKeyPath: keyPath, SourceKeyType: KeyTypeSeed, IdentityKind: IdentityAID, DescriptorPath: descriptorPath, PassphrasePath: passphrasePath, Iterations: 100000})
+	result, err := Migrate(MigrateOptions{Store: store, SourceKeyPath: keyPath, SourceKeyType: KeyTypeSeed, IdentityKind: IdentityAID, DescriptorPath: descriptorPath, PassphrasePath: passphrasePath, Iterations: 100000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestMigratePreservesNodePKCS8(t *testing.T) {
 	writeLifecycleDescriptor(t, descriptorPath, identity.Descriptor)
 	writeLifecycleRestricted(t, passphrasePath, passphrase)
 
-result, err := Migrate(MigrateOptions{Store: store, SourceKeyPath: keyPath, SourceKeyType: KeyTypePKCS8, IdentityKind: IdentityAID, DescriptorPath: descriptorPath, PassphrasePath: passphrasePath, Iterations: 100000})
+	result, err := Migrate(MigrateOptions{Store: store, SourceKeyPath: keyPath, SourceKeyType: KeyTypePKCS8, IdentityKind: IdentityAID, DescriptorPath: descriptorPath, PassphrasePath: passphrasePath, Iterations: 100000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestRewrapPreservesRawKeyAndUsesFreshMaterial(t *testing.T) {
 		t.Fatal(err)
 	}
 
-result, err := Rewrap(RewrapOptions{Store: store, IdentityKind: IdentityAID, DescriptorPath: descriptorPath, PassphrasePath: oldPassphrasePath, NewPassphrasePath: newPassphrasePath, Iterations: 100001})
+	result, err := Rewrap(RewrapOptions{Store: store, IdentityKind: IdentityAID, DescriptorPath: descriptorPath, PassphrasePath: oldPassphrasePath, NewPassphrasePath: newPassphrasePath, Iterations: 100001})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -470,7 +470,6 @@ func serve(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath
 	return serveWithSwarmStateDir(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, tlsClientCAPath, artifactStoreDir, fixturePath, trustPath, swarmStorageRoot, swarmID, "state/go-fed-swarms", runtimeKeys, auditPath, verifier.TrustInputs{})
 }
 
-
 func serveWithSwarmStateDir(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, tlsClientCAPath, artifactStoreDir, fixturePath, trustPath, swarmStorageRoot, swarmID, swarmStateDir string, runtimeKeys ManagedRuntimeConfig, auditPath string, outputTrust verifier.TrustInputs) error {
 	fixture, err := loadManagedFixture(fixturePath, runtimeKeys)
 	if err != nil {
@@ -581,7 +580,7 @@ func openHumanGatewayJournal(storageRoot, swarmID string) (*SwarmJournal, error)
 		return nil, fmt.Errorf("validate configured swarm journal: %w", err)
 	}
 	return journal, nil
-	}
+}
 
 func listenFederation(host, port, tlsCertPath, tlsKeyPath, tlsClientCAPath string) (net.Listener, string, error) {
 	if (tlsCertPath == "") != (tlsKeyPath == "") {

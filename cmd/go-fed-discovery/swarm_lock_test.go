@@ -347,4 +347,3 @@ func assertPrivateRegularFile(t *testing.T, path string) {
 		t.Fatalf("%s is not a private regular file: %v", path, info.Mode())
 	}
 }
-

@@ -32,17 +32,17 @@ type SwarmViewFaultInjector func(SwarmViewFaultPoint) error
 // SwarmView is a complete, replay-derived status projection. Its version and
 // journal head bind it to exactly one validated journal replay.
 type SwarmView struct {
-	Format             string                   `json:"format"`
-	SwarmID            string                   `json:"swarm_id"`
-	Version            uint64                   `json:"version"`
-	JournalHead        string                   `json:"journal_head"`
-	Status             SwarmStatus              `json:"status"`
-	Steps              []SwarmStepState         `json:"steps"`
-	ReadyWave          ReadyWave                `json:"ready_wave"`
-	Leases             []LeaseClaim             `json:"leases"`
+	Format             string                    `json:"format"`
+	SwarmID            string                    `json:"swarm_id"`
+	Version            uint64                    `json:"version"`
+	JournalHead        string                    `json:"journal_head"`
+	Status             SwarmStatus               `json:"status"`
+	Steps              []SwarmStepState          `json:"steps"`
+	ReadyWave          ReadyWave                 `json:"ready_wave"`
+	Leases             []LeaseClaim              `json:"leases"`
 	CommittedArtifacts map[string]ArtifactTriple `json:"committed_artifacts"`
-	LastFence          LeaseFence               `json:"last_fence"`
-	DisbandDigest      string                   `json:"disband_digest,omitempty"`
+	LastFence          LeaseFence                `json:"last_fence"`
+	DisbandDigest      string                    `json:"disband_digest,omitempty"`
 }
 
 // SwarmViewPaths identifies every disposable projection for one journal.
@@ -65,13 +65,13 @@ type swarmQueueView struct {
 }
 
 type swarmArtifactIndexRecord struct {
-	Format        string        `json:"format"`
-	SwarmID       string        `json:"swarm_id"`
-	Version       uint64        `json:"version"`
-	JournalHead   string        `json:"journal_head"`
-	StepID        string        `json:"step_id"`
-	ReceiptDigest string        `json:"receipt_digest"`
-	Role          string        `json:"role"`
+	Format        string         `json:"format"`
+	SwarmID       string         `json:"swarm_id"`
+	Version       uint64         `json:"version"`
+	JournalHead   string         `json:"journal_head"`
+	StepID        string         `json:"step_id"`
+	ReceiptDigest string         `json:"receipt_digest"`
+	Role          string         `json:"role"`
 	Artifact      ArtifactTriple `json:"artifact"`
 }
 

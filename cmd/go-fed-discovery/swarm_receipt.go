@@ -40,14 +40,14 @@ type receiptV2Wire struct {
 	WorkerGenerationPin WorkerGenerationPin   `json:"worker_generation_pin"`
 	Attempt             uint64                `json:"attempt"`
 	Fence               LeaseFence            `json:"fence"`
-	Result              ArtifactTriple         `json:"result"`
-	Auxiliary           []ArtifactTriple       `json:"auxiliary"`
+	Result              ArtifactTriple        `json:"result"`
+	Auxiliary           []ArtifactTriple      `json:"auxiliary"`
 	Dependencies        []receiptDependencyV2 `json:"dependencies,omitempty"`
 	Signature           string                `json:"signature"`
 }
 
 type receiptDependencyV2 struct {
-	StepID  string        `json:"step_id"`
+	StepID   string         `json:"step_id"`
 	Artifact ArtifactTriple `json:"artifact"`
 }
 
@@ -149,11 +149,11 @@ type ReceiptCommit struct {
 }
 
 type receiptCommittedPayload struct {
-	SchemaVersion uint64          `json:"schema_version"`
-	Claim         LeaseClaim      `json:"claim"`
-	Receipt       string          `json:"receipt"`
-	ReceiptDigest string          `json:"receipt_digest"`
-	Result        ArtifactTriple `json:"result"`
+	SchemaVersion uint64           `json:"schema_version"`
+	Claim         LeaseClaim       `json:"claim"`
+	Receipt       string           `json:"receipt"`
+	ReceiptDigest string           `json:"receipt_digest"`
+	Result        ArtifactTriple   `json:"result"`
 	Auxiliary     []ArtifactTriple `json:"auxiliary"`
 }
 
@@ -302,7 +302,9 @@ func (payload receiptCommittedPayload) validateCanonical() error {
 	return nil
 }
 
-func (payload receiptCommittedPayload) String() string { return fmt.Sprintf("receipt %s", payload.ReceiptDigest) }
+func (payload receiptCommittedPayload) String() string {
+	return fmt.Sprintf("receipt %s", payload.ReceiptDigest)
+}
 
 func reduceSwarmReceiptEntry(state *SwarmState, entry SwarmJournalEntry) error {
 	if state == nil || state.Status == SwarmStatusFailed {

@@ -26,8 +26,10 @@ func validDockerPreflightHost() DockerHost {
 	return DockerHost{
 		CommandPath: dockerCommandPath,
 		SocketPath:  dockerLocalUnixSocket,
-		Environment:  []string{"PATH=/untrusted/bin", "HOME=/untrusted/home"},
-		BinaryDigest: func(string) (string, error) { return "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", nil },
+		Environment: []string{"PATH=/untrusted/bin", "HOME=/untrusted/home"},
+		BinaryDigest: func(string) (string, error) {
+			return "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", nil
+		},
 		SocketIdentity: func(string) (DockerSocketIdentity, error) {
 			return DockerSocketIdentity{Device: 1, Inode: 2, Mode: 0o140660, UID: 0}, nil
 		},
@@ -109,42 +111,98 @@ func TestDockerPreflightRejectsIdentityAndStructuredOutputFailures(t *testing.T)
 	}{
 		{name: "binary changed", mutate: func(host *DockerHost, _ *fakeDockerCommandRunner) {
 			calls := 0
-			host.BinaryDigest = func(string) (string, error) { calls++; if calls == 1 { return "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", nil }; return "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", nil }
+			host.BinaryDigest = func(string) (string, error) {
+				calls++
+				if calls == 1 {
+					return "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", nil
+				}
+				return "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", nil
+			}
 		}},
 		{name: "invalid binary digest", mutate: func(host *DockerHost, _ *fakeDockerCommandRunner) {
 			host.BinaryDigest = func(string) (string, error) { return "not-a-digest", nil }
 		}},
 		{name: "unsafe socket identity", mutate: func(host *DockerHost, _ *fakeDockerCommandRunner) {
-			host.SocketIdentity = func(string) (DockerSocketIdentity, error) { return DockerSocketIdentity{Device: 1, Inode: 2, Mode: 0o100600, UID: 0}, nil }
+			host.SocketIdentity = func(string) (DockerSocketIdentity, error) {
+				return DockerSocketIdentity{Device: 1, Inode: 2, Mode: 0o100600, UID: 0}, nil
+			}
 		}},
 		{name: "socket changed", mutate: func(host *DockerHost, _ *fakeDockerCommandRunner) {
 			calls := 0
-			host.SocketIdentity = func(string) (DockerSocketIdentity, error) { calls++; return DockerSocketIdentity{Device: 1, Inode: uint64(calls), Mode: 0o140660, UID: 0}, nil }
+			host.SocketIdentity = func(string) (DockerSocketIdentity, error) {
+				calls++
+				return DockerSocketIdentity{Device: 1, Inode: uint64(calls), Mode: 0o140660, UID: 0}, nil
+			}
 		}},
 		{name: "old client", mutate: func(_ *DockerHost, runner *fakeDockerCommandRunner) {
-			runner.run = func(command DockerCommand) ([]byte, error) { if reflect.DeepEqual(command.Args, dockerVersionArgs) { return []byte(`{"Client":{"Version":"23.0.0","ApiVersion":"1.43"},"Server":{"Version":"24.0.0","ApiVersion":"1.43"}}`), nil }; return validDockerPreflightRunner().run(command) }
+			runner.run = func(command DockerCommand) ([]byte, error) {
+				if reflect.DeepEqual(command.Args, dockerVersionArgs) {
+					return []byte(`{"Client":{"Version":"23.0.0","ApiVersion":"1.43"},"Server":{"Version":"24.0.0","ApiVersion":"1.43"}}`), nil
+				}
+				return validDockerPreflightRunner().run(command)
+			}
 		}},
 		{name: "old API", mutate: func(_ *DockerHost, runner *fakeDockerCommandRunner) {
-			runner.run = func(command DockerCommand) ([]byte, error) { if reflect.DeepEqual(command.Args, dockerVersionArgs) { return []byte(`{"Client":{"Version":"24.0.0","ApiVersion":"1.42"},"Server":{"Version":"24.0.0","ApiVersion":"1.43"}}`), nil }; return validDockerPreflightRunner().run(command) }
+			runner.run = func(command DockerCommand) ([]byte, error) {
+				if reflect.DeepEqual(command.Args, dockerVersionArgs) {
+					return []byte(`{"Client":{"Version":"24.0.0","ApiVersion":"1.42"},"Server":{"Version":"24.0.0","ApiVersion":"1.43"}}`), nil
+				}
+				return validDockerPreflightRunner().run(command)
+			}
 		}},
 		{name: "missing daemon identity", mutate: func(_ *DockerHost, runner *fakeDockerCommandRunner) {
-			runner.run = func(command DockerCommand) ([]byte, error) { if reflect.DeepEqual(command.Args, dockerInfoArgs) { return []byte(`{"ServerVersion":"24.0.0","OSType":"linux"}`), nil }; return validDockerPreflightRunner().run(command) }
+			runner.run = func(command DockerCommand) ([]byte, error) {
+				if reflect.DeepEqual(command.Args, dockerInfoArgs) {
+					return []byte(`{"ServerVersion":"24.0.0","OSType":"linux"}`), nil
+				}
+				return validDockerPreflightRunner().run(command)
+			}
 		}},
 		{name: "non linux daemon", mutate: func(_ *DockerHost, runner *fakeDockerCommandRunner) {
-			runner.run = func(command DockerCommand) ([]byte, error) { if reflect.DeepEqual(command.Args, dockerInfoArgs) { return []byte(`{"ID":"daemon-id","ServerVersion":"24.0.0","OSType":"windows"}`), nil }; return validDockerPreflightRunner().run(command) }
+			runner.run = func(command DockerCommand) ([]byte, error) {
+				if reflect.DeepEqual(command.Args, dockerInfoArgs) {
+					return []byte(`{"ID":"daemon-id","ServerVersion":"24.0.0","OSType":"windows"}`), nil
+				}
+				return validDockerPreflightRunner().run(command)
+			}
 		}},
 		{name: "malformed JSON", mutate: func(_ *DockerHost, runner *fakeDockerCommandRunner) {
-			runner.run = func(command DockerCommand) ([]byte, error) { if reflect.DeepEqual(command.Args, dockerVersionArgs) { return []byte("not-json"), nil }; return validDockerPreflightRunner().run(command) }
+			runner.run = func(command DockerCommand) ([]byte, error) {
+				if reflect.DeepEqual(command.Args, dockerVersionArgs) {
+					return []byte("not-json"), nil
+				}
+				return validDockerPreflightRunner().run(command)
+			}
 		}},
 		{name: "repo digest mismatch", mutate: func(_ *DockerHost, runner *fakeDockerCommandRunner) {
-			runner.run = func(command DockerCommand) ([]byte, error) { if reflect.DeepEqual(command.Args, dockerInspectArgs(dockerPreflightImage)) { return []byte(`[{"Id":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","RepoDigests":["registry.example/agent/tool@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],"Descriptor":{"Digest":"` + dockerPreflightImageDigest + `"}}]`), nil }; return validDockerPreflightRunner().run(command) }
+			runner.run = func(command DockerCommand) ([]byte, error) {
+				if reflect.DeepEqual(command.Args, dockerInspectArgs(dockerPreflightImage)) {
+					return []byte(`[{"Id":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","RepoDigests":["registry.example/agent/tool@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],"Descriptor":{"Digest":"` + dockerPreflightImageDigest + `"}}]`), nil
+				}
+				return validDockerPreflightRunner().run(command)
+			}
 		}},
 		{name: "invalid image ID", mutate: func(_ *DockerHost, runner *fakeDockerCommandRunner) {
-			runner.run = func(command DockerCommand) ([]byte, error) { if reflect.DeepEqual(command.Args, dockerInspectArgs(dockerPreflightImage)) { return []byte(`[{"Id":"not-a-digest","RepoDigests":["` + dockerPreflightImage + `"],"Descriptor":{"Digest":"` + dockerPreflightImageDigest + `"}}]`), nil }; return validDockerPreflightRunner().run(command) }
+			runner.run = func(command DockerCommand) ([]byte, error) {
+				if reflect.DeepEqual(command.Args, dockerInspectArgs(dockerPreflightImage)) {
+					return []byte(`[{"Id":"not-a-digest","RepoDigests":["` + dockerPreflightImage + `"],"Descriptor":{"Digest":"` + dockerPreflightImageDigest + `"}}]`), nil
+				}
+				return validDockerPreflightRunner().run(command)
+			}
 		}},
 		{name: "image changed", mutate: func(_ *DockerHost, runner *fakeDockerCommandRunner) {
 			calls := 0
-			runner.run = func(command DockerCommand) ([]byte, error) { if reflect.DeepEqual(command.Args, dockerInspectArgs(dockerPreflightImage)) { calls++; id := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"; if calls == 2 { id = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }; return []byte(`[{"Id":"sha256:` + id + `","RepoDigests":["` + dockerPreflightImage + `"],"Descriptor":{"Digest":"` + dockerPreflightImageDigest + `"}}]`), nil }; return validDockerPreflightRunner().run(command) }
+			runner.run = func(command DockerCommand) ([]byte, error) {
+				if reflect.DeepEqual(command.Args, dockerInspectArgs(dockerPreflightImage)) {
+					calls++
+					id := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+					if calls == 2 {
+						id = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+					}
+					return []byte(`[{"Id":"sha256:` + id + `","RepoDigests":["` + dockerPreflightImage + `"],"Descriptor":{"Digest":"` + dockerPreflightImageDigest + `"}}]`), nil
+				}
+				return validDockerPreflightRunner().run(command)
+			}
 		}},
 	}
 	for _, tt := range tests {

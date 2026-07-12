@@ -2,9 +2,9 @@ package main
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"os"
-	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -172,7 +172,6 @@ func reducerTestDurableSpec(t *testing.T) DurableSwarmSpec {
 	}
 }
 
-
 func reducerTestCandidate(t *testing.T, alias string) DurableWorkerCandidate {
 	t.Helper()
 	descriptor, err := agentDescriptor(u22TestWorkerKey(), alias)
@@ -236,7 +235,6 @@ func TestSwarmOpenSeedUsesRawBase64URL(t *testing.T) {
 		}
 	}
 }
-
 
 func TestSwarmReducerSkipsFutureEntriesAndRejectsStateNamespaces(t *testing.T) {
 	spec := reducerTestDurableSpec(t)

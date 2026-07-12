@@ -1,12 +1,12 @@
 package main
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"crypto/ed25519"
-    "encoding/base64"
-	"errors"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"strings"
 

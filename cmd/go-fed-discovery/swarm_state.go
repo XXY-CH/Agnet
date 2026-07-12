@@ -2,8 +2,8 @@ package main
 
 import (
 	"bytes"
-	"encoding/base64"
 	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,13 +52,13 @@ type DurableWorkerCandidate struct {
 	DescriptorDigest string              `json:"descriptor_digest"`
 	// Descriptor is canonical JSON for the exact signed descriptor used for receipt verification.
 	// A string preserves DurableWorkerCandidate comparability used by lease invariants.
-	Descriptor       string              `json:"descriptor,omitempty"`
+	Descriptor string `json:"descriptor,omitempty"`
 	// ZoneBinding is canonical JSON for the authority-signed worker-zone binding.
-	ZoneBinding       string              `json:"zone_binding,omitempty"`
+	ZoneBinding string `json:"zone_binding,omitempty"`
 	// Runtime is the exact non-secret container profile captured at dispatch.
 	// Key material is intentionally excluded; generation pin remains authoritative.
-	Runtime          *WorkerProfile      `json:"runtime,omitempty"`
-	RuntimeKind      string              `json:"runtime_kind,omitempty"`
+	Runtime     *WorkerProfile `json:"runtime,omitempty"`
+	RuntimeKind string         `json:"runtime_kind,omitempty"`
 }
 
 // DurableSwarmStepSpec is the complete immutable execution input for one ordered step.
@@ -75,25 +75,25 @@ type DurableSwarmStepSpec struct {
 // DurableSwarmSpec is the durable Phase A seed. Plan, Binding, and Request are canonical raw
 // JSON bytes; journal serialization represents them as raw base64url rather than JSON strings.
 type DurableSwarmSpec struct {
-	SchemaVersion       uint64                 `json:"schema_version"`
-	SwarmID             string                 `json:"swarm_id"`
-	Plan                []byte                 `json:"-"`
-	Binding             []byte                 `json:"-"`
-	Request             []byte                 `json:"-"`
-	AuthorityGeneration WorkerGenerationPin    `json:"authority_generation_pin"`
+	SchemaVersion       uint64              `json:"schema_version"`
+	SwarmID             string              `json:"swarm_id"`
+	Plan                []byte              `json:"-"`
+	Binding             []byte              `json:"-"`
+	Request             []byte              `json:"-"`
+	AuthorityGeneration WorkerGenerationPin `json:"authority_generation_pin"`
 	// LocalAuthority is the canonical signed coordinator Zone descriptor, not the remote origin.
-	LocalAuthority      map[string]any         `json:"local_authority,omitempty"`
-	Steps               []DurableSwarmStepSpec `json:"steps"`
+	LocalAuthority map[string]any         `json:"local_authority,omitempty"`
+	Steps          []DurableSwarmStepSpec `json:"steps"`
 }
 
 // SwarmAttemptObservation records immutable dispatch and expiry facts for one attempt.
 type SwarmAttemptObservation struct {
-	Attempt   uint64     `json:"attempt"`
-	Candidate DurableWorkerCandidate `json:"candidate"`
-	Owner     string     `json:"owner"`
-	Fence     LeaseFence `json:"fence"`
-	Outcome   string     `json:"outcome"`
-	ObservedAt string    `json:"observed_at"`
+	Attempt    uint64                 `json:"attempt"`
+	Candidate  DurableWorkerCandidate `json:"candidate"`
+	Owner      string                 `json:"owner"`
+	Fence      LeaseFence             `json:"fence"`
+	Outcome    string                 `json:"outcome"`
+	ObservedAt string                 `json:"observed_at"`
 }
 
 type SwarmStepState struct {
@@ -105,17 +105,17 @@ type SwarmStepState struct {
 
 // SwarmState is a derived view only. Its sole authority is the journal consumed by ReduceSwarmEntry.
 type SwarmState struct {
-	Version            uint64                     `json:"version"`
-	Status             SwarmStatus                `json:"status"`
-	Spec               DurableSwarmSpec           `json:"spec"`
-	Steps              []SwarmStepState           `json:"steps"`
-	ReadyWave          ReadyWave                  `json:"ready_wave"`
-	Leases             []LeaseClaim               `json:"leases,omitempty"`
-	CommittedArtifacts map[string]ArtifactTriple  `json:"committed_artifacts,omitempty"`
-	LastFence          LeaseFence                 `json:"last_fence"`
-	StoredClose        StoredSwarmClose           `json:"-"`
-	StoredDisband      StoredSwarmDisband         `json:"-"`
-	OutputVerification *SwarmOutputVerification   `json:"output_verification,omitempty"`
+	Version            uint64                    `json:"version"`
+	Status             SwarmStatus               `json:"status"`
+	Spec               DurableSwarmSpec          `json:"spec"`
+	Steps              []SwarmStepState          `json:"steps"`
+	ReadyWave          ReadyWave                 `json:"ready_wave"`
+	Leases             []LeaseClaim              `json:"leases,omitempty"`
+	CommittedArtifacts map[string]ArtifactTriple `json:"committed_artifacts,omitempty"`
+	LastFence          LeaseFence                `json:"last_fence"`
+	StoredClose        StoredSwarmClose          `json:"-"`
+	StoredDisband      StoredSwarmDisband        `json:"-"`
+	OutputVerification *SwarmOutputVerification  `json:"output_verification,omitempty"`
 }
 
 // SwarmOutputVerification is replay-derived proof metadata. The exact proof
@@ -139,10 +139,10 @@ type durableSwarmSpecWire struct {
 	AuthorityGeneration WorkerGenerationPin    `json:"authority_generation_pin"`
 	LocalAuthority      map[string]any         `json:"local_authority,omitempty"`
 	Steps               []DurableSwarmStepSpec `json:"steps"`
-} 
+}
 
 type swarmOpenedPayload struct {
-	SchemaVersion uint64                `json:"schema_version"`
+	SchemaVersion uint64               `json:"schema_version"`
 	Spec          durableSwarmSpecWire `json:"spec"`
 }
 
@@ -625,66 +625,134 @@ func cloneDurableSteps(steps []DurableSwarmStepSpec) []DurableSwarmStepSpec {
 
 // OpenVerifiedSwarm atomically creates a swarm.opened entry or confirms the existing byte-identical seed.
 func OpenVerifiedSwarm(journal *SwarmJournal, spec DurableSwarmSpec, timestamp time.Time) (SwarmState, error) {
-	if journal == nil { return SwarmState{}, errors.New("swarm journal is required") }
-	wire, err := spec.wire(); if err != nil { return SwarmState{}, err }
-	if spec.SwarmID != journal.expectedSwarmID { return SwarmState{}, errors.New("swarm journal identity conflicts with durable seed") }
-	payload, err := canonicalJSON(swarmOpenedPayload{SchemaVersion: swarmStateSchemaVersion, Spec: wire}); if err != nil { return SwarmState{}, err }
-	payload, err = canonicalSwarmPayload(payload); if err != nil { return SwarmState{}, err }
+	if journal == nil {
+		return SwarmState{}, errors.New("swarm journal is required")
+	}
+	wire, err := spec.wire()
+	if err != nil {
+		return SwarmState{}, err
+	}
+	if spec.SwarmID != journal.expectedSwarmID {
+		return SwarmState{}, errors.New("swarm journal identity conflicts with durable seed")
+	}
+	payload, err := canonicalJSON(swarmOpenedPayload{SchemaVersion: swarmStateSchemaVersion, Spec: wire})
+	if err != nil {
+		return SwarmState{}, err
+	}
+	payload, err = canonicalSwarmPayload(payload)
+	if err != nil {
+		return SwarmState{}, err
+	}
 	var result SwarmState
 	err = journal.WithLockedReplay(func(entries []SwarmJournalEntry) error {
 		if len(entries) != 0 {
-			if entries[0].Kind != "swarm.opened" || !bytes.Equal(entries[0].Payload, payload) { return errors.New("swarm open seed conflicts with durable journal") }
-			state, err := ReduceSwarmEntries(entries); if err != nil { return err }
-			if err := swarmMutationAllowed(state); err != nil { return err }
-			if err := journal.validateTypedStateIdentity(state); err != nil { return err }
+			if entries[0].Kind != "swarm.opened" || !bytes.Equal(entries[0].Payload, payload) {
+				return errors.New("swarm open seed conflicts with durable journal")
+			}
+			state, err := ReduceSwarmEntries(entries)
+			if err != nil {
+				return err
+			}
+			if err := swarmMutationAllowed(state); err != nil {
+				return err
+			}
+			if err := journal.validateTypedStateIdentity(state); err != nil {
+				return err
+			}
 			result = state
 			return nil
 		}
-		canonicalTimestamp, err := canonicalSwarmTimestamp(timestamp); if err != nil { return err }
+		canonicalTimestamp, err := canonicalSwarmTimestamp(timestamp)
+		if err != nil {
+			return err
+		}
 		entry := SwarmJournalEntry{Format: swarmJournalFormat, Sequence: 1, PriorStateVersion: 0, StateVersion: 1, Kind: "swarm.opened", Payload: payload, Timestamp: canonicalTimestamp, PrevHash: swarmJournalZeroHash}
-		entry.Hash, err = swarmJournalEntryHash(entry); if err != nil { return err }
-		result, err = ReduceSwarmEntry(SwarmState{}, entry); if err != nil { return err }
-		if err := journal.validateTypedStateIdentity(result); err != nil { return err }
+		entry.Hash, err = swarmJournalEntryHash(entry)
+		if err != nil {
+			return err
+		}
+		result, err = ReduceSwarmEntry(SwarmState{}, entry)
+		if err != nil {
+			return err
+		}
+		if err := journal.validateTypedStateIdentity(result); err != nil {
+			return err
+		}
 		return journal.appendLocked(entry)
 	})
-	if err != nil { return SwarmState{}, err }
+	if err != nil {
+		return SwarmState{}, err
+	}
 	return cloneSwarmState(result), nil
 }
+
 // DurableSpecFromVerifiedBinding runs Phase A verification and freezes its exact execution input.
 func (f Fixture) DurableSpecFromVerifiedBinding(origin, request map[string]any) (DurableSwarmSpec, error) {
-	if err := f.verifySwarmGenerationPins(); err != nil { return DurableSwarmSpec{}, err }
-	if err := f.verifyAuthoritySeed(); err != nil || f.Authority == nil { return DurableSwarmSpec{}, errors.New("swarm local authority verification pin invalid") }
+	if err := f.verifySwarmGenerationPins(); err != nil {
+		return DurableSwarmSpec{}, err
+	}
+	if err := f.verifyAuthoritySeed(); err != nil || f.Authority == nil {
+		return DurableSwarmSpec{}, errors.New("swarm local authority verification pin invalid")
+	}
 	localAuthority := cloneFrozenMap(f.Authority)
-	if localAuthority == nil || verifyZoneDescriptor(localAuthority) != nil { return DurableSwarmSpec{}, errors.New("swarm local authority descriptor invalid") }
-	verified, err := f.preflightSwarmExecution(origin, request, false); if err != nil { return DurableSwarmSpec{}, err }
+	if localAuthority == nil || verifyZoneDescriptor(localAuthority) != nil {
+		return DurableSwarmSpec{}, errors.New("swarm local authority descriptor invalid")
+	}
+	verified, err := f.preflightSwarmExecution(origin, request, false)
+	if err != nil {
+		return DurableSwarmSpec{}, err
+	}
 	swarm, _ := request["swarm"].(map[string]any)
 	plan, _ := swarm["plan"].(map[string]any)
 	binding, _ := swarm["execution_binding"].(map[string]any)
-	planRaw, err := canonicalJSON(plan); if err != nil { return DurableSwarmSpec{}, err }
-	bindingRaw, err := canonicalJSON(binding); if err != nil { return DurableSwarmSpec{}, err }
-	requestRaw, err := canonicalJSON(map[string]any{"origin": origin, "request": request}); if err != nil { return DurableSwarmSpec{}, err }
+	planRaw, err := canonicalJSON(plan)
+	if err != nil {
+		return DurableSwarmSpec{}, err
+	}
+	bindingRaw, err := canonicalJSON(binding)
+	if err != nil {
+		return DurableSwarmSpec{}, err
+	}
+	requestRaw, err := canonicalJSON(map[string]any{"origin": origin, "request": request})
+	if err != nil {
+		return DurableSwarmSpec{}, err
+	}
 	spec := DurableSwarmSpec{SchemaVersion: swarmStateSchemaVersion, SwarmID: verified.swarmID, Plan: planRaw, Binding: bindingRaw, Request: requestRaw, AuthorityGeneration: f.AuthorityGenerationPin, LocalAuthority: localAuthority, Steps: make([]DurableSwarmStepSpec, 0, len(verified.executionSteps))}
 	for _, verifiedStep := range verified.executionSteps {
 		taskID := optionalString(verifiedStep.signedTask["task_id"])
-		if taskID == "" || hasSwarmDelimiter(taskID) { return DurableSwarmSpec{}, errors.New("swarm signed task_id missing") }
+		if taskID == "" || hasSwarmDelimiter(taskID) {
+			return DurableSwarmSpec{}, errors.New("swarm signed task_id missing")
+		}
 		step := DurableSwarmStepSpec{StepID: verifiedStep.stepID, DependsOn: append([]string(nil), verifiedStep.after...), TaskID: taskID, TaskDigest: verifiedStep.taskDigest, Capability: verifiedStep.capability, AttemptPolicy: SwarmAttemptPolicy{MaxAttempts: 1}}
-		candidate, err := f.durableCandidateForWorker(verifiedStep.originalWorker); if err != nil { return DurableSwarmSpec{}, err }
+		candidate, err := f.durableCandidateForWorker(verifiedStep.originalWorker)
+		if err != nil {
+			return DurableSwarmSpec{}, err
+		}
 		step.Candidates = append(step.Candidates, candidate)
 		if verifiedStep.migrationWorker != nil {
-			candidate, err := f.durableCandidateForWorker(verifiedStep.migrationWorker); if err != nil { return DurableSwarmSpec{}, err }
+			candidate, err := f.durableCandidateForWorker(verifiedStep.migrationWorker)
+			if err != nil {
+				return DurableSwarmSpec{}, err
+			}
 			step.Candidates = append(step.Candidates, candidate)
 		}
 		spec.Steps = append(spec.Steps, step)
 	}
-	if err := validateDurableSwarmSpec(spec); err != nil { return DurableSwarmSpec{}, err }
+	if err := validateDurableSwarmSpec(spec); err != nil {
+		return DurableSwarmSpec{}, err
+	}
 	return cloneDurableSwarmSpec(spec), nil
 }
 
 func (f Fixture) durableCandidateForWorker(worker *Worker) (DurableWorkerCandidate, error) {
 	candidate, err := durableCandidateForWorker(worker)
-	if err != nil { return DurableWorkerCandidate{}, err }
+	if err != nil {
+		return DurableWorkerCandidate{}, err
+	}
 	bindingRaw, err := canonicalJSON(f.zoneBinding(worker))
-	if err != nil { return DurableWorkerCandidate{}, errors.New("worker durable zone binding pin invalid") }
+	if err != nil {
+		return DurableWorkerCandidate{}, errors.New("worker durable zone binding pin invalid")
+	}
 	candidate.ZoneBinding = string(bindingRaw)
 	return candidate, nil
 }
@@ -709,7 +777,9 @@ func durableCandidateForWorker(worker *Worker) (DurableWorkerCandidate, error) {
 	runtimeKind := ""
 	if runtime.SandboxClaim == "container-namespace" {
 		runtimeKind, err = configuredContainerRuntime()
-		if err != nil { return DurableWorkerCandidate{}, errors.New("worker durable runtime pin invalid") }
+		if err != nil {
+			return DurableWorkerCandidate{}, errors.New("worker durable runtime pin invalid")
+		}
 	}
 	descriptorRaw, err := canonicalJSON(worker.Descriptor)
 	if err != nil {
@@ -767,5 +837,3 @@ func (f Fixture) RecoverVerifiedSwarm(journal *SwarmJournal) (SwarmState, error)
 	}
 	return cloneSwarmState(state), nil
 }
-
-

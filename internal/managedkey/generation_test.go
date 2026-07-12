@@ -72,13 +72,13 @@ func generationIdentityValue(t *testing.T, kind string, spki []byte) string {
 }
 
 type generationChainFixture struct {
-	Previous    generationIdentityFixture
-	Next        generationIdentityFixture
-	Zone        generationIdentityFixture
-	Envelopes   [][]byte
-	Records     []GenerationRecord
+	Previous     generationIdentityFixture
+	Next         generationIdentityFixture
+	Zone         generationIdentityFixture
+	Envelopes    [][]byte
+	Records      []GenerationRecord
 	ZoneEnvelope []byte
-	ZoneRecord  GenerationRecord
+	ZoneRecord   GenerationRecord
 }
 
 func newGenerationChainFixture(t *testing.T) generationChainFixture {

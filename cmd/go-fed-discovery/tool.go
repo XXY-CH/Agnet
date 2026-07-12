@@ -13,8 +13,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"strconv"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -51,9 +51,9 @@ func runToolWithContainerAdapter(ctx context.Context, adapter DockerAdapter, pro
 	}
 	switch tool {
 	case "summarize.mock":
-		return tool, textResult("# Go Tool Summary\n\nTask: "+taskID+"\nOrigin: "+fmt.Sprint(origin["zid"])+"\nSummary: "+intent+"\n"), inProcessSandbox(), nil
+		return tool, textResult("# Go Tool Summary\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nSummary: " + intent + "\n"), inProcessSandbox(), nil
 	case "translate.mock":
-		return tool, textResult("# Go Tool Translation\n\nTask: "+taskID+"\nOrigin: "+fmt.Sprint(origin["zid"])+"\nTranslation: "+strings.ToUpper(intent)+"\n"), inProcessSandbox(), nil
+		return tool, textResult("# Go Tool Translation\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nTranslation: " + strings.ToUpper(intent) + "\n"), inProcessSandbox(), nil
 	case "external.stdio":
 		result, sandbox, err := runExternalTool(ctx, profile, task, origin, artifactStoreDir, liveTranscriptDir)
 		return tool, result, sandbox, err
@@ -61,7 +61,7 @@ func runToolWithContainerAdapter(ctx context.Context, adapter DockerAdapter, pro
 		result, sandbox, err := runMCPTool(ctx, profile, task, origin, artifactStoreDir, liveTranscriptDir)
 		return tool, result, sandbox, err
 	default:
-		return tool, textResult("# Go Tool Output\n\nTask: "+taskID+"\nOrigin: "+fmt.Sprint(origin["zid"])+"\nOutput: "+intent+"\n"), inProcessSandbox(), nil
+		return tool, textResult("# Go Tool Output\n\nTask: " + taskID + "\nOrigin: " + fmt.Sprint(origin["zid"]) + "\nOutput: " + intent + "\n"), inProcessSandbox(), nil
 	}
 }
 
@@ -126,16 +126,16 @@ func dockerRuntimeIdentity(probe DockerProbe) map[string]any {
 		"image_descriptor_digest": probe.ImageDescriptorDigest,
 		"command_path":            probe.CommandPath,
 		"socket_path":             probe.SocketPath,
-		"socket_device":            strconv.FormatUint(probe.Socket.Device, 10),
-		"socket_inode":             strconv.FormatUint(probe.Socket.Inode, 10),
-		"socket_mode":              strconv.FormatUint(uint64(probe.Socket.Mode), 10),
-		"socket_uid":               strconv.FormatUint(uint64(probe.Socket.UID), 10),
-		"binary_digest":            probe.BinaryDigest,
-		"client_version":           probe.ClientVersion,
-		"client_api_version":       probe.ClientAPIVersion,
-		"daemon_id":                probe.DaemonID,
-		"daemon_version":           probe.DaemonVersion,
-		"daemon_api_version":       probe.DaemonAPIVersion,
+		"socket_device":           strconv.FormatUint(probe.Socket.Device, 10),
+		"socket_inode":            strconv.FormatUint(probe.Socket.Inode, 10),
+		"socket_mode":             strconv.FormatUint(uint64(probe.Socket.Mode), 10),
+		"socket_uid":              strconv.FormatUint(uint64(probe.Socket.UID), 10),
+		"binary_digest":           probe.BinaryDigest,
+		"client_version":          probe.ClientVersion,
+		"client_api_version":      probe.ClientAPIVersion,
+		"daemon_id":               probe.DaemonID,
+		"daemon_version":          probe.DaemonVersion,
+		"daemon_api_version":      probe.DaemonAPIVersion,
 	}
 }
 
@@ -146,12 +146,12 @@ func appleRuntimeIdentity(proof AppleContainerPreflightEvidence) map[string]any 
 		"image_id":                proof.ImageID,
 		"image_descriptor_digest": proof.ImageDescriptorDigest,
 		"binary_path":             proof.BinaryPath,
-		"binary_digest":            proof.BinaryDigestBefore,
-		"cli_version":              proof.CLIVersionBefore,
-		"cli_commit":               proof.CLICommit,
-		"api_server_version":       proof.APIServerVersion,
-		"api_server_commit":        proof.APIServerCommit,
-		"app_root":                 proof.AppRoot,
+		"binary_digest":           proof.BinaryDigestBefore,
+		"cli_version":             proof.CLIVersionBefore,
+		"cli_commit":              proof.CLICommit,
+		"api_server_version":      proof.APIServerVersion,
+		"api_server_commit":       proof.APIServerCommit,
+		"app_root":                proof.AppRoot,
 	}
 }
 
@@ -211,7 +211,6 @@ func validateContainerAdapterEvidence(request DockerRunRequest, runtimeKind stri
 	}
 	return nil
 }
-
 
 func inProcessSandbox() map[string]any {
 	return map[string]any{"mode": "in-process"}

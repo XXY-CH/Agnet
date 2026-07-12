@@ -28,7 +28,7 @@ func dockerReceiptEvidence(profile DockerWorkerProfile, runtime string) map[stri
 			"exit_code":        float64(0),
 			"result_bytes":     float64(11),
 			"transcript_bytes": float64(13),
-			"artifact_count":    float64(2),
+			"artifact_count":   float64(2),
 		},
 		"task_id":           "task-container-receipt",
 		"task_digest":       strings.Repeat("c", 64),
@@ -119,20 +119,30 @@ func TestDockerReceiptRejectsForgedContainerBindings(t *testing.T) {
 	}{
 		{name: "generic runtime", mutate: func(_ map[string]any, e map[string]any) { e["runtime"] = "generic" }},
 		{name: "unknown evidence field", mutate: func(_ map[string]any, e map[string]any) { e["unexpected"] = true }},
-		{name: "image", mutate: func(_ map[string]any, e map[string]any) { e["image"] = "example.test/forged:latest@sha256:" + strings.Repeat("9", 64) }},
+		{name: "image", mutate: func(_ map[string]any, e map[string]any) {
+			e["image"] = "example.test/forged:latest@sha256:" + strings.Repeat("9", 64)
+		}},
 		{name: "runtime identity", mutate: func(_ map[string]any, e map[string]any) { e["runtime_identity_digest"] = strings.Repeat("0", 64) }},
 		{name: "configuration", mutate: func(_ map[string]any, e map[string]any) { e["configuration_digest"] = strings.Repeat("0", 64) }},
 		{name: "result digest", mutate: func(_ map[string]any, e map[string]any) { e["result_digest"] = strings.Repeat("0", 64) }},
 		{name: "transcript digest", mutate: func(_ map[string]any, e map[string]any) { e["transcript_digest"] = strings.Repeat("0", 64) }},
 		{name: "result count", mutate: func(_ map[string]any, e map[string]any) { e["observed"].(map[string]any)["result_bytes"] = float64(0) }},
-		{name: "artifact count", mutate: func(_ map[string]any, e map[string]any) { e["observed"].(map[string]any)["artifact_count"] = float64(1) }},
+		{name: "artifact count", mutate: func(_ map[string]any, e map[string]any) {
+			e["observed"].(map[string]any)["artifact_count"] = float64(1)
+		}},
 		{name: "missing constraints", mutate: func(_ map[string]any, e map[string]any) { delete(e, "constraints") }},
 		{name: "forged constraints", mutate: func(_ map[string]any, e map[string]any) { e["constraints"].(map[string]any)["network"] = "host" }},
-		{name: "generic claim without evidence", mutate: func(receipt map[string]any, _ map[string]any) { delete(receipt["sandbox"].(map[string]any), "container_evidence"); delete(receipt, "container_profile"); delete(receipt, "container_generation_digest") }},
+		{name: "generic claim without evidence", mutate: func(receipt map[string]any, _ map[string]any) {
+			delete(receipt["sandbox"].(map[string]any), "container_evidence")
+			delete(receipt, "container_profile")
+			delete(receipt, "container_generation_digest")
+		}},
 		{name: "task", mutate: func(_ map[string]any, e map[string]any) { e["task_id"] = "other-task" }},
 		{name: "profile", mutate: func(_ map[string]any, e map[string]any) { e["profile_digest"] = strings.Repeat("0", 64) }},
 		{name: "generation", mutate: func(_ map[string]any, e map[string]any) { e["generation_digest"] = strings.Repeat("0", 64) }},
-		{name: "proof copied evidence", mutate: func(receipt map[string]any, _ map[string]any) { receipt["sandbox_proof"].(map[string]any)["sandbox"].(map[string]any)["container_evidence"] = map[string]any{} }},
+		{name: "proof copied evidence", mutate: func(receipt map[string]any, _ map[string]any) {
+			receipt["sandbox_proof"].(map[string]any)["sandbox"].(map[string]any)["container_evidence"] = map[string]any{}
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -202,7 +212,7 @@ func signedContainerReceiptRecord(t *testing.T, runtime string) (map[string]any,
 			"exit_code":        float64(0),
 			"result_bytes":     resultManifest["size"],
 			"transcript_bytes": transcriptManifest["size"],
-			"artifact_count":    float64(2),
+			"artifact_count":   float64(2),
 		},
 		"task_id":           taskID,
 		"task_digest":       taskDigest,
@@ -222,15 +232,15 @@ func signedContainerReceiptRecord(t *testing.T, runtime string) (map[string]any,
 		"proof_type": "local.sandbox.v1", "task_id": taskID, "authority": zone["zid"], "worker": worker["aid"], "policy_digest": digestHex(policyScope), "sandbox": sandbox, "sandbox_claim": "container-namespace",
 	}, "sandbox_signature")
 	receipt := testSignedReceipt(t, zone, zoneKey, worker, workerKey, taskID, []map[string]any{resultManifest, transcriptManifest}, map[string]any{
-		"artifact_refs":                []string{fmt.Sprint(resultManifest["uri"]), fmt.Sprint(transcriptManifest["uri"])},
-		"artifact_manifests":           []map[string]any{resultManifest, transcriptManifest},
-		"result_artifact":              map[string]any{"uri": resultManifest["uri"], "sha256": resultManifest["sha256"], "manifest_hash": resultManifest["manifest_hash"]},
-		"tool_output_digest":           resultManifest["sha256"],
-		"sandbox":                      sandbox,
-		"sandbox_proof":                proof,
-		"sandbox_claim":                "container-namespace",
-		"container_profile":            profileMap,
-		"container_generation_digest":  strings.Repeat("d", 64),
+		"artifact_refs":               []string{fmt.Sprint(resultManifest["uri"]), fmt.Sprint(transcriptManifest["uri"])},
+		"artifact_manifests":          []map[string]any{resultManifest, transcriptManifest},
+		"result_artifact":             map[string]any{"uri": resultManifest["uri"], "sha256": resultManifest["sha256"], "manifest_hash": resultManifest["manifest_hash"]},
+		"tool_output_digest":          resultManifest["sha256"],
+		"sandbox":                     sandbox,
+		"sandbox_proof":               proof,
+		"sandbox_claim":               "container-namespace",
+		"container_profile":           profileMap,
+		"container_generation_digest": strings.Repeat("d", 64),
 	})
 	return map[string]any{
 		"zone":         zone,

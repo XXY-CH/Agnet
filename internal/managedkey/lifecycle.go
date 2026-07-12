@@ -44,7 +44,6 @@ type RewrapOptions struct {
 	Iterations        int
 }
 
-
 // RotateAgentOptions names the two verified managed stores that participate in
 // an Agent rotation. Zone authorization is read from its active generation.
 type RotateAgentOptions struct {
@@ -55,6 +54,7 @@ type RotateAgentOptions struct {
 	Iterations         int
 	Entropy            io.Reader
 }
+
 // RecoverOptions names the restricted passphrase file used to reopen a store.
 type RecoverOptions struct {
 	Store          *Store

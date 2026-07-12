@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,19 +16,19 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"sync"
+	"syscall"
 	"time"
 )
 
 const (
-	appleContainerUser           = "65532:65532"
-	appleContainerUlimit         = "nofile=64:64"
-	appleContainerNprocUlimit    = "nproc=64:64"
-	appleContainerNetwork        = "none"
-	appleContainerWorkdir        = "/work"
-	appleContainerBindMountType   = "virtiofs"
-	appleContainerResultPath     = "/work/result"
+	appleContainerUser                 = "65532:65532"
+	appleContainerUlimit               = "nofile=64:64"
+	appleContainerNprocUlimit          = "nproc=64:64"
+	appleContainerNetwork              = "none"
+	appleContainerWorkdir              = "/work"
+	appleContainerBindMountType        = "virtiofs"
+	appleContainerResultPath           = "/work/result"
 	appleContainerMinMemoryBytes int64 = 200 << 20
 )
 
@@ -234,7 +234,9 @@ func validateAppleRunRequest(request DockerRunRequest) error {
 	if request.MaxOutputBytes <= 0 || request.MaxOutputBytes > dockerMaxOutputBytes {
 		return errors.New("apple container max output is invalid")
 	}
-	if !sort.SliceIsSorted(request.ScratchInputs, func(left, right int) bool { return request.ScratchInputs[left].Path < request.ScratchInputs[right].Path }) {
+	if !sort.SliceIsSorted(request.ScratchInputs, func(left, right int) bool {
+		return request.ScratchInputs[left].Path < request.ScratchInputs[right].Path
+	}) {
 		return errors.New("apple container scratch inputs are not deterministic")
 	}
 	for index, input := range request.ScratchInputs {
@@ -313,9 +315,15 @@ func stageAppleWorkspace(inputs []DockerScratchInput) (string, int64, error) {
 		inputBytes += int64(len(input.Bytes))
 	}
 	if err := filepath.Walk(inputRoot, func(path string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil { return walkErr }
-		if info.IsDir() { return os.Chmod(path, 0o555) }
-		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 { return errors.New("apple workspace input is unsafe") }
+		if walkErr != nil {
+			return walkErr
+		}
+		if info.IsDir() {
+			return os.Chmod(path, 0o555)
+		}
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("apple workspace input is unsafe")
+		}
 		return os.Chmod(path, 0o444)
 	}); err != nil {
 		_ = os.RemoveAll(workspace)
@@ -340,15 +348,27 @@ func stageAppleWorkspace(inputs []DockerScratchInput) (string, int64, error) {
 
 func removeAppleWorkspace(workspace string) error {
 	if err := filepath.Walk(workspace, func(path string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil { return walkErr }
-		if info.IsDir() { return os.Chmod(path, 0o700) }
+		if walkErr != nil {
+			return walkErr
+		}
+		if info.IsDir() {
+			return os.Chmod(path, 0o700)
+		}
 		return os.Chmod(path, 0o600)
-	}); err != nil && !errors.Is(err, os.ErrNotExist) { return err }
-	if err := os.RemoveAll(workspace); err != nil { return err }
+	}); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := os.RemoveAll(workspace); err != nil {
+		return err
+	}
 	return nil
 }
 
-type appleWorkspaceIdentity struct { dev, ino uint64; uid uint32; mode os.FileMode }
+type appleWorkspaceIdentity struct {
+	dev, ino uint64
+	uid      uint32
+	mode     os.FileMode
+}
 
 func pinAppleWorkspace(path string) (appleWorkspaceIdentity, error) {
 	info, err := os.Lstat(path)
@@ -384,7 +404,9 @@ func validateAppleWorkspace(workspace string, inputs []DockerScratchInput, input
 		for index := range parts {
 			rel := filepath.ToSlash(filepath.Join(append([]string{"input"}, parts[:index+1]...)...))
 			expected[rel] = true
-			if index < len(parts)-1 { directories[rel] = true }
+			if index < len(parts)-1 {
+				directories[rel] = true
+			}
 		}
 	}
 	seen := make(map[string]bool, len(expected))
@@ -431,7 +453,9 @@ func validateAppleWorkspace(workspace string, inputs []DockerScratchInput, input
 		return err
 	}
 	for rel := range expected {
-		if !seen[rel] { return errors.New("apple workspace is missing required entry") }
+		if !seen[rel] {
+			return errors.New("apple workspace is missing required entry")
+		}
 	}
 	resultInfo, err := os.Lstat(filepath.Join(workspace, "result"))
 	if err != nil || !resultInfo.Mode().IsRegular() || resultInfo.Mode()&os.ModeSymlink != 0 || resultInfo.Size() > maximumResult {
@@ -447,7 +471,9 @@ type appleLimitedCapture struct {
 	mu       sync.Mutex
 }
 
-func newAppleLimitedCapture(limit int64) *appleLimitedCapture { return &appleLimitedCapture{limit: limit} }
+func newAppleLimitedCapture(limit int64) *appleLimitedCapture {
+	return &appleLimitedCapture{limit: limit}
+}
 
 func (capture *appleLimitedCapture) Write(data []byte) (int, error) {
 	capture.mu.Lock()
@@ -488,85 +514,224 @@ type appleRunInspection struct {
 
 func (a *AppleContainerCLIAdapter) inspectRun(ctx context.Context, lifecycle appleContainerLifecycleRunner, containerID string, request DockerRunRequest, proof AppleContainerPreflightEvidence, workspace string) (appleRunInspection, error) {
 	output, err := lifecycle.Run(ctx, appleContainerBinaryPath, "inspect", containerID)
-	if err != nil { return appleRunInspection{}, fmt.Errorf("inspect apple container: %w", err) }
+	if err != nil {
+		return appleRunInspection{}, fmt.Errorf("inspect apple container: %w", err)
+	}
 	inspection, state, err := normalizeAppleRunInspect(output)
-	if err != nil { return appleRunInspection{}, err }
-	if inspection.containerID != containerID { return appleRunInspection{}, errors.New("apple container inspect id does not match created container") }
-	if !sameAppleInspectableImage(inspection.image, request.Image) { return appleRunInspection{}, errors.New("apple container inspect image does not match pinned request") }
-	if err := validateAppleInspectConstraints(inspection.configFingerprint, request, workspace); err != nil { return appleRunInspection{}, err }
-	if state.running { return appleRunInspection{}, errors.New("apple container did not stop after attached start") }
-	if state.exitKnown && state.exitCode != 0 { return appleRunInspection{}, fmt.Errorf("apple container exited with status %d", state.exitCode) }
-	if proof.ImageDescriptorDigest == "" || proof.ImageID == "" { return appleRunInspection{}, errors.New("apple container preflight image proof is incomplete") }
+	if err != nil {
+		return appleRunInspection{}, err
+	}
+	if inspection.containerID != containerID {
+		return appleRunInspection{}, errors.New("apple container inspect id does not match created container")
+	}
+	if !sameAppleInspectableImage(inspection.image, request.Image) {
+		return appleRunInspection{}, errors.New("apple container inspect image does not match pinned request")
+	}
+	if err := validateAppleInspectConstraints(inspection.configFingerprint, request, workspace); err != nil {
+		return appleRunInspection{}, err
+	}
+	if state.running {
+		return appleRunInspection{}, errors.New("apple container did not stop after attached start")
+	}
+	if state.exitKnown && state.exitCode != 0 {
+		return appleRunInspection{}, fmt.Errorf("apple container exited with status %d", state.exitCode)
+	}
+	if proof.ImageDescriptorDigest == "" || proof.ImageID == "" {
+		return appleRunInspection{}, errors.New("apple container preflight image proof is incomplete")
+	}
 	return inspection, nil
 }
 
-type appleInspectState struct { running bool; exitCode int64; exitKnown bool }
+type appleInspectState struct {
+	running   bool
+	exitCode  int64
+	exitKnown bool
+}
 
 func normalizeAppleRunInspect(data []byte) (appleRunInspection, appleInspectState, error) {
 	var documents []map[string]any
-	if err := decodeOneJSON(data, &documents); err != nil { return appleRunInspection{}, appleInspectState{}, fmt.Errorf("apple container inspect is malformed: %w", err) }
-	if len(documents) != 1 { return appleRunInspection{}, appleInspectState{}, errors.New("apple container inspect did not return exactly one container") }
+	if err := decodeOneJSON(data, &documents); err != nil {
+		return appleRunInspection{}, appleInspectState{}, fmt.Errorf("apple container inspect is malformed: %w", err)
+	}
+	if len(documents) != 1 {
+		return appleRunInspection{}, appleInspectState{}, errors.New("apple container inspect did not return exactly one container")
+	}
 	document := documents[0]
 	id := appleStringAt(document, []string{"id"}, []string{"configuration", "id"})
 	image := appleStringAt(document, []string{"image"}, []string{"configuration", "image", "reference"}, []string{"configuration", "image", "name"})
 	config := appleMapAt(document, []string{"config"}, []string{"configuration"})
 	state := appleMapAt(document, []string{"state"}, []string{"status"})
-	if id == "" || image == "" || config == nil || state == nil { return appleRunInspection{}, appleInspectState{}, errors.New("apple container inspect lacks required identity or configuration") }
-	configJSON, err := json.Marshal(config); if err != nil { return appleRunInspection{}, appleInspectState{}, fmt.Errorf("encode apple container configuration: %w", err) }
-	running, ok := appleBoolAt(state, []string{"running"}); if !ok { status := appleStringAt(state, []string{"state"}); if status == "running" { running, ok = true, true }; if status == "stopped" || status == "exited" { running, ok = false, true } }
+	if id == "" || image == "" || config == nil || state == nil {
+		return appleRunInspection{}, appleInspectState{}, errors.New("apple container inspect lacks required identity or configuration")
+	}
+	configJSON, err := json.Marshal(config)
+	if err != nil {
+		return appleRunInspection{}, appleInspectState{}, fmt.Errorf("encode apple container configuration: %w", err)
+	}
+	running, ok := appleBoolAt(state, []string{"running"})
+	if !ok {
+		status := appleStringAt(state, []string{"state"})
+		if status == "running" {
+			running, ok = true, true
+		}
+		if status == "stopped" || status == "exited" {
+			running, ok = false, true
+		}
+	}
 	exitCode, exitKnown := appleIntAt(state, []string{"exit_code"}, []string{"exitCode"})
-	if !ok { return appleRunInspection{}, appleInspectState{}, errors.New("apple container inspect lacks runtime state") }
+	if !ok {
+		return appleRunInspection{}, appleInspectState{}, errors.New("apple container inspect lacks runtime state")
+	}
 	return appleRunInspection{containerID: id, image: image, configFingerprint: string(configJSON), exitCode: exitCode, exitKnown: exitKnown}, appleInspectState{running: running, exitCode: exitCode, exitKnown: exitKnown}, nil
 }
 
 func validateAppleInspectConstraints(configJSON string, request DockerRunRequest, workspace string) error {
 	var config map[string]any
-	if err := json.Unmarshal([]byte(configJSON), &config); err != nil { return err }
-	if appleInspectUser(config) != appleContainerUser { return errors.New("apple container inspect user is not constrained") }
-	if !sameStringSlice(appleStringsAt(config, []string{"cmd"}, []string{"initProcess", "arguments"}, []string{"arguments"}), request.Command) { return errors.New("apple container inspect command does not match request") }
-	readOnly, ok := appleBoolAt(config, []string{"read_only"}, []string{"readOnly"}, []string{"rootfs", "readOnly"}); if !ok || !readOnly { return errors.New("apple container inspect root filesystem is not read-only") }
-	cpus := appleStringAt(config, []string{"cpus"}, []string{"resources", "cpus"}); if cpus == "" { cpus = appleNumberStringAt(config, []string{"cpus"}, []string{"resources", "cpus"}) }; if cpus != request.CPUs { return errors.New("apple container inspect CPU limit does not match request") }
-	memory, ok := appleIntAt(config, []string{"memory"}, []string{"memoryBytes"}, []string{"resources", "memoryInBytes"}); if !ok || memory != request.MemoryBytes { return errors.New("apple container inspect memory limit does not match request") }
-	if !appleHasPrivateWorkspaceMount(config, workspace) { return errors.New("apple container inspect private workspace mount evidence is not exact") }
-	if !appleInspectDNSDisabled(config) || !appleStringListContains(config, "ALL", []string{"cap_drop"}, []string{"capDrop"}) || (!appleStringListContains(config, appleContainerUlimit, []string{"ulimits"}) && !appleHasRlimit(config, "RLIMIT_NOFILE", "nofile")) || (!appleStringListContains(config, appleContainerNprocUlimit, []string{"ulimits"}) && !appleHasRlimit(config, "RLIMIT_NPROC", "nproc")) { return errors.New("apple container inspect constraints are not enforced") }
-	if !appleEmptyListAt(config, []string{"publishedPorts"}) || !appleEmptyListAt(config, []string{"publishedSockets"}) { return errors.New("apple container inspect exposes host ports or sockets") }
-	if ssh, present := appleBoolAt(config, []string{"ssh"}); present && ssh { return errors.New("apple container inspect enables SSH forwarding") }
+	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
+		return err
+	}
+	if appleInspectUser(config) != appleContainerUser {
+		return errors.New("apple container inspect user is not constrained")
+	}
+	if !sameStringSlice(appleStringsAt(config, []string{"cmd"}, []string{"initProcess", "arguments"}, []string{"arguments"}), request.Command) {
+		return errors.New("apple container inspect command does not match request")
+	}
+	readOnly, ok := appleBoolAt(config, []string{"read_only"}, []string{"readOnly"}, []string{"rootfs", "readOnly"})
+	if !ok || !readOnly {
+		return errors.New("apple container inspect root filesystem is not read-only")
+	}
+	cpus := appleStringAt(config, []string{"cpus"}, []string{"resources", "cpus"})
+	if cpus == "" {
+		cpus = appleNumberStringAt(config, []string{"cpus"}, []string{"resources", "cpus"})
+	}
+	if cpus != request.CPUs {
+		return errors.New("apple container inspect CPU limit does not match request")
+	}
+	memory, ok := appleIntAt(config, []string{"memory"}, []string{"memoryBytes"}, []string{"resources", "memoryInBytes"})
+	if !ok || memory != request.MemoryBytes {
+		return errors.New("apple container inspect memory limit does not match request")
+	}
+	if !appleHasPrivateWorkspaceMount(config, workspace) {
+		return errors.New("apple container inspect private workspace mount evidence is not exact")
+	}
+	if !appleInspectDNSDisabled(config) || !appleStringListContains(config, "ALL", []string{"cap_drop"}, []string{"capDrop"}) || (!appleStringListContains(config, appleContainerUlimit, []string{"ulimits"}) && !appleHasRlimit(config, "RLIMIT_NOFILE", "nofile")) || (!appleStringListContains(config, appleContainerNprocUlimit, []string{"ulimits"}) && !appleHasRlimit(config, "RLIMIT_NPROC", "nproc")) {
+		return errors.New("apple container inspect constraints are not enforced")
+	}
+	if !appleEmptyListAt(config, []string{"publishedPorts"}) || !appleEmptyListAt(config, []string{"publishedSockets"}) {
+		return errors.New("apple container inspect exposes host ports or sockets")
+	}
+	if ssh, present := appleBoolAt(config, []string{"ssh"}); present && ssh {
+		return errors.New("apple container inspect enables SSH forwarding")
+	}
 	return nil
 }
 func appleMapAt(root map[string]any, paths ...[]string) map[string]any {
-	for _, path := range paths { if value, ok := appleValueAt(root, path); ok { if object, ok := value.(map[string]any); ok { return object } } }
+	for _, path := range paths {
+		if value, ok := appleValueAt(root, path); ok {
+			if object, ok := value.(map[string]any); ok {
+				return object
+			}
+		}
+	}
 	return nil
 }
 func appleStringAt(root map[string]any, paths ...[]string) string {
-	for _, path := range paths { if value, ok := appleValueAt(root, path); ok { if text, ok := value.(string); ok { return text } } }
+	for _, path := range paths {
+		if value, ok := appleValueAt(root, path); ok {
+			if text, ok := value.(string); ok {
+				return text
+			}
+		}
+	}
 	return ""
 }
 func appleNumberStringAt(root map[string]any, paths ...[]string) string {
-	for _, path := range paths { if value, ok := appleValueAt(root, path); ok { if number, ok := value.(float64); ok { return strconv.FormatFloat(number, 'f', -1, 64) } } }
+	for _, path := range paths {
+		if value, ok := appleValueAt(root, path); ok {
+			if number, ok := value.(float64); ok {
+				return strconv.FormatFloat(number, 'f', -1, 64)
+			}
+		}
+	}
 	return ""
 }
 func appleBoolAt(root map[string]any, paths ...[]string) (bool, bool) {
-	for _, path := range paths { if value, ok := appleValueAt(root, path); ok { if boolean, ok := value.(bool); ok { return boolean, true } } }
+	for _, path := range paths {
+		if value, ok := appleValueAt(root, path); ok {
+			if boolean, ok := value.(bool); ok {
+				return boolean, true
+			}
+		}
+	}
 	return false, false
 }
 func appleIntAt(root map[string]any, paths ...[]string) (int64, bool) {
-	for _, path := range paths { if value, ok := appleValueAt(root, path); ok { if number, ok := value.(float64); ok && number >= -float64(^uint64(0)>>1)-1 && number <= float64(^uint64(0)>>1) { return int64(number), true } } }
+	for _, path := range paths {
+		if value, ok := appleValueAt(root, path); ok {
+			if number, ok := value.(float64); ok && number >= -float64(^uint64(0)>>1)-1 && number <= float64(^uint64(0)>>1) {
+				return int64(number), true
+			}
+		}
+	}
 	return 0, false
 }
 func appleStringsAt(root map[string]any, paths ...[]string) []string {
-	for _, path := range paths { if value, ok := appleValueAt(root, path); ok { if values, ok := value.([]any); ok { out := make([]string, len(values)); for index, value := range values { text, ok := value.(string); if !ok { return nil }; out[index] = text }; return out } } }
+	for _, path := range paths {
+		if value, ok := appleValueAt(root, path); ok {
+			if values, ok := value.([]any); ok {
+				out := make([]string, len(values))
+				for index, value := range values {
+					text, ok := value.(string)
+					if !ok {
+						return nil
+					}
+					out[index] = text
+				}
+				return out
+			}
+		}
+	}
 	return nil
 }
-func appleStringListContains(root map[string]any, want string, paths ...[]string) bool { for _, path := range paths { for _, got := range appleStringsAt(root, path) { if got == want { return true } } }; return false }
-func appleEmptyListAt(root map[string]any, path []string) bool { value, present := appleValueAt(root, path); if !present { return true }; values, ok := value.([]any); return ok && len(values) == 0 }
+func appleStringListContains(root map[string]any, want string, paths ...[]string) bool {
+	for _, path := range paths {
+		for _, got := range appleStringsAt(root, path) {
+			if got == want {
+				return true
+			}
+		}
+	}
+	return false
+}
+func appleEmptyListAt(root map[string]any, path []string) bool {
+	value, present := appleValueAt(root, path)
+	if !present {
+		return true
+	}
+	values, ok := value.([]any)
+	return ok && len(values) == 0
+}
 func appleInspectUser(root map[string]any) string {
-	if user := appleStringAt(root, []string{"user"}, []string{"initProcess", "user"}); user != "" { return user }
+	if user := appleStringAt(root, []string{"user"}, []string{"initProcess", "user"}); user != "" {
+		return user
+	}
 	user := appleMapAt(root, []string{"initProcess", "user"})
-	if user == nil { return "" }
-	if raw, ok := user["raw"].(map[string]any); ok { if userString := appleStringAt(raw, []string{"userString"}); userString != "" { return userString } }
-	if identity, ok := user["id"].(map[string]any); ok { user = identity }
-	uid, uidOK := appleIntAt(user, []string{"uid"}); gid, gidOK := appleIntAt(user, []string{"gid"})
-	if uidOK && gidOK { return strconv.FormatInt(uid, 10)+":"+strconv.FormatInt(gid, 10) }
+	if user == nil {
+		return ""
+	}
+	if raw, ok := user["raw"].(map[string]any); ok {
+		if userString := appleStringAt(raw, []string{"userString"}); userString != "" {
+			return userString
+		}
+	}
+	if identity, ok := user["id"].(map[string]any); ok {
+		user = identity
+	}
+	uid, uidOK := appleIntAt(user, []string{"uid"})
+	gid, gidOK := appleIntAt(user, []string{"gid"})
+	if uidOK && gidOK {
+		return strconv.FormatInt(uid, 10) + ":" + strconv.FormatInt(gid, 10)
+	}
 	return ""
 }
 func appleHasPrivateWorkspaceMount(root map[string]any, workspace string) bool {
@@ -615,63 +780,138 @@ func appleInspectMountIsReadWrite(mount map[string]any) bool {
 	return true
 }
 func appleHasRlimit(root map[string]any, names ...string) bool {
-	value, present := appleValueAt(root, []string{"initProcess", "rlimits"}); if !present { return false }
-	limits, ok := value.([]any); if !ok { return false }
+	value, present := appleValueAt(root, []string{"initProcess", "rlimits"})
+	if !present {
+		return false
+	}
+	limits, ok := value.([]any)
+	if !ok {
+		return false
+	}
 	for _, value := range limits {
-		limit, ok := value.(map[string]any); if !ok { continue }
+		limit, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
 		name := appleStringAt(limit, []string{"limit"})
 		nameMatches := false
-		for _, allowed := range names { if name == allowed { nameMatches = true; break } }
-		soft, softOK := appleIntAt(limit, []string{"soft"}); hard, hardOK := appleIntAt(limit, []string{"hard"})
-		if nameMatches && softOK && hardOK && soft == 64 && hard == 64 { return true }
+		for _, allowed := range names {
+			if name == allowed {
+				nameMatches = true
+				break
+			}
+		}
+		soft, softOK := appleIntAt(limit, []string{"soft"})
+		hard, hardOK := appleIntAt(limit, []string{"hard"})
+		if nameMatches && softOK && hardOK && soft == 64 && hard == 64 {
+			return true
+		}
 	}
 	return false
 }
 func appleInspectDNSDisabled(root map[string]any) bool {
-	if noDNS, present := appleBoolAt(root, []string{"no_dns"}, []string{"noDNS"}); present { return noDNS }
-	value, present := appleValueAt(root, []string{"dns"}); if !present || value == nil { return true }
-	dns, ok := value.(map[string]any); if !ok { return false }
+	if noDNS, present := appleBoolAt(root, []string{"no_dns"}, []string{"noDNS"}); present {
+		return noDNS
+	}
+	value, present := appleValueAt(root, []string{"dns"})
+	if !present || value == nil {
+		return true
+	}
+	dns, ok := value.(map[string]any)
+	if !ok {
+		return false
+	}
 	return appleEmptyListAt(dns, []string{"nameservers"}) && appleEmptyListAt(dns, []string{"searchDomains"}) && appleEmptyListAt(dns, []string{"options"}) && appleStringAt(dns, []string{"domain"}) == ""
 }
 func sameAppleInspectableImage(left, right string) bool {
 	leftName, leftDigest, leftOK := strings.Cut(left, "@")
 	rightName, rightDigest, rightOK := strings.Cut(right, "@")
-	if !leftOK || !rightOK || leftDigest != rightDigest { return false }
+	if !leftOK || !rightOK || leftDigest != rightDigest {
+		return false
+	}
 	leftRepository, _, _ := splitDockerImageTag(leftName)
 	rightRepository, _, _ := splitDockerImageTag(rightName)
 	return leftRepository == rightRepository
 }
-func appleValueAt(root map[string]any, path []string) (any, bool) { var value any = root; for _, segment := range path { object, ok := value.(map[string]any); if !ok { return nil, false }; value, ok = object[segment]; if !ok { return nil, false } }; return value, true }
-func sameStringSlice(left, right []string) bool { if len(left) != len(right) { return false }; for index := range left { if left[index] != right[index] { return false } }; return true }
+func appleValueAt(root map[string]any, path []string) (any, bool) {
+	var value any = root
+	for _, segment := range path {
+		object, ok := value.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		value, ok = object[segment]
+		if !ok {
+			return nil, false
+		}
+	}
+	return value, true
+}
+func sameStringSlice(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
 
-type appleStagedFileIdentity struct { dev, ino, nlink uint64; mode os.FileMode }
+type appleStagedFileIdentity struct {
+	dev, ino, nlink uint64
+	mode            os.FileMode
+}
 
 func pinAppleStagedResult(path string) (appleStagedFileIdentity, error) {
 	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o666 || info.Mode()&os.ModeSymlink != 0 { return appleStagedFileIdentity{}, errors.New("apple staged result is not a writable regular file") }
-	stat, ok := info.Sys().(*syscall.Stat_t); if !ok || stat.Nlink != 1 { return appleStagedFileIdentity{}, errors.New("apple staged result is not singly linked") }
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o666 || info.Mode()&os.ModeSymlink != 0 {
+		return appleStagedFileIdentity{}, errors.New("apple staged result is not a writable regular file")
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Nlink != 1 {
+		return appleStagedFileIdentity{}, errors.New("apple staged result is not singly linked")
+	}
 	return appleStagedFileIdentity{dev: uint64(stat.Dev), ino: uint64(stat.Ino), nlink: uint64(stat.Nlink), mode: info.Mode()}, nil
 }
 
 func revalidateAppleStagedResult(path string, want appleStagedFileIdentity) error {
-	got, err := pinAppleStagedResult(path); if err != nil { return err }
-	if got != want { return errors.New("apple staged result identity changed during execution") }
+	got, err := pinAppleStagedResult(path)
+	if err != nil {
+		return err
+	}
+	if got != want {
+		return errors.New("apple staged result identity changed during execution")
+	}
 	return nil
 }
 
 func readAppleStagedResult(path string, maximum int64, want appleStagedFileIdentity) ([]byte, error) {
 	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
-	if err != nil { return nil, fmt.Errorf("open apple container result without following links: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("open apple container result without following links: %w", err)
+	}
 	defer file.Close()
 	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() < 0 || info.Size() > maximum { return nil, errors.New("apple container result exceeds max_output_bytes") }
+	if err != nil || !info.Mode().IsRegular() || info.Size() < 0 || info.Size() > maximum {
+		return nil, errors.New("apple container result exceeds max_output_bytes")
+	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || stat.Nlink != 1 { return nil, errors.New("apple container result identity changed during read") }
+	if !ok || stat.Nlink != 1 {
+		return nil, errors.New("apple container result identity changed during read")
+	}
 	got := appleStagedFileIdentity{dev: uint64(stat.Dev), ino: uint64(stat.Ino), nlink: uint64(stat.Nlink), mode: info.Mode()}
-	if got != want { return nil, errors.New("apple container result identity changed during read") }
+	if got != want {
+		return nil, errors.New("apple container result identity changed during read")
+	}
 	result, err := io.ReadAll(io.LimitReader(file, maximum+1))
-	if err != nil { return nil, fmt.Errorf("read apple container result: %w", err) }
-	if int64(len(result)) > maximum { return nil, errors.New("apple container result exceeds max_output_bytes") }
+	if err != nil {
+		return nil, fmt.Errorf("read apple container result: %w", err)
+	}
+	if int64(len(result)) > maximum {
+		return nil, errors.New("apple container result exceeds max_output_bytes")
+	}
 	return result, nil
 }
 

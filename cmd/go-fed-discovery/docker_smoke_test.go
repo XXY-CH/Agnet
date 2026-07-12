@@ -188,13 +188,13 @@ func dockerSmokeSocketIdentity(path string) (DockerSocketIdentity, error) {
 
 func dockerSmokeRequest(program string) DockerRunRequest {
 	return DockerRunRequest{
-		Image:         dockerSmokeImage,
-		Command:       []string{"node", "-e", program},
-		CPUs:          "1.5",
-		MemoryBytes:   64 << 20,
-		TimeoutMillis: 30_000,
+		Image:          dockerSmokeImage,
+		Command:        []string{"node", "-e", program},
+		CPUs:           "1.5",
+		MemoryBytes:    64 << 20,
+		TimeoutMillis:  30_000,
 		MaxOutputBytes: 1 << 20,
-		ScratchInputs: []DockerScratchInput{{Path: "payload.txt", Bytes: []byte(dockerSmokeInput)}},
+		ScratchInputs:  []DockerScratchInput{{Path: "payload.txt", Bytes: []byte(dockerSmokeInput)}},
 	}
 }
 
@@ -289,4 +289,3 @@ func TestDockerCompatibilitySmokeDoesNotRunWithoutOptIn(t *testing.T) {
 		t.Fatal("real Docker adapter initialized without explicit opt-in")
 	}
 }
-

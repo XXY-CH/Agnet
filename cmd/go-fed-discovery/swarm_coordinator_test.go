@@ -12,9 +12,9 @@ import (
 )
 
 type coordinatorTestLauncher struct {
-	t        *testing.T
-	journal  *SwarmJournal
-	now      func() time.Time
+	t       *testing.T
+	journal *SwarmJournal
+	now     func() time.Time
 
 	mu       sync.Mutex
 	launched []SwarmWorkerRequest
@@ -47,7 +47,6 @@ func (l *coordinatorTestLauncher) Launch(_ context.Context, request SwarmWorkerR
 	}
 	return SwarmWorkerResult{Format: localSwarmWorkerResultFormat, SwarmID: request.SwarmID, StepID: request.StepID, Fence: request.Fence, ReceiptDigest: receipt.Digest}, nil
 }
-
 
 func TestLocalSwarmCoordinatorRunsWholeReadyWaveBeforeDependent(t *testing.T) {
 	now := swarmJournalTestTime.Add(time.Hour)
@@ -439,7 +438,7 @@ func TestLocalSwarmCoordinatorRejectsOversizedSignedSwarmBeforeOpeningJournal(t 
 	request := map[string]any{
 		"type": "FED_SWARM_OPEN", "origin_zone": origin, "requester": requester,
 		"requester_zone_binding": signBodyWithKey(fixture.AuthorityPrivateKey, map[string]any{"zone": origin["zid"], "alias": requester["alias"], "aid": requester["aid"]}, "signature"),
-		"swarm": map[string]any{"swarm_id": swarmID, "plan": plan, "execution_binding": binding, "steps": executableSteps},
+		"swarm":                  map[string]any{"swarm_id": swarmID, "plan": plan, "execution_binding": binding, "steps": executableSteps},
 	}
 	root := t.TempDir()
 	coordinator, err := NewLocalSwarmCoordinator(fixture, root, "test-coordinator", nil, time.Now)

@@ -1,16 +1,16 @@
 package main
 
 import (
-    "bytes"
-    "crypto/ed25519"
-    "encoding/base64"
-    "encoding/json"
-    "errors"
-    "os"
-    "path/filepath"
-    "strings"
-    "testing"
-    "time"
+	"bytes"
+	"crypto/ed25519"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
 )
 
 func TestU22StageArtifactIsPrivateImmutableAndInvisibleUntilCommitted(t *testing.T) {
@@ -98,7 +98,10 @@ func TestU22CommitReceiptFencesPublicationAndIsExactlyOnce(t *testing.T) {
 		func(c *ReceiptCommit) { c.Claim.Attempt++ },
 		func(c *ReceiptCommit) { c.Claim.Capability = "other" },
 		func(c *ReceiptCommit) { c.Claim.Candidate.GenerationPin.RecordDigest = "other" },
-		func(c *ReceiptCommit) { c.Receipt.Bytes = append([]byte(nil), c.Receipt.Bytes...); c.Receipt.Bytes = append(c.Receipt.Bytes, ' ') },
+		func(c *ReceiptCommit) {
+			c.Receipt.Bytes = append([]byte(nil), c.Receipt.Bytes...)
+			c.Receipt.Bytes = append(c.Receipt.Bytes, ' ')
+		},
 	} {
 		conflict := commit
 		mutate(&conflict)
@@ -111,22 +114,41 @@ func TestU22CommitReceiptFencesPublicationAndIsExactlyOnce(t *testing.T) {
 func TestU22CommitReceiptRejectsBadFenceAndNoPublicationOnJournalSyncFailure(t *testing.T) {
 	failure := errors.New("journal sync failed")
 	journal := newTestSwarmJournal(t, func(point SwarmFaultPoint) error {
-		if point == SwarmFaultFileSync { return failure }
+		if point == SwarmFaultFileSync {
+			return failure
+		}
 		return nil
 	})
 	spec := reducerTestDurableSpec(t)
 	spec.Steps[0].TaskDigest, spec.Steps[0].Capability = strings.Repeat("a", 64), "analysis"
 	journal.fault = nil
-	if _, err := OpenVerifiedSwarm(journal, spec, swarmJournalTestTime); err != nil { t.Fatal(err) }
-	if _, _, err := RecordNextReadyWave(journal, swarmJournalTestTime.Add(time.Second)); err != nil { t.Fatal(err) }
+	if _, err := OpenVerifiedSwarm(journal, spec, swarmJournalTestTime); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := RecordNextReadyWave(journal, swarmJournalTestTime.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
 	dispatch, err := ClaimReadyWave(journal, "worker-a", swarmJournalTestTime.Add(time.Minute), swarmJournalTestTime.Add(2*time.Second))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	result, err := StageArtifact(journal, []byte("unpublished"))
-	if err != nil { t.Fatal(err) }
-	journal.fault = func(point SwarmFaultPoint) error { if point == SwarmFaultFileSync { return failure }; return nil }
+	if err != nil {
+		t.Fatal(err)
+	}
+	journal.fault = func(point SwarmFaultPoint) error {
+		if point == SwarmFaultFileSync {
+			return failure
+		}
+		return nil
+	}
 	commit := ReceiptCommit{Claim: dispatch.Claims[0], Receipt: u22Receipt(t, spec, dispatch.Claims[0], result), Result: result}
-	if _, err := CommitReceipt(journal, commit, swarmJournalTestTime.Add(3*time.Second)); !errors.Is(err, failure) { t.Fatalf("commit fault = %v", err) }
-	if _, err := ReadCommittedArtifact(journal, result); !errors.Is(err, ErrArtifactNotCommitted) { t.Fatalf("artifact published before journal fsync: %v", err) }
+	if _, err := CommitReceipt(journal, commit, swarmJournalTestTime.Add(3*time.Second)); !errors.Is(err, failure) {
+		t.Fatalf("commit fault = %v", err)
+	}
+	if _, err := ReadCommittedArtifact(journal, result); !errors.Is(err, ErrArtifactNotCommitted) {
+		t.Fatalf("artifact published before journal fsync: %v", err)
+	}
 }
 
 func TestU22VerifierRejectsNoncanonicalAndFrozenTaskGraphBindings(t *testing.T) {
@@ -136,7 +158,9 @@ func TestU22VerifierRejectsNoncanonicalAndFrozenTaskGraphBindings(t *testing.T) 
 	artifact := StagedArtifact{SHA256: strings.Repeat("b", 64), Size: 1}
 	receipt := u22Receipt(t, spec, claim, artifact)
 	expected := ReceiptExpectation{SwarmID: spec.SwarmID, Claim: claim, TaskDigest: spec.Steps[0].TaskDigest, GraphDigest: digestBytesHex(spec.Binding), Result: artifact.Triple(), Auxiliary: []ArtifactTriple{}, DependsOn: map[string]ArtifactTriple{}}
-	if err := VerifyReceiptV2(receipt.Bytes, expected); err != nil { t.Fatal(err) }
+	if err := VerifyReceiptV2(receipt.Bytes, expected); err != nil {
+		t.Fatal(err)
+	}
 	for _, mutate := range []func(*ReceiptExpectation){
 		func(e *ReceiptExpectation) { e.TaskDigest = strings.Repeat("c", 64) },
 		func(e *ReceiptExpectation) { e.GraphDigest = strings.Repeat("d", 64) },
@@ -145,9 +169,13 @@ func TestU22VerifierRejectsNoncanonicalAndFrozenTaskGraphBindings(t *testing.T) 
 	} {
 		wrong := expected
 		mutate(&wrong)
-		if err := VerifyReceiptV2(receipt.Bytes, wrong); err == nil { t.Fatal("verifier accepted a frozen binding mismatch") }
+		if err := VerifyReceiptV2(receipt.Bytes, wrong); err == nil {
+			t.Fatal("verifier accepted a frozen binding mismatch")
+		}
 	}
-	if _, err := StageReceipt(append(append([]byte(nil), receipt.Bytes...), ' ')); err == nil { t.Fatal("receipt stage accepted noncanonical bytes") }
+	if _, err := StageReceipt(append(append([]byte(nil), receipt.Bytes...), ' ')); err == nil {
+		t.Fatal("receipt stage accepted noncanonical bytes")
+	}
 }
 
 func TestU22VerifierRejectsArbitraryAndWrongKeySignatures(t *testing.T) {
@@ -222,15 +250,27 @@ func TestU22ExpiredReceiptCannotPublish(t *testing.T) {
 	journal := newTestSwarmJournal(t)
 	spec := reducerTestDurableSpec(t)
 	spec.Steps[0].TaskDigest, spec.Steps[0].Capability = strings.Repeat("a", 64), "analysis"
-	if _, err := OpenVerifiedSwarm(journal, spec, swarmJournalTestTime); err != nil { t.Fatal(err) }
-	if _, _, err := RecordNextReadyWave(journal, swarmJournalTestTime.Add(time.Second)); err != nil { t.Fatal(err) }
+	if _, err := OpenVerifiedSwarm(journal, spec, swarmJournalTestTime); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := RecordNextReadyWave(journal, swarmJournalTestTime.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
 	dispatch, err := ClaimReadyWave(journal, "worker-a", swarmJournalTestTime.Add(3*time.Second), swarmJournalTestTime.Add(2*time.Second))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	result, err := StageArtifact(journal, []byte("expired"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	commit := ReceiptCommit{Claim: dispatch.Claims[0], Receipt: u22Receipt(t, spec, dispatch.Claims[0], result), Result: result}
-	if _, err := CommitReceipt(journal, commit, swarmJournalTestTime.Add(3*time.Second)); err == nil { t.Fatal("expired lease committed a receipt") }
-	if _, err := ReadCommittedArtifact(journal, result); !errors.Is(err, ErrArtifactNotCommitted) { t.Fatalf("expired receipt published artifact: %v", err) }
+	if _, err := CommitReceipt(journal, commit, swarmJournalTestTime.Add(3*time.Second)); err == nil {
+		t.Fatal("expired lease committed a receipt")
+	}
+	if _, err := ReadCommittedArtifact(journal, result); !errors.Is(err, ErrArtifactNotCommitted) {
+		t.Fatalf("expired receipt published artifact: %v", err)
+	}
 }
 
 func u22Receipt(t *testing.T, spec DurableSwarmSpec, claim LeaseClaim, result StagedArtifact) StagedReceipt {

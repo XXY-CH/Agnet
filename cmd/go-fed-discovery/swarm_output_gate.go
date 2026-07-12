@@ -18,9 +18,9 @@ import (
 
 const (
 	swarmOutputVerificationFrameType      = "FED_SWARM_OUTPUT_VERIFY"
-	maxSwarmOutputVerificationFrameBytes = 256 << 10
-	maxSwarmOutputVerificationProofBytes = 192 << 10
-	maxSwarmOutputVerificationAttempts   = 8
+	maxSwarmOutputVerificationFrameBytes  = 256 << 10
+	maxSwarmOutputVerificationProofBytes  = 192 << 10
+	maxSwarmOutputVerificationAttempts    = 8
 	maxSwarmOutputVerificationRecordBytes = 224 << 10
 )
 
@@ -29,14 +29,14 @@ var errOutputProofRejected = errors.New("output verification rejected")
 // OutputVerificationAttempt is the durable result of a submitted output proof.
 // It deliberately contains only journal-derived or verifier-authenticated data.
 type OutputVerificationAttempt struct {
-	SwarmID          string         `json:"swarm_id"`
-	VerificationID   string         `json:"verification_id"`
-	Decision         string         `json:"decision"`
-	ProofDigest      string         `json:"proof_digest"`
-	CloseDigest      string         `json:"close_digest"`
-	TrustInputsDigest string        `json:"trust_inputs_digest"`
-	VerifiedAt       string         `json:"verified_at"`
-	FinalOutput      map[string]any `json:"final_output"`
+	SwarmID           string         `json:"swarm_id"`
+	VerificationID    string         `json:"verification_id"`
+	Decision          string         `json:"decision"`
+	ProofDigest       string         `json:"proof_digest"`
+	CloseDigest       string         `json:"close_digest"`
+	TrustInputsDigest string         `json:"trust_inputs_digest"`
+	VerifiedAt        string         `json:"verified_at"`
+	FinalOutput       map[string]any `json:"final_output"`
 }
 
 type parsedOutputVerificationFrame struct {
@@ -429,24 +429,24 @@ func validOutputVerifiedPayload(payload outputVerifiedPayload) bool {
 // every completion claim and excludes only the detached completion signature itself.
 func outputVerifiedPayloadBody(payload outputVerifiedPayload) map[string]any {
 	return map[string]any{
-		"schema_version":          payload.SchemaVersion,
-		"swarm_id":                payload.SwarmID,
-		"verification_id":         payload.VerificationID,
-		"canonical_proof_digest":  payload.CanonicalProofDigest,
-		"submission_digest":       payload.SubmissionDigest,
-		"proof":                   payload.Proof,
-		"proof_digest":            payload.ProofDigest,
-		"close":                   payload.Close,
-		"close_digest":            payload.CloseDigest,
-		"trust_inputs_digest":     payload.TrustInputsDigest,
-		"final_output":            payload.FinalOutput,
-		"verified_at":             payload.VerifiedAt,
-		"verifier_aid":            payload.VerifierAID,
-		"verifier_zone":           payload.VerifierZone,
-		"prior_status":            payload.PriorStatus,
-		"next_status":             payload.NextStatus,
-		"replay_decision":         payload.ReplayDecision,
-		"completed_at":            payload.CompletedAt,
+		"schema_version":         payload.SchemaVersion,
+		"swarm_id":               payload.SwarmID,
+		"verification_id":        payload.VerificationID,
+		"canonical_proof_digest": payload.CanonicalProofDigest,
+		"submission_digest":      payload.SubmissionDigest,
+		"proof":                  payload.Proof,
+		"proof_digest":           payload.ProofDigest,
+		"close":                  payload.Close,
+		"close_digest":           payload.CloseDigest,
+		"trust_inputs_digest":    payload.TrustInputsDigest,
+		"final_output":           payload.FinalOutput,
+		"verified_at":            payload.VerifiedAt,
+		"verifier_aid":           payload.VerifierAID,
+		"verifier_zone":          payload.VerifierZone,
+		"prior_status":           payload.PriorStatus,
+		"next_status":            payload.NextStatus,
+		"replay_decision":        payload.ReplayDecision,
+		"completed_at":           payload.CompletedAt,
 	}
 }
 

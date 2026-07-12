@@ -138,12 +138,12 @@ func taskArtifactURI(task map[string]any, fallback string) (string, error) {
 
 func containerProfileReceipt(profile DockerWorkerProfile) map[string]any {
 	limits := map[string]any{
-		"cpu_millis": float64(profile.Limits.CPUMillis),
-		"memory_bytes": float64(profile.Limits.MemoryBytes),
-		"timeout_millis": float64(profile.Limits.TimeoutMillis),
-		"max_output_bytes": float64(profile.Limits.MaxOutputBytes),
+		"cpu_millis":              float64(profile.Limits.CPUMillis),
+		"memory_bytes":            float64(profile.Limits.MemoryBytes),
+		"timeout_millis":          float64(profile.Limits.TimeoutMillis),
+		"max_output_bytes":        float64(profile.Limits.MaxOutputBytes),
 		"max_scratch_input_bytes": float64(profile.Limits.MaxScratchInputBytes),
-		"max_scratch_bytes": float64(profile.Limits.MaxScratchBytes),
+		"max_scratch_bytes":       float64(profile.Limits.MaxScratchBytes),
 	}
 	result := map[string]any{"image": profile.Image, "command": append([]string(nil), profile.Command...), "limits": limits}
 	if len(profile.ScratchInputs) > 0 {
@@ -194,7 +194,7 @@ func containerPromotionEvidence(worker *Worker, task map[string]any, result Tool
 			"exit_code":        adapterObserved["exit_code"],
 			"result_bytes":     artifactManifest["size"],
 			"transcript_bytes": transcriptBytes,
-			"artifact_count":    artifactCount,
+			"artifact_count":   artifactCount,
 		},
 		"task_id":           task["task_id"],
 		"task_digest":       digestHex(task),
@@ -209,11 +209,11 @@ func containerPromotionEvidence(worker *Worker, task map[string]any, result Tool
 func stagedArtifactManifest(uri string, data []byte, mediaType string) map[string]any {
 	sha := digestBytesHex(data)
 	manifest := map[string]any{
-		"uri": uri,
-		"sha256": sha,
-		"size": float64(len(data)),
+		"uri":        uri,
+		"sha256":     sha,
+		"size":       float64(len(data)),
 		"media_type": mediaType,
-		"afp": "afp:sha256:" + sha,
+		"afp":        "afp:sha256:" + sha,
 	}
 	manifest["manifest_hash"] = digestHex(manifest)
 	return manifest
@@ -233,7 +233,7 @@ func artifactPublicationReady(artifactStoreDir string) bool {
 		}
 	}
 	return true
-	}
+}
 
 func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worker, task map[string]any, parentCheckpoint any, restoredStateDigest string, retryOf any, requireHumanApproval bool, receiptExtra map[string]any, onReceipt func(map[string]any) error) error {
 	taskID := fmt.Sprint(task["task_id"])

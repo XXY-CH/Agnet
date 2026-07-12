@@ -50,11 +50,11 @@ type swarmCloseStepEvidence struct {
 }
 
 type swarmCloseFinalOutput struct {
-	StepID              string        `json:"step_id"`
-	TaskID              string        `json:"task_id"`
-	SignedReceiptDigest string        `json:"signed_receipt_digest"`
+	StepID              string         `json:"step_id"`
+	TaskID              string         `json:"task_id"`
+	SignedReceiptDigest string         `json:"signed_receipt_digest"`
 	Artifact            ArtifactTriple `json:"artifact"`
-	SelectionRule       string        `json:"selection_rule"`
+	SelectionRule       string         `json:"selection_rule"`
 }
 
 type closeStoredPayload struct {

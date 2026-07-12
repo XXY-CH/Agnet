@@ -1,8 +1,8 @@
 package main
 
 import (
-	"context"
 	"agnet/internal/managedkey"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -134,11 +134,11 @@ func TestDockerPromotionBindsVerifiedStagedEvidence(t *testing.T) {
 		t.Fatal("promotion callback was not invoked")
 	}
 	if err := verifyReceiptRecord(map[string]any{
-		"kind": "go_fed_receipt",
-		"zone": fixture.Authority,
-		"worker": worker.Descriptor,
+		"kind":         "go_fed_receipt",
+		"zone":         fixture.Authority,
+		"worker":       worker.Descriptor,
 		"zone_binding": fixture.zoneBinding(worker),
-		"receipt": callbackReceipt,
+		"receipt":      callbackReceipt,
 	}, fixture.ArtifactStoreDir, task); err != nil {
 		t.Fatalf("promoted container receipt did not verify: %v", err)
 	}
@@ -185,11 +185,11 @@ func TestContainerPromotionAppleRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := verifyReceiptRecord(map[string]any{
-		"kind": "go_fed_receipt",
-		"zone": fixture.Authority,
-		"worker": worker.Descriptor,
+		"kind":         "go_fed_receipt",
+		"zone":         fixture.Authority,
+		"worker":       worker.Descriptor,
 		"zone_binding": fixture.zoneBinding(worker),
-		"receipt": receipt,
+		"receipt":      receipt,
 	}, fixture.ArtifactStoreDir, task); err != nil {
 		t.Fatalf("promoted Apple container receipt did not verify: %v", err)
 	}

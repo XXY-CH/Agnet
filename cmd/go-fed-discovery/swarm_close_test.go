@@ -153,7 +153,9 @@ func TestSendPreservesRawMessageBytes(t *testing.T) {
 	}()
 	buffer := make([]byte, 256)
 	count, err := client.Read(buffer)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	<-done
 	if !bytes.Contains(buffer[:count], []byte(`"receipt":{"html":"<tag>&"}`)) {
 		t.Fatalf("raw receipt bytes were changed: %q", buffer[:count])

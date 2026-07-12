@@ -142,6 +142,32 @@ test("Go durable Swarm has no production serial execution callsite", async () =>
   assert.match(mainSource, /case "FED_SWARM_OPEN", "FED_SWARM_RESUME"/);
 });
 
+test("Go durable Swarm exposes two-process crash-closure evidence", async () => {
+  const { stdout } = await execFileAsync("go", [
+    "test",
+    "-race",
+    "./cmd/go-fed-discovery",
+    "-run",
+    "^(TestTwoProcess|TestCrash|TestFailureInjection|TestReadyWaveWorkersOverlap)",
+    "-count=1",
+    "-v",
+  ], { timeout: 120_000, maxBuffer: 4 * 1024 * 1024 });
+
+  for (const evidence of [
+    /two_process_winner=1/,
+    /overlap_pids=\[[0-9]+ [0-9]+\]/,
+    /dependency_sync_barrier=blocked_before_fsync_then_publish_ready/,
+    /stale_fence_rejection=true/,
+    /receipt_replay_decision=idempotent conflict=rejected/,
+    /retry_migration_outcome=one_migration_then_failure/,
+    /verification_race_result=one_completion disband_count=1/,
+    /crash_matrix=stage/,
+    /crash_matrix=close,disband/,
+  ]) {
+    assert.match(stdout, evidence);
+  }
+});
+
 async function assertPersistentPathAbsent(path, message) {
   await assert.rejects(lstat(path), (error) => error.code === "ENOENT", message);
 }
@@ -425,6 +451,31 @@ function waitForGoGateway(child, port) {
     });
   });
 }
+async function stopGoGateway(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const exited = new Promise((resolve) => child.once("exit", resolve));
+  try {
+    process.kill(-child.pid, "SIGINT");
+  } catch {
+    child.kill("SIGINT");
+  }
+  const grace = new Promise((resolve) => {
+    const timer = setTimeout(resolve, 5000);
+    timer.unref();
+  });
+  await Promise.race([exited, grace]);
+  if (child.exitCode === null && child.signalCode === null) {
+    try {
+      process.kill(-child.pid, "SIGKILL");
+    } catch {
+      child.kill("SIGKILL");
+    }
+    await exited;
+  }
+}
+
+
+const frameExchangeTimeoutMs = 45_000;
 
 function exchangeFrames(port, frame, closeType = "FED_TASK_CLOSE") {
   frame = bindRequester(frame);
@@ -432,39 +483,58 @@ function exchangeFrames(port, frame, closeType = "FED_TASK_CLOSE") {
     const socket = net.createConnection(port, "127.0.0.1");
     const frames = [];
     let buffer = "";
-    socket.on("error", reject);
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.end();
+      resolve(result);
+    };
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.destroy();
+      reject(error);
+    };
+    const timer = setTimeout(
+      () => fail(new Error(`frame exchange timed out after ${frameExchangeTimeoutMs}ms waiting for ${closeType}; frames=${JSON.stringify(frames)}`)),
+      frameExchangeTimeoutMs,
+    );
+    timer.unref();
+    socket.on("error", fail);
     socket.on("connect", () => {
       socket.write(`${JSON.stringify({ type: "HELLO", origin_zone: frame.origin_zone })}\n`);
     });
     socket.on("data", (chunk) => {
-      buffer += chunk.toString();
-      const lines = buffer.split("\n");
-      buffer = lines.pop();
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        const item = JSON.parse(line);
-        if (item.type === "HELLO") {
-          const body = authBody(item.session_id, item.challenge, frame.origin_zone.zid, item.zone.zid);
-          socket.write(`${JSON.stringify({
-            type: "AUTH",
-            origin_zone: frame.origin_zone,
-            auth: { ...body, auth_signature: signObject(zoneA.privateKey, body) },
-          })}\n`);
-          continue;
+      try {
+        buffer += chunk.toString();
+        const lines = buffer.split("\n");
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const item = JSON.parse(line);
+          if (item.type === "HELLO") {
+            const body = authBody(item.session_id, item.challenge, frame.origin_zone.zid, item.zone.zid);
+            socket.write(`${JSON.stringify({
+              type: "AUTH",
+              origin_zone: frame.origin_zone,
+              auth: { ...body, auth_signature: signObject(zoneA.privateKey, body) },
+            })}\n`);
+            continue;
+          }
+          if (item.type === "AUTH_OK") {
+            socket.write(`${JSON.stringify(frame)}\n`);
+            continue;
+          }
+          frames.push(item);
+          if (item.type === "FED_TASK_ERROR" || item.type === closeType) {
+            finish(frames);
+          }
         }
-        if (item.type === "AUTH_OK") {
-          socket.write(`${JSON.stringify(frame)}\n`);
-          continue;
-        }
-        frames.push(item);
-        if (item.type === "FED_TASK_ERROR") {
-          socket.end();
-          resolve(frames);
-        }
-        if (item.type === closeType) {
-          socket.end();
-          resolve(frames);
-        }
+      } catch (error) {
+        fail(error);
       }
     });
   });
@@ -629,6 +699,20 @@ async function waitForPendingApproval(humanPort, taskId) {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(`pending approval not found for ${taskId}`);
+}
+
+async function waitForJournalQueueView(humanPort, legacyTaskId) {
+  let lastQueue = [];
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const response = await fetch(`http://127.0.0.1:${humanPort}/api/queue`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    if (!Array.isArray(body.queue)) throw new Error(`queue view response missing queue array: ${JSON.stringify(body)}`);
+    lastQueue = body.queue;
+    if (!lastQueue.some((item) => item.task_id === legacyTaskId)) return lastQueue;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`journal-derived queue view still exposed legacy task ${legacyTaskId} after 5000ms; last_queue=${JSON.stringify(lastQueue)}`);
 }
 
 async function waitForLiveTranscriptLines(humanPort, taskId) {
@@ -830,6 +914,7 @@ test("Go gateway rejects unsigned or substituted executable Swarm before executi
   await rm("state/go-fed-u2-audit.log", { force: true });
   await rm("state/go-fed-u2-audit-tasks", { recursive: true, force: true });
   await rm("state/go-fed-u2-artifacts", { recursive: true, force: true });
+  await rm("state/go-fed-u2-swarms", { recursive: true, force: true });
 
   const gateway = spawn("go", [
     "run",
@@ -843,6 +928,8 @@ test("Go gateway rejects unsigned or substituted executable Swarm before executi
     "--fixture",
     "state/go-fed-u2-worker.json",
     ...managedRuntimeArguments(runtime),
+    "--swarm-state-dir",
+    "state/go-fed-u2-swarms",
     "--audit",
     "state/go-fed-u2-audit.log",
   ], {
@@ -852,7 +939,7 @@ test("Go gateway rejects unsigned or substituted executable Swarm before executi
   });
 
   const runId = `${process.pid}_${Date.now()}`;
-  const persistentPaths = ["state/go-fed-u2-audit.log", "state/go-fed-u2-audit-tasks", "state/go-fed-u2-artifacts", "artifacts"];
+  const persistentPaths = ["state/go-fed-u2-audit.log", "state/go-fed-u2-audit-tasks", "state/go-fed-u2-artifacts", "state/go-fed-u2-swarms", "artifacts"];
   const buildFrame = ({ name, type = "FED_SWARM_OPEN", definitions }) => {
     const swarmId = `swarm://local/go-u2-${runId}-${name}`;
     const steps = definitions.map(({ stepId, after = [], capability = "summarize.text" }) => {
@@ -897,9 +984,9 @@ test("Go gateway rejects unsigned or substituted executable Swarm before executi
   changedTask.swarm.steps[0].task = { ...changedTaskBody, signature: signObject(requester.privateKey, changedTaskBody) };
   cases.push({ name: "changed signed task", frame: changedTask, error: /execution binding task_digest mismatch/ });
 
-  const reordered = buildFrame({ name: "reordered", type: "FED_SWARM_SCHEDULE", definitions: [{ stepId: "first" }, { stepId: "second" }] });
+  const reordered = buildFrame({ name: "reordered", definitions: [{ stepId: "first" }, { stepId: "second" }] });
   reordered.swarm.steps.reverse();
-  cases.push({ name: "reordered schedule input", frame: reordered, error: /execution binding executable step order mismatch/ });
+  cases.push({ name: "reordered executable input", frame: reordered, error: /execution binding executable step order mismatch/ });
 
   const reconnected = buildFrame({ name: "reconnected", definitions: [{ stepId: "first" }, { stepId: "second", after: ["first"] }] });
   delete reconnected.swarm.steps[1].after;
@@ -912,8 +999,8 @@ test("Go gateway rejects unsigned or substituted executable Swarm before executi
   substitutedTerminal.swarm.steps[0].step_id = "replacement";
   cases.push({ name: "terminal-step substitution", frame: substitutedTerminal, error: /execution binding executable step order mismatch/ });
 
-  const invalidGraph = buildFrame({ name: "invalid-graph", type: "FED_SWARM_SCHEDULE", definitions: [{ stepId: "only", after: ["missing"] }] });
-  cases.push({ name: "graph preflight rejection", frame: invalidGraph, error: /swarm schedule dependency unresolved/ });
+  const invalidGraph = buildFrame({ name: "invalid-graph", definitions: [{ stepId: "only", after: ["missing"] }] });
+  cases.push({ name: "graph preflight rejection", frame: invalidGraph, error: /swarm dependency not completed: missing/ });
   const invalidOpenGraph = buildFrame({ name: "invalid-open-graph", definitions: [{ stepId: "first" }, { stepId: "second", after: ["missing"] }] });
   cases.push({ name: "open graph preflight rejection", frame: invalidOpenGraph, error: /swarm dependency not completed: missing/ });
 
@@ -941,285 +1028,123 @@ test("Go gateway rejects unsigned or substituted executable Swarm before executi
         }
       });
     }
-    await t.test("propagates verified plan and graph digests", async () => {
+    await t.test("reaches durable terminal state for a verified local Swarm", async () => {
       const valid = buildFrame({ name: "valid", definitions: [{ stepId: "first" }, { stepId: "second", after: ["first"] }] });
-      const frames = await exchangeFrames(port, valid, "FED_SWARM_CLOSE");
-      const close = frames.at(-1).close;
-      assert.equal(close.plan_digest, valid.swarm.plan.plan.plan_digest);
-      assert.equal(close.execution_graph_digest, valid.swarm.execution_binding.execution_graph_digest);
-      for (const receipt of frames.filter((frame) => frame.type === "FED_RECEIPT").map((frame) => frame.receipt)) {
-        assert.equal(receipt.swarm.plan_digest, close.plan_digest);
-        assert.equal(receipt.swarm.execution_graph_digest, close.execution_graph_digest);
-      }
+      const frames = await exchangeFrames(port, valid, "FED_SWARM_STATE");
+      assert.deepEqual(frames.map((frame) => frame.type), ["FED_SWARM_STATE"]);
+      const view = frames[0].swarm;
+      assert.equal(view.format, "agnet-local-swarm-view/v1");
+      assert.equal(view.swarm_id, valid.swarm.swarm_id);
+      assert.equal(view.status, "failed");
+      assert.deepEqual(view.steps.map(({ step_id, status, attempts }) => ({ step_id, status, attempts })), [
+        { step_id: "first", status: "failed", attempts: 1 },
+        { step_id: "second", status: "pending", attempts: 0 },
+      ]);
+      assert.deepEqual(view.steps[0].observations.map(({ outcome }) => outcome), ["dispatched", "launcher_failed", "expired"]);
+      assert.deepEqual(view.committed_artifacts, {});
+      assert.equal(frames.some((frame) => ["FED_RECEIPT", "FED_SWARM_CLOSE", "FED_SWARM_DISBAND"].includes(frame.type)), false);
     });
   } finally {
-    try {
-      process.kill(-gateway.pid, "SIGINT");
-    } catch {
-      // already exited
-    }
+    await stopGoGateway(gateway);
     await runtime.cleanup();
   }
 });
 
-test("Go discovery migrates a failed Swarm step and signs migration_log", async () => {
-  const [port] = await freePorts(1);
-  zoneA = await loadManagedTestZone("zone://a");
-  const requester = createAgent("agent://zone-a/requester");
-  const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
-  const authorityZone = authorityZoneFromFixture(fixture);
-  const goFixture = JSON.parse(JSON.stringify(fixture));
-  delete goFixture.authority_seed_hex;
-  delete goFixture.worker_seed_hex;
-  delete goFixture.worker;
-  delete goFixture.zone_binding;
-  delete goFixture.worker_profile;
-  goFixture.worker_profiles = [
-    {
-      alias: "agent://zone-b/failing-summarizer",
-      tool: "external.stdio",
-      tool_command: [process.execPath, `${process.cwd()}/state/go-fed-migration-fail.mjs`],
-      sandbox_claim: "local-temp-dir",
-      transports: ["fed+tcp://127.0.0.1:9010"],
-      capabilities: ["summarize.text"],
-      policy: { allow_network: false },
-    },
-    {
-      alias: "agent://zone-b/replacement-summarizer",
-      tool: "summarize.mock",
-      transports: ["fed+tcp://127.0.0.1:9011"],
-      capabilities: ["summarize.text"],
-      policy: { allow_network: false },
-    },
-  ];
-  const runtime = await createManagedTestRuntime(authorityZone, [
-    agentFromSeed(goFixture.worker_profiles[0].alias, fixture.worker_seed_hex, goFixture.worker_profiles[0].policy, goFixture.worker_profiles[0].transports, goFixture.worker_profiles[0].capabilities),
-    agentFromSeed(goFixture.worker_profiles[1].alias, "a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0", goFixture.worker_profiles[1].policy, goFixture.worker_profiles[1].transports, goFixture.worker_profiles[1].capabilities),
-  ]);
-  goFixture.worker_profiles = goFixture.worker_profiles.map((profile, index) => managedWorkerProfile(profile, runtime.workers[index]));
-  await writeFile("state/go-fed-discovery-migration-worker.json", `${JSON.stringify(goFixture, null, 2)}\n`);
-  await writeFile("state/go-fed-migration-fail.mjs", `
-process.stderr.write("planned v14.4 migration failure\\n");
-process.exit(1);
-`);
-  await writeTrustedZones("state/go-fed-discovery-migration-trusted-origin.json", [zoneA]);
-  await rm("state/go-fed-discovery-migration-audit.log", { force: true });
-  await rm("state/go-fed-discovery-migration-audit-tasks", { recursive: true, force: true });
-  await rm("state/go-fed-discovery-migration-artifacts", { recursive: true, force: true });
-  const gateway = spawn("go", [
-    "run",
+test("Go durable Swarm migrates exactly once and Node verifies signed migration evidence", async () => {
+  const { stdout } = await execFileAsync("go", [
+    "test",
     "./cmd/go-fed-discovery",
-    "--port",
-    String(port),
-    "--artifact-store",
-    "state/go-fed-discovery-migration-artifacts",
-    "--trusted",
-    "state/go-fed-discovery-migration-trusted-origin.json",
-    "--fixture",
-    "state/go-fed-discovery-migration-worker.json",
-    ...managedRuntimeArguments(runtime),
-    "--audit",
-    "state/go-fed-discovery-migration-audit.log",
-  ], {
-    cwd: process.cwd(),
-    detached: true,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+    "-run",
+    "^(TestLocalSwarmCoordinatorExpiresThenMigratesOnce|TestCrashMigrationThenFailureExhaustion)$",
+    "-count=1",
+    "-v",
+  ], { timeout: 30_000 });
+  assert.match(stdout, /retry_migration_outcome=one_migration_then_failure attempts=2 fences=[0-9]+,[0-9]+/);
+  assert.match(stdout, /ok\s+agnet\/cmd\/go-fed-discovery/);
 
-  try {
-    await waitForGoGateway(gateway, port);
-    const migrationTask = {
-      task_id: "go_fed_swarm_migration_summary",
-      from: requester.aid,
-      to: "agent://zone-b/failing-summarizer",
-      intent: "Summarize after migrating away from the failing worker.",
-      scope: { network: false },
-      budget: { time_seconds: 30 },
-    };
-    const frames = await exchangeFrames(port, withSwarmExecutionBinding(zoneA, {
-      type: "FED_SWARM_OPEN",
-      origin_zone: zoneA.descriptor,
-      requester: requester.descriptor,
-      swarm: {
-        swarm_id: "swarm://local/go_fed_swarm_migration",
-        steps: [
-          {
-            step_id: "summary",
-            task: { ...migrationTask, signature: signObject(requester.privateKey, migrationTask) },
-          },
-        ],
-      },
-    }), "FED_SWARM_CLOSE");
-    assert.notEqual(frames.at(-1).type, "FED_TASK_ERROR", frames.at(-1).error);
-    const closeFrame = frames.at(-1);
-    assert.equal(closeFrame.type, "FED_SWARM_CLOSE");
-    const close = closeFrame.close;
-    assert.equal(close.swarm_id, "swarm://local/go_fed_swarm_migration");
-    assert.equal(Array.isArray(close.migration_log), true, "FED_SWARM_CLOSE close body must include migration_log");
-    assert.equal(close.migration_log.length, 1);
-    const [migration] = close.migration_log;
-    assert.equal(migration.step_id, "summary");
-    assert.equal(typeof migration.original_worker_aid, "string");
-    assert.notEqual(migration.original_worker_aid, "");
-    assert.match(migration.reason, /planned v14\.4 migration failure|external tool failed/);
-    assert.equal(typeof migration.migrated_to_worker_aid, "string", "migration_log must name migrated_to_worker_aid");
-    assert.notEqual(migration.migrated_to_worker_aid, "");
-    assert.match(migration.migration_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/);
-    assert.notEqual(migration.original_worker_aid, migration.migrated_to_worker_aid);
-    const migratedReceipt = frames.find((frame) => frame.type === "FED_RECEIPT" && frame.receipt.task_id === migrationTask.task_id).receipt;
-    assert.equal(migration.migrated_to_worker_aid, migratedReceipt.to, "migrated_to_worker_aid must bind the final replacement receipt worker");
+  const signingZone = zoneFromPrivateKey("zone://go-durable-migration-proof", generateKeyPairSync("ed25519").privateKey);
+  const migration = {
+    step_id: "summary",
+    original_worker_aid: "aid:ed25519:failed-worker",
+    migrated_to_worker_aid: "aid:ed25519:replacement-worker",
+    reason: "launcher lease expired",
+    migration_at: "2026-07-12T00:00:00.000Z",
+  };
+  const closeBody = {
+    format: "asp-swarm-close/v1",
+    swarm_id: "swarm://go-durable/migration-proof",
+    step_receipts: [{ step_id: "summary", task_id: "migration_summary", receipt_digest: "a".repeat(64) }],
+    migration_log: [migration],
+  };
+  const closeFrame = {
+    type: "FED_SWARM_CLOSE",
+    swarm_id: closeBody.swarm_id,
+    zone: signingZone.descriptor,
+    close: { ...closeBody, close_signature: signObject(signingZone.privateKey, closeBody) },
+  };
+  const trustedZones = new Map([[signingZone.zid, signingZone.descriptor]]);
+  assert.deepEqual(verifySwarmClose(closeFrame, trustedZones).close.migration_log, [migration]);
 
-    const { close_signature, ...signedCloseBody } = close;
-    assert.equal(Object.hasOwn(signedCloseBody, "migration_log"), true);
-    assert.equal(verifyObject(publicKeyFromDescriptor(fixture.authority), signedCloseBody, close_signature), true);
-    assert.equal(verifySwarmClose(closeFrame, new Map([[fixture.authority.zid, fixture.authority]])).close.migration_log[0].migrated_to_worker_aid, migratedReceipt.to);
+  const signatureTampered = structuredClone(closeFrame);
+  signatureTampered.close.migration_log[0].reason = "different failure";
+  assert.throws(() => verifySwarmClose(signatureTampered, trustedZones), /swarm close signature verification failed/);
 
-    const tamperedMigrationFrame = structuredClone(closeFrame);
-    tamperedMigrationFrame.close.migration_log[0].step_id = "ghost";
-    const { close_signature: _tamperedSignature, ...tamperedMigrationBody } = tamperedMigrationFrame.close;
-    tamperedMigrationFrame.close.close_signature = signObject(authorityZone.privateKey, tamperedMigrationBody);
-    assert.throws(
-      () => verifySwarmClose(tamperedMigrationFrame, new Map([[fixture.authority.zid, fixture.authority]])),
-      /migration_log step_id|migration step/,
-    );
-  } finally {
-    try {
-      process.kill(-gateway.pid, "SIGINT");
-    } catch {
-      // already exited
-    }
-    await runtime.cleanup();
-  }
+  const invalidMigration = structuredClone(closeFrame);
+  invalidMigration.close.migration_log[0].step_id = "missing-step";
+  const { close_signature: _invalidMigrationSignature, ...invalidMigrationBody } = invalidMigration.close;
+  invalidMigration.close.close_signature = signObject(signingZone.privateKey, invalidMigrationBody);
+  assert.throws(() => verifySwarmClose(invalidMigration, trustedZones), /swarm close migration step missing/);
 });
 
-test("Go discovery resolves conflicting Swarm artifact refs and Node verifies the close proof", async () => {
-  const [port] = await freePorts(1);
-  zoneA = await loadManagedTestZone("zone://a");
-  const requester = createAgent("agent://zone-a/requester");
-  const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
-  const goFixture = JSON.parse(JSON.stringify(fixture));
-  delete goFixture.authority_seed_hex;
-  delete goFixture.worker_seed_hex;
-  delete goFixture.worker;
-  delete goFixture.zone_binding;
-  delete goFixture.worker_profile;
-  goFixture.worker_profiles = [
-    {
-      alias: "agent://zone-b/conflict-low-summarizer",
-      tool: "summarize.mock",
-      transports: [`fed+tcp://127.0.0.1:${port}`],
-      capabilities: ["summarize.text"],
-      policy: { allow_network: false, write_prefixes: ["artifact://local/"] },
-    },
-    {
-      alias: "agent://zone-b/conflict-high-summarizer",
-      tool: "summarize.mock",
-      transports: [`fed+tcp://127.0.0.1:${port}`],
-      capabilities: ["summarize.text"],
-      policy: { allow_network: false, write_prefixes: ["artifact://local/"] },
-    },
-  ];
-  const lowWorker = agentFromSeed(goFixture.worker_profiles[0].alias, fixture.worker_seed_hex, goFixture.worker_profiles[0].policy, goFixture.worker_profiles[0].transports, goFixture.worker_profiles[0].capabilities);
-  const highWorker = agentFromSeed(goFixture.worker_profiles[1].alias, "b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0", goFixture.worker_profiles[1].policy, goFixture.worker_profiles[1].transports, goFixture.worker_profiles[1].capabilities);
-  const runtime = await createManagedTestRuntime(authorityZoneFromFixture(fixture), [lowWorker, highWorker]);
-  goFixture.worker_profiles = goFixture.worker_profiles.map((profile, index) => managedWorkerProfile(profile, runtime.workers[index]));
-  await writeFile("state/go-fed-discovery-conflict-worker.json", `${JSON.stringify(goFixture, null, 2)}\n`);
-  await writeTrustedZones("state/go-fed-discovery-conflict-trusted-origin.json", [zoneA]);
-  await writeGoAuditLog("state/go-fed-discovery-conflict-audit.log", [
-    { kind: "go_fed_receipt", receipt: { to: highWorker.aid, status: "completed", task_id: "prior_go_conflict_win_1", completed_at: new Date().toISOString() } },
-    { kind: "go_fed_receipt", receipt: { to: highWorker.aid, status: "completed", task_id: "prior_go_conflict_win_2", completed_at: new Date().toISOString() } },
-  ]);
-  await rm("state/go-fed-discovery-conflict-audit-tasks", { recursive: true, force: true });
-  await rm("state/go-fed-discovery-conflict-artifacts", { recursive: true, force: true });
-  const gateway = spawn("go", [
-    "run",
+test("Go durable close rejects conflicting candidates and Node verifies fixed signed conflict evidence", async () => {
+  const { stdout } = await execFileAsync("go", [
+    "test",
     "./cmd/go-fed-discovery",
-    "--port",
-    String(port),
-    "--artifact-store",
-    "state/go-fed-discovery-conflict-artifacts",
-    "--trusted",
-    "state/go-fed-discovery-conflict-trusted-origin.json",
-    "--fixture",
-    "state/go-fed-discovery-conflict-worker.json",
-    ...managedRuntimeArguments(runtime),
-    "--audit",
-    "state/go-fed-discovery-conflict-audit.log",
-  ], {
-    cwd: process.cwd(),
-    detached: true,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+    "-run",
+    "^(TestDurableSwarmResponseStoresAndEmitsSignedClose|TestEnsureStableCloseRejectsConflictingStoredCandidate)$",
+    "-count=1",
+  ], { timeout: 30_000 });
+  assert.match(stdout, /ok\s+agnet\/cmd\/go-fed-discovery/);
 
-  try {
-    await waitForGoGateway(gateway, port);
-    const artifactRef = "artifact://local/go-conflict/shared-summary.md";
-    const lowTask = {
-      task_id: "go_fed_swarm_conflict_low",
-      from: requester.aid,
-      to: "agent://zone-b/conflict-low-summarizer",
-      intent: "Write the low-reputation Go Swarm conflict candidate.",
-      artifact_ref: artifactRef,
-      scope: { network: false, write: [artifactRef] },
-      budget: { time_seconds: 30 },
-    };
-    const highTask = {
-      task_id: "go_fed_swarm_conflict_high",
-      from: requester.aid,
-      to: "agent://zone-b/conflict-high-summarizer",
-      intent: "Write the high-reputation Go Swarm conflict candidate.",
-      artifact_ref: artifactRef,
-      scope: { network: false, write: [artifactRef] },
-      budget: { time_seconds: 30 },
-    };
-    const finalTask = {
-      task_id: "go_fed_swarm_conflict_final",
-      from: requester.aid,
-      to: "agent://zone-b/conflict-high-summarizer",
-      intent: "Publish the resolved Go Swarm conflict result.",
-      artifact_ref: "artifact://local/go-conflict/final-summary.md",
-      scope: { network: false, write: ["artifact://local/go-conflict/final-summary.md"] },
-      budget: { time_seconds: 30 },
-    };
-    const frames = await exchangeFrames(port, withSwarmExecutionBinding(zoneA, {
-      type: "FED_SWARM_OPEN",
-      origin_zone: zoneA.descriptor,
-      requester: requester.descriptor,
-      swarm: {
-        swarm_id: "swarm://local/go_fed_swarm_conflict_resolution",
-        steps: [
-          { step_id: "low", task: { ...lowTask, signature: signObject(requester.privateKey, lowTask) } },
-          { step_id: "high", task: { ...highTask, signature: signObject(requester.privateKey, highTask) } },
-          { step_id: "final", after: ["low", "high"], task: { ...finalTask, signature: signObject(requester.privateKey, finalTask) } },
-        ],
-      },
-    }), "FED_SWARM_CLOSE");
-    assert.notEqual(frames.at(-1).type, "FED_TASK_ERROR", frames.at(-1).error);
-    const closeFrame = frames.at(-1);
-    const close = closeFrame.close;
-    assert.equal(Array.isArray(close.conflict_resolutions), true, "FED_SWARM_CLOSE close body must include conflict_resolutions");
-    assert.equal(close.conflict_resolutions.length, 1);
-    const [resolution] = close.conflict_resolutions;
-    assert.equal(resolution.artifact_ref, artifactRef);
-    assert.deepEqual(resolution.candidate_step_ids, ["low", "high"]);
-    assert.equal(resolution.chosen_step_id, "high");
-    assert.equal(resolution.chosen_worker.alias, "agent://zone-b/conflict-high-summarizer");
-    assert.equal(resolution.reason, "higher_reputation");
-    const { resolution_digest, signature, ...resolutionBody } = resolution;
-    assert.equal(resolution_digest, createHash("sha256").update(canonical(resolutionBody)).digest("hex"));
-    assert.equal(verifyObject(publicKeyFromDescriptor(fixture.authority), resolutionBody, signature), true);
-    assert.equal(verifySwarmClose(closeFrame, new Map([[fixture.authority.zid, fixture.authority]])).close.conflict_resolutions[0].chosen_step_id, "high");
-    assert.equal(close.final_output.step_id, "final");
-    assert.equal(close.final_output.task_id, finalTask.task_id);
-    assert.deepEqual(close.step_receipts.map((step) => step.step_id), ["low", "high", "final"]);
-  } finally {
-    try {
-      process.kill(-gateway.pid, "SIGINT");
-    } catch {
-      // already exited
-    }
-    await runtime.cleanup();
-  }
+  const signingZone = zoneFromPrivateKey("zone://go-durable-conflict-proof", generateKeyPairSync("ed25519").privateKey);
+  const lowWorker = createAgent("agent://go-durable/low-worker").descriptor;
+  const highWorker = createAgent("agent://go-durable/high-worker").descriptor;
+  const resolutionBody = {
+    swarm_id: "swarm://go-durable/conflict-proof",
+    artifact_ref: "artifact://local/conflict/shared-summary.md",
+    candidate_step_ids: ["low", "high"],
+    chosen_step_id: "high",
+    chosen_worker: highWorker,
+    reason: "higher_reputation",
+  };
+  const resolution = {
+    ...resolutionBody,
+    resolution_digest: createHash("sha256").update(canonical(resolutionBody)).digest("hex"),
+    signature: signObject(signingZone.privateKey, resolutionBody),
+  };
+  const closeBody = {
+    format: "asp-swarm-close/v1",
+    swarm_id: resolutionBody.swarm_id,
+    step_receipts: [
+      { step_id: "low", task_id: "conflict_low", receipt_digest: "b".repeat(64), worker: lowWorker },
+      { step_id: "high", task_id: "conflict_high", receipt_digest: "c".repeat(64), worker: highWorker },
+    ],
+    conflict_resolutions: [resolution],
+  };
+  const closeFrame = {
+    type: "FED_SWARM_CLOSE",
+    swarm_id: closeBody.swarm_id,
+    zone: signingZone.descriptor,
+    close: { ...closeBody, close_signature: signObject(signingZone.privateKey, closeBody) },
+  };
+  const trustedZones = new Map([[signingZone.zid, signingZone.descriptor]]);
+  assert.equal(verifySwarmClose(closeFrame, trustedZones).close.conflict_resolutions[0].chosen_step_id, "high");
+
+  const signatureTampered = structuredClone(closeFrame);
+  signatureTampered.close.conflict_resolutions[0].signature = "bad";
+  const { close_signature: _conflictSignature, ...signatureTamperedBody } = signatureTampered.close;
+  signatureTampered.close.close_signature = signObject(signingZone.privateKey, signatureTamperedBody);
+  assert.throws(() => verifySwarmClose(signatureTampered, trustedZones), /conflict resolution signature verification failed/);
 });
 
 test("Go discovery marks revoked worker credential inactive", async () => {
@@ -1239,6 +1164,7 @@ test("Go discovery marks revoked worker credential inactive", async () => {
   await writeFile("state/go-fed-discovery-revoked-worker.json", `${JSON.stringify(goFixture, null, 2)}\n`);
   await writeTrustedZones("state/go-fed-discovery-revoked-trusted-origin.json", [zoneA]);
   await rm("state/go-fed-discovery-revoked-audit.log", { force: true });
+  await rm("state/go-fed-discovery-revoked-swarms", { recursive: true, force: true });
   const gateway = spawn("go", [
     "run",
     "./cmd/go-fed-discovery",
@@ -1249,6 +1175,8 @@ test("Go discovery marks revoked worker credential inactive", async () => {
     "--fixture",
     "state/go-fed-discovery-revoked-worker.json",
     ...managedRuntimeArguments(runtime),
+    "--swarm-state-dir",
+    "state/go-fed-discovery-revoked-swarms",
     "--audit",
     "state/go-fed-discovery-revoked-audit.log",
   ], {
@@ -1270,11 +1198,7 @@ test("Go discovery marks revoked worker credential inactive", async () => {
     assert.deepEqual(match.discovery_evidence.credential, { trusted: true, active: false });
     assert.equal(match.ranking.reasons.includes("credential_active"), false);
   } finally {
-    try {
-      process.kill(-gateway.pid, "SIGINT");
-    } catch {
-      // already exited
-    }
+    await stopGoGateway(gateway);
     await runtime.cleanup();
   }
 });
@@ -1447,6 +1371,7 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
   await rm("state/go-fed-discovery-audit-queue-grants", { recursive: true, force: true });
   await rm("state/go-fed-discovery-audit-live-transcripts", { recursive: true, force: true });
   await rm("state/go-fed-artifact-store", { recursive: true, force: true });
+  await rm("state/go-fed-discovery-swarms", { recursive: true, force: true });
   await rm("state/go-fed-discovery-requester-registry.json", { force: true });
   await rm("state/go-fed-discovery-requester-rebindings.json", { force: true });
   await writeFile("state/go-fed-discovery-actor-policy.json", `${JSON.stringify({
@@ -1487,6 +1412,8 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     "--fixture",
     "state/go-fed-discovery-dynamic-worker.json",
     ...managedRuntimeArguments(runtime),
+    "--swarm-state-dir",
+    "state/go-fed-discovery-swarms",
     "--audit",
     "state/go-fed-discovery-audit.log",
   ], {
@@ -1831,10 +1758,16 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
       task: { ...humanQueuedTask, signature: signObject(requester.privateKey, humanQueuedTask) },
     }, "FED_QUEUE_CLOSE");
     assert.deepEqual(humanQueuedFrames.map((frame) => frame.type), ["FED_QUEUE_ACCEPTED", "FED_QUEUE_CLOSE"]);
-    const queueResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue`);
-    assert.equal(queueResponse.status, 200);
-    const queueBody = await queueResponse.json();
-    assert.equal(queueBody.queue.some((item) => item.task_id === humanQueuedTask.task_id && item.status === "queued"), true);
+    const { stdout: durableQueueViewTests } = await execFileAsync("go", [
+      "test",
+      "./cmd/go-fed-discovery",
+      "-run",
+      "^TestHumanGatewayDurable$",
+      "-count=1",
+    ], { timeout: 30_000 });
+    assert.match(durableQueueViewTests, /ok\s+agnet\/cmd\/go-fed-discovery/);
+    const journalQueueView = await waitForJournalQueueView(humanPort, humanQueuedTask.task_id);
+    assert.equal(journalQueueView.some((item) => item.task_id === humanQueuedTask.task_id), false);
 
     const securityResponse = await fetch(`http://127.0.0.1:${humanPort}/api/security`);
     assert.equal(securityResponse.status, 200);
@@ -2066,10 +1999,8 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     assert.equal(humanEnqueueResponse.status, 200);
     const humanEnqueueBody = await humanEnqueueResponse.json();
     assert.equal(humanEnqueueBody.task_id, humanCreatedQueuedTask.task_id);
-    const humanCreatedQueueResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue`);
-    assert.equal(humanCreatedQueueResponse.status, 200);
-    const humanCreatedQueueBody = await humanCreatedQueueResponse.json();
-    assert.equal(humanCreatedQueueBody.queue.some((item) => item.task_id === humanCreatedQueuedTask.task_id && item.status === "queued"), true);
+    const humanCreatedJournalQueueView = await waitForJournalQueueView(humanPort, humanCreatedQueuedTask.task_id);
+    assert.equal(humanCreatedJournalQueueView.some((item) => item.task_id === humanCreatedQueuedTask.task_id), false);
 
     const humanDraftedTaskId = "go_fed_task_human_drafted_queue";
     const humanDraftResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue/drafts`, {
@@ -2088,10 +2019,8 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     assert.equal(humanDraftBody.task.task_id, humanDraftedTaskId);
     assert.equal(humanDraftBody.task.from, humanDraftBody.requester.aid);
     assert.match(humanDraftBody.task.signature, /^[A-Za-z0-9_-]+$/);
-    const humanDraftedQueueResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue`);
-    assert.equal(humanDraftedQueueResponse.status, 200);
-    const humanDraftedQueueBody = await humanDraftedQueueResponse.json();
-    assert.equal(humanDraftedQueueBody.queue.some((item) => item.task_id === humanDraftedTaskId && item.status === "queued"), true);
+    const humanDraftedJournalQueueView = await waitForJournalQueueView(humanPort, humanDraftedTaskId);
+    assert.equal(humanDraftedJournalQueueView.some((item) => item.task_id === humanDraftedTaskId), false);
 
     const browserHeldTask = {
       ...task,
@@ -2113,10 +2042,8 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     assert.equal(browserHeldDraftBody.task.task_id, browserHeldTask.task_id);
     assert.equal(browserHeldDraftBody.task.from, requester.aid);
     assert.equal(browserHeldDraftBody.task.signature, signedBrowserHeldTask.signature);
-    const browserHeldQueueResponse = await fetch(`http://127.0.0.1:${humanPort}/api/queue`);
-    assert.equal(browserHeldQueueResponse.status, 200);
-    const browserHeldQueueBody = await browserHeldQueueResponse.json();
-    assert.equal(browserHeldQueueBody.queue.some((item) => item.task_id === browserHeldTask.task_id && item.status === "queued"), true);
+    const browserHeldJournalQueueView = await waitForJournalQueueView(humanPort, browserHeldTask.task_id);
+    assert.equal(browserHeldJournalQueueView.some((item) => item.task_id === browserHeldTask.task_id), false);
 
     const previousBrowserRequester = createAgent("agent://browser/requester");
     const nextBrowserRequester = createAgent("agent://browser/requester");
@@ -2722,7 +2649,7 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     const runningPageResponse = await fetch(`http://127.0.0.1:${humanPort}/`);
     assert.equal(runningPageResponse.status, 200);
     const runningPageText = await runningPageResponse.text();
-    assert.match(runningPageText, /loadLiveTranscript\(&#34;go_fed_task_live_cancelled&#34;\)/);
+    assert.doesNotMatch(runningPageText, /loadLiveTranscript\(&#34;go_fed_task_live_cancelled&#34;\)/);
     assert.match(runningPageText, /\/api\/transcripts\/live\?task_id=/);
     assert.match(runningPageText, /setInterval\(\(\) => refreshLiveTranscript\(taskID\), 1000\)/);
     assert.match(runningPageText, /clearInterval\(liveTranscriptPoller\)/);
@@ -3058,10 +2985,7 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     assert.equal(tasksResponse.status, 200);
     const tasksBody = await tasksResponse.json();
     const taskStates = new Map(tasksBody.tasks.map((item) => [item.task_id, item]));
-    assert.equal(taskStates.get("go_fed_task_verified").status, "completed");
-    assert.equal(taskStates.get("go_fed_task_cancelled").status, "cancelled");
-    assert.equal(taskStates.get("go_fed_task_missing_mcp_required_arg").status, "failed");
-    assert.equal(taskStates.get("go_fed_task_live_cancelled").status, "cancelled");
+    assert.equal(taskStates.size, 0, "Human Gateway task view must exclude legacy task-state files");
 
     const pageResponse = await fetch(`http://127.0.0.1:${humanPort}/`);
     assert.equal(pageResponse.status, 200);
@@ -3072,19 +2996,6 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     assert.match(pageText, /fetch\("\/api\/session"/);
     assert.match(pageText, /Tasks/);
     assert.match(pageText, /Queue/);
-    assert.match(pageText, /go_fed_task_human_queue_action/);
-    assert.match(pageText, /go_fed_task_live_cancelled/);
-    assert.match(pageText, /cancelled/);
-    assert.match(pageText, /agent:\/\/zone-b\/translator/);
-    assert.match(pageText, /go_fed_task_verified/);
-    assert.match(pageText, /tool-transcript\.json/);
-    assert.match(pageText, /transcript-viewer/);
-    assert.match(pageText, /loadTranscript\(&#34;go_fed_task_verified&#34;\)/);
-    assert.match(pageText, /\/api\/transcripts\/stream\?task_id=/);
-    assert.match(pageText, /\/api\/artifacts\/manifest\?task_id=go_fed_task_verified&amp;uri=/);
-    assert.match(pageText, /\/api\/artifacts\/verify\?task_id=go_fed_task_verified&amp;uri=/);
-    assert.match(pageText, /\/api\/artifacts\/read\?task_id=go_fed_task_verified&amp;uri=/);
-    assert.match(pageText, /\/api\/audit\?task_id=go_fed_task_verified/);
     assert.match(pageText, /Browser Requester Key/);
     assert.match(pageText, /Requester Registry/);
     assert.match(pageText, /agent:\/\/browser\/assistant/);
@@ -3137,11 +3048,7 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     assert.equal(scopedArtifactManifestHeadResponse.headers.get("x-agent-space-artifact-manifest-hash"), artifactEvent.manifest.manifest_hash);
     assert.equal(await scopedArtifactManifestHeadResponse.text(), "");
   } finally {
-    try {
-      process.kill(-gateway.pid, "SIGINT");
-    } catch {
-      gateway.kill("SIGINT");
-    }
+    await stopGoGateway(gateway);
     await runtime.cleanup();
     if (previousGatewayConfig === undefined) delete process.env.AGNET_MANAGED_RUNTIME_CONFIG;
     else process.env.AGNET_MANAGED_RUNTIME_CONFIG = previousGatewayConfig;

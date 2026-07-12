@@ -17,12 +17,12 @@ import (
 )
 
 const (
-	dockerMaxCPUMillis      int64 = 64_000
-	dockerMaxMemoryBytes    int64 = 64 << 30
-	dockerMaxTimeoutMillis  int64 = 15 * 60 * 1000
-	dockerMaxOutputBytes    int64 = 64 << 20
-	dockerMaxScratchBytes   int64 = 64 << 20
-	dockerDigestHexLength         = 64
+	dockerMaxCPUMillis     int64 = 64_000
+	dockerMaxMemoryBytes   int64 = 64 << 30
+	dockerMaxTimeoutMillis int64 = 15 * 60 * 1000
+	dockerMaxOutputBytes   int64 = 64 << 20
+	dockerMaxScratchBytes  int64 = 64 << 20
+	dockerDigestHexLength        = 64
 )
 
 // DockerAdapter is the execution boundary for a validated container run.
@@ -35,15 +35,15 @@ type DockerAdapter interface {
 // DockerRunRequest contains only normalized, bounded values suitable for an
 // adapter. Scratch inputs contain decoded bytes and are ordered by path.
 type DockerRunRequest struct {
-	Image         string
-	Command       []string
-	CPUs          string
-	MemoryBytes   int64
-	TimeoutMillis int64
-	MaxOutputBytes int64
+	Image                string
+	Command              []string
+	CPUs                 string
+	MemoryBytes          int64
+	TimeoutMillis        int64
+	MaxOutputBytes       int64
 	MaxScratchInputBytes int64
 	MaxScratchBytes      int64
-	ScratchInputs []DockerScratchInput
+	ScratchInputs        []DockerScratchInput
 }
 
 // DockerRunResult keeps execution output binary-safe. It deliberately carries
@@ -104,15 +104,15 @@ func validateDockerWorkerProfile(profile DockerWorkerProfile) (DockerRunRequest,
 		return DockerRunRequest{}, err
 	}
 	return DockerRunRequest{
-		Image:          profile.Image,
-		Command:        command,
-		CPUs:           renderCPUs(profile.Limits.CPUMillis),
-		MemoryBytes:    profile.Limits.MemoryBytes,
-		TimeoutMillis:  profile.Limits.TimeoutMillis,
-		MaxOutputBytes: profile.Limits.MaxOutputBytes,
+		Image:                profile.Image,
+		Command:              command,
+		CPUs:                 renderCPUs(profile.Limits.CPUMillis),
+		MemoryBytes:          profile.Limits.MemoryBytes,
+		TimeoutMillis:        profile.Limits.TimeoutMillis,
+		MaxOutputBytes:       profile.Limits.MaxOutputBytes,
 		MaxScratchInputBytes: profile.Limits.MaxScratchInputBytes,
 		MaxScratchBytes:      profile.Limits.MaxScratchBytes,
-		ScratchInputs:  scratchInputs,
+		ScratchInputs:        scratchInputs,
 	}, nil
 }
 
@@ -368,8 +368,8 @@ func renderCPUs(milliCPUs int64) string {
 }
 
 const (
-	dockerCommandPath      = "/usr/local/bin/docker"
-	dockerLocalUnixSocket  = "/var/run/docker.sock"
+	dockerCommandPath       = "/usr/local/bin/docker"
+	dockerLocalUnixSocket   = "/var/run/docker.sock"
 	dockerLocalUnixEndpoint = "unix:///var/run/docker.sock"
 )
 
@@ -541,7 +541,6 @@ func (adapter *DockerCLIAdapter) Preflight(ctx context.Context, image string) (D
 
 const dockerContainerUser = "65532:65532"
 const dockerCleanupTimeout = 5 * time.Second
-
 
 // Run executes a complete local Docker lifecycle. A result is returned only
 // after the container, image, binary, and socket all remain unchanged across

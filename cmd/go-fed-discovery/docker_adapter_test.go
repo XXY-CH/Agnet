@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"testing"
 	"time"
-
 )
 
 const dockerLifecycleID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -26,7 +25,6 @@ func (r cleanupDeadlineDockerRunner) Run(ctx context.Context, command DockerComm
 	<-ctx.Done()
 	return nil, ctx.Err()
 }
-
 
 func dockerLifecycleVerb(arguments []string) string {
 	if len(arguments) < 5 {
@@ -124,7 +122,6 @@ func TestDockerAdapterUsesExpectedLifecycleArgvOrder(t *testing.T) {
 		t.Fatalf("copy/remove commands = %#v, %#v", runner.commands[6], runner.commands[len(runner.commands)-1])
 	}
 }
-
 
 func TestDockerAdapterRejectsInvalidNormalizedLimitsBeforeRunner(t *testing.T) {
 	request, err := validateDockerWorkerProfile(validDockerWorkerProfile())

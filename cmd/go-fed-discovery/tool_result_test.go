@@ -55,9 +55,9 @@ func TestRunToolReturnsBinary(t *testing.T) {
 		Transcript:          []byte{0x00, 0xff},
 		TranscriptMediaType: "application/octet-stream",
 		Evidence: map[string]any{
-			"runtime": "docker",
-			"image": "registry.example/agent/tool@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-			"image_id": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+			"runtime":      "docker",
+			"image":        "registry.example/agent/tool@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+			"image_id":     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 			"container_id": strings.Repeat("a", 64),
 		},
 	}}

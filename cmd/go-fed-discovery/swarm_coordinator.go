@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/sys/unix"
 	"agnet/verifier"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -42,9 +42,8 @@ type LocalSwarmCoordinator struct {
 	// outputVerificationTrust is loaded once from operator-owned files before
 	// accepting frames. Submissions cannot supply or replace trust inputs.
 	outputVerificationTrust verifier.TrustInputs
-	outputVerifier              swarmOutputProofVerifier
+	outputVerifier          swarmOutputProofVerifier
 }
-
 
 type localSwarmLaunchReservation struct {
 	coordinator *LocalSwarmCoordinator
@@ -488,4 +487,3 @@ func isSwarmStorageKey(value string) bool {
 	}
 	return true
 }
-

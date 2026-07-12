@@ -100,50 +100,19 @@ test("public node proof starts a public-listen gateway", async (t) => {
   assert.match(result.artifact_reject_error, /receipt artifact not found/);
   assert.equal(result.artifact_tamper_reject, true);
   assert.match(result.artifact_tamper_error, /artifact bytes digest mismatch/);
-  assert.equal(result.swarm_id, "swarm://public-node-proof/two-step");
-  assert.equal(result.swarm_step_count, 2);
   await assertManagedProofIdentity("state/keys/public-node-proof-authority", "state/public-node-proof-authority.passphrase", "state/public-node-proof-authority.seed");
   await assertManagedProofIdentity("state/keys/public-node-proof-worker", "state/public-node-proof-worker.passphrase", "state/public-node-proof-worker.seed");
-  assert.deepEqual(result.swarm_step_ids, ["summary", "dependent"]);
-  assert.equal(result.swarm_close_signature, true);
-  assert.equal(result.swarm_close_receipts, true);
-  assert.equal(result.swarm_close_verify, "ok");
-  assert.match(result.swarm_close_digest, /^[a-f0-9]{64}$/);
-  assert.match(result.swarm_plan_digest, /^[a-f0-9]{64}$/);
-  assert.match(result.swarm_execution_graph_digest, /^[a-f0-9]{64}$/);
-  assert.equal(result.swarm_close_frame, "state/public-node-proof-swarm-close.json");
-  assert.equal(result.swarm_close_trusted_zones, "state/public-node-proof-swarm-close-trusted-zones.json");
-  assert.equal(result.output_proof_frame, "state/public-node-proof-output-proof.json");
-  assert.equal(result.output_proof_bundle, "state/public-node-proof-output-bundle.json");
-  assert.match(result.output_proof_digest, /^[a-f0-9]{64}$/);
-  assert.equal(result.output_proof_close_digest, result.swarm_close_digest);
-  assert.match(result.output_proof_trust_inputs_digest, /^[a-f0-9]{64}$/);
-  assert.equal(result.output_proof_replay_decision, "accepted");
-  assert.equal(result.output_proof_completion_gate, true);
-  assert.equal(result.verifier_identity_scope, "same-host independent verifier");
+  assert.equal(result.offline_swarm_vector, "test-vectors/asp-u29-node-swarm-durable.json");
+  assert.equal(result.offline_swarm_origin, "node");
+  assert.equal(result.offline_swarm_journal_verify, "ok");
+  assert.equal(result.offline_swarm_close_verify, "ok");
+  assert.equal(result.offline_swarm_claim_boundary, "offline fixed vector; not live public-node execution");
+
+  const audit = await readFile("state/public-node-proof-audit.log", "utf8");
+  assert.equal(audit.split("\n").filter(Boolean).map((line) => JSON.parse(line)).some((entry) => entry.record?.kind === "go_swarm_close"), false);
 
   const receiptFrame = JSON.parse(await readFile(result.receipt_frame, "utf8"));
   const bundle = JSON.parse(await readFile(result.bundle_manifest, "utf8"));
-  const closeFrame = JSON.parse(await readFile(result.swarm_close_frame, "utf8"));
-  const closeTrustedZones = JSON.parse(await readFile(result.swarm_close_trusted_zones, "utf8"));
-  assert.equal(closeFrame.type, "FED_SWARM_CLOSE");
-  assert.equal(closeFrame.swarm_id, result.swarm_id);
-  assert.equal(closeFrame.close.swarm_id, result.swarm_id);
-  assert.equal(closeFrame.close.plan_digest, result.swarm_plan_digest);
-  assert.equal(closeFrame.close.format, "asp-swarm-close/v2");
-  assert.equal(closeFrame.close.execution_graph_digest, result.swarm_execution_graph_digest);
-  assert.equal(closeTrustedZones.zones[0].zid, closeFrame.zone.zid);
-
-  const audit = await readFile("state/public-node-proof-audit.log", "utf8");
-  const closeRecord = audit
-    .trim()
-    .split("\n")
-    .map((line) => JSON.parse(line))
-    .findLast((entry) => entry.record?.kind === "go_swarm_close")?.record;
-  assert.equal(result.swarm_close_digest, createHash("sha256").update(canonical(closeRecord.close)).digest("hex"));
-  assert.equal(result.swarm_close_digest, createHash("sha256").update(canonical(closeFrame.close)).digest("hex"));
-  assert.equal(closeFrame.close.final_output.selection_rule, "single-terminal-result");
-
   const { signature, ...receiptBody } = receiptFrame.receipt;
   const artifactSha256 = receiptFrame.receipt.artifact_manifests[0].sha256;
   const artifactManifestHash = receiptFrame.receipt.artifact_manifests[0].manifest_hash;
@@ -166,25 +135,24 @@ test("public node proof starts a public-listen gateway", async (t) => {
     artifact_sha256s: result.artifact_sha256s,
     artifact_manifest_hashes: result.artifact_manifest_hashes,
     transport_proof: receiptFrame.receipt.transport_proof,
-    swarm_close_frame: "public-node-proof-swarm-close.json",
-    swarm_close_trusted_zones: "public-node-proof-swarm-close-trusted-zones.json",
-    swarm_close_digest: result.swarm_close_digest,
+    swarm_close_frame: "public-node-proof-offline-u29-swarm-close.json",
+    swarm_close_trusted_zones: "public-node-proof-offline-u29-trusted-zones.json",
+    swarm_close_digest: "8337f6d99547122837c93af0479cf39a700d093958d0948ca559faf8d1eed86e",
+    offline_swarm_evidence: {
+      vector: "asp-u29-node-swarm-durable.json",
+      origin: "node",
+      journal_verify: "ok",
+      claim_boundary: "offline fixed vector; not live public-node execution",
+    },
   });
   const verified = await execFileAsync(process.execPath, ["asp-verify.mjs", "fed-receipt", result.receipt_frame, result.trusted_zones]);
   assert.deepEqual(JSON.parse(verified.stdout), { fed_receipt_verify: "ok", task_id: "public_node_probe_task", receipt_digest: receiptDigest });
   const verifiedArtifacts = await execFileAsync(process.execPath, ["asp-verify.mjs", "fed-receipt-artifacts", result.receipt_frame, result.trusted_zones]);
   assert.deepEqual(JSON.parse(verifiedArtifacts.stdout), { fed_receipt_artifacts_verify: "ok", task_id: "public_node_probe_task", artifact_count: 1, artifact_uris: result.artifact_uris, artifact_sha256s: [artifactSha256], artifact_manifest_hashes: [artifactManifestHash], receipt_digest: receiptDigest });
-  const verifiedSwarmClose = await execFileAsync(process.execPath, ["asp-verify.mjs", "swarm-close", result.swarm_close_frame, result.swarm_close_trusted_zones]);
-  assert.deepEqual(JSON.parse(verifiedSwarmClose.stdout), { swarm_close_verify: "ok", swarm_id: result.swarm_id, swarm_close_digest: result.swarm_close_digest });
-  const verifiedOutputProof = await execFileAsync("state/public-node-proof-go", ["--verify-swarm-output-scheduler-gate", result.output_proof_bundle], {
-    env: { ...process.env, ASP_VERIFY_NOW: "2026-07-11T13:00:00Z" },
-  });
-  const outputProof = JSON.parse(verifiedOutputProof.stdout);
-  assert.equal(outputProof.closeDigest, result.swarm_close_digest);
-  assert.equal(outputProof.proofDigest, result.output_proof_digest);
-  assert.equal(outputProof.trustInputsDigest, result.output_proof_trust_inputs_digest);
-  assert.equal(outputProof.replay_decision, "accepted");
-  assert.equal(outputProof.completion_gate, true);
+  const verifiedSwarmClose = await execFileAsync(process.execPath, ["asp-verify.mjs", "swarm-close", "state/public-node-proof-offline-u29-swarm-close.json", "state/public-node-proof-offline-u29-trusted-zones.json"]);
+  assert.deepEqual(JSON.parse(verifiedSwarmClose.stdout), { swarm_close_verify: "ok", swarm_id: "swarm://test/deterministic-close", swarm_close_digest: bundle.swarm_close_digest });
+  const verifiedJournal = await execFileAsync(process.execPath, ["asp-verify.mjs", "swarm-journal", result.offline_swarm_vector]);
+  assert.deepEqual(JSON.parse(verifiedJournal.stdout), { swarm_journal_verify: "ok", entry_count: 13, head: "b78a939abf0f1151540b837b37fe53ff3a7c43ad117aa0a08a4986832c34f4f9", state_version: 13 });
   const verifiedBundle = await execFileAsync(process.execPath, ["asp-verify.mjs", "proof-bundle", result.bundle_manifest]);
   const tamperedBundlePath = "state/public-node-proof-bundle-tampered.json";
   const externalBundlePath = "state/public-node-proof-bundle-external.json";
@@ -203,7 +171,7 @@ test("public node proof starts a public-listen gateway", async (t) => {
     reachability_scope: "local-interface",
     swarm_close_frame: bundle.swarm_close_frame,
     swarm_close_trusted_zones: bundle.swarm_close_trusted_zones,
-    swarm_close_digest: result.swarm_close_digest,
+    swarm_close_digest: bundle.swarm_close_digest,
   });
   const observer = createZone("zone://external-reachability-observer");
   const untrustedObserver = createZone("zone://untrusted-reachability-observer");

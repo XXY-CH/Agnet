@@ -22,7 +22,6 @@ func storeItem(fixture generationChainFixture, index int) InstallRequest {
 	return item
 }
 
-
 func storeGenerationFile(root string, generation int, suffix string) string {
 	return filepath.Join(root, "generations", leftPadGeneration(generation)+"."+suffix+".json")
 }
@@ -546,7 +545,6 @@ func TestStoreRejectsRollbackReplayPointerSyncAndSameGenerationRace(t *testing.T
 	if _, err := rotatePartialStore.LoadActive(testPassphrase); err == nil || !(strings.Contains(err.Error(), "trust material incomplete") || strings.Contains(err.Error(), "malformed complete generation")) {
 		t.Fatalf("rotate partial err=%v", err)
 	}
-
 
 	winnerA, _ := OpenStore(root, nil)
 	winnerB, _ := OpenStore(root, nil)

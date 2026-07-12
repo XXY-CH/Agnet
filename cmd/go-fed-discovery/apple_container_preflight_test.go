@@ -48,7 +48,7 @@ func TestAppleContainerPreflightAcceptsFixedLocalPinnedImage(t *testing.T) {
 	if proof.ImageDescriptorDigest != "sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd" || proof.ImageID != "a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd" {
 		t.Fatalf("image proof = %#v", proof)
 	}
-if proof.APIServerVersion != "1.1.0" || proof.APIServerCommit != appleAPIServerFullCommit || proof.AppRoot != "/Users/alice/Library/Application Support/com.apple.container" {
+	if proof.APIServerVersion != "1.1.0" || proof.APIServerCommit != appleAPIServerFullCommit || proof.AppRoot != "/Users/alice/Library/Application Support/com.apple.container" {
 		t.Fatalf("server proof = %#v", proof)
 	}
 	if proof.BinaryDigestBefore != proof.BinaryDigestAfter || proof.CLIVersionBefore != proof.CLIVersionAfter || proof.APIServerVersionBefore != proof.APIServerVersionAfter || proof.APIServerCommitBefore != proof.APIServerCommitAfter {

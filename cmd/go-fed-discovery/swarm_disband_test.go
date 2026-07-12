@@ -73,51 +73,82 @@ func TestU28DisbandRecoversDurableCrashPoints(t *testing.T) {
 	journal, spec := newCloseTestJournal(t)
 	completeDisbandTestJournal(t, journal, spec)
 	want, err := BuildSwarmDisband(journal)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	failure := errors.New("disband sync interrupted")
 	journal.fault = func(point SwarmFaultPoint) error {
-		if point == SwarmFaultFileSync { return failure }
+		if point == SwarmFaultFileSync {
+			return failure
+		}
 		return nil
 	}
-	if _, err := EnsureDisband(journal); !errors.Is(err, failure) { t.Fatalf("file-sync disband error = %v", err) }
+	if _, err := EnsureDisband(journal); !errors.Is(err, failure) {
+		t.Fatalf("file-sync disband error = %v", err)
+	}
 	journal.fault = nil
 	got, err := EnsureDisband(journal)
-	if err != nil || !bytes.Equal(got.Bytes, want.Bytes) { t.Fatalf("rollback retry = %#v, %v", got, err) }
+	if err != nil || !bytes.Equal(got.Bytes, want.Bytes) {
+		t.Fatalf("rollback retry = %#v, %v", got, err)
+	}
 	entries := mustReplaySwarm(t, journal)
-	if len(entries) == 0 { t.Fatal("journal unexpectedly empty") }
+	if len(entries) == 0 {
+		t.Fatal("journal unexpectedly empty")
+	}
 	responseLostJournal, responseLostSpec := newCloseTestJournal(t)
 	completeDisbandTestJournal(t, responseLostJournal, responseLostSpec)
 	responseLost := errors.New("disband response lost")
 	fired := false
 	responseLostJournal.fault = func(point SwarmFaultPoint) error {
-		if point == SwarmFaultParentSync && !fired { fired = true; return responseLost }
+		if point == SwarmFaultParentSync && !fired {
+			fired = true
+			return responseLost
+		}
 		return nil
 	}
-	if _, err := EnsureDisband(responseLostJournal); !errors.Is(err, responseLost) { t.Fatalf("response-loss disband error = %v", err) }
+	if _, err := EnsureDisband(responseLostJournal); !errors.Is(err, responseLost) {
+		t.Fatalf("response-loss disband error = %v", err)
+	}
 	responseLostJournal.fault = nil
-	if _, err := EnsureDisband(responseLostJournal); err != nil { t.Fatalf("response-loss retry = %v", err) }
+	if _, err := EnsureDisband(responseLostJournal); err != nil {
+		t.Fatalf("response-loss retry = %v", err)
+	}
 }
 
 func TestU28DisbandRejectsEveryMutationAndProjectsRawRecord(t *testing.T) {
 	journal, spec := newCloseTestJournal(t)
 	completeDisbandTestJournal(t, journal, spec)
 	view, err := ReadSwarmView(journal)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	frames, err := durableSwarmResponseFrames(journal, view)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	stored, err := EnsureDisband(journal)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	disbandFrames := 0
 	for _, frame := range frames {
-		if frame["type"] != "FED_SWARM_DISBAND" { continue }
+		if frame["type"] != "FED_SWARM_DISBAND" {
+			continue
+		}
 		disbandFrames++
 		raw, ok := frame["disband"].(json.RawMessage)
-		if !ok || !bytes.Equal(raw, stored.Bytes) { t.Fatalf("disband projection = %#v", frame) }
+		if !ok || !bytes.Equal(raw, stored.Bytes) {
+			t.Fatalf("disband projection = %#v", frame)
+		}
 	}
-	if disbandFrames != 1 { t.Fatalf("disband projection count = %d", disbandFrames) }
+	if disbandFrames != 1 {
+		t.Fatalf("disband projection count = %d", disbandFrames)
+	}
 	assertDisbanded := func(name string, err error) {
 		t.Helper()
-		if !errors.Is(err, ErrSwarmDisbanded) { t.Fatalf("%s error = %v", name, err) }
+		if !errors.Is(err, ErrSwarmDisbanded) {
+			t.Fatalf("%s error = %v", name, err)
+		}
 	}
 	_, openErr := OpenVerifiedSwarm(journal, spec, swarmJournalTestTime.Add(2*time.Hour))
 	assertDisbanded("open", openErr)
@@ -127,7 +158,7 @@ func TestU28DisbandRejectsEveryMutationAndProjectsRawRecord(t *testing.T) {
 	assertDisbanded("claim", claimErr)
 	_, renewErr := RenewLease(journal, "step", "owner", 1, swarmJournalTestTime.Add(3*time.Hour), swarmJournalTestTime.Add(2*time.Hour))
 	assertDisbanded("renew", renewErr)
-	observeErr := RecordLeaseObservation(journal, LeaseClaim{StepID: "step", Owner: "owner", Fence: 1, Attempt: 1, Deadline: swarmJournalTestTime.Add(3*time.Hour).Format(time.RFC3339Nano)}, "observed", swarmJournalTestTime.Add(2*time.Hour))
+	observeErr := RecordLeaseObservation(journal, LeaseClaim{StepID: "step", Owner: "owner", Fence: 1, Attempt: 1, Deadline: swarmJournalTestTime.Add(3 * time.Hour).Format(time.RFC3339Nano)}, "observed", swarmJournalTestTime.Add(2*time.Hour))
 	assertDisbanded("observe", observeErr)
 	_, expireErr := ExpireLeases(journal, swarmJournalTestTime.Add(2*time.Hour))
 	assertDisbanded("expire", expireErr)
@@ -135,23 +166,35 @@ func TestU28DisbandRejectsEveryMutationAndProjectsRawRecord(t *testing.T) {
 	assertDisbanded("stage", stageErr)
 	_, closeErr := EnsureStableClose(journal)
 	assertDisbanded("close", closeErr)
-	_, appendErr := journal.Append("future.audit", map[string]any{"event":"blocked"}, view.Version, view.Version+1, swarmJournalTestTime.Add(2*time.Hour))
+	_, appendErr := journal.Append("future.audit", map[string]any{"event": "blocked"}, view.Version, view.Version+1, swarmJournalTestTime.Add(2*time.Hour))
 	assertDisbanded("append", appendErr)
 	coordinator, err := NewLocalSwarmCoordinator(Fixture{}, filepath.Dir(filepath.Dir(journal.Path)), "disband-proof", nil, func() time.Time { return swarmJournalTestTime })
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	frame, err := canonicalJSON(map[string]any{"type": swarmOutputVerificationFrameType, "swarm_id": spec.SwarmID, "proof": map[string]any{"proof": map[string]any{"verification_id": "post-disband"}}})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, proofErr := coordinator.RecordOutputVerification(context.Background(), frame)
 	assertDisbanded("proof", proofErr)
 	for _, entry := range mustReplaySwarm(t, journal) {
-		if entry.Kind != "receipt.committed" { continue }
+		if entry.Kind != "receipt.committed" {
+			continue
+		}
 		var payload receiptCommittedPayload
-		if err := decodeStrictSwarmPayload(entry.Payload, &payload); err != nil { t.Fatal(err) }
+		if err := decodeStrictSwarmPayload(entry.Payload, &payload); err != nil {
+			t.Fatal(err)
+		}
 		raw, err := base64.RawURLEncoding.DecodeString(payload.Receipt)
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 		path := filepath.Join(filepath.Dir(journal.Path), "objects", payload.Result.SHA256)
 		info, err := os.Stat(path)
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 		_, commitErr := CommitReceipt(journal, ReceiptCommit{Claim: payload.Claim, Receipt: StagedReceipt{Bytes: raw, Digest: payload.ReceiptDigest}, Result: StagedArtifact{SHA256: payload.Result.SHA256, Size: uint64(info.Size()), Path: path}}, swarmJournalTestTime.Add(2*time.Hour))
 		assertDisbanded("commit", commitErr)
 		break
@@ -162,28 +205,46 @@ func TestU28DisbandRejectsValidHashForgedReplay(t *testing.T) {
 	journal, spec := newCloseTestJournal(t)
 	completeDisbandTestJournal(t, journal, spec)
 	candidate, err := BuildSwarmDisband(journal)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	var forged swarmDisbandWire
-	if err := json.Unmarshal(candidate.Bytes, &forged); err != nil { t.Fatal(err) }
+	if err := json.Unmarshal(candidate.Bytes, &forged); err != nil {
+		t.Fatal(err)
+	}
 	forged.PlanDigest = strings.Repeat("f", 64)
 	key, err := pinnedCloseAuthorityKey(spec)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	signed := signBodyWithKey(key, swarmDisbandBody(forged), "disband_signature")
 	clear(key)
 	forged.DisbandSignature, _ = signed["disband_signature"].(string)
 	raw, err := canonicalJSON(forged)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := journal.WithLockedReplay(func(entries []SwarmJournalEntry) error {
 		state, err := ReduceSwarmEntries(entries)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		payload, err := canonicalSwarmPayload(swarmDisbandStoredPayload{SchemaVersion: swarmStateSchemaVersion, Disband: base64.RawURLEncoding.EncodeToString(raw), Digest: digestBytesHex(raw)})
-		if err != nil { return err }
-		entry := SwarmJournalEntry{Format: swarmJournalFormat, Sequence: uint64(len(entries)+1), PriorStateVersion: state.Version, StateVersion: state.Version+1, Kind: "swarm.disbanded", Payload: payload, Timestamp: state.OutputVerification.CompletedAt, PrevHash: entries[len(entries)-1].Hash}
+		if err != nil {
+			return err
+		}
+		entry := SwarmJournalEntry{Format: swarmJournalFormat, Sequence: uint64(len(entries) + 1), PriorStateVersion: state.Version, StateVersion: state.Version + 1, Kind: "swarm.disbanded", Payload: payload, Timestamp: state.OutputVerification.CompletedAt, PrevHash: entries[len(entries)-1].Hash}
 		entry.Hash, err = swarmJournalEntryHash(entry)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		return journal.appendLocked(entry)
-	}); err != nil { t.Fatal(err) }
-	if _, err := journal.Replay(); err == nil { t.Fatal("replay accepted forged disband with valid journal hash") }
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := journal.Replay(); err == nil {
+		t.Fatal("replay accepted forged disband with valid journal hash")
+	}
 }
 
 func completeDisbandTestJournal(t *testing.T, journal *SwarmJournal, spec DurableSwarmSpec) {

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -241,31 +241,53 @@ func TestAppleWorkspacePostflightRejectsUnsafeEntries(t *testing.T) {
 	}{
 		{"symlink", func(t *testing.T, workspace string) {
 			result := filepath.Join(workspace, "result")
-			if err := os.Remove(result); err != nil { t.Fatal(err) }
-			if err := os.Symlink("input/payload", result); err != nil { t.Fatal(err) }
+			if err := os.Remove(result); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink("input/payload", result); err != nil {
+				t.Fatal(err)
+			}
 		}},
 		{"hardlink", func(t *testing.T, workspace string) {
 			result := filepath.Join(workspace, "result")
-			if err := os.Remove(result); err != nil { t.Fatal(err) }
-			if err := os.Link(filepath.Join(workspace, "input", "payload"), result); err != nil { t.Fatal(err) }
+			if err := os.Remove(result); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Link(filepath.Join(workspace, "input", "payload"), result); err != nil {
+				t.Fatal(err)
+			}
 		}},
 		{"device", func(t *testing.T, workspace string) {
 			result := filepath.Join(workspace, "result")
-			if err := os.Remove(result); err != nil { t.Fatal(err) }
-			if err := syscall.Mkfifo(result, 0o600); err != nil { t.Fatal(err) }
+			if err := os.Remove(result); err != nil {
+				t.Fatal(err)
+			}
+			if err := syscall.Mkfifo(result, 0o600); err != nil {
+				t.Fatal(err)
+			}
 		}},
 		{"extra entry", func(t *testing.T, workspace string) {
-			if err := os.WriteFile(filepath.Join(workspace, "unexpected"), []byte("x"), 0o600); err != nil { t.Fatal(err) }
+			if err := os.WriteFile(filepath.Join(workspace, "unexpected"), []byte("x"), 0o600); err != nil {
+				t.Fatal(err)
+			}
 		}},
 		{"aggregate overflow", func(t *testing.T, workspace string) {
-			if err := os.WriteFile(filepath.Join(workspace, "result"), []byte("123456789"), 0o666); err != nil { t.Fatal(err) }
+			if err := os.WriteFile(filepath.Join(workspace, "result"), []byte("123456789"), 0o666); err != nil {
+				t.Fatal(err)
+			}
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			inputs := []DockerScratchInput{{Path: "payload", Bytes: []byte("input")}}
 			workspace, inputBytes, err := stageAppleWorkspace(inputs)
-			if err != nil { t.Fatal(err) }
-			defer func() { if err := removeAppleWorkspace(workspace); err != nil { t.Error(err) } }()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if err := removeAppleWorkspace(workspace); err != nil {
+					t.Error(err)
+				}
+			}()
 			test.mutate(t, workspace)
 			if err := validateAppleWorkspace(workspace, inputs, inputBytes, 8); err == nil {
 				t.Fatal("validateAppleWorkspace() succeeded for unsafe workspace")
@@ -276,30 +298,37 @@ func TestAppleWorkspacePostflightRejectsUnsafeEntries(t *testing.T) {
 
 func TestAppleWorkspaceIdentityRejectsSubstitution(t *testing.T) {
 	workspace, _, err := stageAppleWorkspace(nil)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	parent := filepath.Dir(workspace)
 	defer func() { _ = removeAppleWorkspace(workspace) }()
 	pinned, err := pinAppleWorkspace(workspace)
-	if err != nil { t.Fatal(err) }
-	if err := os.Rename(workspace, workspace+"-replaced"); err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(workspace, workspace+"-replaced"); err != nil {
+		t.Fatal(err)
+	}
 	defer func() { _ = removeAppleWorkspace(workspace + "-replaced") }()
-	if err := os.Mkdir(filepath.Join(parent, filepath.Base(workspace)), 0o700); err != nil { t.Fatal(err) }
+	if err := os.Mkdir(filepath.Join(parent, filepath.Base(workspace)), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	if err := revalidateAppleWorkspace(workspace, pinned); err == nil {
 		t.Fatal("revalidateAppleWorkspace() accepted substituted directory")
 	}
 }
 
-
 type appleLifecycleFake struct {
-	t         *testing.T
-	image     string
-	calls     []string
-	failStep  string
-	stdout    string
-	stderr    string
-	inspects  int
-	workspace string
-	waitForCancel bool
+	t                     *testing.T
+	image                 string
+	calls                 []string
+	failStep              string
+	stdout                string
+	stderr                string
+	inspects              int
+	workspace             string
+	waitForCancel         bool
 	omitInspectExitStatus bool
 }
 
@@ -328,16 +357,24 @@ func (f *appleLifecycleFake) Run(_ context.Context, executable string, arguments
 	}
 	switch arguments[0] {
 	case "create":
-		if f.failStep == "create" { return nil, errors.New("create failed") }
+		if f.failStep == "create" {
+			return nil, errors.New("create failed")
+		}
 		for _, argument := range arguments {
-			if !strings.HasPrefix(argument, "type=bind,source=") { continue }
+			if !strings.HasPrefix(argument, "type=bind,source=") {
+				continue
+			}
 			for _, field := range strings.Split(argument, ",") {
-				if strings.HasPrefix(field, "source=") { f.workspace = strings.TrimPrefix(field, "source=") }
+				if strings.HasPrefix(field, "source=") {
+					f.workspace = strings.TrimPrefix(field, "source=")
+				}
 			}
 		}
-		return []byte(appleLifecycleTestContainerID+"\n"), nil
+		return []byte(appleLifecycleTestContainerID + "\n"), nil
 	case "inspect":
-		if f.failStep == "inspect" { return nil, errors.New("inspect failed") }
+		if f.failStep == "inspect" {
+			return nil, errors.New("inspect failed")
+		}
 		f.inspects++
 		inspect := appleLifecycleInspectJSON(appleLifecycleTestContainerID, f.image, f.workspace)
 		if f.omitInspectExitStatus {
@@ -345,7 +382,9 @@ func (f *appleLifecycleFake) Run(_ context.Context, executable string, arguments
 		}
 		return []byte(inspect), nil
 	case "delete":
-		if f.failStep == "delete" { return nil, errors.New("delete failed") }
+		if f.failStep == "delete" {
+			return nil, errors.New("delete failed")
+		}
 		return nil, nil
 	default:
 		return nil, fmt.Errorf("unexpected call %q", arguments)
@@ -353,7 +392,9 @@ func (f *appleLifecycleFake) Run(_ context.Context, executable string, arguments
 }
 
 func (f *appleLifecycleFake) Start(ctx context.Context, executable string, arguments []string, stdout, stderr io.Writer) error {
-	if executable != appleContainerBinaryPath { return fmt.Errorf("unexpected executable %q", executable) }
+	if executable != appleContainerBinaryPath {
+		return fmt.Errorf("unexpected executable %q", executable)
+	}
 	f.calls = append(f.calls, "container "+strings.Join(arguments, " "))
 	if f.waitForCancel {
 		<-ctx.Done()
@@ -361,16 +402,20 @@ func (f *appleLifecycleFake) Start(ctx context.Context, executable string, argum
 	}
 	_, _ = stdout.Write([]byte(f.stdout))
 	_, _ = stderr.Write([]byte(f.stderr))
-	if f.workspace != "" { _ = os.WriteFile(filepath.Join(f.workspace, "result"), []byte("result"), 0o666) }
-	if f.failStep == "start" { return errors.New("start failed") }
+	if f.workspace != "" {
+		_ = os.WriteFile(filepath.Join(f.workspace, "result"), []byte("result"), 0o666)
+	}
+	if f.failStep == "start" {
+		return errors.New("start failed")
+	}
 	return nil
 }
 
 func validAppleLifecycleRequest() DockerRunRequest {
 	return DockerRunRequest{
-		Image: applePreflightTestImage,
+		Image:   applePreflightTestImage,
 		Command: []string{"/usr/local/bin/tool", "--emit", "ok"},
-		CPUs: "1.5", MemoryBytes: 256 << 20, TimeoutMillis: 30_000, MaxOutputBytes: 1 << 20,
+		CPUs:    "1.5", MemoryBytes: 256 << 20, TimeoutMillis: 30_000, MaxOutputBytes: 1 << 20,
 		ScratchInputs: []DockerScratchInput{{Path: "a/input", Bytes: []byte("input")}},
 	}
 }
@@ -382,11 +427,22 @@ func assertAppleLifecycleSubsequence(t *testing.T, calls, want []string) {
 	t.Helper()
 	at := 0
 	for _, call := range calls {
-		if at < len(want) && strings.Contains(call, want[at]) { at++ }
+		if at < len(want) && strings.Contains(call, want[at]) {
+			at++
+		}
 	}
-	if at != len(want) { t.Fatalf("lifecycle calls = %#v; missing sequence %#v", calls, want[at:]) }
+	if at != len(want) {
+		t.Fatalf("lifecycle calls = %#v; missing sequence %#v", calls, want[at:])
+	}
 }
 
 func containsAppleCall(calls []string, want string) bool { return countAppleCall(calls, want) > 0 }
-func countAppleCall(calls []string, want string) int { n := 0; for _, call := range calls { if strings.Contains(call, want) { n++ } }; return n }
-
+func countAppleCall(calls []string, want string) int {
+	n := 0
+	for _, call := range calls {
+		if strings.Contains(call, want) {
+			n++
+		}
+	}
+	return n
+}

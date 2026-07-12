@@ -18,9 +18,9 @@ import (
 )
 
 const (
-	ActivePointerFormat   = "agnet-managed-key-active/v1"
+	ActivePointerFormat    = "agnet-managed-key-active/v1"
 	GenerationCommitFormat = "agnet-managed-key-generation-commit/v1"
-	InstallClaimFormat    = "agnet-managed-key-install-claim/v1"
+	InstallClaimFormat     = "agnet-managed-key-install-claim/v1"
 )
 
 var ErrRecoveryRequired = errors.New("managed key recovery required")
@@ -1147,10 +1147,10 @@ func loadVerifiedGeneration(item storeGeneration, passphrase []byte) (LoadedIden
 		return LoadedIdentity{}, errors.New("loaded identity mismatch")
 	}
 	return LoadedIdentity{
-		KeyType:    opened.KeyType,
-		Identity:   opened.Identity,
-		Plaintext:  opened.Plaintext,
-		PrivateKey: opened.PrivateKey,
+		KeyType:       opened.KeyType,
+		Identity:      opened.Identity,
+		Plaintext:     opened.Plaintext,
+		PrivateKey:    opened.PrivateKey,
 		KeyGeneration: keyGenerationReference(item.record),
 	}, nil
 }

@@ -129,17 +129,34 @@ func TestSwarmJournalCompleteCorruptionFailsClosedWithoutMutation(t *testing.T) 
 		line func(SwarmJournalEntry) []byte
 	}{
 		{name: "malformed", line: func(SwarmJournalEntry) []byte { return []byte(`{"format":`) }},
-		{name: "unknown field", line: func(entry SwarmJournalEntry) []byte { return append([]byte(`{"unknown":true,`), journalTestLine(entry)[1:]...) }},
+		{name: "unknown field", line: func(entry SwarmJournalEntry) []byte {
+			return append([]byte(`{"unknown":true,`), journalTestLine(entry)[1:]...)
+		}},
 		{name: "duplicate payload", line: func(entry SwarmJournalEntry) []byte {
 			return []byte(`{"format":"agnet-local-swarm-journal/v1","sequence":2,"prior_state_version":1,"state_version":2,"kind":"step.completed","payload":{"step":"two"},"payload":{"step":"shadow"},"timestamp":"2026-07-12T13:14:17.123456789Z","prev_hash":"` + entry.PrevHash + `","hash":"` + entry.Hash + `"}`)
 		}},
 		{name: "payload nested duplicate", line: func(entry SwarmJournalEntry) []byte {
 			return []byte(`{"format":"agnet-local-swarm-journal/v1","sequence":2,"prior_state_version":1,"state_version":2,"kind":"step.completed","payload":{"step":"two","step":"shadow"},"timestamp":"2026-07-12T13:14:17.123456789Z","prev_hash":"` + entry.PrevHash + `","hash":"` + entry.Hash + `"}`)
 		}},
-		{name: "hash", line: func(entry SwarmJournalEntry) []byte { entry.Hash = strings.Repeat("0", 64); return journalTestLine(entry) }},
-		{name: "sequence", line: func(entry SwarmJournalEntry) []byte { entry.Sequence = 3; entry.Hash = journalTestHash(entry); return journalTestLine(entry) }},
-		{name: "version", line: func(entry SwarmJournalEntry) []byte { entry.PriorStateVersion, entry.StateVersion = 7, 8; entry.Hash = journalTestHash(entry); return journalTestLine(entry) }},
-		{name: "timestamp", line: func(entry SwarmJournalEntry) []byte { entry.Timestamp = "2026-07-12 13:14:17Z"; entry.Hash = journalTestHash(entry); return journalTestLine(entry) }},
+		{name: "hash", line: func(entry SwarmJournalEntry) []byte {
+			entry.Hash = strings.Repeat("0", 64)
+			return journalTestLine(entry)
+		}},
+		{name: "sequence", line: func(entry SwarmJournalEntry) []byte {
+			entry.Sequence = 3
+			entry.Hash = journalTestHash(entry)
+			return journalTestLine(entry)
+		}},
+		{name: "version", line: func(entry SwarmJournalEntry) []byte {
+			entry.PriorStateVersion, entry.StateVersion = 7, 8
+			entry.Hash = journalTestHash(entry)
+			return journalTestLine(entry)
+		}},
+		{name: "timestamp", line: func(entry SwarmJournalEntry) []byte {
+			entry.Timestamp = "2026-07-12 13:14:17Z"
+			entry.Hash = journalTestHash(entry)
+			return journalTestLine(entry)
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
