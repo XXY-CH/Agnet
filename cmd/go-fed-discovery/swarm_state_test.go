@@ -131,8 +131,8 @@ func TestSwarmReplayPinsRejectsActivePointerSubstitution(t *testing.T) {
 	if !reflect.DeepEqual(replayed.Spec.Steps[0].Candidates[0].GenerationPin, state.Spec.Steps[0].Candidates[0].GenerationPin) {
 		t.Fatalf("generation pin drifted on replay: got %#v want %#v", replayed.Spec.Steps[0].Candidates[0].GenerationPin, state.Spec.Steps[0].Candidates[0].GenerationPin)
 	}
-	if replayed.Spec.Steps[0].Candidates[0].GenerationPin.RecordDigest != "pinned-record-digest" {
-		t.Fatal("replay substituted a live worker generation")
+	if got, want := replayed.Spec.Steps[0].Candidates[0].GenerationPin.RecordDigest, reducerTestCandidate(t, "agent://test/worker").GenerationPin.RecordDigest; got != want {
+		t.Fatalf("replay substituted a live worker generation: got %q want %q", got, want)
 	}
 }
 
@@ -163,13 +163,31 @@ func reducerTestDurableSpec(t *testing.T) DurableSwarmSpec {
 		Binding:       binding,
 		Request:       request,
 		Steps: []DurableSwarmStepSpec{{
-			StepID:    "prepare",
-			Candidates: []DurableWorkerCandidate{{Alias: "agent://test/worker", AID: "did:key:test", GenerationPin: WorkerGenerationPin{StorePath: "/keys/test", PassphraseFile: "/keys/pass", RecordDigest: "pinned-record-digest"}}},
+			StepID:        "prepare",
+			TaskDigest:    strings.Repeat("a", 64),
+			Capability:    "analysis",
+			Candidates:    []DurableWorkerCandidate{reducerTestCandidate(t, "agent://test/worker")},
 			AttemptPolicy: SwarmAttemptPolicy{MaxAttempts: 1},
 		}},
 	}
 }
 
+
+func reducerTestCandidate(t *testing.T, alias string) DurableWorkerCandidate {
+	t.Helper()
+	descriptor, err := agentDescriptor(u22TestWorkerKey(), alias)
+	if err != nil {
+		t.Fatal(err)
+	}
+	descriptorDigest := digestHex(descriptor)
+	return DurableWorkerCandidate{
+		Alias:            alias,
+		AID:              optionalString(descriptor["aid"]),
+		GenerationPin:    WorkerGenerationPin{StorePath: "/keys/test", PassphraseFile: "/keys/pass", RecordDigest: digestHex(map[string]any{"descriptor_digest": descriptorDigest, "fixture": "reducer-test-generation"})},
+		PublicKeySPKI:    optionalString(descriptor["public_key_spki"]),
+		DescriptorDigest: descriptorDigest,
+	}
+}
 func reducerTestOpenedEntry(t *testing.T, spec DurableSwarmSpec) SwarmJournalEntry {
 	t.Helper()
 	wire, err := spec.wire()
@@ -244,7 +262,9 @@ func TestSwarmCancellationIsTerminal(t *testing.T) {
 	spec := reducerTestDurableSpec(t)
 	spec.Steps = append(spec.Steps, DurableSwarmStepSpec{
 		StepID:        "publish",
-		Candidates:    []DurableWorkerCandidate{{Alias: "agent://test/publisher", AID: "did:key:publisher", GenerationPin: WorkerGenerationPin{StorePath: "/keys/publisher", PassphraseFile: "/keys/publisher-pass", RecordDigest: "publisher-record-digest"}}},
+		TaskDigest:    strings.Repeat("b", 64),
+		Capability:    "analysis",
+		Candidates:    []DurableWorkerCandidate{reducerTestCandidate(t, "agent://test/publisher")},
 		AttemptPolicy: SwarmAttemptPolicy{MaxAttempts: 1},
 	})
 	state, err := ReduceSwarmEntry(SwarmState{}, reducerTestOpenedEntry(t, spec))

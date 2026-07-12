@@ -15,6 +15,13 @@ import (
 	"time"
 )
 
+// VerifyReceiptV2 is the reusable strict verifier for the exact canonical receipt bytes that a
+// lease-fenced receipt commitment stores in the authoritative journal.
+func VerifyReceiptV2(raw []byte, expected ReceiptExpectation) error {
+	return verifyReceiptV2(raw, expected)
+
+}
+
 func verifyReceiptRecord(record map[string]any, artifactStoreDir string, signedTasks ...map[string]any) error {
 	zone, ok := record["zone"].(map[string]any)
 	if !ok {

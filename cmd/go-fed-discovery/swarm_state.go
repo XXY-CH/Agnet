@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/base64"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,10 +41,13 @@ type SwarmAttemptPolicy struct {
 }
 
 // DurableWorkerCandidate is an ordered, generation-pinned candidate captured at Phase A.
+// Its public verification material and descriptor digest are immutable inputs to receipt recovery.
 type DurableWorkerCandidate struct {
-	Alias         string              `json:"alias"`
-	AID           string              `json:"aid"`
-	GenerationPin WorkerGenerationPin `json:"generation_pin"`
+	Alias            string              `json:"alias"`
+	AID              string              `json:"aid"`
+	GenerationPin    WorkerGenerationPin `json:"generation_pin"`
+	PublicKeySPKI    string              `json:"public_key_spki"`
+	DescriptorDigest string              `json:"descriptor_digest"`
 }
 
 // DurableSwarmStepSpec is the complete immutable execution input for one ordered step.
@@ -87,13 +91,14 @@ type SwarmStepState struct {
 
 // SwarmState is a derived view only. Its sole authority is the journal consumed by ReduceSwarmEntry.
 type SwarmState struct {
-	Version    uint64           `json:"version"`
-	Status     SwarmStatus      `json:"status"`
-	Spec       DurableSwarmSpec `json:"spec"`
-	Steps      []SwarmStepState `json:"steps"`
-	ReadyWave  ReadyWave        `json:"ready_wave"`
-	Leases     []LeaseClaim     `json:"leases,omitempty"`
-	LastFence  LeaseFence       `json:"last_fence"`
+	Version            uint64                     `json:"version"`
+	Status             SwarmStatus                `json:"status"`
+	Spec               DurableSwarmSpec           `json:"spec"`
+	Steps              []SwarmStepState           `json:"steps"`
+	ReadyWave          ReadyWave                  `json:"ready_wave"`
+	Leases             []LeaseClaim               `json:"leases,omitempty"`
+	CommittedArtifacts map[string]ArtifactTriple  `json:"committed_artifacts,omitempty"`
+	LastFence          LeaseFence                 `json:"last_fence"`
 }
 
 type durableSwarmSpecWire struct {
@@ -203,8 +208,12 @@ func validateDurableSwarmSpec(spec DurableSwarmSpec) error {
 			}
 		}
 		for _, candidate := range step.Candidates {
-			if candidate.Alias == "" || candidate.AID == "" || candidate.GenerationPin.StorePath == "" || candidate.GenerationPin.PassphraseFile == "" || candidate.GenerationPin.RecordDigest == "" {
-				return errors.New("swarm durable worker generation pin invalid")
+			if candidate.Alias == "" || candidate.AID == "" || candidate.GenerationPin.StorePath == "" || candidate.GenerationPin.PassphraseFile == "" || !isHexDigest(candidate.GenerationPin.RecordDigest) || candidate.PublicKeySPKI == "" || !isHexDigest(candidate.DescriptorDigest) {
+				return errors.New("swarm durable worker verification pin invalid")
+			}
+			key, der, err := publicKey(map[string]any{"public_key_spki": candidate.PublicKeySPKI})
+			if err != nil || len(key) != 32 || candidate.AID != aidFromSPKI(der) {
+				return errors.New("swarm durable worker verification pin invalid")
 			}
 		}
 		seen[step.StepID] = true
@@ -255,6 +264,7 @@ func ReduceSwarmEntry(prior SwarmState, entry SwarmJournalEntry) (SwarmState, er
 		}
 		next.Spec = spec
 		next.Steps = make([]SwarmStepState, len(spec.Steps))
+		next.CommittedArtifacts = make(map[string]ArtifactTriple, len(next.Steps))
 		for i, step := range spec.Steps {
 			next.Steps[i] = SwarmStepState{StepID: step.StepID, Status: SwarmStepStatusPending}
 		}
@@ -263,6 +273,13 @@ func ReduceSwarmEntry(prior SwarmState, entry SwarmJournalEntry) (SwarmState, er
 			return SwarmState{}, errors.New("swarm must open before leasing")
 		}
 		if err := reduceSwarmLeaseEntry(&next, entry); err != nil {
+			return SwarmState{}, err
+		}
+	case "receipt.committed":
+		if prior.Version == 0 {
+			return SwarmState{}, errors.New("swarm must open before receipt commitment")
+		}
+		if err := reduceSwarmReceiptEntry(&next, entry); err != nil {
 			return SwarmState{}, err
 		}
 	case "swarm.cancelled":
@@ -296,10 +313,10 @@ func ReduceSwarmEntry(prior SwarmState, entry SwarmJournalEntry) (SwarmState, er
 // by typed journals for future reducers, while unknown state namespaces fail closed.
 func isSwarmStateEntryKind(kind string) (bool, error) {
 	switch kind {
-	case "swarm.opened", "swarm.cancelled", "wave.ready", "wave.dispatched", "lease.renewed", "lease.observed", "lease.expired":
+	case "swarm.opened", "swarm.cancelled", "wave.ready", "wave.dispatched", "lease.renewed", "lease.observed", "lease.expired", "receipt.committed":
 		return true, nil
 	default:
-		if strings.HasPrefix(kind, "swarm.") || strings.HasPrefix(kind, "step.") {
+		if strings.HasPrefix(kind, "swarm.") || strings.HasPrefix(kind, "step.") || strings.HasPrefix(kind, "receipt.") {
 			return false, errors.New("swarm entry kind invalid")
 		}
 		return false, nil
@@ -380,6 +397,12 @@ func deriveSwarmStatus(steps []SwarmStepState) SwarmStatus {
 
 func cloneSwarmState(state SwarmState) SwarmState {
 	clone := SwarmState{Version: state.Version, Status: state.Status, Spec: cloneDurableSwarmSpec(state.Spec), ReadyWave: cloneReadyWave(state.ReadyWave), Leases: cloneLeaseClaims(state.Leases), LastFence: state.LastFence}
+	if state.CommittedArtifacts != nil {
+		clone.CommittedArtifacts = make(map[string]ArtifactTriple, len(state.CommittedArtifacts))
+		for stepID, artifact := range state.CommittedArtifacts {
+			clone.CommittedArtifacts[stepID] = artifact
+		}
+	}
 	clone.Steps = make([]SwarmStepState, len(state.Steps))
 	for i, step := range state.Steps {
 		clone.Steps[i] = step
@@ -489,9 +512,17 @@ func (f Fixture) DurableSpecFromVerifiedBinding(origin, request map[string]any) 
 	spec := DurableSwarmSpec{SchemaVersion: swarmStateSchemaVersion, SwarmID: verified.swarmID, Plan: planRaw, Binding: bindingRaw, Request: requestRaw, AuthorityGeneration: f.AuthorityGenerationPin, Steps: make([]DurableSwarmStepSpec, 0, len(verified.executionSteps))}
 	for _, verifiedStep := range verified.executionSteps {
 		step := DurableSwarmStepSpec{StepID: verifiedStep.stepID, DependsOn: append([]string(nil), verifiedStep.after...), TaskDigest: verifiedStep.taskDigest, Capability: verifiedStep.capability, AttemptPolicy: SwarmAttemptPolicy{MaxAttempts: 1}}
-		step.Candidates = append(step.Candidates, durableCandidateForWorker(verifiedStep.originalWorker))
+		candidate, err := durableCandidateForWorker(verifiedStep.originalWorker)
+		if err != nil {
+			return DurableSwarmSpec{}, err
+		}
+		step.Candidates = append(step.Candidates, candidate)
 		if verifiedStep.migrationWorker != nil {
-			step.Candidates = append(step.Candidates, durableCandidateForWorker(verifiedStep.migrationWorker))
+			candidate, err := durableCandidateForWorker(verifiedStep.migrationWorker)
+			if err != nil {
+				return DurableSwarmSpec{}, err
+			}
+			step.Candidates = append(step.Candidates, candidate)
 		}
 		spec.Steps = append(spec.Steps, step)
 	}
@@ -501,8 +532,15 @@ func (f Fixture) DurableSpecFromVerifiedBinding(origin, request map[string]any) 
 	return cloneDurableSwarmSpec(spec), nil
 }
 
-func durableCandidateForWorker(worker *Worker) DurableWorkerCandidate {
-	return DurableWorkerCandidate{Alias: optionalString(worker.Descriptor["alias"]), AID: optionalString(worker.Descriptor["aid"]), GenerationPin: worker.WorkerGenerationPin}
+func durableCandidateForWorker(worker *Worker) (DurableWorkerCandidate, error) {
+	if worker == nil || worker.Descriptor == nil || worker.GenerationRef.RecordDigest != worker.WorkerGenerationPin.RecordDigest || worker.GenerationRef.DescriptorDigest == "" || digestHex(worker.Descriptor) != worker.GenerationRef.DescriptorDigest {
+		return DurableWorkerCandidate{}, errors.New("worker durable verification pin invalid")
+	}
+	key, der, err := publicKey(worker.Descriptor)
+	if err != nil || optionalString(worker.Descriptor["aid"]) != aidFromSPKI(der) || !bytes.Equal(key, worker.PrivateKey.Public().(ed25519.PublicKey)) {
+		return DurableWorkerCandidate{}, errors.New("worker durable verification pin invalid")
+	}
+	return DurableWorkerCandidate{Alias: optionalString(worker.Descriptor["alias"]), AID: optionalString(worker.Descriptor["aid"]), GenerationPin: worker.WorkerGenerationPin, PublicKeySPKI: optionalString(worker.Descriptor["public_key_spki"]), DescriptorDigest: worker.GenerationRef.DescriptorDigest}, nil
 }
 
 // OpenVerifiedSwarm verifies Phase A before opening the authoritative journal.

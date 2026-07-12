@@ -10,9 +10,9 @@ func TestReadyWaveUsesSignedOrderAndWaveBarrier(t *testing.T) {
 	journal := newTestSwarmJournal(t)
 	spec := reducerTestDurableSpec(t)
 	spec.Steps = []DurableSwarmStepSpec{
-		{StepID: "prepare", Candidates: spec.Steps[0].Candidates, AttemptPolicy: SwarmAttemptPolicy{MaxAttempts: 2}},
-		{StepID: "lint", Candidates: spec.Steps[0].Candidates, AttemptPolicy: SwarmAttemptPolicy{MaxAttempts: 2}},
-		{StepID: "publish", DependsOn: []string{"prepare", "lint"}, Candidates: spec.Steps[0].Candidates, AttemptPolicy: SwarmAttemptPolicy{MaxAttempts: 2}},
+		{StepID: "prepare", TaskDigest: spec.Steps[0].TaskDigest, Capability: spec.Steps[0].Capability, Candidates: spec.Steps[0].Candidates, AttemptPolicy: SwarmAttemptPolicy{MaxAttempts: 2}},
+		{StepID: "lint", TaskDigest: spec.Steps[0].TaskDigest, Capability: spec.Steps[0].Capability, Candidates: spec.Steps[0].Candidates, AttemptPolicy: SwarmAttemptPolicy{MaxAttempts: 2}},
+		{StepID: "publish", DependsOn: []string{"prepare", "lint"}, TaskDigest: spec.Steps[0].TaskDigest, Capability: spec.Steps[0].Capability, Candidates: spec.Steps[0].Candidates, AttemptPolicy: SwarmAttemptPolicy{MaxAttempts: 2}},
 	}
 	if _, err := OpenVerifiedSwarm(journal, spec, swarmJournalTestTime); err != nil {
 		t.Fatal(err)
@@ -53,10 +53,7 @@ func TestLeaseRenewalAndExpiryPreservePinsAndOrder(t *testing.T) {
 	journal := newTestSwarmJournal(t)
 	spec := reducerTestDurableSpec(t)
 	first := spec.Steps[0].Candidates[0]
-	second := first
-	second.Alias = "agent://test/migration"
-	second.AID = "did:key:migration"
-	second.GenerationPin.RecordDigest = "migration-record"
+	second := reducerTestCandidate(t, "agent://test/migration")
 	spec.Steps[0].Candidates = []DurableWorkerCandidate{first, second}
 	spec.Steps[0].AttemptPolicy.MaxAttempts = 2
 	spec.Steps[0].Capability = "analysis"
@@ -165,10 +162,7 @@ func TestLeaseObservationRejectsStaleReclaimedWorkerWithoutAppend(t *testing.T) 
 	spec := reducerTestDurableSpec(t)
 	spec.Steps[0].AttemptPolicy.MaxAttempts = 2
 	first := spec.Steps[0].Candidates[0]
-	second := first
-	second.Alias = "agent://test/reclaimed"
-	second.AID = "did:key:reclaimed"
-	second.GenerationPin.RecordDigest = "reclaimed-generation"
+	second := reducerTestCandidate(t, "agent://test/reclaimed")
 	spec.Steps[0].Candidates = []DurableWorkerCandidate{first, second}
 	if _, err := OpenVerifiedSwarm(journal, spec, swarmJournalTestTime); err != nil {
 		t.Fatal(err)
