@@ -273,7 +273,7 @@ func localWorkerReceipt(state SwarmState, claim LeaseClaim, result StagedArtifac
 	auxiliaryTriples := make([]ArtifactTriple, len(auxiliary)); for i := range auxiliary { auxiliaryTriples[i] = auxiliary[i].Triple() }
 	auxiliaryValues := make([]any, len(auxiliaryTriples)); for i := range auxiliaryTriples { auxiliaryValues[i] = map[string]any{"uri": auxiliaryTriples[i].URI, "sha256": auxiliaryTriples[i].SHA256, "manifest_hash": auxiliaryTriples[i].ManifestHash} }
 	resultValue := map[string]any{"uri": result.Triple().URI, "sha256": result.Triple().SHA256, "manifest_hash": result.Triple().ManifestHash}
-	body := map[string]any{"format": "agnet-receipt/v2", "swarm_id": state.Spec.SwarmID, "step_id": claim.StepID, "task_digest": state.Spec.Steps[stepIndex].TaskDigest, "graph_digest": digestBytesHex(state.Spec.Binding), "capability": claim.Capability, "worker_aid": claim.Candidate.AID, "worker_generation_pin": claim.Candidate.GenerationPin, "attempt": claim.Attempt, "fence": claim.Fence, "result": resultValue, "auxiliary": auxiliaryValues}
+	body := map[string]any{"format": "agnet-receipt/v2", "swarm_id": state.Spec.SwarmID, "step_id": claim.StepID, "task_id": state.Spec.Steps[stepIndex].TaskID, "task_digest": state.Spec.Steps[stepIndex].TaskDigest, "graph_digest": digestBytesHex(state.Spec.Binding), "capability": claim.Capability, "worker_aid": claim.Candidate.AID, "worker_generation_pin": claim.Candidate.GenerationPin, "attempt": claim.Attempt, "fence": claim.Fence, "result": resultValue, "auxiliary": auxiliaryValues}
 	if len(dependencyList) != 0 { body["dependencies"] = dependencyList }
 	bodyRaw, err := canonicalJSON(body); if err != nil { return StagedReceipt{}, err }
 	var normalizedBody map[string]any

@@ -31,11 +31,18 @@ type LocalSwarmCoordinator struct {
 
 	// launchSlots and launches are allocated once for this coordinator run.
 	// ResumeAll reuses this owned pool instead of creating detached launchers.
+	launchMu    sync.Mutex
 	launchSlots chan struct{}
 	launches    sync.WaitGroup
 
 	LeaseTTL     time.Duration
 	PollInterval time.Duration
+}
+
+type localSwarmLaunchReservation struct {
+	coordinator *LocalSwarmCoordinator
+	slots       int
+	active      bool
 }
 
 // NewLocalSwarmCoordinator constructs a durable local executor. The launcher
@@ -145,15 +152,24 @@ func (c *LocalSwarmCoordinator) RunReadyWaves(ctx context.Context, journal *Swar
 			return SwarmView{}, errors.New("swarm ready wave width exceeds maximum 32")
 		}
 
+		reservation, admitted := c.reserveLaunchSlots(len(wave.StepIDs))
+		if !admitted {
+			// Do not claim a durable lease until the owned pool can start the
+			// entire signed wave. The persisted ready wave remains retryable.
+			c.pause()
+			continue
+		}
 		dispatch, err := ClaimReadyWave(journal, c.owner, now.Add(c.LeaseTTL), now)
 		if err != nil {
+			reservation.release()
 			if isCoordinatorContention(err) {
 				c.pause()
 				continue
 			}
 			return SwarmView{}, err
 		}
-		if err := c.launchAll(journal, dispatch); err != nil {
+		if err := c.launchAll(journal, dispatch, reservation); err != nil {
+			reservation.release()
 			return SwarmView{}, err
 		}
 	}
@@ -197,12 +213,43 @@ func (c *LocalSwarmCoordinator) ResumeAll(ctx context.Context) ([]SwarmView, err
 	return views, nil
 }
 
-func (c *LocalSwarmCoordinator) launchAll(journal *SwarmJournal, dispatch DispatchWave) error {
-	if journal == nil || len(dispatch.Claims) == 0 || len(dispatch.Claims) > maxLocalSwarmReadyWaveWidth {
+func (c *LocalSwarmCoordinator) reserveLaunchSlots(count int) (*localSwarmLaunchReservation, bool) {
+	if count <= 0 || count > maxLocalSwarmReadyWaveWidth {
+		return nil, false
+	}
+	c.launchMu.Lock()
+	defer c.launchMu.Unlock()
+	if len(c.launchSlots)+count > cap(c.launchSlots) {
+		return nil, false
+	}
+	for range count {
+		c.launchSlots <- struct{}{}
+	}
+	return &localSwarmLaunchReservation{coordinator: c, slots: count, active: true}, true
+}
+
+func (r *localSwarmLaunchReservation) release() {
+	if r == nil || !r.active {
+		return
+	}
+	r.active = false
+	r.coordinator.releaseLaunchSlots(r.slots)
+}
+
+func (c *LocalSwarmCoordinator) releaseLaunchSlots(count int) {
+	c.launchMu.Lock()
+	defer c.launchMu.Unlock()
+	for range count {
+		<-c.launchSlots
+	}
+}
+
+func (c *LocalSwarmCoordinator) launchAll(journal *SwarmJournal, dispatch DispatchWave, reservation *localSwarmLaunchReservation) error {
+	if journal == nil || len(dispatch.Claims) == 0 || len(dispatch.Claims) > maxLocalSwarmReadyWaveWidth || reservation == nil || reservation.coordinator != c || !reservation.active || reservation.slots != len(dispatch.Claims) {
 		return errors.New("local swarm dispatch exceeds launcher pool")
 	}
+	reservation.active = false
 	for _, claim := range dispatch.Claims {
-		c.launchSlots <- struct{}{}
 		c.launches.Add(1)
 		go c.launchClaim(journal, claim)
 	}
@@ -211,7 +258,7 @@ func (c *LocalSwarmCoordinator) launchAll(journal *SwarmJournal, dispatch Dispat
 
 func (c *LocalSwarmCoordinator) launchClaim(journal *SwarmJournal, claim LeaseClaim) {
 	defer c.launches.Done()
-	defer func() { <-c.launchSlots }()
+	defer c.releaseLaunchSlots(1)
 	request := SwarmWorkerRequest{Format: localSwarmWorkerRequestFormat, StorageRoot: c.storageRoot, SwarmID: journal.expectedSwarmID, StepID: claim.StepID, Owner: claim.Owner, Fence: claim.Fence}
 	_, err := c.launcher.Launch(context.Background(), request)
 	if err == nil {
@@ -321,7 +368,7 @@ func localSwarmState(journal *SwarmJournal) ([]SwarmJournalEntry, SwarmState, er
 }
 
 func localSwarmTerminal(status SwarmStatus) bool {
-	return status == SwarmStatusCompleted || status == SwarmStatusFailed || status == SwarmStatusCancelled
+	return status == SwarmStatusCompleted || status == SwarmStatusClosing || status == SwarmStatusFailed || status == SwarmStatusCancelled
 }
 
 func isCoordinatorContention(err error) bool {

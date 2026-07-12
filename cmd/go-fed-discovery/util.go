@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"strings"
 	"time"
@@ -200,6 +199,7 @@ func hasCapability(worker map[string]any, capability string) bool {
 }
 
 func send(conn net.Conn, frame map[string]any) {
-	data, _ := json.Marshal(frame)
-	fmt.Fprintln(conn, string(data))
+	encoder := json.NewEncoder(conn)
+	encoder.SetEscapeHTML(false)
+	_ = encoder.Encode(frame)
 }

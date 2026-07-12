@@ -21,67 +21,54 @@ const base58BTCAlphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstu
 var ed25519MultikeyPrefix = []byte{0xed, 0x01}
 
 func VerifyFederatedReceipt(frame map[string]any, trusted map[string]map[string]any, signedTasks ...map[string]any) error {
-	if frame["type"] != "FED_RECEIPT" {
-		return errors.New("expected FED_RECEIPT frame")
+	receipt, _ := frame["receipt"].(map[string]any)
+	if receipt != nil && receipt["format"] == "agnet-receipt/v2" {
+		return verifyFederatedReceiptV2(frame, trusted)
 	}
-	zone, ok := frame["zone"].(map[string]any)
-	if !ok {
-		return errors.New("receipt zone missing")
-	}
-	if err := verifyTrustedZone(zone, trusted); err != nil {
-		return err
-	}
-	worker, ok := frame["worker"].(map[string]any)
-	if !ok {
-		return errors.New("receipt worker missing")
-	}
-	if err := verifyAgentDescriptor(worker); err != nil {
-		return err
-	}
-	binding, ok := frame["zone_binding"].(map[string]any)
-	if !ok {
-		return errors.New("receipt zone binding missing")
-	}
-	if err := verifyZoneBinding(zone, binding, worker); err != nil {
-		return err
-	}
-	receipt, ok := frame["receipt"].(map[string]any)
-	if !ok {
-		return errors.New("receipt missing")
-	}
-	if receipt["executing_zone"] != zone["zid"] {
-		return errors.New("receipt executing_zone mismatch")
-	}
-	if trusted[fmt.Sprint(receipt["origin_zone"])] == nil {
-		return errors.New("untrusted receipt origin zone: " + fmt.Sprint(receipt["origin_zone"]))
-	}
-	if !isHexDigest(optionalString(receipt["task_digest"])) {
-		return errors.New("receipt task_digest missing")
-	}
-	if len(signedTasks) > 0 {
-		taskDigest, err := canonicalDigest(signedTasks[0])
-		if err != nil {
-			return err
-		}
-		if taskDigest != optionalString(receipt["task_digest"]) {
-			return errors.New("receipt task_digest mismatch")
-		}
-	}
-	if receipt["to"] != worker["aid"] {
-		return errors.New("receipt worker mismatch")
-	}
-	workerKey, _, err := publicKey(worker)
-	if err != nil {
-		return err
-	}
-	if err := verifyMapSignature(workerKey, receipt, "signature"); err != nil {
-		return errors.New("remote receipt signature verification failed")
-	}
-	if err := verifyReceiptArtifactManifests(receipt); err != nil {
-		return err
-	}
+	if frame["type"] != "FED_RECEIPT" { return errors.New("expected FED_RECEIPT frame") }
+	zone, ok := frame["zone"].(map[string]any); if !ok { return errors.New("receipt zone missing") }
+	if err := verifyTrustedZone(zone, trusted); err != nil { return err }
+	worker, ok := frame["worker"].(map[string]any); if !ok { return errors.New("receipt worker missing") }
+	if err := verifyAgentDescriptor(worker); err != nil { return err }
+	binding, ok := frame["zone_binding"].(map[string]any); if !ok { return errors.New("receipt zone binding missing") }
+	if err := verifyZoneBinding(zone, binding, worker); err != nil { return err }
+	if receipt == nil { return errors.New("receipt missing") }
+	if receipt["executing_zone"] != zone["zid"] { return errors.New("receipt executing_zone mismatch") }
+	if trusted[fmt.Sprint(receipt["origin_zone"])] == nil { return errors.New("untrusted receipt origin zone: " + fmt.Sprint(receipt["origin_zone"])) }
+	if !isHexDigest(optionalString(receipt["task_digest"])) { return errors.New("receipt task_digest missing") }
+	if len(signedTasks) > 0 { taskDigest, err := canonicalDigest(signedTasks[0]); if err != nil { return err }; if taskDigest != optionalString(receipt["task_digest"]) { return errors.New("receipt task_digest mismatch") } }
+	if receipt["to"] != worker["aid"] { return errors.New("receipt worker mismatch") }
+	workerKey, _, err := publicKey(worker); if err != nil { return err }
+	if err := verifyMapSignature(workerKey, receipt, "signature"); err != nil { return errors.New("remote receipt signature verification failed") }
+	if err := verifyReceiptArtifactManifests(receipt); err != nil { return err }
 	_, err = verifyResultArtifactPointer(receipt)
 	return err
+}
+
+func verifyFederatedReceiptV2(frame map[string]any, trusted map[string]map[string]any) error {
+	if !hasExactMapFields(frame, []string{"type", "zone", "worker", "zone_binding", "receipt"}) || frame["type"] != "FED_RECEIPT" { return errors.New("receipt v2 frame invalid") }
+	zone, ok := frame["zone"].(map[string]any); if !ok { return errors.New("receipt v2 zone missing") }
+	if err := verifyTrustedZone(zone, trusted); err != nil { return err }
+	worker, ok := frame["worker"].(map[string]any); if !ok { return errors.New("receipt v2 worker missing") }
+	if err := verifyAgentDescriptor(worker); err != nil { return err }
+	binding, ok := frame["zone_binding"].(map[string]any); if !ok || verifyZoneBinding(zone, binding, worker) != nil { return errors.New("receipt v2 zone binding invalid") }
+	receipt, ok := frame["receipt"].(map[string]any); if !ok { return errors.New("receipt v2 missing") }
+	required := []string{"format", "swarm_id", "step_id", "task_id", "task_digest", "graph_digest", "capability", "worker_aid", "worker_generation_pin", "attempt", "fence", "result", "auxiliary", "signature"}
+	if !hasRequiredAllowedFields(receipt, required, []string{"dependencies"}) || receipt["format"] != "agnet-receipt/v2" { return errors.New("receipt v2 fields invalid") }
+	for _, field := range []string{"swarm_id", "step_id", "task_id", "capability", "worker_aid"} { if optionalString(receipt[field]) == "" || strings.ContainsRune(optionalString(receipt[field]), '\x00') { return errors.New("receipt v2 identity invalid") } }
+	if !isHexDigest(optionalString(receipt["task_digest"])) || !isHexDigest(optionalString(receipt["graph_digest"])) || receipt["worker_aid"] != worker["aid"] || !nonnegativeIntegralNumber(receipt["attempt"]) || !nonnegativeIntegralNumber(receipt["fence"]) || receipt["attempt"] == float64(0) || receipt["fence"] == float64(0) { return errors.New("receipt v2 binding invalid") }
+	pin, ok := receipt["worker_generation_pin"].(map[string]any); if !ok || !hasExactMapFields(pin, []string{"store_path", "passphrase_file", "record_digest"}) || optionalString(pin["store_path"]) == "" || optionalString(pin["passphrase_file"]) == "" || !isHexDigest(optionalString(pin["record_digest"])) { return errors.New("receipt v2 generation invalid") }
+	if err := verifyReceiptV2ArtifactTriple(receipt["result"]); err != nil { return err }
+	auxiliary, err := strictMapList(receipt["auxiliary"]); if err != nil { return errors.New("receipt v2 auxiliary invalid") }; for _, artifact := range auxiliary { if err := verifyReceiptV2ArtifactTriple(artifact); err != nil { return err } }
+	if dependencies, exists := receipt["dependencies"]; exists { items, err := strictMapList(dependencies); if err != nil { return errors.New("receipt v2 dependencies invalid") }; seen := map[string]bool{}; for _, dependency := range items { if !hasExactMapFields(dependency, []string{"step_id", "artifact"}) || optionalString(dependency["step_id"]) == "" || seen[optionalString(dependency["step_id"])] { return errors.New("receipt v2 dependency invalid") }; seen[optionalString(dependency["step_id"])] = true; if err := verifyReceiptV2ArtifactTriple(dependency["artifact"]); err != nil { return err } } }
+	key, _, err := publicKey(worker); if err != nil { return err }
+	if err := verifyMapSignature(key, receipt, "signature"); err != nil { return errors.New("receipt v2 signature verification failed") }
+	return nil
+}
+
+func verifyReceiptV2ArtifactTriple(value any) error {
+	artifact, ok := value.(map[string]any); if !ok || !hasExactMapFields(artifact, []string{"uri", "sha256", "manifest_hash"}) || optionalString(artifact["uri"]) == "" || !isHexDigest(optionalString(artifact["sha256"])) || !isHexDigest(optionalString(artifact["manifest_hash"])) { return errors.New("receipt v2 artifact invalid") }
+	return nil
 }
 
 type swarmExecutionPlanStep struct {
@@ -157,6 +144,11 @@ func verifyResultArtifactPointer(receipt map[string]any) (map[string]any, error)
 }
 
 func DeriveSwarmFinalOutput(binding map[string]any, completedReceipts map[string]map[string]any) (map[string]any, error) {
+	for _, receipt := range completedReceipts {
+		if receipt["format"] == "agnet-receipt/v2" {
+			return deriveSwarmFinalOutputV2(binding, completedReceipts)
+		}
+	}
 	steps, err := validateSwarmExecutionBinding(binding)
 	if err != nil {
 		return nil, err
@@ -271,6 +263,36 @@ func DeriveSwarmFinalOutput(binding map[string]any, completedReceipts map[string
 		"artifact":              artifact,
 		"selection_rule":        "single-terminal-result",
 	}, nil
+}
+
+func deriveSwarmFinalOutputV2(binding map[string]any, completed map[string]map[string]any) (map[string]any, error) {
+	steps, err := validateSwarmExecutionBinding(binding)
+	if err != nil { return nil, err }
+	if len(steps) != len(completed) { return nil, errors.New("completed receipt count mismatch") }
+	graph, err := canonicalDigest(map[string]any{"swarm_id": binding["swarm_id"], "plan_digest": binding["plan_digest"], "steps": binding["steps"]})
+	if err != nil || graph != binding["execution_graph_digest"] { return nil, errors.New("execution binding graph digest mismatch") }
+	byID := make(map[string]map[string]any, len(steps))
+	for _, step := range steps {
+		receipt := completed[step.stepID]
+		if receipt == nil || receipt["format"] != "agnet-receipt/v2" || receipt["swarm_id"] != binding["swarm_id"] || receipt["step_id"] != step.stepID || receipt["task_digest"] != step.taskDigest || receipt["graph_digest"] != graph || receipt["capability"] != step.capability || optionalString(receipt["task_id"]) == "" { return nil, errors.New("receipt v2 frozen binding mismatch") }
+		result, ok := receipt["result"].(map[string]any); if !ok || verifyReceiptV2ArtifactTriple(result) != nil { return nil, errors.New("receipt v2 result invalid") }
+		dependencies, exists := receipt["dependencies"]
+		if len(step.dependsOn) == 0 && exists { if values, err := strictMapList(dependencies); err != nil || len(values) != 0 { return nil, errors.New("receipt v2 dependency mismatch") } }
+		if len(step.dependsOn) != 0 {
+			values, err := strictMapList(dependencies); if err != nil || len(values) != len(step.dependsOn) { return nil, errors.New("receipt v2 dependency mismatch") }
+			for index, dependency := range step.dependsOn { value := values[index]; if optionalString(value["step_id"]) != dependency || !hasExactMapFields(value, []string{"step_id", "artifact"}) { return nil, errors.New("receipt v2 dependency mismatch") }; expected := byID[dependency]; artifact, ok := value["artifact"].(map[string]any); if !ok || expected == nil || !canonicalAnyEqual(artifact, expected["result"]) { return nil, errors.New("receipt v2 dependency artifact mismatch") } }
+		}
+		byID[step.stepID] = receipt
+	}
+	referenced := map[string]bool{}
+	for _, step := range steps { for _, dependency := range step.dependsOn { referenced[dependency] = true } }
+	terminal := ""
+	for _, step := range steps { if !referenced[step.stepID] { if terminal != "" { return nil, errors.New("single terminal step required") }; terminal = step.stepID } }
+	if terminal == "" { return nil, errors.New("single terminal step required") }
+	receipt := byID[terminal]
+	digest, err := SignedReceiptDigest(receipt); if err != nil { return nil, err }
+	result, _ := receipt["result"].(map[string]any)
+	return map[string]any{"step_id": terminal, "task_id": receipt["task_id"], "signed_receipt_digest": digest, "artifact": result, "selection_rule": "single-terminal-result"}, nil
 }
 
 func VerifySwarmExecutionBinding(binding, verifiedPlan map[string]any, executableSteps, resolvedWorkers []map[string]any) (string, error) {

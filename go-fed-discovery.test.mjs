@@ -128,6 +128,7 @@ test("Go durable Swarm survives transport loss and replies from replayed state",
   assert.match(coordinatorSource, /_ = ctx/);
   assert.match(swarmSource, /ReadSwarmView\(journal\)/);
   assert.match(swarmSource, /receipt\.committed/);
+  assert.match(swarmSource, /EnsureStableClose\(journal\)/);
 });
 
 test("Go durable Swarm has no production serial execution callsite", async () => {

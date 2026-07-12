@@ -22,6 +22,29 @@ func VerifyReceiptV2(raw []byte, expected ReceiptExpectation) error {
 
 }
 
+// VerifySwarmCloseV2 verifies a canonical journal-native v2 close against the only
+// authoritative replay. Legacy asp-swarm-close/v1 and audit v2 verification remain explicit
+// in verifySwarmCloseProof's format dispatch.
+func VerifySwarmCloseV2(raw []byte, journal *SwarmJournal) error {
+	if journal == nil {
+		return errors.New("swarm journal is required")
+	}
+	return journal.WithLockedReplay(func(entries []SwarmJournalEntry) error {
+		closeAt := len(entries)
+		for index, entry := range entries {
+			if entry.Kind == "close.stored" {
+				closeAt = index
+				break
+			}
+		}
+		state, err := ReduceSwarmEntries(entries[:closeAt])
+		if err != nil {
+			return err
+		}
+		return verifyJournalCloseV2(raw, state, entries[:closeAt])
+	})
+}
+
 func verifyReceiptRecord(record map[string]any, artifactStoreDir string, signedTasks ...map[string]any) error {
 	zone, ok := record["zone"].(map[string]any)
 	if !ok {

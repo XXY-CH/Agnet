@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"agnet/verifier"
 	"encoding/base64"
 	"encoding/json"
@@ -31,46 +30,33 @@ func (f Fixture) executeScheduledSwarm(send sendFunc, origin, frame map[string]a
 // durableSwarmResponseFrames emits only values replayed from a journal-synced
 // durable view. A child process result is never an outbound authority.
 func durableSwarmResponseFrames(journal *SwarmJournal, expected SwarmView) ([]map[string]any, error) {
-	if journal == nil || expected.SwarmID == "" {
-		return nil, errors.New("durable swarm response journal required")
+	if journal == nil || expected.SwarmID == "" { return nil, errors.New("durable swarm response journal required") }
+	var stableClose *StoredSwarmClose
+	if expected.Status == SwarmStatusCompleted || string(expected.Status) == "closing" {
+		stored, err := EnsureStableClose(journal); if err != nil { return nil, err }
+		stableClose = &stored
 	}
-	view, err := ReadSwarmView(journal)
-	if err != nil {
-		return nil, err
-	}
-	if view.SwarmID != expected.SwarmID || view.JournalHead != expected.JournalHead || view.Version != expected.Version {
-		return nil, errors.New("durable swarm state changed before response sync")
-	}
-	entries, err := journal.Replay()
-	if err != nil {
-		return nil, err
-	}
-	if len(entries) == 0 || entries[len(entries)-1].Hash != view.JournalHead {
-		return nil, errors.New("durable swarm response journal head mismatch")
-	}
-	frames := []map[string]any{{"type": "FED_SWARM_STATE", "swarm": view}}
+	view, err := ReadSwarmView(journal); if err != nil { return nil, err }
+	if view.SwarmID != expected.SwarmID { return nil, errors.New("durable swarm response identity mismatch") }
+	if stableClose == nil && (view.JournalHead != expected.JournalHead || view.Version != expected.Version) { return nil, errors.New("durable swarm state changed before response sync") }
+	entries, err := journal.Replay(); if err != nil { return nil, err }
+	if len(entries) == 0 || entries[len(entries)-1].Hash != view.JournalHead { return nil, errors.New("durable swarm response journal head mismatch") }
+	state, err := ReduceSwarmEntries(entries); if err != nil { return nil, err }
+	zone := cloneFrozenMap(state.Spec.LocalAuthority)
+	if zone == nil { return nil, errors.New("durable swarm local authority missing") }
+	frames := []map[string]any{{"type": "FED_SWARM_STATE", "zone": zone, "swarm": view}}
 	for _, entry := range entries {
-		if entry.Kind != "receipt.committed" {
-			continue
-		}
+		if entry.Kind != "receipt.committed" { continue }
 		var payload receiptCommittedPayload
-		if err := decodeStrictSwarmPayload(entry.Payload, &payload); err != nil || payload.validateCanonical() != nil {
-			return nil, errors.New("durable swarm committed receipt invalid")
-		}
-		raw, err := base64.RawURLEncoding.DecodeString(payload.Receipt)
-		if err != nil {
-			return nil, errors.New("durable swarm committed receipt invalid")
-		}
-		var receipt map[string]any
-		decoder := json.NewDecoder(bytes.NewReader(raw))
-		decoder.UseNumber()
-		if err := decoder.Decode(&receipt); err != nil || ensureSwarmJSONEOF(decoder) != nil {
-			return nil, errors.New("durable swarm committed receipt invalid")
-		}
-		frames = append(frames, map[string]any{"type": "FED_SWARM_RECEIPT", "swarm_id": view.SwarmID, "receipt": receipt})
+		if err := decodeStrictSwarmPayload(entry.Payload, &payload); err != nil || payload.validateCanonical() != nil { return nil, errors.New("durable swarm committed receipt invalid") }
+		raw, err := base64.RawURLEncoding.DecodeString(payload.Receipt); if err != nil || !json.Valid(raw) { return nil, errors.New("durable swarm committed receipt invalid") }
+		worker, err := frozenAgentDescriptor(payload.Claim.Candidate.Descriptor); if err != nil { return nil, errors.New("durable swarm committed worker invalid") }
+		binding, err := frozenZoneBinding(payload.Claim.Candidate.ZoneBinding); if err != nil || verifyZoneBinding(zone, binding, worker) != nil { return nil, errors.New("durable swarm committed worker binding invalid") }
+		frames = append(frames, map[string]any{"type": "FED_RECEIPT", "zone": cloneFrozenMap(zone), "worker": worker, "zone_binding": binding, "receipt": json.RawMessage(append([]byte(nil), raw...))})
 	}
-	if localSwarmTerminal(view.Status) {
-		frames = append(frames, map[string]any{"type": "FED_SWARM_CLOSE", "swarm_id": view.SwarmID, "status": view.Status, "journal_head": view.JournalHead, "version": view.Version})
+	if stableClose != nil {
+		if !json.Valid(stableClose.Bytes) { return nil, errors.New("durable swarm close invalid") }
+		frames = append(frames, map[string]any{"type": "FED_SWARM_CLOSE", "swarm_id": view.SwarmID, "zone": cloneFrozenMap(zone), "close": json.RawMessage(append([]byte(nil), stableClose.Bytes...))})
 	}
 	return frames, nil
 }

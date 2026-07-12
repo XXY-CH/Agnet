@@ -403,30 +403,31 @@ func verifySwarmOutputReceipts(evidence OutputEvidence) (map[string]map[string]a
 		return nil, errors.New("signed receipt count mismatch")
 	}
 	tasks := map[string]map[string]any{}
-	for _, step := range evidence.ExecutableSteps {
+	workers := map[string]map[string]any{}
+	for index, step := range evidence.ExecutableSteps {
 		stepID, _, task, err := parseExecutableBindingStep(step)
-		if err != nil {
-			return nil, err
-		}
+		if err != nil { return nil, err }
 		tasks[stepID] = task
+		worker := evidence.ResolvedWorkers[index]
+		if descriptor, ok := worker["descriptor"].(map[string]any); ok { worker = descriptor }
+		workers[stepID] = worker
 	}
 	completed := map[string]map[string]any{}
 	for _, frame := range evidence.ReceiptFrames {
-		receipt, ok := frame["receipt"].(map[string]any)
-		if !ok {
-			return nil, errors.New("receipt missing")
-		}
+		receipt, ok := frame["receipt"].(map[string]any); if !ok { return nil, errors.New("receipt missing") }
 		swarm, ok := receipt["swarm"].(map[string]any)
-		if !ok {
-			return nil, errors.New("receipt swarm binding missing")
+		stepID := ""
+		if receipt["format"] == "agnet-receipt/v2" {
+			stepID = optionalString(receipt["step_id"])
+			if receipt["task_id"] != tasks[stepID]["task_id"] { return nil, errors.New("receipt v2 task_id mismatch") }
+			worker, ok := frame["worker"].(map[string]any); if !ok || !canonicalAnyEqual(worker, workers[stepID]) { return nil, errors.New("receipt v2 frozen worker mismatch") }
+		} else {
+			if !ok { return nil, errors.New("receipt swarm binding missing") }
+			stepID = fmt.Sprint(swarm["step_id"])
 		}
-		stepID := fmt.Sprint(swarm["step_id"])
-		if err := VerifyFederatedReceipt(frame, evidence.TrustedZones, tasks[stepID]); err != nil {
-			return nil, err
-		}
-		if completed[stepID] != nil {
-			return nil, errors.New("duplicate signed receipt step")
-		}
+		if tasks[stepID] == nil { return nil, errors.New("receipt step unknown") }
+		if err := VerifyFederatedReceipt(frame, evidence.TrustedZones, tasks[stepID]); err != nil { return nil, err }
+		if completed[stepID] != nil { return nil, errors.New("duplicate signed receipt step") }
 		completed[stepID] = receipt
 	}
 	return completed, nil
@@ -476,6 +477,14 @@ func verifySwarmOutputArtifactBytes(finalOutput, terminalReceipt map[string]any,
 	artifact, ok := finalOutput["artifact"].(map[string]any)
 	if !ok {
 		return errors.New("final output artifact mismatch")
+	}
+	if terminalReceipt["format"] == "agnet-receipt/v2" {
+		result, ok := terminalReceipt["result"].(map[string]any)
+		if !ok || !canonicalAnyEqual(result, artifact) { return errors.New("final output artifact mismatch") }
+		bytesValue, err := load(artifact); if err != nil { return err }
+		hash := sha256.Sum256(bytesValue)
+		if hex.EncodeToString(hash[:]) != artifact["sha256"] { return errors.New("artifact bytes digest mismatch") }
+		return nil
 	}
 	manifests, err := artifactManifestsFromAny(terminalReceipt["artifact_manifests"])
 	if err != nil {
@@ -669,63 +678,51 @@ func verifySwarmOutputCloseAuxiliaryEvidence(closeProof map[string]any, stepByID
 
 func verifySwarmOutputCloseScheduler(value any, stepByID map[string]map[string]any) error {
 	scheduler, ok := value.(map[string]any)
-	if !ok || !hasExactMapFields(scheduler, []string{"mode", "step_order"}) {
-		return errors.New("swarm close scheduler invalid")
-	}
-	if scheduler["mode"] != "ready-dag" {
-		return errors.New("swarm close scheduler mode invalid")
-	}
-	order, err := exactStringList(scheduler["step_order"], true, "swarm close scheduler step order invalid", "swarm close scheduler step duplicate")
-	if err != nil {
-		return err
-	}
-	if len(order) != len(stepByID) {
-		return errors.New("swarm close scheduler step order mismatch")
-	}
+	if !ok { return errors.New("swarm close scheduler invalid") }
+	if scheduler["mode"] == "parallel-ready-dag" { return verifyParallelReadyDAGScheduler(scheduler, stepByID) }
+	if !hasExactMapFields(scheduler, []string{"mode", "step_order"}) || scheduler["mode"] != "ready-dag" { return errors.New("swarm close scheduler mode invalid") }
+	order, err := exactStringList(scheduler["step_order"], true, "swarm close scheduler step order invalid", "swarm close scheduler step duplicate"); if err != nil { return err }
+	if len(order) != len(stepByID) { return errors.New("swarm close scheduler step order mismatch") }
 	seen := map[string]bool{}
-	for _, stepID := range order {
-		if stepID == "" || strings.ContainsRune(stepID, '\x00') {
-			return errors.New("swarm close scheduler step invalid")
-		}
-		if seen[stepID] {
-			return errors.New("swarm close scheduler step duplicate")
-		}
-		seen[stepID] = true
-		if stepByID[stepID] == nil {
-			return errors.New("swarm close scheduler step missing")
+	for _, stepID := range order { if stepID == "" || strings.ContainsRune(stepID, '\x00') || seen[stepID] { return errors.New("swarm close scheduler step duplicate") }; seen[stepID] = true; if stepByID[stepID] == nil { return errors.New("swarm close scheduler step missing") } }
+	return nil
+}
+
+func verifyParallelReadyDAGScheduler(scheduler map[string]any, stepByID map[string]map[string]any) error {
+	if !hasExactMapFields(scheduler, []string{"mode", "ready_waves", "dispatch_waves"}) { return errors.New("parallel scheduler fields invalid") }
+	ready, err := strictMapList(scheduler["ready_waves"]); if err != nil || len(ready) == 0 { return errors.New("parallel ready waves invalid") }
+	dispatch, err := strictMapList(scheduler["dispatch_waves"]); if err != nil || len(dispatch) != len(ready) { return errors.New("parallel dispatch waves invalid") }
+	seen := map[string]bool{}
+	for index, wave := range ready {
+		if !hasExactMapFields(wave, []string{"step_ids", "recorded_at"}) || optionalString(wave["recorded_at"]) == "" { return errors.New("parallel ready wave invalid") }
+		stepIDs, err := exactStringList(wave["step_ids"], true, "parallel ready step invalid", "parallel ready step duplicate"); if err != nil || len(stepIDs) == 0 { return errors.New("parallel ready wave invalid") }
+		for _, stepID := range stepIDs { if stepByID[stepID] == nil || seen[stepID] { return errors.New("parallel ready coverage invalid") }; seen[stepID] = true }
+		dispatchWave := dispatch[index]
+		if !hasExactMapFields(dispatchWave, []string{"wave", "attempts"}) || !canonicalAnyEqual(dispatchWave["wave"], wave) { return errors.New("parallel dispatch wave mismatch") }
+		attempts, err := strictMapList(dispatchWave["attempts"]); if err != nil || len(attempts) != len(stepIDs) { return errors.New("parallel dispatch attempts invalid") }
+		attempted := map[string]bool{}
+		for _, attempt := range attempts {
+			if !hasExactMapFields(attempt, []string{"step_id", "owner", "fence", "attempt", "candidate_index", "capability", "candidate", "deadline"}) || optionalString(attempt["owner"]) == "" || optionalString(attempt["capability"]) == "" || optionalString(attempt["deadline"]) == "" || !nonnegativeIntegralNumber(attempt["fence"]) || !nonnegativeIntegralNumber(attempt["attempt"]) || !nonnegativeIntegralNumber(attempt["candidate_index"]) { return errors.New("parallel dispatch attempt invalid") }
+			stepID := optionalString(attempt["step_id"]); if !containsString(stepIDs, stepID) || attempted[stepID] { return errors.New("parallel dispatch coverage invalid") }; attempted[stepID] = true
+			candidate, ok := attempt["candidate"].(map[string]any); if !ok || optionalString(candidate["aid"]) == "" || optionalString(candidate["public_key_spki"]) == "" || !isHexDigest(optionalString(candidate["descriptor_digest"])) { return errors.New("parallel dispatch candidate invalid") }
 		}
 	}
+	if len(seen) != len(stepByID) { return errors.New("parallel ready coverage incomplete") }
 	return nil
 }
 
 func verifySwarmOutputCloseMigrationLog(value any, stepByID map[string]map[string]any) error {
 	items, err := strictMapList(value)
-	if err != nil {
-		return errors.New("swarm close migration_log invalid")
-	}
+	if err != nil { return errors.New("swarm close migration_log invalid") }
 	for _, entry := range items {
-		if !hasExactMapFields(entry, []string{"step_id", "original_worker_aid", "migrated_to_worker_aid", "reason", "migration_at"}) {
-			return errors.New("swarm close migration entry invalid")
-		}
+		if !hasExactMapFields(entry, []string{"step_id", "original_worker_aid", "migrated_to_worker_aid", "reason", "migration_at"}) { return errors.New("swarm close migration entry invalid") }
 		stepID := optionalString(entry["step_id"])
-		if stepID == "" || strings.ContainsRune(stepID, '\x00') {
-			return errors.New("swarm close migration step invalid")
-		}
-		if stepByID[stepID] == nil {
-			return errors.New("swarm close migration step missing")
-		}
-		if optionalString(entry["original_worker_aid"]) == "" {
-			return errors.New("swarm close migration original worker missing")
-		}
-		if optionalString(entry["migrated_to_worker_aid"]) == "" {
-			return errors.New("swarm close migration target worker missing")
-		}
-		if optionalString(entry["reason"]) == "" {
-			return errors.New("swarm close migration reason missing")
-		}
-		if !utcTimestampPattern.MatchString(optionalString(entry["migration_at"])) {
-			return errors.New("swarm close migration_at invalid")
-		}
+		if stepID == "" || strings.ContainsRune(stepID, '\x00') { return errors.New("swarm close migration step invalid") }
+		if stepByID[stepID] == nil { return errors.New("swarm close migration step missing") }
+		if optionalString(entry["original_worker_aid"]) == "" { return errors.New("swarm close migration original worker missing") }
+		if optionalString(entry["migrated_to_worker_aid"]) == "" { return errors.New("swarm close migration target worker missing") }
+		if optionalString(entry["reason"]) == "" { return errors.New("swarm close migration reason missing") }
+		if !utcTimestampPattern.MatchString(optionalString(entry["migration_at"])) { return errors.New("swarm close migration_at invalid") }
 	}
 	return nil
 }

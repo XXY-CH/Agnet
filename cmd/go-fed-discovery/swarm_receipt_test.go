@@ -255,6 +255,9 @@ func u22ReceiptWithDependencies(t *testing.T, spec DurableSwarmSpec, claim Lease
 		"worker_generation_pin": claim.Candidate.GenerationPin, "attempt": claim.Attempt, "fence": claim.Fence,
 		"result": result.Triple(), "auxiliary": []any{},
 	}
+	if spec.Steps[stepIndex].TaskID != "" {
+		body["task_id"] = spec.Steps[stepIndex].TaskID
+	}
 	if len(dependencies) != 0 {
 		body["dependencies"] = dependencies
 	}

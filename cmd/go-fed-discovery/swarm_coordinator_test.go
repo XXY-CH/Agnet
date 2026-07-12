@@ -308,7 +308,11 @@ func TestLocalSwarmCoordinatorBoundsOwnedLaunchesAndReapsThem(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := coordinator.launchAll(journal, dispatch); err != nil {
+	reservation, admitted := coordinator.reserveLaunchSlots(len(dispatch.Claims))
+	if !admitted {
+		t.Fatal("coordinator did not reserve an empty launcher pool")
+	}
+	if err := coordinator.launchAll(journal, dispatch, reservation); err != nil {
 		t.Fatal(err)
 	}
 	for range maxLocalSwarmReadyWaveWidth {
@@ -339,6 +343,61 @@ func TestLocalSwarmCoordinatorBoundsOwnedLaunchesAndReapsThem(t *testing.T) {
 	defer launcher.mu.Unlock()
 	if launcher.active != 0 || launcher.finished != maxLocalSwarmReadyWaveWidth {
 		t.Fatalf("launcher accounting active=%d finished=%d", launcher.active, launcher.finished)
+	}
+}
+
+func TestLocalSwarmCoordinatorWaitsForPoolBeforeClaimingReadyWave(t *testing.T) {
+	now := swarmJournalTestTime.Add(8 * time.Hour)
+	root := t.TempDir()
+	spec := reducerTestDurableSpec(t)
+	journal, err := OpenSwarmJournal(root, spec.SwarmID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenVerifiedSwarm(journal, spec, now); err != nil {
+		t.Fatal(err)
+	}
+	launcher := &coordinatorTestLauncher{t: t, journal: journal, now: func() time.Time { return now }}
+	coordinator, err := NewLocalSwarmCoordinator(Fixture{}, root, "test-coordinator", launcher, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	coordinator.PollInterval = time.Millisecond
+	reservation, admitted := coordinator.reserveLaunchSlots(maxLocalSwarmReadyWaveWidth)
+	if !admitted {
+		t.Fatal("coordinator did not reserve empty pool")
+	}
+	result := make(chan error, 1)
+	go func() {
+		_, err := coordinator.RunReadyWaves(context.Background(), journal)
+		result <- err
+	}()
+	deadline := time.After(time.Second)
+	for {
+		entries, state, err := localSwarmState(journal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) >= 2 {
+			if len(state.Leases) != 0 {
+				t.Fatalf("pool saturation claimed a lease: %#v", state.Leases)
+			}
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("coordinator did not persist and wait on ready wave")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	reservation.release()
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("coordinator did not claim and complete after pool capacity returned")
 	}
 }
 

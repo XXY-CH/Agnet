@@ -18,19 +18,21 @@ type StagedReceipt struct {
 }
 
 type ReceiptExpectation struct {
-	SwarmID    string
-	Claim      LeaseClaim
-	TaskDigest string
+	SwarmID     string
+	Claim       LeaseClaim
+	TaskID      string
+	TaskDigest  string
 	GraphDigest string
-	Result     ArtifactTriple
-	Auxiliary  []ArtifactTriple
-	DependsOn  map[string]ArtifactTriple
+	Result      ArtifactTriple
+	Auxiliary   []ArtifactTriple
+	DependsOn   map[string]ArtifactTriple
 }
 
 type receiptV2Wire struct {
 	Format              string                `json:"format"`
 	SwarmID             string                `json:"swarm_id"`
 	StepID              string                `json:"step_id"`
+	TaskID              string                `json:"task_id,omitempty"`
 	TaskDigest          string                `json:"task_digest"`
 	GraphDigest         string                `json:"graph_digest"`
 	Capability          string                `json:"capability"`
@@ -73,6 +75,9 @@ func verifyReceiptV2(raw []byte, expected ReceiptExpectation) error {
 	}
 	if receipt.SwarmID != expected.SwarmID || receipt.StepID != expected.Claim.StepID || receipt.TaskDigest != expected.TaskDigest || receipt.GraphDigest != expected.GraphDigest || receipt.Capability != expected.Claim.Capability || receipt.WorkerAID != candidate.AID || receipt.WorkerGenerationPin != candidate.GenerationPin || receipt.Attempt != expected.Claim.Attempt || receipt.Fence != expected.Claim.Fence {
 		return errors.New("receipt v2 frozen identity mismatch")
+	}
+	if expected.TaskID != "" && receipt.TaskID != expected.TaskID {
+		return errors.New("receipt v2 task_id mismatch")
 	}
 	if receipt.Result != expected.Result || !reflect.DeepEqual(receipt.Auxiliary, expected.Auxiliary) {
 		return errors.New("receipt v2 artifact triples mismatch")
@@ -216,7 +221,7 @@ func CommitReceipt(journal *SwarmJournal, commit ReceiptCommit, timestamp time.T
 		if err != nil {
 			return err
 		}
-		expected := ReceiptExpectation{SwarmID: state.Spec.SwarmID, Claim: commit.Claim, TaskDigest: state.Spec.Steps[stepIndex].TaskDigest, GraphDigest: digestBytesHex(state.Spec.Binding), Result: commit.Result.Triple(), Auxiliary: auxiliary, DependsOn: expectedDependencies}
+		expected := ReceiptExpectation{SwarmID: state.Spec.SwarmID, Claim: commit.Claim, TaskID: state.Spec.Steps[stepIndex].TaskID, TaskDigest: state.Spec.Steps[stepIndex].TaskDigest, GraphDigest: digestBytesHex(state.Spec.Binding), Result: commit.Result.Triple(), Auxiliary: auxiliary, DependsOn: expectedDependencies}
 		if err := VerifyReceiptV2(commit.Receipt.Bytes, expected); err != nil {
 			return err
 		}
@@ -317,7 +322,7 @@ func reduceSwarmReceiptEntry(state *SwarmState, entry SwarmJournalEntry) error {
 	if err != nil {
 		return err
 	}
-	expected := ReceiptExpectation{SwarmID: state.Spec.SwarmID, Claim: payload.Claim, TaskDigest: state.Spec.Steps[stepIndex].TaskDigest, GraphDigest: digestBytesHex(state.Spec.Binding), Result: payload.Result, Auxiliary: payload.Auxiliary, DependsOn: expectedDependencies}
+	expected := ReceiptExpectation{SwarmID: state.Spec.SwarmID, Claim: payload.Claim, TaskID: state.Spec.Steps[stepIndex].TaskID, TaskDigest: state.Spec.Steps[stepIndex].TaskDigest, GraphDigest: digestBytesHex(state.Spec.Binding), Result: payload.Result, Auxiliary: payload.Auxiliary, DependsOn: expectedDependencies}
 	if err := VerifyReceiptV2(raw, expected); err != nil {
 		return err
 	}
