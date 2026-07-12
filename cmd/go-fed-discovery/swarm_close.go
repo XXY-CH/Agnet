@@ -93,6 +93,9 @@ func EnsureStableClose(journal *SwarmJournal) (StoredSwarmClose, error) {
 		if err != nil {
 			return err
 		}
+		if err := swarmMutationAllowed(state); err != nil {
+			return err
+		}
 		for index, entry := range entries {
 			if entry.Kind != "close.stored" {
 				continue

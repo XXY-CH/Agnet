@@ -32,9 +32,18 @@ func (f Fixture) executeScheduledSwarm(send sendFunc, origin, frame map[string]a
 func durableSwarmResponseFrames(journal *SwarmJournal, expected SwarmView) ([]map[string]any, error) {
 	if journal == nil || expected.SwarmID == "" { return nil, errors.New("durable swarm response journal required") }
 	var stableClose *StoredSwarmClose
-	if expected.Status == SwarmStatusCompleted || string(expected.Status) == "closing" {
+	var disband *StoredSwarmDisband
+	if expected.Status == SwarmStatusCompleted || expected.Status == SwarmStatusClosing {
 		stored, err := EnsureStableClose(journal); if err != nil { return nil, err }
 		stableClose = &stored
+	}
+	if expected.Status == SwarmStatusCompleted {
+		entries, err := journal.Replay(); if err != nil { return nil, err }
+		state, err := ReduceSwarmEntries(entries); if err != nil { return nil, err }
+		if state.OutputVerification != nil {
+			stored, err := EnsureDisband(journal); if err != nil { return nil, err }
+			disband = &stored
+		}
 	}
 	view, err := ReadSwarmView(journal); if err != nil { return nil, err }
 	if view.SwarmID != expected.SwarmID { return nil, errors.New("durable swarm response identity mismatch") }
@@ -54,9 +63,21 @@ func durableSwarmResponseFrames(journal *SwarmJournal, expected SwarmView) ([]ma
 		binding, err := frozenZoneBinding(payload.Claim.Candidate.ZoneBinding); if err != nil || verifyZoneBinding(zone, binding, worker) != nil { return nil, errors.New("durable swarm committed worker binding invalid") }
 		frames = append(frames, map[string]any{"type": "FED_RECEIPT", "zone": cloneFrozenMap(zone), "worker": worker, "zone_binding": binding, "receipt": json.RawMessage(append([]byte(nil), raw...))})
 	}
+	if stableClose == nil && state.StoredClose.Digest != "" {
+		stored := state.StoredClose
+		stableClose = &stored
+	}
 	if stableClose != nil {
 		if !json.Valid(stableClose.Bytes) { return nil, errors.New("durable swarm close invalid") }
 		frames = append(frames, map[string]any{"type": "FED_SWARM_CLOSE", "swarm_id": view.SwarmID, "zone": cloneFrozenMap(zone), "close": json.RawMessage(append([]byte(nil), stableClose.Bytes...))})
+	}
+	if disband == nil && state.Status == SwarmStatusDisbanded {
+		stored := state.StoredDisband
+		disband = &stored
+	}
+	if disband != nil {
+		if !json.Valid(disband.Bytes) { return nil, errors.New("durable swarm disband invalid") }
+		frames = append(frames, map[string]any{"type": "FED_SWARM_DISBAND", "swarm_id": view.SwarmID, "zone": cloneFrozenMap(zone), "disband": json.RawMessage(append([]byte(nil), disband.Bytes...))})
 	}
 	return frames, nil
 }

@@ -142,6 +142,9 @@ func (c *LocalSwarmCoordinator) RecordOutputVerification(ctx context.Context, fr
 		if err != nil {
 			return err
 		}
+		if err := swarmMutationAllowed(state); err != nil {
+			return err
+		}
 		if state.Version == 0 || state.Spec.SwarmID != frame.SwarmID {
 			return errors.New("output verification swarm unavailable")
 		}
@@ -342,6 +345,9 @@ func appendOutputVerified(journal *SwarmJournal, entries []SwarmJournalEntry, st
 func appendOutputEvent(journal *SwarmJournal, entries []SwarmJournalEntry, state SwarmState, kind string, payload any, now time.Time) error {
 	if state.Version == math.MaxUint64 || len(entries) == 0 {
 		return errors.New("output verification state invalid")
+	}
+	if err := swarmMutationAllowed(state); err != nil {
+		return err
 	}
 	encoded, err := canonicalSwarmPayload(payload)
 	if err != nil || len(encoded) > maxSwarmOutputVerificationRecordBytes {

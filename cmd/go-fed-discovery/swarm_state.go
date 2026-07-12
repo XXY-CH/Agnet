@@ -22,6 +22,7 @@ const (
 	SwarmStatusRunning   SwarmStatus = "running"
 	SwarmStatusCompleted SwarmStatus = "completed"
 	SwarmStatusClosing   SwarmStatus = "closing"
+	SwarmStatusDisbanded SwarmStatus = "disbanded"
 	SwarmStatusFailed    SwarmStatus = "failed"
 	SwarmStatusCancelled SwarmStatus = "cancelled"
 )
@@ -113,6 +114,7 @@ type SwarmState struct {
 	CommittedArtifacts map[string]ArtifactTriple  `json:"committed_artifacts,omitempty"`
 	LastFence          LeaseFence                 `json:"last_fence"`
 	StoredClose        StoredSwarmClose           `json:"-"`
+	StoredDisband      StoredSwarmDisband         `json:"-"`
 	OutputVerification *SwarmOutputVerification   `json:"output_verification,omitempty"`
 }
 
@@ -126,6 +128,7 @@ type SwarmOutputVerification struct {
 	TrustInputsDigest string `json:"trust_inputs_digest"`
 	VerifiedAt        string `json:"verified_at"`
 	CompletedAt       string `json:"completed_at"`
+	Digest            string `json:"digest"`
 }
 type durableSwarmSpecWire struct {
 	SchemaVersion       uint64                 `json:"schema_version"`
@@ -301,7 +304,7 @@ func ReduceSwarmEntry(prior SwarmState, entry SwarmJournalEntry) (SwarmState, er
 	if entry.PriorStateVersion == math.MaxUint64 || entry.StateVersion != entry.PriorStateVersion+1 || entry.PriorStateVersion != prior.Version {
 		return SwarmState{}, errors.New("swarm state versions are not contiguous")
 	}
-	if prior.Version != 0 && (prior.Status == SwarmStatusCancelled || (prior.Status == SwarmStatusCompleted && entry.Kind != "close.stored") || (prior.Status == SwarmStatusClosing && entry.Kind != "output.verification_failed" && entry.Kind != "output.verified")) {
+	if prior.Version != 0 && (prior.Status == SwarmStatusDisbanded || prior.Status == SwarmStatusCancelled || (prior.Status == SwarmStatusCompleted && entry.Kind != "close.stored" && entry.Kind != "swarm.disbanded") || (prior.Status == SwarmStatusClosing && entry.Kind != "output.verification_failed" && entry.Kind != "output.verified")) {
 		return SwarmState{}, errors.New("swarm is terminal")
 	}
 	next := cloneSwarmState(prior)
@@ -370,7 +373,16 @@ func ReduceSwarmEntry(prior SwarmState, entry SwarmJournalEntry) (SwarmState, er
 		if err != nil || !bytes.Equal(payload.FinalOutput, expectedFinal) {
 			return SwarmState{}, errors.New("output verification final output conflicts with close")
 		}
-		next.OutputVerification = &SwarmOutputVerification{VerificationID: payload.VerificationID, SubmissionDigest: payload.SubmissionDigest, ProofDigest: payload.ProofDigest, CloseDigest: payload.CloseDigest, TrustInputsDigest: payload.TrustInputsDigest, VerifiedAt: payload.VerifiedAt, CompletedAt: payload.CompletedAt}
+		next.OutputVerification = &SwarmOutputVerification{VerificationID: payload.VerificationID, SubmissionDigest: payload.SubmissionDigest, ProofDigest: payload.ProofDigest, CloseDigest: payload.CloseDigest, TrustInputsDigest: payload.TrustInputsDigest, VerifiedAt: payload.VerifiedAt, CompletedAt: payload.CompletedAt, Digest: digestBytesHex(entry.Payload)}
+	case "swarm.disbanded":
+		if prior.Status != SwarmStatusCompleted || prior.OutputVerification == nil || entry.Timestamp != prior.OutputVerification.CompletedAt {
+			return SwarmState{}, errors.New("swarm disband state invalid")
+		}
+		stored, err := storedSwarmDisbandFromEntry(entry)
+		if err != nil || verifySwarmDisbandAgainstState(stored.Bytes, prior) != nil {
+			return SwarmState{}, errors.New("swarm disband invalid")
+		}
+		next.StoredDisband = stored
 	case "swarm.cancelled":
 		if prior.Version == 0 || prior.Status == SwarmStatusCompleted || prior.Status == SwarmStatusFailed || prior.Status == SwarmStatusCancelled {
 			return SwarmState{}, errors.New("illegal swarm cancellation")
@@ -401,6 +413,9 @@ func ReduceSwarmEntry(prior SwarmState, entry SwarmJournalEntry) (SwarmState, er
 	if entry.Kind == "output.verified" {
 		next.Status = SwarmStatusCompleted
 	}
+	if entry.Kind == "swarm.disbanded" {
+		next.Status = SwarmStatusDisbanded
+	}
 	return next, nil
 }
 
@@ -408,7 +423,7 @@ func ReduceSwarmEntry(prior SwarmState, entry SwarmJournalEntry) (SwarmState, er
 // by typed journals for future reducers, while unknown state namespaces fail closed.
 func isSwarmStateEntryKind(kind string) (bool, error) {
 	switch kind {
-	case "swarm.opened", "swarm.cancelled", "wave.ready", "wave.dispatched", "lease.renewed", "lease.observed", "lease.expired", "receipt.committed", "close.stored", "output.verification_failed", "output.verified":
+	case "swarm.opened", "swarm.cancelled", "swarm.disbanded", "wave.ready", "wave.dispatched", "lease.renewed", "lease.observed", "lease.expired", "receipt.committed", "close.stored", "output.verification_failed", "output.verified":
 		return true, nil
 	default:
 		if strings.HasPrefix(kind, "swarm.") || strings.HasPrefix(kind, "step.") || strings.HasPrefix(kind, "receipt.") || strings.HasPrefix(kind, "output.") {
@@ -445,6 +460,12 @@ func ReduceSwarmEntries(entries []SwarmJournalEntry) (SwarmState, error) {
 			}
 			if err := verifyJournalCloseV2(stored.Bytes, state, entries[:index]); err != nil {
 				return SwarmState{}, fmt.Errorf("reduce swarm journal entry %d: %w", entry.Sequence, err)
+			}
+		}
+		if entry.Kind == "swarm.disbanded" {
+			stored, err := storedSwarmDisbandFromEntry(entry)
+			if err != nil || verifySwarmDisbandAgainstState(stored.Bytes, state) != nil {
+				return SwarmState{}, fmt.Errorf("reduce swarm journal entry %d: invalid swarm disband", entry.Sequence)
 			}
 		}
 		next, err := reduceSwarmTypedEntry(state, entry)
@@ -502,6 +523,7 @@ func deriveSwarmStatus(steps []SwarmStepState) SwarmStatus {
 func cloneSwarmState(state SwarmState) SwarmState {
 	clone := SwarmState{Version: state.Version, Status: state.Status, Spec: cloneDurableSwarmSpec(state.Spec), ReadyWave: cloneReadyWave(state.ReadyWave), Leases: cloneLeaseClaims(state.Leases), LastFence: state.LastFence}
 	clone.StoredClose = StoredSwarmClose{Bytes: append([]byte(nil), state.StoredClose.Bytes...), Digest: state.StoredClose.Digest}
+	clone.StoredDisband = StoredSwarmDisband{Bytes: append([]byte(nil), state.StoredDisband.Bytes...), Digest: state.StoredDisband.Digest}
 	if state.OutputVerification != nil {
 		value := *state.OutputVerification
 		clone.OutputVerification = &value
@@ -613,6 +635,7 @@ func OpenVerifiedSwarm(journal *SwarmJournal, spec DurableSwarmSpec, timestamp t
 		if len(entries) != 0 {
 			if entries[0].Kind != "swarm.opened" || !bytes.Equal(entries[0].Payload, payload) { return errors.New("swarm open seed conflicts with durable journal") }
 			state, err := ReduceSwarmEntries(entries); if err != nil { return err }
+			if err := swarmMutationAllowed(state); err != nil { return err }
 			if err := journal.validateTypedStateIdentity(state); err != nil { return err }
 			result = state
 			return nil

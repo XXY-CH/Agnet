@@ -179,6 +179,9 @@ func CommitReceipt(journal *SwarmJournal, commit ReceiptCommit, timestamp time.T
 		if err != nil {
 			return err
 		}
+		if err := swarmMutationAllowed(state); err != nil {
+			return err
+		}
 		for _, entry := range entries {
 			if entry.Kind != "receipt.committed" {
 				continue

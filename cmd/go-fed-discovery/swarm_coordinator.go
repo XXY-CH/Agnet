@@ -203,6 +203,18 @@ func (c *LocalSwarmCoordinator) ResumeAll(ctx context.Context) ([]SwarmView, err
 		if err != nil {
 			return nil, fmt.Errorf("resume swarm %q: %w", journal.expectedSwarmID, err)
 		}
+		// Completion has already been authorized by the signed output proof. Make
+		// its terminal disband durable before publishing or resuming anything; the
+		// operation is replay-safe and returns the exact existing record on retry.
+		if state.Status == SwarmStatusCompleted {
+			if _, err := EnsureDisband(journal); err != nil {
+				return nil, fmt.Errorf("disband completed swarm %q: %w", journal.expectedSwarmID, err)
+			}
+			state, err = c.fixture.RecoverVerifiedSwarm(journal)
+			if err != nil {
+				return nil, fmt.Errorf("recover disbanded swarm %q: %w", journal.expectedSwarmID, err)
+			}
+		}
 		if localSwarmTerminal(state.Status) {
 			view, err := c.materialize(journal)
 			if err != nil {
@@ -375,7 +387,7 @@ func localSwarmState(journal *SwarmJournal) ([]SwarmJournalEntry, SwarmState, er
 }
 
 func localSwarmTerminal(status SwarmStatus) bool {
-	return status == SwarmStatusCompleted || status == SwarmStatusClosing || status == SwarmStatusFailed || status == SwarmStatusCancelled
+	return status == SwarmStatusCompleted || status == SwarmStatusDisbanded || status == SwarmStatusClosing || status == SwarmStatusFailed || status == SwarmStatusCancelled
 }
 
 func isCoordinatorContention(err error) bool {

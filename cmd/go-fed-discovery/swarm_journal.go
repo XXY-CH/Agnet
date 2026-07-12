@@ -159,6 +159,15 @@ func (j *SwarmJournal) Append(kind string, payload any, priorStateVersion, state
 		if err != nil {
 			return err
 		}
+		if len(entries) != 0 && entries[0].Kind == "swarm.opened" {
+			state, err := ReduceSwarmEntries(entries)
+			if err != nil {
+				return err
+			}
+			if err := swarmMutationAllowed(state); err != nil {
+				return err
+			}
+		}
 		previousHash := swarmJournalZeroHash
 		previousVersion := uint64(0)
 		if len(entries) != 0 {

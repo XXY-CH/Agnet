@@ -77,7 +77,7 @@ func DeriveNextReadyWave(state SwarmState) (ReadyWave, error) {
 	if state.Version == 0 {
 		return ReadyWave{}, errors.New("swarm must open before deriving a ready wave")
 	}
-	if state.Status == SwarmStatusCompleted || state.Status == SwarmStatusFailed || state.Status == SwarmStatusCancelled {
+	if state.Status == SwarmStatusCompleted || state.Status == SwarmStatusDisbanded || state.Status == SwarmStatusFailed || state.Status == SwarmStatusCancelled {
 		return ReadyWave{}, nil
 	}
 	if len(state.ReadyWave.StepIDs) != 0 {
@@ -271,6 +271,9 @@ func appendLeaseTransition(journal *SwarmJournal, kind string, timestamp time.Ti
 	return journal.WithLockedReplay(func(entries []SwarmJournalEntry) error {
 		state, err := ReduceSwarmEntries(entries)
 		if err != nil {
+			return err
+		}
+		if err := swarmMutationAllowed(state); err != nil {
 			return err
 		}
 		if len(entries) != 0 && stamp < entries[len(entries)-1].Timestamp {

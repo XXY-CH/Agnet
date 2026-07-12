@@ -42,15 +42,30 @@ func StageArtifact(journal *SwarmJournal, data []byte) (StagedArtifact, error) {
 	}
 	digest := sha256.Sum256(data)
 	hexDigest := hex.EncodeToString(digest[:])
-	dir, err := swarmArtifactObjectsDir(journal)
+	var result StagedArtifact
+	err := journal.WithLockedReplay(func(entries []SwarmJournalEntry) error {
+		state, err := ReduceSwarmEntries(entries)
+		if err != nil {
+			return err
+		}
+		if err := swarmMutationAllowed(state); err != nil {
+			return err
+		}
+		dir, err := swarmArtifactObjectsDir(journal)
+		if err != nil {
+			return err
+		}
+		path := filepath.Join(dir, hexDigest)
+		if err := createExclusiveArtifact(path, data); err != nil {
+			return err
+		}
+		result = StagedArtifact{SHA256: hexDigest, Size: uint64(len(data)), Path: path}
+		return nil
+	})
 	if err != nil {
 		return StagedArtifact{}, err
 	}
-	path := filepath.Join(dir, hexDigest)
-	if err := createExclusiveArtifact(path, data); err != nil {
-		return StagedArtifact{}, err
-	}
-	return StagedArtifact{SHA256: hexDigest, Size: uint64(len(data)), Path: path}, nil
+	return result, nil
 }
 
 func swarmArtifactObjectsDir(journal *SwarmJournal) (string, error) {
