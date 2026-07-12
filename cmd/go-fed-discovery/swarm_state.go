@@ -68,18 +68,32 @@ type DurableSwarmSpec struct {
 	Steps               []DurableSwarmStepSpec `json:"steps"`
 }
 
+// SwarmAttemptObservation records immutable dispatch and expiry facts for one attempt.
+type SwarmAttemptObservation struct {
+	Attempt   uint64     `json:"attempt"`
+	Candidate DurableWorkerCandidate `json:"candidate"`
+	Owner     string     `json:"owner"`
+	Fence     LeaseFence `json:"fence"`
+	Outcome   string     `json:"outcome"`
+	ObservedAt string    `json:"observed_at"`
+}
+
 type SwarmStepState struct {
-	StepID   string          `json:"step_id"`
-	Status   SwarmStepStatus `json:"status"`
-	Attempts uint64          `json:"attempts"`
+	StepID       string                    `json:"step_id"`
+	Status       SwarmStepStatus           `json:"status"`
+	Attempts     uint64                    `json:"attempts"`
+	Observations []SwarmAttemptObservation `json:"observations,omitempty"`
 }
 
 // SwarmState is a derived view only. Its sole authority is the journal consumed by ReduceSwarmEntry.
 type SwarmState struct {
-	Version uint64           `json:"version"`
-	Status  SwarmStatus      `json:"status"`
-	Spec    DurableSwarmSpec `json:"spec"`
-	Steps   []SwarmStepState `json:"steps"`
+	Version    uint64           `json:"version"`
+	Status     SwarmStatus      `json:"status"`
+	Spec       DurableSwarmSpec `json:"spec"`
+	Steps      []SwarmStepState `json:"steps"`
+	ReadyWave  ReadyWave        `json:"ready_wave"`
+	Leases     []LeaseClaim     `json:"leases,omitempty"`
+	LastFence  LeaseFence       `json:"last_fence"`
 }
 
 type durableSwarmSpecWire struct {
@@ -244,46 +258,12 @@ func ReduceSwarmEntry(prior SwarmState, entry SwarmJournalEntry) (SwarmState, er
 		for i, step := range spec.Steps {
 			next.Steps[i] = SwarmStepState{StepID: step.StepID, Status: SwarmStepStatusPending}
 		}
-	case "step.started", "step.completed", "step.failed", "step.retrying", "step.cancelled":
+	case "wave.ready", "wave.dispatched", "lease.renewed", "lease.observed", "lease.expired":
 		if prior.Version == 0 {
-			return SwarmState{}, errors.New("swarm must open before execution")
+			return SwarmState{}, errors.New("swarm must open before leasing")
 		}
-		var payload swarmStepTransitionPayload
-		if err := decodeStrictSwarmPayload(entry.Payload, &payload); err != nil || payload.SchemaVersion != swarmStateSchemaVersion || payload.StepID == "" {
-			return SwarmState{}, errors.New("swarm step payload invalid")
-		}
-		index := swarmStepIndex(next.Steps, payload.StepID)
-		if index < 0 {
-			return SwarmState{}, errors.New("swarm step missing")
-		}
-		step := &next.Steps[index]
-		switch entry.Kind {
-		case "step.started":
-			if step.Status != SwarmStepStatusPending || step.Attempts >= next.Spec.Steps[index].AttemptPolicy.MaxAttempts || !swarmDependenciesCompleted(next, index) {
-				return SwarmState{}, errors.New("illegal swarm step start")
-			}
-			step.Status = SwarmStepStatusRunning
-			step.Attempts++
-		case "step.completed":
-			if step.Status != SwarmStepStatusRunning {
-				return SwarmState{}, errors.New("illegal swarm step completion")
-			}
-			step.Status = SwarmStepStatusCompleted
-		case "step.failed":
-			if step.Status != SwarmStepStatusRunning {
-				return SwarmState{}, errors.New("illegal swarm step failure")
-			}
-			step.Status = SwarmStepStatusFailed
-		case "step.retrying":
-			if step.Status != SwarmStepStatusFailed || step.Attempts >= next.Spec.Steps[index].AttemptPolicy.MaxAttempts {
-				return SwarmState{}, errors.New("illegal swarm step retry")
-			}
-			step.Status = SwarmStepStatusPending
-		case "step.cancelled":
-			if step.Status != SwarmStepStatusPending && step.Status != SwarmStepStatusRunning {
-				return SwarmState{}, errors.New("illegal swarm step cancellation")
-			}
-			step.Status = SwarmStepStatusCancelled
+		if err := reduceSwarmLeaseEntry(&next, entry); err != nil {
+			return SwarmState{}, err
 		}
 	case "swarm.cancelled":
 		if prior.Version == 0 || prior.Status == SwarmStatusCompleted || prior.Status == SwarmStatusFailed || prior.Status == SwarmStatusCancelled {
@@ -293,8 +273,13 @@ func ReduceSwarmEntry(prior SwarmState, entry SwarmJournalEntry) (SwarmState, er
 		if err := decodeStrictSwarmPayload(entry.Payload, &payload); err != nil || payload.SchemaVersion != swarmStateSchemaVersion {
 			return SwarmState{}, errors.New("swarm cancellation payload invalid")
 		}
+		for _, step := range next.Steps {
+			if step.Status == SwarmStepStatusRunning {
+				return SwarmState{}, errors.New("cannot cancel a running step without a lease-bound terminal event")
+			}
+		}
 		for i := range next.Steps {
-			if next.Steps[i].Status == SwarmStepStatusPending || next.Steps[i].Status == SwarmStepStatusRunning {
+			if next.Steps[i].Status == SwarmStepStatusPending {
 				next.Steps[i].Status = SwarmStepStatusCancelled
 			}
 		}
@@ -311,7 +296,7 @@ func ReduceSwarmEntry(prior SwarmState, entry SwarmJournalEntry) (SwarmState, er
 // by typed journals for future reducers, while unknown state namespaces fail closed.
 func isSwarmStateEntryKind(kind string) (bool, error) {
 	switch kind {
-	case "swarm.opened", "swarm.cancelled", "step.started", "step.completed", "step.failed", "step.retrying", "step.cancelled":
+	case "swarm.opened", "swarm.cancelled", "wave.ready", "wave.dispatched", "lease.renewed", "lease.observed", "lease.expired":
 		return true, nil
 	default:
 		if strings.HasPrefix(kind, "swarm.") || strings.HasPrefix(kind, "step.") {
@@ -394,7 +379,13 @@ func deriveSwarmStatus(steps []SwarmStepState) SwarmStatus {
 }
 
 func cloneSwarmState(state SwarmState) SwarmState {
-	return SwarmState{Version: state.Version, Status: state.Status, Spec: cloneDurableSwarmSpec(state.Spec), Steps: append([]SwarmStepState(nil), state.Steps...)}
+	clone := SwarmState{Version: state.Version, Status: state.Status, Spec: cloneDurableSwarmSpec(state.Spec), ReadyWave: cloneReadyWave(state.ReadyWave), Leases: cloneLeaseClaims(state.Leases), LastFence: state.LastFence}
+	clone.Steps = make([]SwarmStepState, len(state.Steps))
+	for i, step := range state.Steps {
+		clone.Steps[i] = step
+		clone.Steps[i].Observations = append([]SwarmAttemptObservation(nil), step.Observations...)
+	}
+	return clone
 }
 
 func cloneDurableSwarmSpec(spec DurableSwarmSpec) DurableSwarmSpec {

@@ -11,76 +11,49 @@ import (
 	"time"
 )
 
-func TestSwarmReducerInitialAndLegalTransitions(t *testing.T) {
+func TestSwarmReducerRunsOnlyThroughDispatchedWave(t *testing.T) {
 	spec := reducerTestDurableSpec(t)
-opened := reducerTestOpenedEntry(t, spec)
-	state, err := ReduceSwarmEntry(SwarmState{}, opened)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if state.Status != SwarmStatusOpen || state.Steps[0].Status != SwarmStepStatusPending {
-		t.Fatalf("opening state = %#v", state)
-	}
-
-	for _, transition := range []struct {
-		kind string
-		want SwarmStepStatus
-	}{
-		{"step.started", SwarmStepStatusRunning},
-		{"step.completed", SwarmStepStatusCompleted},
-	} {
-		entry := reducerTestEntry(t, transition.kind, map[string]any{"schema_version": 1, "step_id": "prepare"}, state.Version, state.Version+1)
-		state, err = ReduceSwarmEntry(state, entry)
-		if err != nil {
-			t.Fatalf("%s: %v", transition.kind, err)
-		}
-		if state.Steps[0].Status != transition.want {
-			t.Fatalf("%s status = %q; want %q", transition.kind, state.Steps[0].Status, transition.want)
-		}
-	}
-	if state.Status != SwarmStatusCompleted {
-		t.Fatalf("swarm status = %q; want completed", state.Status)
-	}
-}
-
-func TestSwarmReducerFailureRetryAndCancellationTransitions(t *testing.T) {
-	spec := reducerTestDurableSpec(t)
-	spec.Steps[0].AttemptPolicy.MaxAttempts = 2
 	state, err := ReduceSwarmEntry(SwarmState{}, reducerTestOpenedEntry(t, spec))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, kind := range []string{"step.started", "step.failed", "step.retrying", "step.started", "step.cancelled"} {
-		entry := reducerTestEntry(t, kind, map[string]any{"schema_version": 1, "step_id": "prepare"}, state.Version, state.Version+1)
-		state, err = ReduceSwarmEntry(state, entry)
-		if err != nil {
-			t.Fatalf("%s: %v", kind, err)
-		}
-	}
-	if state.Status != SwarmStatusCancelled || state.Steps[0].Attempts != 2 {
-		t.Fatalf("failure/retry/cancel state = %#v", state)
-	}
-}
-
-func TestSwarmReducerRejectsIllegalTransitionsAndInvalidPayloads(t *testing.T) {
-	spec := reducerTestDurableSpec(t)
-	opened := reducerTestOpenedEntry(t, spec)
-	state, err := ReduceSwarmEntry(SwarmState{}, opened)
+	readyAt := swarmJournalTestTime.Add(time.Second).Format(time.RFC3339Nano)
+	wave := ReadyWave{StepIDs: []string{"prepare"}, RecordedAt: readyAt}
+	state, err = ReduceSwarmEntry(state, reducerTestTimedEntry(t, "wave.ready", waveReadyPayload{SchemaVersion: swarmStateSchemaVersion, Wave: wave}, state.Version, state.Version+1, readyAt))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ReduceSwarmEntry(SwarmState{}, reducerTestEntry(t, "step.started", map[string]any{"schema_version": 1, "step_id": "prepare"}, 0, 1)); err == nil {
-		t.Fatal("ReduceSwarmEntry permitted execution before swarm.opened")
+	dispatchedAt := swarmJournalTestTime.Add(2 * time.Second).Format(time.RFC3339Nano)
+	claim := LeaseClaim{StepID: "prepare", Owner: "worker-a", Fence: 1, Attempt: 1, CandidateIndex: 0, Capability: spec.Steps[0].Capability, Candidate: spec.Steps[0].Candidates[0], Deadline: swarmJournalTestTime.Add(3 * time.Second).Format(time.RFC3339Nano)}
+	state, err = ReduceSwarmEntry(state, reducerTestTimedEntry(t, "wave.dispatched", waveDispatchedPayload{SchemaVersion: swarmStateSchemaVersion, Wave: wave, Claims: []LeaseClaim{claim}}, state.Version, state.Version+1, dispatchedAt))
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, entry := range []SwarmJournalEntry{
-		reducerTestEntry(t, "step.completed", map[string]any{"schema_version": 1, "step_id": "prepare"}, 1, 2),
-		reducerTestEntry(t, "step.started", map[string]any{"schema_version": 2, "step_id": "prepare"}, 1, 2),
-		reducerTestEntry(t, "step.started", map[string]any{"schema_version": 1, "step_id": "prepare", "forged_view": "completed"}, 1, 2),
-		reducerTestEntry(t, "step.started", map[string]any{"schema_version": 1, "step_id": "deleted"}, 1, 2),
-		reducerTestEntry(t, "step.started", map[string]any{"schema_version": 1, "step_id": "prepare"}, 1, 3),
-	} {
-		if _, err := ReduceSwarmEntry(state, entry); err == nil {
-			t.Fatalf("ReduceSwarmEntry accepted %#v", entry)
+	if state.Steps[0].Status != SwarmStepStatusRunning || state.Steps[0].Attempts != 1 || !reflect.DeepEqual(state.Leases, []LeaseClaim{claim}) {
+		t.Fatalf("dispatch state = %#v", state)
+	}
+	if next, err := ReduceSwarmEntry(state, reducerTestEntry(t, "swarm.cancelled", map[string]any{"schema_version": 1}, state.Version, state.Version+1)); err == nil || !reflect.DeepEqual(next, SwarmState{}) {
+		t.Fatalf("running step accepted unfenced cancellation: next=%#v err=%v", next, err)
+	}
+	observedAt := swarmJournalTestTime.Add(2500 * time.Millisecond).Format(time.RFC3339Nano)
+	state, err = ReduceSwarmEntry(state, reducerTestTimedEntry(t, "lease.observed", leaseObservedPayload{SchemaVersion: swarmStateSchemaVersion, Claim: claim, Outcome: "reported"}, state.Version, state.Version+1, observedAt))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := state.Steps[0].Observations[len(state.Steps[0].Observations)-1]; got.Outcome != "reported" || got.ObservedAt != observedAt {
+		t.Fatalf("lease observation = %#v", got)
+	}
+}
+
+func TestSwarmReducerRejectsLegacyStepTransitionsWithoutMutation(t *testing.T) {
+	state, err := ReduceSwarmEntry(SwarmState{}, reducerTestOpenedEntry(t, reducerTestDurableSpec(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"step.started", "step.completed", "step.failed", "step.retrying", "step.cancelled"} {
+		entry := reducerTestEntry(t, kind, map[string]any{"schema_version": 1, "step_id": "prepare"}, state.Version, state.Version+1)
+		if next, err := ReduceSwarmEntry(state, entry); err == nil || !reflect.DeepEqual(next, SwarmState{}) {
+			t.Fatalf("ReduceSwarmEntry accepted legacy %s: next=%#v err=%v", kind, next, err)
 		}
 	}
 }
@@ -94,7 +67,8 @@ func TestSwarmReducerDoesNotMutatePriorStateOrEntry(t *testing.T) {
 	}
 	prior := state
 	priorSpec := append([]byte(nil), state.Spec.Plan...)
-	entry := reducerTestEntry(t, "step.started", map[string]any{"schema_version": 1, "step_id": "prepare"}, 1, 2)
+	readyAt := swarmJournalTestTime.Add(time.Second).Format(time.RFC3339Nano)
+	entry := reducerTestTimedEntry(t, "wave.ready", waveReadyPayload{SchemaVersion: swarmStateSchemaVersion, Wave: ReadyWave{StepIDs: []string{"prepare"}, RecordedAt: readyAt}}, 1, 2, readyAt)
 	entryPayload := append([]byte(nil), entry.Payload...)
 	next, err := ReduceSwarmEntry(state, entry)
 	if err != nil {
@@ -214,6 +188,13 @@ func reducerTestEntry(t *testing.T, kind string, payload any, prior, version uin
 	return SwarmJournalEntry{Kind: kind, Payload: raw, PriorStateVersion: prior, StateVersion: version}
 }
 
+func reducerTestTimedEntry(t *testing.T, kind string, payload any, prior, version uint64, timestamp string) SwarmJournalEntry {
+	t.Helper()
+	entry := reducerTestEntry(t, kind, payload, prior, version)
+	entry.Timestamp = timestamp
+	return entry
+}
+
 func TestSwarmOpenSeedUsesRawBase64URL(t *testing.T) {
 	journal := newTestSwarmJournal(t)
 	spec := reducerTestDurableSpec(t)
@@ -244,21 +225,22 @@ func TestSwarmReducerSkipsFutureEntriesAndRejectsStateNamespaces(t *testing.T) {
 	entries := []SwarmJournalEntry{
 		reducerTestOpenedEntry(t, spec),
 		reducerTestEntry(t, "future.audit", map[string]any{"event": "recorded"}, 1, 2),
-		reducerTestEntry(t, "step.started", map[string]any{"schema_version": 1, "step_id": "prepare"}, 2, 3),
 	}
 	state, err := ReduceSwarmEntries(entries)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.Version != 3 || state.Status != SwarmStatusRunning || state.Steps[0].Status != SwarmStepStatusRunning {
+	if state.Version != 2 || state.Status != SwarmStatusOpen || state.Steps[0].Status != SwarmStepStatusPending {
 		t.Fatalf("future-entry replay state = %#v", state)
 	}
-	if _, err := ReduceSwarmEntries(append(entries[:2:2], reducerTestEntry(t, "step.future", map[string]any{"event": "forged"}, 2, 3))); err == nil {
-		t.Fatal("ReduceSwarmEntries accepted an unknown state namespace")
+	for _, kind := range []string{"step.started", "step.completed", "step.failed", "step.retrying", "step.cancelled", "step.future"} {
+		if _, err := ReduceSwarmEntries(append(entries[:2:2], reducerTestEntry(t, kind, map[string]any{"event": "forged"}, 2, 3))); err == nil {
+			t.Fatalf("ReduceSwarmEntries accepted legacy or unknown step namespace %q", kind)
+		}
 	}
 }
 
-func TestSwarmCancellationIsTerminalWithMixedStepStatuses(t *testing.T) {
+func TestSwarmCancellationIsTerminal(t *testing.T) {
 	spec := reducerTestDurableSpec(t)
 	spec.Steps = append(spec.Steps, DurableSwarmStepSpec{
 		StepID:        "publish",
@@ -269,20 +251,14 @@ func TestSwarmCancellationIsTerminalWithMixedStepStatuses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, entry := range []SwarmJournalEntry{
-		reducerTestEntry(t, "step.started", map[string]any{"schema_version": 1, "step_id": "prepare"}, 1, 2),
-		reducerTestEntry(t, "step.completed", map[string]any{"schema_version": 1, "step_id": "prepare"}, 2, 3),
-		reducerTestEntry(t, "swarm.cancelled", map[string]any{"schema_version": 1}, 3, 4),
-	} {
-		state, err = ReduceSwarmEntry(state, entry)
-		if err != nil {
-			t.Fatal(err)
-		}
+	state, err = ReduceSwarmEntry(state, reducerTestEntry(t, "swarm.cancelled", map[string]any{"schema_version": 1}, 1, 2))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if state.Status != SwarmStatusCancelled || state.Steps[0].Status != SwarmStepStatusCompleted || state.Steps[1].Status != SwarmStepStatusCancelled {
-		t.Fatalf("mixed cancellation state = %#v", state)
+	if state.Status != SwarmStatusCancelled || state.Steps[0].Status != SwarmStepStatusCancelled || state.Steps[1].Status != SwarmStepStatusCancelled {
+		t.Fatalf("cancellation state = %#v", state)
 	}
-	if _, err := ReduceSwarmEntry(state, reducerTestEntry(t, "swarm.cancelled", map[string]any{"schema_version": 1}, 4, 5)); err == nil {
+	if _, err := ReduceSwarmEntry(state, reducerTestEntry(t, "swarm.cancelled", map[string]any{"schema_version": 1}, 2, 3)); err == nil {
 		t.Fatal("ReduceSwarmEntry allowed a transition after cancellation")
 	}
 }
