@@ -93,7 +93,7 @@ go test ./...
 | [Trust model](docs/manual/trust-model.md) | Identity, credentials, revocation, sandbox proof, attestation. |
 | [Reputation](docs/manual/reputation.md) | `agent_score`, routing signals, and discovery evidence. |
 | [Development](docs/manual/development.md) | Local tests, Go build, contribution workflow. |
-| [Changelog](docs/CHANGELOG.md) | Concise v13.0 through v14.4 history. |
+| [Changelog](docs/CHANGELOG.md) | Concise v13.0 through v14.11 history plus the Phase C durability slice. |
 
 ## Roadmap status
 
@@ -113,6 +113,7 @@ go test ./...
 | v14.8 Swarm conflict resolution | Complete | `conflict_resolutions` entries bind artifact ref, candidate steps, chosen worker, reason, digest, and Zone signature | Not voting/quorum, automatic content merge, payment/settlement, or non-local-first arbitration. |
 | v14.9 cross-netns reachability | Complete | `cross-netns` scope verifies trusted observer evidence from a separate netns/VM over a private literal IP | Not public reachability; not hosted external-host completion. |
 | v14.10 Node ready-DAG parity | Complete | Node `FED_SWARM_SCHEDULE` orders dependency-ready steps deterministically and signs exact scheduler evidence | No parallel execution, no resource scheduling, no economic ranking, no LLM scheduling, and no new trust inputs. |
+| Phase C U19-U30 durable local Swarm | Complete | Go same-host filesystem journal under OS process locks is authoritative, materializes replayable views, executes workers at-least-once, commits a fenced signed receipt commitment exactly-once, runs deterministic parallel ready waves, stores a byte-stable close, and gates an irreversible signed disband on output verification. | Node is a pure verifier of fixed offline U29 vectors for this durable format. Live public proof excludes durable Swarm completion; Phase C claims no real container smoke, cross-host operation, remote artifact handling, or exactly-once worker execution. |
 
 ## Non-claims
 

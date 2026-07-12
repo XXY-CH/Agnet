@@ -60,6 +60,12 @@ ASP is the narrow waist across the middle layers. A runtime may schedule, route,
 The Node implementation is the compact reference surface for protocol primitives and the verifier CLI. The Go gateway is the larger federation/runtime slice with TCP serving, Human Gateway UI, queue flows, Swarm scheduling, artifact mirror checks, TLS/mTLS, and reusable receipt verifier package.
 
 Shared JSON vectors in `test-vectors/` keep interop anchored. Node and Go both verify `FED_TASK_OPEN` and `FED_RECEIPT` vectors; Node verifies the `FED_SWARM_CLOSE` vector; Go verifies audit-backed Swarm behavior through integration tests.
+### Phase C durable local Swarm boundary
+
+Phase C U19-U30 is complete for the Go-local runtime. Its same-host filesystem journal under OS process locks is authoritative and materializes replayable views; workers execute at-least-once, while a fenced signed receipt commitment is exactly-once. Deterministic parallel ready waves, a byte-stable close, output verification, and irreversible signed disband all derive from that journal. Observed crash/concurrency proof boundaries cover journal/view replacement and close/disband append faults, receipt synchronization before response, stale-lease rejection after reclaim, concurrent-coordinator exclusion, and ready-wave barriers.
+
+Node is a pure verifier of fixed offline U29 vectors for this durable format. Live public proof excludes durable Swarm completion; Phase C makes no claim of real container smoke, cross-host operation, remote artifact handling, or exactly-once worker execution.
+
 
 ## What is deliberately outside
 

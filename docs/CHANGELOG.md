@@ -1,6 +1,15 @@
 # Changelog
 
-All notable changes from v13.0 through v14.11 are summarized here. Format follows Keep a Changelog with concise Added / Changed / Fixed bullets.
+All notable changes from v13.0 through v14.11, plus the Phase C durability slice, are summarized here. Format follows Keep a Changelog with concise Added / Changed / Fixed bullets.
+## [Phase C U19-U30] - 2026-07-12 - Durable local Swarm
+
+### Added
+- Phase C U19-U30 completes the Go-local durable Swarm slice: a same-host filesystem journal under OS process locks is authoritative, materializes replayable views, records deterministic parallel ready waves, and stores a byte-stable close.
+### Changed
+- Workers execute at-least-once; only the fenced signed receipt commitment is exactly-once. Output verification now gates an irreversible signed disband.
+### Fixed
+- Observed crash/concurrency gates cover journal/view replacement and close/disband append faults, receipt synchronization before response, stale-lease rejection after reclaim, concurrent-coordinator exclusion, and ready-wave barriers. Node is a pure verifier of fixed offline U29 vectors for this durable format. Live public proof excludes durable Swarm completion; Phase C makes no claim of real container smoke, cross-host operation, remote artifact handling, or exactly-once worker execution.
+
 
 ## [v14.11] - Apple Container private-workspace isolation proof
 

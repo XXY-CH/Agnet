@@ -322,6 +322,12 @@ The audit log is JSONL plus an audit hash chain.
 Each append links to the previous audit head. Verifiers check that entries preserve the chain and that receipt or artifact evidence can be tied back to the audited task.
 
 The audit hash chain is accountability evidence, not a global consensus layer.
+## Durable local Swarm execution
+
+Phase C U19-U30 is complete for the Go-local runtime. A same-host filesystem journal under OS process locks is the sole authority; replayable views are materialized from validated replay rather than used as authority. Worker execution is at-least-once, but a fenced signed receipt commitment is exactly-once. The journal records deterministic parallel ready waves, derives a byte-stable close, and permits an irreversible signed disband only after output verification.
+
+Observed crash/concurrency proof boundaries cover journal/view replacement and close/disband append faults, receipt synchronization before response, stale lease rejection after reclaim, concurrent coordinator exclusion, and ready-wave barriers. Node is a pure verifier of fixed offline U29 vectors for this durable format. Live public proof excludes durable Swarm completion; Phase C makes no claim of real container smoke, cross-host operation, remote artifact handling, or exactly-once worker execution.
+
 
 ## Knowledge Gateway
 
@@ -361,6 +367,8 @@ Go `FED_SWARM_OPEN` execution MUST reject malformed step `after` list entries be
 Go audit-backed Swarm close proof verification MUST reject malformed `step_receipts` list entries instead of silently filtering them before close step count, order, task, and digest checks.
 
 `FED_SWARM_SCHEDULE` accepts a signed Swarm DAG and executes steps in deterministic ready order. Node and Go execute those steps serially. Missing dependencies, duplicate step IDs, self-dependencies, and a cycle or unresolvable graph fail before execution. Each scheduled step reuses `FED_TASK_OPEN` task verification and the existing Swarm receipt dependency evidence. The close proof may include signed scheduler evidence with `mode: "ready-dag"` and the executed `step_order`; v14.10 scheduled closes include it, with original input order breaking ready ties. This is scheduler-owned DAG execution only: no automatic task decomposition, no parallel execution, no resource scheduling, no economic ranking, no LLM scheduling, and no new trust inputs.
+The Phase C Go-local durable runtime is separate from this serial `FED_SWARM_SCHEDULE` compatibility surface; its parallelism is bounded to deterministic same-host journal ready waves.
+
 
 ## Verification Commands
 

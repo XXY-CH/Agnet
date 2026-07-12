@@ -3065,3 +3065,33 @@ test("v14.11 docs state the Apple private-workspace proof and its limits", async
   assert.doesNotMatch(status, /The active protocol tag is `v14\.10-protocol`/);
   assert.match(changelog, /\[v14\.11\]/);
 });
+
+test("Phase C U19-U30 durable Swarm documentation preserves authority and proof boundaries", async () => {
+  const [readme, status, draft, protocol, architecture, changelog] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/asp-core-draft.md", "utf8"),
+    readFile("docs/manual/protocol.md", "utf8"),
+    readFile("docs/manual/architecture.md", "utf8"),
+    readFile("docs/CHANGELOG.md", "utf8"),
+  ]);
+
+  const docs = [readme, status, draft, protocol, architecture, changelog];
+  for (const doc of docs) {
+    assert.match(doc, /Phase C U19-U30/);
+    assert.match(doc, /same-host filesystem journal/);
+    assert.match(doc, /OS process locks/);
+    assert.match(doc, /at-least-once/);
+    assert.match(doc, /fenced signed receipt commitment.*exactly-once|exactly-once.*fenced signed receipt commitment/);
+    assert.match(doc, /deterministic parallel ready waves/i);
+    assert.match(doc, /byte-stable close/);
+    assert.match(doc, /output verification/i);
+    assert.match(doc, /irreversible signed disband/);
+    assert.match(doc, /Node is a pure verifier of fixed offline U29 vectors/);
+    assert.match(doc, /Live public proof excludes durable Swarm completion/);
+    assert.match(doc, /real container smoke, cross-host operation, remote artifact handling, or exactly-once worker execution/);
+  }
+  assert.match(status, /journal\/view replacement.*close\/disband append faults.*receipt synchronization before response.*stale-lease rejection after reclaim.*concurrent-coordinator exclusion.*ready-wave barriers/);
+  assert.match(draft, /replayable views are materialized from validated replay rather than used as authority/);
+  assert.match(changelog, /\[Phase C U19-U30\] - 2026-07-12/);
+});

@@ -53,6 +53,14 @@ Starts an explicit Swarm DAG. The current shape carries `origin_zone`, `requeste
 ### `FED_SWARM_SCHEDULE`
 
 Node and Go gateways both support scheduler-owned ready-DAG execution. They accept out-of-order signed steps, execute in deterministic dependency-ready order, and sign scheduler evidence with `mode: "ready-dag"` and `step_order` into the close proof. This preserves serial execution only: it is not automatic task decomposition, parallel economic scheduling, or resource orchestration.
+### Durable local execution boundary
+
+Phase C U19-U30 is complete for the Go-local runtime: a same-host filesystem journal under OS process locks is authoritative and produces replayable views. Workers execute at-least-once; only a fenced signed receipt commitment is exactly-once. The journal records deterministic parallel ready waves, keeps a byte-stable close, and allows irreversible signed disband only after output verification. Observed crash/concurrency proof boundaries cover journal/view replacement and close/disband append faults, receipt synchronization before response, stale-lease rejection after reclaim, concurrent-coordinator exclusion, and ready-wave barriers.
+
+Node is a pure verifier of fixed offline U29 vectors for this durable format. Live public proof excludes durable Swarm completion; Phase C makes no claim of real container smoke, cross-host operation, remote artifact handling, or exactly-once worker execution.
+The Phase C Go-local durable runtime is separate from the serial `FED_SWARM_SCHEDULE` compatibility surface above; its parallelism is bounded to deterministic same-host journal ready waves.
+
+
 
 ### `FED_SWARM_PLAN`
 
