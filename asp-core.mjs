@@ -948,9 +948,10 @@ function durableOutputVerifiedPayload(payload) {
 
 function reduceDurableEntry(prior, entry) {
   if (entry.prior_state_version !== prior.version) throw new Error("swarm journal state versions are not contiguous");
-  const next = structuredClone(prior);
   if (prior.status === "disbanded") throw new Error("swarm is terminal");
   if (prior.status === "failed" && entry.kind !== "lease.expired") throw new Error("swarm is failed");
+  if (entry.kind.startsWith("future.")) return { ...prior, version: entry.state_version };
+  const next = structuredClone(prior);
   if (entry.kind === "swarm.opened") {
     if (prior.version !== 0) throw new Error("swarm already opened");
     next.spec = structuredClone(entry.payload.spec);
@@ -1073,8 +1074,6 @@ function reduceDurableEntry(prior, entry) {
     verifySwarmDisband(disband, durableAuthority(prior), { swarm_id: prior.spec.swarm_id, plan_digest: close.plan_digest, execution_graph_digest: close.execution_graph_digest, close_digest: prior.stored_close.digest, output_verification_digest: prior.output_verification.digest, completed_at: prior.output_verification.completed_at });
     next.disband = { bytes: disbandBytes.toString("base64url"), digest: entry.payload.digest, disband };
     next.status = "disbanded";
-  } else if (entry.kind.startsWith("future.")) {
-    // Explicit forward-compatible non-state entries preserve journal continuity only.
   } else {
     throw new Error("swarm journal transition kind invalid");
   }

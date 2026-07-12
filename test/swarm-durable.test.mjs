@@ -61,6 +61,24 @@ test("pure journal builds canonical hashes and rejects chain, version, and trans
   assert.throws(() => verifySwarmJournal([first, { ...second, sequence: 3 }]), /sequence/i);
 });
 
+test("journal verification returns deeply frozen detached entries and state after future events", () => {
+  const opened = entry(1, "swarm.opened", openedPayload());
+  const future = entry(2, "future.replay", { ordinal: 2, schema_version: 1 }, 1, opened.hash);
+  const ready = entry(3, "wave.ready", { schema_version: 1, wave: { step_ids: ["prepare"], recorded_at: "2026-07-12T13:14:17.123456789Z" } }, 2, future.hash);
+  const journal = structuredClone([opened, future, ready]);
+  const verified = verifySwarmJournal(journal);
+
+  assert.equal(Object.isFrozen(verified.entries), true);
+  assert.equal(Object.isFrozen(verified.entries[0].payload.spec.steps[0]), true);
+  assert.equal(Object.isFrozen(verified.state), true);
+  assert.equal(Object.isFrozen(verified.state.spec.steps[0]), true);
+  assert.equal(verified.state.ready_wave.step_ids[0], "prepare");
+  journal[0].payload.spec.swarm_id = "swarm://mutated/input";
+  journal[1].payload.ordinal = 99;
+  assert.equal(verified.state.spec.swarm_id, "swarm://node-parity/alpha");
+  assert.equal(verified.entries[1].payload.ordinal, 2);
+});
+
 test("pure journal reducer enforces ready DAG ordering, dispatch readiness, and monotonic fences", () => {
   const opened = entry(1, "swarm.opened", openedPayload());
   const ready = entry(2, "wave.ready", { schema_version: 1, wave: { step_ids: ["prepare"], recorded_at: "2026-07-12T13:14:16.123456789Z" } }, 1, opened.hash);
