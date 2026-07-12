@@ -13,8 +13,11 @@ await mkdir("state", { recursive: true });
 const originZone = createZone("zone://public-node-proof-origin");
 await writeFile("state/public-node-proof-trusted.json", `${JSON.stringify({ zones: [originZone.descriptor] }, null, 2)}\n`);
 const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
-await writeFile("state/public-node-proof-authority.seed", `${fixture.authority_seed_hex}\n`);
-await writeFile("state/public-node-proof-worker.seed", `${fixture.worker_seed_hex}\n`);
+await Promise.all([
+  "state/public-node-proof-authority.seed",
+  "state/public-node-proof-worker.seed",
+].map((path) => rm(path, { force: true })));
+const managedKeys = await createManagedProofKeys(fixture);
 const receiptFramePath = "state/public-node-proof-fed-receipt.json";
 const receiptTrustedPath = "state/public-node-proof-trusted-zones.json";
 const swarmCloseFramePath = "state/public-node-proof-swarm-close.json";
@@ -62,10 +65,14 @@ const child = spawn(binary, [
   "0",
   "--trusted",
   "state/public-node-proof-trusted.json",
-  "--authority-key",
-  "state/public-node-proof-authority.seed",
-  "--worker-key",
-  "state/public-node-proof-worker.seed",
+  "--authority-store",
+  managedKeys.authority.storePath,
+  "--authority-passphrase-file",
+  managedKeys.authority.passphrasePath,
+  "--worker-store",
+  managedKeys.worker.storePath,
+  "--worker-passphrase-file",
+  managedKeys.worker.passphrasePath,
   "--audit",
   "state/public-node-proof-audit.log",
 ], { stdio: ["ignore", "pipe", "inherit"] });
@@ -76,6 +83,63 @@ const timer = setTimeout(() => {
   console.error("public node proof timeout");
   process.exit(1);
 }, 60000);
+
+async function createManagedProofKeys(keyFixture) {
+  const [authority, worker] = await Promise.all([
+    migrateProofKey({
+      label: "authority",
+      seedHex: keyFixture.authority_seed_hex,
+      descriptor: keyFixture.authority,
+      identityKind: "zid",
+    }),
+    migrateProofKey({
+      label: "worker",
+      seedHex: keyFixture.worker_seed_hex,
+      descriptor: keyFixture.worker,
+      identityKind: "aid",
+    }),
+  ]);
+  return { authority, worker };
+}
+
+async function migrateProofKey({ label, seedHex, descriptor, identityKind }) {
+  const storePath = `state/keys/public-node-proof-${label}`;
+  const passphrasePath = `state/public-node-proof-${label}.passphrase`;
+  const bareKeyPath = `state/public-node-proof-${label}.migration.pkcs8`;
+  const descriptorPath = `state/public-node-proof-${label}.migration-descriptor.json`;
+  await rm(storePath, { force: true, recursive: true });
+  await Promise.all([bareKeyPath, descriptorPath, passphrasePath].map((path) => rm(path, { force: true })));
+  await Promise.all([
+    writeFile(bareKeyPath, privateKeyPkcs8FromSeed(seedHex), { mode: 0o600 }),
+    writeFile(descriptorPath, `${canonical(descriptor)}\n`, { mode: 0o600 }),
+    writeFile(passphrasePath, `public-node-proof ${label} passphrase\n`, { mode: 0o600 }),
+  ]);
+  await Promise.all([bareKeyPath, descriptorPath, passphrasePath].map((path) => chmod(path, 0o600)));
+  try {
+    await execFileAsync(process.execPath, [
+      "agnet-key.mjs",
+      "migrate",
+      "--store", storePath,
+      "--key-file", bareKeyPath,
+      "--key-type", "ed25519-pkcs8",
+      "--identity-kind", identityKind,
+      "--descriptor", descriptorPath,
+      "--passphrase-file", passphrasePath,
+      "--iterations", "100000",
+    ]);
+  } finally {
+    await Promise.all([bareKeyPath, descriptorPath].map((path) => rm(path, { force: true })));
+  }
+  return { storePath, passphrasePath };
+}
+
+function privateKeyPkcs8FromSeed(seedHex) {
+  if (typeof seedHex !== "string" || !/^[a-f0-9]{64}$/i.test(seedHex)) throw new Error("proof fixture seed invalid");
+  return Buffer.concat([
+    Buffer.from("302e020100300506032b657004220420", "hex"),
+    Buffer.from(seedHex, "hex"),
+  ]);
+}
 
 let output = "";
 for await (const chunk of child.stdout) {

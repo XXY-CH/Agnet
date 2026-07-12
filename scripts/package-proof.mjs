@@ -4,17 +4,32 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { canonical, loadOrCreateAgent, signObject } from "../asp-core.mjs";
+import { canonical, signObject } from "../asp-core.mjs";
+import { loadManagedAgent } from "../managed-key-runtime.mjs";
 
 const execFileAsync = promisify(execFile);
 const outDir = "state/package-proof";
+
+async function loadConfiguredSigner() {
+  const configPath = process.env.AGNET_PACKAGE_PROOF_SIGNER_CONFIG;
+  if (typeof configPath !== "string" || configPath.length === 0 || configPath.includes("\0")) throw new Error("package proof managed signer config missing");
+  let config;
+  try {
+    config = JSON.parse(await readFile(configPath, "utf8"));
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new Error("package proof managed signer config invalid");
+    throw error;
+  }
+  if (config === null || typeof config !== "object" || Array.isArray(config)) throw new Error("package proof managed signer config invalid");
+  return loadManagedAgent(config);
+}
+const signer = await loadConfiguredSigner();
 
 await mkdir(outDir, { recursive: true });
 const { stdout } = await execFileAsync("npm", ["pack", "--json", "--pack-destination", outDir]);
 const [packed] = JSON.parse(stdout);
 const tarballPath = join(outDir, packed.filename);
 const manifestPath = join(outDir, "package-proof.json");
-const signer = await loadOrCreateAgent("agent://package-proof/signer", "state/keys/package-proof-signer.pkcs8", {}, ["asp+local://package-proof"], ["package.proof.sign"]);
 
 const proofBody = {
   package_proof: "ok",

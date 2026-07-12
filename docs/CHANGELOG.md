@@ -1,6 +1,15 @@
 # Changelog
 
-All notable changes from v13.0 through v14.10 are summarized here. Format follows Keep a Changelog with concise Added / Changed / Fixed bullets.
+All notable changes from v13.0 through v14.11 are summarized here. Format follows Keep a Changelog with concise Added / Changed / Fixed bullets.
+
+## [v14.11] - Apple Container private-workspace isolation proof
+
+### Added
+- Darwin Apple Container runs now use one agent-owned private `0700` workspace bind-mounted read-write at `/work`, with workspace identity and exact postflight entry validation.
+### Changed
+- Apple execution no longer relies on pre/post copy operations, separate input/result mounts, or an Apple `/work` tmpfs; it applies `nofile=64:64` and `nproc=64:64` alongside existing read-only root, non-root, network/DNS, capability, CPU, and memory constraints.
+### Fixed
+- Symlinks, hardlinks, devices, unexpected paths, workspace substitution, and aggregate/result overflow fail closed before result promotion. The Darwin smoke proves the private-workspace path but is not full Docker isolation parity and does not claim Apple tmpfs quota or PID parity beyond the nproc ulimit.
 
 ## [v14.10] - Node FED_SWARM_SCHEDULE ready-DAG parity
 

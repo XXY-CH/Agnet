@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 )
 
 func (f Fixture) transportProof() map[string]any {
@@ -135,6 +136,105 @@ func taskArtifactURI(task map[string]any, fallback string) (string, error) {
 	return uri, nil
 }
 
+func containerProfileReceipt(profile DockerWorkerProfile) map[string]any {
+	limits := map[string]any{
+		"cpu_millis": float64(profile.Limits.CPUMillis),
+		"memory_bytes": float64(profile.Limits.MemoryBytes),
+		"timeout_millis": float64(profile.Limits.TimeoutMillis),
+		"max_output_bytes": float64(profile.Limits.MaxOutputBytes),
+		"max_scratch_input_bytes": float64(profile.Limits.MaxScratchInputBytes),
+		"max_scratch_bytes": float64(profile.Limits.MaxScratchBytes),
+	}
+	result := map[string]any{"image": profile.Image, "command": append([]string(nil), profile.Command...), "limits": limits}
+	if len(profile.ScratchInputs) > 0 {
+		inputs := make([]map[string]any, 0, len(profile.ScratchInputs))
+		for _, input := range profile.ScratchInputs {
+			inputs = append(inputs, map[string]any{"path": input.Path, "bytes_b64": input.BytesB64})
+		}
+		result["scratch_inputs"] = inputs
+	}
+	return result
+}
+
+func containerPromotionEvidence(worker *Worker, task map[string]any, result ToolResult, artifactManifest, transcriptManifest map[string]any) (map[string]any, map[string]any, error) {
+	if worker.Profile.Docker == nil {
+		return nil, nil, errors.New("container_profile_missing")
+	}
+	request, err := validateDockerWorkerProfile(*worker.Profile.Docker)
+	if err != nil {
+		return nil, nil, errors.New("container_profile_invalid")
+	}
+	runtimeKind := optionalString(result.Evidence["runtime"])
+	if err := validateContainerAdapterEvidence(request, runtimeKind, result.Evidence); err != nil {
+		return nil, nil, errors.New("container_evidence_invalid")
+	}
+	constraints := result.Evidence["constraints"].(map[string]any)
+	runtimeIdentity := result.Evidence["runtime_identity"].(map[string]any)
+	adapterObserved := result.Evidence["observed"].(map[string]any)
+	profile := containerProfileReceipt(*worker.Profile.Docker)
+	transcriptDigest := ""
+	transcriptBytes := float64(0)
+	artifactCount := float64(1)
+	if transcriptManifest != nil {
+		transcriptDigest = optionalString(transcriptManifest["sha256"])
+		transcriptBytes, _ = transcriptManifest["size"].(float64)
+		artifactCount++
+	}
+	evidence := map[string]any{
+		"format":                  "agnet-container-evidence/v2",
+		"runtime":                 runtimeKind,
+		"image":                   result.Evidence["image"],
+		"image_id":                result.Evidence["image_id"],
+		"container_id":            result.Evidence["container_id"],
+		"runtime_identity":        runtimeIdentity,
+		"runtime_identity_digest": result.Evidence["runtime_identity_digest"],
+		"configuration_digest":    result.Evidence["configuration_digest"],
+		"constraints":             constraints,
+		"observed": map[string]any{
+			"exit_code":        adapterObserved["exit_code"],
+			"result_bytes":     artifactManifest["size"],
+			"transcript_bytes": transcriptBytes,
+			"artifact_count":    artifactCount,
+		},
+		"task_id":           task["task_id"],
+		"task_digest":       digestHex(task),
+		"profile_digest":    digestHex(profile),
+		"generation_digest": digestHex(worker.GenerationRef),
+		"result_digest":     artifactManifest["sha256"],
+		"transcript_digest": transcriptDigest,
+	}
+	return evidence, profile, nil
+}
+
+func stagedArtifactManifest(uri string, data []byte, mediaType string) map[string]any {
+	sha := digestBytesHex(data)
+	manifest := map[string]any{
+		"uri": uri,
+		"sha256": sha,
+		"size": float64(len(data)),
+		"media_type": mediaType,
+		"afp": "afp:sha256:" + sha,
+	}
+	manifest["manifest_hash"] = digestHex(manifest)
+	return manifest
+}
+
+func artifactPublicationReady(artifactStoreDir string) bool {
+	for _, root := range []string{"artifacts", artifactStoreDir} {
+		if root == "" {
+			continue
+		}
+		info, err := os.Stat(root)
+		if err == nil && !info.IsDir() {
+			return false
+		}
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return false
+		}
+	}
+	return true
+	}
+
 func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worker, task map[string]any, parentCheckpoint any, restoredStateDigest string, retryOf any, requireHumanApproval bool, receiptExtra map[string]any, onReceipt func(map[string]any) error) error {
 	taskID := fmt.Sprint(task["task_id"])
 	ctx, cancelRun := context.WithCancel(context.Background())
@@ -197,7 +297,7 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	if err != nil {
 		return err
 	}
-	toolName, toolResult, sandbox, err := runTool(ctx, worker.Profile, task, origin, f.ArtifactStoreDir, f.LiveTranscriptDir)
+	toolName, toolResult, sandbox, err := runToolWithContainerAdapter(ctx, f.ContainerAdapter, worker.Profile, task, origin, f.ArtifactStoreDir, f.LiveTranscriptDir)
 	if err != nil {
 		if f.Runtime.WasCancelled(taskID) {
 			return err
@@ -211,38 +311,41 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	if len(toolResult.Transcript) > 0 && toolResult.TranscriptMediaType == "" {
 		return errors.New("tool transcript media type missing")
 	}
-	for key, value := range toolResult.Evidence {
-		if key == "mode" {
-			return errors.New("tool result evidence cannot override sandbox mode")
+	if worker.Profile.SandboxClaim != "container-namespace" {
+		for key, value := range toolResult.Evidence {
+			if key == "mode" {
+				return errors.New("tool result evidence cannot override sandbox mode")
+			}
+			sandbox[key] = value
 		}
-		sandbox[key] = value
 	}
 	sandboxClaim := worker.Profile.SandboxClaim
 	if sandboxClaim != "" && sandbox["mode"] != sandboxClaim {
 		return errors.New("sandbox claim mismatch")
 	}
-	artifactManifest, err := writeArtifactBytes(artifactURI, toolResult.Result, toolResult.MediaType, f.ArtifactStoreDir)
-	if err != nil {
-		return err
+	if !artifactPublicationReady(f.ArtifactStoreDir) {
+		return errors.New("artifact_publication_unavailable")
 	}
+	artifactManifest := stagedArtifactManifest(artifactURI, toolResult.Result, toolResult.MediaType)
 	artifactRefs := []string{artifactURI}
 	artifactManifests := []map[string]any{artifactManifest}
+	var transcriptManifest map[string]any
 	if len(toolResult.Transcript) > 0 {
 		transcriptURI := "artifact://local/" + taskID + "/tool-transcript.json"
-		transcriptManifest, err := writeArtifactBytes(transcriptURI, toolResult.Transcript, toolResult.TranscriptMediaType, f.ArtifactStoreDir)
-		if err != nil {
-			return err
-		}
+		transcriptManifest = stagedArtifactManifest(transcriptURI, toolResult.Transcript, toolResult.TranscriptMediaType)
 		sandbox["tool_transcript_ref"] = transcriptURI
 		sandbox["tool_transcript_manifest"] = transcriptManifest
 		artifactRefs = append(artifactRefs, transcriptURI)
 		artifactManifests = append(artifactManifests, transcriptManifest)
 	}
-	if err := f.sendTaskEvent(send, map[string]any{"type": "artifact.created", "task_id": taskID, "uri": artifactURI, "manifest": artifactManifest}); err != nil {
-		return err
-	}
-	if err := f.sendTaskEvent(send, map[string]any{"type": "task.completed", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
-		return err
+	var containerEvidence map[string]any
+	var containerProfile map[string]any
+	if sandboxClaim == "container-namespace" {
+		containerEvidence, containerProfile, err = containerPromotionEvidence(worker, task, toolResult, artifactManifest, transcriptManifest)
+		if err != nil {
+			return err
+		}
+		sandbox["container_evidence"] = containerEvidence
 	}
 	sandboxProof := f.sandboxProof(taskID, worker, sandbox, policyDigest, sandboxClaim)
 
@@ -268,6 +371,10 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		"sandbox_proof":      sandboxProof,
 		"tool":               toolName,
 	}
+	if containerEvidence != nil {
+		receipt["container_profile"] = containerProfile
+		receipt["container_generation_digest"] = containerEvidence["generation_digest"]
+	}
 	if transportProof := f.transportProof(); transportProof != nil {
 		receipt["transport_proof"] = transportProof
 	}
@@ -287,6 +394,27 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		receipt[key] = value
 	}
 	signedReceipt := signBody(worker.PrivateKey, receipt)
+	if onReceipt != nil {
+		if err := onReceipt(signedReceipt); err != nil {
+			return errors.New("promotion_callback_failed")
+		}
+	}
+	publishedResult, err := writeArtifactBytes(artifactURI, toolResult.Result, toolResult.MediaType, f.ArtifactStoreDir)
+	if err != nil || digestHex(publishedResult) != digestHex(artifactManifest) {
+		return errors.New("artifact_publication_failed")
+	}
+	if transcriptManifest != nil {
+		publishedTranscript, writeErr := writeArtifactBytes(optionalString(transcriptManifest["uri"]), toolResult.Transcript, toolResult.TranscriptMediaType, f.ArtifactStoreDir)
+		if writeErr != nil || digestHex(publishedTranscript) != digestHex(transcriptManifest) {
+			return errors.New("transcript_publication_failed")
+		}
+	}
+	if err := f.sendTaskEvent(send, map[string]any{"type": "artifact.created", "task_id": taskID, "uri": artifactURI, "manifest": artifactManifest}); err != nil {
+		return err
+	}
+	if err := f.sendTaskEvent(send, map[string]any{"type": "task.completed", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
+		return err
+	}
 	receiptRecord := map[string]any{
 		"kind":         "go_fed_receipt",
 		"zone":         f.Authority,
@@ -299,11 +427,6 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	}
 	if err := f.writeTaskState(taskID, "completed", worker, map[string]any{"receipt_digest": digestHex(signedReceipt)}); err != nil {
 		return err
-	}
-	if onReceipt != nil {
-		if err := onReceipt(signedReceipt); err != nil {
-			return err
-		}
 	}
 	send(map[string]any{
 		"type":         "FED_RECEIPT",

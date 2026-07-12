@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
-import { createHash, createPrivateKey, randomBytes } from "node:crypto";
-import { chmod, lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { createHash, createPrivateKey, generateKeyPairSync, randomBytes } from "node:crypto";
+import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { AUDIT_ZERO_HASH, agentFromPrivateKey, auditEntry, canonical, capabilityCredentialId, createAgent, loadOrCreateAgent, loadOrCreateZone, loadRegistry, publicKeyFromDescriptor, resolveAgent, rotationProof, signObject, signedReceiptDigest, swarmExecutionBinding, swarmPlan, verifyAliasRebindingProof, verifyCredentialStatus, verifyObject, verifySwarmClose, writeTrustedZones, zoneBinding, zoneRevocation } from "./asp-core.mjs";
+import { AUDIT_ZERO_HASH, agentFromPrivateKey, auditEntry, canonical, capabilityCredentialId, createAgent, loadRegistry, publicKeyFromDescriptor, resolveAgent, rotationProof, signObject, signedReceiptDigest, swarmExecutionBinding, swarmPlan, verifyAliasRebindingProof, verifyCredentialStatus, verifyObject, verifySwarmClose, writeTrustedZones, zoneBinding, zoneFromPrivateKey, zoneRevocation } from "./asp-core.mjs";
+import { migrateKey } from "./agnet-key.mjs";
+import { loadManagedZone } from "./managed-key-runtime.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -131,29 +135,159 @@ function agentFromSeed(alias, seedHex, policy, transports, capabilities) {
   return agentFromPrivateKey(alias, privateKey, policy, transports, capabilities);
 }
 
-test("Go sandbox probe CLI reports unsupported container namespace", async () => {
-  const shellDigest = createHash("sha256").update(await readFile("/bin/sh")).digest("hex");
+async function loadManagedTestZone(name) {
+  const root = await mkdtemp(join(tmpdir(), "agnet-go-fed-zone-"));
+  const source = zoneFromPrivateKey(name, generateKeyPairSync("ed25519").privateKey);
+  const paths = {
+    key: join(root, "zone.pkcs8"),
+    descriptor: join(root, "zone.json"),
+    passphrase: join(root, "passphrase"),
+    store: join(root, "store"),
+  };
+
+  try {
+    await chmod(root, 0o700);
+    await Promise.all([
+      writeFile(paths.key, source.privateKey.export({ format: "der", type: "pkcs8" }), { mode: 0o600 }),
+      writeFile(paths.descriptor, canonical(source.descriptor), { mode: 0o600 }),
+      writeFile(paths.passphrase, "go-fed-discovery test passphrase\n", { mode: 0o600 }),
+    ]);
+    await Promise.all([paths.key, paths.descriptor, paths.passphrase].map((path) => chmod(path, 0o600)));
+    await migrateKey({
+      storePath: paths.store,
+      keyPath: paths.key,
+      keyType: "ed25519-pkcs8",
+      identityKind: "zid",
+      descriptorPath: paths.descriptor,
+      passphrasePath: paths.passphrase,
+      iterations: 100000,
+    });
+    const zone = await loadManagedZone({ storePath: paths.store, passphraseFile: paths.passphrase, name });
+    assert.equal(zone.zid, source.zid);
+    assert.deepEqual(zone.descriptor, source.descriptor);
+    assert.equal(zone.keyGeneration.generation, 1);
+    return zone;
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+async function createManagedTestIdentity(source, identityKind) {
+  const root = await mkdtemp(join(tmpdir(), `agnet-go-fed-${identityKind}-`));
+  const paths = {
+    key: join(root, "identity.pkcs8"),
+    descriptor: join(root, "identity.json"),
+    passphrase: join(root, "passphrase"),
+    store: join(root, "store"),
+  };
+
+  try {
+    await chmod(root, 0o700);
+    await Promise.all([
+      writeFile(paths.key, source.privateKey.export({ format: "der", type: "pkcs8" }), { mode: 0o600 }),
+      writeFile(paths.descriptor, canonical(source.descriptor), { mode: 0o600 }),
+      writeFile(paths.passphrase, "go-fed-discovery test passphrase\n", { mode: 0o600 }),
+    ]);
+    await Promise.all([paths.key, paths.descriptor, paths.passphrase].map((path) => chmod(path, 0o600)));
+    await migrateKey({
+      storePath: paths.store,
+      keyPath: paths.key,
+      keyType: "ed25519-pkcs8",
+      identityKind,
+      descriptorPath: paths.descriptor,
+      passphrasePath: paths.passphrase,
+      iterations: 100000,
+    });
+    return { storePath: paths.store, passphrasePath: paths.passphrase, cleanup: () => rm(root, { recursive: true, force: true }) };
+  } catch (error) {
+    await rm(root, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+async function createManagedTestRuntime(authority, workers) {
+  const identities = [];
+  try {
+    const authorityKey = await createManagedTestIdentity(authority, "zid");
+    identities.push(authorityKey);
+    const workerKeys = [];
+    for (const worker of workers) {
+      const key = await createManagedTestIdentity(worker, "aid");
+      identities.push(key);
+      workerKeys.push(key);
+    }
+    return {
+      authority: authorityKey,
+      workers: workerKeys,
+      cleanup: async () => Promise.all(identities.map((identity) => identity.cleanup())),
+    };
+  } catch (error) {
+    await Promise.all(identities.map((identity) => identity.cleanup()));
+    throw error;
+  }
+}
+
+function managedWorkerProfile(profile, key) {
+  return { ...profile, key_store: key.storePath, passphrase_file: key.passphrasePath };
+}
+
+async function createManagedTestGatewayConfig(zone, requester) {
+  const runtime = await createManagedTestRuntime(zone, [requester]);
+  const root = await mkdtemp(join(tmpdir(), "agnet-go-fed-node-client-"));
+  const configPath = join(root, "managed-runtime.json");
+  try {
+    await chmod(root, 0o700);
+    await writeFile(configPath, `${JSON.stringify({
+      client: {
+        zone: { storePath: runtime.authority.storePath, passphraseFile: runtime.authority.passphrasePath, name: zone.descriptor.name },
+        requester: {
+          storePath: runtime.workers[0].storePath,
+          passphraseFile: runtime.workers[0].passphrasePath,
+          alias: requester.alias,
+          policy: requester.descriptor.policy,
+          transports: requester.descriptor.transports,
+          capabilities: requester.descriptor.capabilities,
+        },
+      },
+    })}\n`, { mode: 0o600 });
+    await chmod(configPath, 0o600);
+    return {
+      configPath,
+      cleanup: async () => {
+        await Promise.all([runtime.cleanup(), rm(root, { recursive: true, force: true })]);
+      },
+    };
+  } catch (error) {
+    await Promise.all([runtime.cleanup(), rm(root, { recursive: true, force: true })]);
+    throw error;
+  }
+}
+
+function managedRuntimeArguments(runtime) {
+  return [
+    "--authority-store", runtime.authority.storePath,
+    "--authority-passphrase-file", runtime.authority.passphrasePath,
+    "--worker-store", runtime.workers[0].storePath,
+    "--worker-passphrase-file", runtime.workers[0].passphrasePath,
+  ];
+}
+
+test("Go sandbox probe CLI reports the explicit Apple container requirement", async () => {
   const probeEnv = { ...process.env, AGNET_CONTAINER_RUNTIME: "" };
   const { stdout } = await execFileAsync("go", ["run", "./cmd/go-fed-discovery", "--sandbox-probe", "container-namespace"], { env: probeEnv });
   assert.deepEqual(JSON.parse(stdout), {
     claim: "container-namespace",
     supported: false,
-    runtime_configured: false,
-    runtime_available: false,
-    reason: "container namespace sandbox runtime is not configured",
+    runtime: "apple-container",
+    reason: "container namespace execution requires an approved apple-container adapter",
   });
-  const configured = await execFileAsync("go", ["run", "./cmd/go-fed-discovery", "--sandbox-probe", "container-namespace"], {
+  const unsafeRuntime = await execFileAsync("go", ["run", "./cmd/go-fed-discovery", "--sandbox-probe", "container-namespace"], {
     env: { ...process.env, AGNET_CONTAINER_RUNTIME: "/bin/sh" },
   });
-  assert.deepEqual(JSON.parse(configured.stdout), {
+  assert.deepEqual(JSON.parse(unsafeRuntime.stdout), {
     claim: "container-namespace",
     supported: false,
-    runtime_configured: true,
-    runtime_available: true,
-    runtime_command: "/bin/sh",
-    runtime_path: "/bin/sh",
-    runtime_sha256: shellDigest,
-    reason: "container namespace sandbox execution is not implemented",
+    reason: "AGNET_CONTAINER_RUNTIME must be exactly docker or apple-container",
   });
   const local = await execFileAsync("go", ["run", "./cmd/go-fed-discovery", "--sandbox-probe", "local-temp-dir"]);
   assert.deepEqual(JSON.parse(local.stdout), {
@@ -163,16 +297,28 @@ test("Go sandbox probe CLI reports unsupported container namespace", async () =>
   });
 });
 
-test("Go sandbox require CLI fails closed for unsupported container namespace", async () => {
+test("Go sandbox require CLI fails closed for the explicit Apple container requirement", async () => {
   await assert.rejects(
     execFileAsync("go", ["run", "./cmd/go-fed-discovery", "--sandbox-require", "container-namespace"]),
     (error) => {
       assert.deepEqual(JSON.parse(error.stdout), {
         claim: "container-namespace",
         supported: false,
-        runtime_configured: false,
-        runtime_available: false,
-        reason: "container namespace sandbox runtime is not configured",
+        runtime: "apple-container",
+        reason: "container namespace execution requires an approved apple-container adapter",
+      });
+      return true;
+    },
+  );
+  await assert.rejects(
+    execFileAsync("go", ["run", "./cmd/go-fed-discovery", "--sandbox-require", "container-namespace"], {
+      env: { ...process.env, AGNET_CONTAINER_RUNTIME: "/bin/sh" },
+    }),
+    (error) => {
+      assert.deepEqual(JSON.parse(error.stdout), {
+        claim: "container-namespace",
+        supported: false,
+        reason: "AGNET_CONTAINER_RUNTIME must be exactly docker or apple-container",
       });
       return true;
     },
@@ -183,6 +329,21 @@ test("Go sandbox require CLI fails closed for unsupported container namespace", 
     supported: true,
     reason: "sandbox runtime is available",
   });
+});
+
+test("Node-to-Go container worker promotion uses fake adapters without Docker", async () => {
+  const { stdout } = await execFileAsync("go", [
+    "test",
+    "./cmd/go-fed-discovery",
+    "-run",
+    "^Test(DockerPromotionBindsVerifiedStagedEvidence|DockerFailureDoesNotPublishAfterAdapterOrEvidenceFailure|ContainerPromotionAppleRuntime)$",
+    "-count=1",
+    "-v",
+  ]);
+  assert.match(stdout, /PASS/);
+  assert.match(stdout, /TestDockerPromotionBindsVerifiedStagedEvidence/);
+  assert.match(stdout, /TestDockerFailureDoesNotPublishAfterAdapterOrEvidenceFailure/);
+  assert.match(stdout, /TestContainerPromotionAppleRuntime/);
 });
 
 function waitForGoGateway(child, port) {
@@ -618,17 +779,18 @@ function exchangeWebSocketFrames(port, frame, closeType) {
 
 test("Go gateway rejects unsigned or substituted executable Swarm before execution", async (t) => {
   const [port] = await freePorts(1);
-  zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/go-fed-u2-requester.pkcs8");
+  zoneA = await loadManagedTestZone("zone://a");
+  const requester = createAgent("agent://zone-a/requester");
   const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
+  const runtime = await createManagedTestRuntime(authorityZoneFromFixture(fixture), [
+    agentFromSeed(fixture.worker_profile.alias, fixture.worker_seed_hex, fixture.worker_profile.policy, fixture.worker_profile.transports, fixture.worker_profile.capabilities),
+  ]);
   const goFixture = JSON.parse(JSON.stringify(fixture));
   delete goFixture.authority_seed_hex;
   delete goFixture.worker_seed_hex;
   delete goFixture.worker;
   delete goFixture.zone_binding;
   await writeFile("state/go-fed-u2-worker.json", `${JSON.stringify(goFixture, null, 2)}\n`);
-  await writeFile("state/go-fed-u2-authority.seed", `${fixture.authority_seed_hex}\n`);
-  await writeFile("state/go-fed-u2-worker.seed", `${fixture.worker_seed_hex}\n`);
   await writeTrustedZones("state/go-fed-u2-trusted-origin.json", [zoneA]);
   await rm("state/go-fed-u2-audit.log", { force: true });
   await rm("state/go-fed-u2-audit-tasks", { recursive: true, force: true });
@@ -645,10 +807,7 @@ test("Go gateway rejects unsigned or substituted executable Swarm before executi
     "state/go-fed-u2-trusted-origin.json",
     "--fixture",
     "state/go-fed-u2-worker.json",
-    "--authority-key",
-    "state/go-fed-u2-authority.seed",
-    "--worker-key",
-    "state/go-fed-u2-worker.seed",
+    ...managedRuntimeArguments(runtime),
     "--audit",
     "state/go-fed-u2-audit.log",
   ], {
@@ -764,13 +923,14 @@ test("Go gateway rejects unsigned or substituted executable Swarm before executi
     } catch {
       // already exited
     }
+    await runtime.cleanup();
   }
 });
 
 test("Go discovery migrates a failed Swarm step and signs migration_log", async () => {
   const [port] = await freePorts(1);
-  zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/go-fed-requester.pkcs8");
+  zoneA = await loadManagedTestZone("zone://a");
+  const requester = createAgent("agent://zone-a/requester");
   const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
   const authorityZone = authorityZoneFromFixture(fixture);
   const goFixture = JSON.parse(JSON.stringify(fixture));
@@ -781,7 +941,6 @@ test("Go discovery migrates a failed Swarm step and signs migration_log", async 
   delete goFixture.worker_profile;
   goFixture.worker_profiles = [
     {
-      key_file: "state/go-fed-discovery-migration-failing.seed",
       alias: "agent://zone-b/failing-summarizer",
       tool: "external.stdio",
       tool_command: [process.execPath, `${process.cwd()}/state/go-fed-migration-fail.mjs`],
@@ -791,7 +950,6 @@ test("Go discovery migrates a failed Swarm step and signs migration_log", async 
       policy: { allow_network: false },
     },
     {
-      key_file: "state/go-fed-discovery-migration-replacement.seed",
       alias: "agent://zone-b/replacement-summarizer",
       tool: "summarize.mock",
       transports: ["fed+tcp://127.0.0.1:9011"],
@@ -799,10 +957,12 @@ test("Go discovery migrates a failed Swarm step and signs migration_log", async 
       policy: { allow_network: false },
     },
   ];
+  const runtime = await createManagedTestRuntime(authorityZone, [
+    agentFromSeed(goFixture.worker_profiles[0].alias, fixture.worker_seed_hex, goFixture.worker_profiles[0].policy, goFixture.worker_profiles[0].transports, goFixture.worker_profiles[0].capabilities),
+    agentFromSeed(goFixture.worker_profiles[1].alias, "a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0", goFixture.worker_profiles[1].policy, goFixture.worker_profiles[1].transports, goFixture.worker_profiles[1].capabilities),
+  ]);
+  goFixture.worker_profiles = goFixture.worker_profiles.map((profile, index) => managedWorkerProfile(profile, runtime.workers[index]));
   await writeFile("state/go-fed-discovery-migration-worker.json", `${JSON.stringify(goFixture, null, 2)}\n`);
-  await writeFile("state/go-fed-discovery-migration-authority.seed", `${fixture.authority_seed_hex}\n`);
-  await writeFile("state/go-fed-discovery-migration-failing.seed", `${fixture.worker_seed_hex}\n`);
-  await writeFile("state/go-fed-discovery-migration-replacement.seed", "a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0\n");
   await writeFile("state/go-fed-migration-fail.mjs", `
 process.stderr.write("planned v14.4 migration failure\\n");
 process.exit(1);
@@ -822,10 +982,7 @@ process.exit(1);
     "state/go-fed-discovery-migration-trusted-origin.json",
     "--fixture",
     "state/go-fed-discovery-migration-worker.json",
-    "--authority-key",
-    "state/go-fed-discovery-migration-authority.seed",
-    "--worker-key",
-    "state/go-fed-discovery-migration-failing.seed",
+    ...managedRuntimeArguments(runtime),
     "--audit",
     "state/go-fed-discovery-migration-audit.log",
   ], {
@@ -896,13 +1053,14 @@ process.exit(1);
     } catch {
       // already exited
     }
+    await runtime.cleanup();
   }
 });
 
 test("Go discovery resolves conflicting Swarm artifact refs and Node verifies the close proof", async () => {
   const [port] = await freePorts(1);
-  zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/go-fed-conflict-requester.pkcs8");
+  zoneA = await loadManagedTestZone("zone://a");
+  const requester = createAgent("agent://zone-a/requester");
   const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
   const goFixture = JSON.parse(JSON.stringify(fixture));
   delete goFixture.authority_seed_hex;
@@ -912,7 +1070,6 @@ test("Go discovery resolves conflicting Swarm artifact refs and Node verifies th
   delete goFixture.worker_profile;
   goFixture.worker_profiles = [
     {
-      key_file: "state/go-fed-discovery-conflict-low.seed",
       alias: "agent://zone-b/conflict-low-summarizer",
       tool: "summarize.mock",
       transports: [`fed+tcp://127.0.0.1:${port}`],
@@ -920,7 +1077,6 @@ test("Go discovery resolves conflicting Swarm artifact refs and Node verifies th
       policy: { allow_network: false, write_prefixes: ["artifact://local/"] },
     },
     {
-      key_file: "state/go-fed-discovery-conflict-high.seed",
       alias: "agent://zone-b/conflict-high-summarizer",
       tool: "summarize.mock",
       transports: [`fed+tcp://127.0.0.1:${port}`],
@@ -928,12 +1084,12 @@ test("Go discovery resolves conflicting Swarm artifact refs and Node verifies th
       policy: { allow_network: false, write_prefixes: ["artifact://local/"] },
     },
   ];
+  const lowWorker = agentFromSeed(goFixture.worker_profiles[0].alias, fixture.worker_seed_hex, goFixture.worker_profiles[0].policy, goFixture.worker_profiles[0].transports, goFixture.worker_profiles[0].capabilities);
+  const highWorker = agentFromSeed(goFixture.worker_profiles[1].alias, "b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0", goFixture.worker_profiles[1].policy, goFixture.worker_profiles[1].transports, goFixture.worker_profiles[1].capabilities);
+  const runtime = await createManagedTestRuntime(authorityZoneFromFixture(fixture), [lowWorker, highWorker]);
+  goFixture.worker_profiles = goFixture.worker_profiles.map((profile, index) => managedWorkerProfile(profile, runtime.workers[index]));
   await writeFile("state/go-fed-discovery-conflict-worker.json", `${JSON.stringify(goFixture, null, 2)}\n`);
-  await writeFile("state/go-fed-discovery-conflict-authority.seed", `${fixture.authority_seed_hex}\n`);
-  await writeFile("state/go-fed-discovery-conflict-low.seed", `${fixture.worker_seed_hex}\n`);
-  await writeFile("state/go-fed-discovery-conflict-high.seed", "b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0\n");
   await writeTrustedZones("state/go-fed-discovery-conflict-trusted-origin.json", [zoneA]);
-  const highWorker = agentFromSeed("agent://zone-b/conflict-high-summarizer", "b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0", { allow_network: false, write_prefixes: ["artifact://local/"] }, [`fed+tcp://127.0.0.1:${port}`], ["summarize.text"]);
   await writeGoAuditLog("state/go-fed-discovery-conflict-audit.log", [
     { kind: "go_fed_receipt", receipt: { to: highWorker.aid, status: "completed", task_id: "prior_go_conflict_win_1", completed_at: new Date().toISOString() } },
     { kind: "go_fed_receipt", receipt: { to: highWorker.aid, status: "completed", task_id: "prior_go_conflict_win_2", completed_at: new Date().toISOString() } },
@@ -951,10 +1107,7 @@ test("Go discovery resolves conflicting Swarm artifact refs and Node verifies th
     "state/go-fed-discovery-conflict-trusted-origin.json",
     "--fixture",
     "state/go-fed-discovery-conflict-worker.json",
-    "--authority-key",
-    "state/go-fed-discovery-conflict-authority.seed",
-    "--worker-key",
-    "state/go-fed-discovery-conflict-low.seed",
+    ...managedRuntimeArguments(runtime),
     "--audit",
     "state/go-fed-discovery-conflict-audit.log",
   ], {
@@ -1030,14 +1183,18 @@ test("Go discovery resolves conflicting Swarm artifact refs and Node verifies th
     } catch {
       // already exited
     }
+    await runtime.cleanup();
   }
 });
 
 test("Go discovery marks revoked worker credential inactive", async () => {
   const [port] = await freePorts(1);
-  zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
+  zoneA = await loadManagedTestZone("zone://a");
   const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
   const authorityZone = authorityZoneFromFixture(fixture);
+  const runtime = await createManagedTestRuntime(authorityZone, [
+    agentFromSeed(fixture.worker_profile.alias, fixture.worker_seed_hex, fixture.worker_profile.policy, fixture.worker_profile.transports, fixture.worker_profile.capabilities),
+  ]);
   const goFixture = JSON.parse(JSON.stringify(fixture));
   goFixture.revocations = [zoneRevocation(authorityZone, fixture.worker.aid, "test")];
   delete goFixture.authority_seed_hex;
@@ -1045,8 +1202,6 @@ test("Go discovery marks revoked worker credential inactive", async () => {
   delete goFixture.worker;
   delete goFixture.zone_binding;
   await writeFile("state/go-fed-discovery-revoked-worker.json", `${JSON.stringify(goFixture, null, 2)}\n`);
-  await writeFile("state/go-fed-discovery-revoked-authority.seed", `${fixture.authority_seed_hex}\n`);
-  await writeFile("state/go-fed-discovery-revoked-worker.seed", `${fixture.worker_seed_hex}\n`);
   await writeTrustedZones("state/go-fed-discovery-revoked-trusted-origin.json", [zoneA]);
   await rm("state/go-fed-discovery-revoked-audit.log", { force: true });
   const gateway = spawn("go", [
@@ -1058,10 +1213,7 @@ test("Go discovery marks revoked worker credential inactive", async () => {
     "state/go-fed-discovery-revoked-trusted-origin.json",
     "--fixture",
     "state/go-fed-discovery-revoked-worker.json",
-    "--authority-key",
-    "state/go-fed-discovery-revoked-authority.seed",
-    "--worker-key",
-    "state/go-fed-discovery-revoked-worker.seed",
+    ...managedRuntimeArguments(runtime),
     "--audit",
     "state/go-fed-discovery-revoked-audit.log",
   ], {
@@ -1088,14 +1240,15 @@ test("Go discovery marks revoked worker credential inactive", async () => {
     } catch {
       // already exited
     }
+    await runtime.cleanup();
   }
 });
 
 test("Go discovery gateway serves FED_RESOLVE, FED_QUERY, and FED_TASK_OPEN to Node client", async () => {
   const [port, wsPort, humanPort] = await freePorts(3);
   humanToken = "test-human-gateway-token";
-  zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/go-fed-requester.pkcs8");
+  zoneA = await loadManagedTestZone("zone://a");
+  const requester = createAgent("agent://zone-a/requester");
   const fixture = JSON.parse(await readFile("test-vectors/asp-v1.5-capability-credential.json", "utf8"));
   const goFixture = JSON.parse(JSON.stringify(fixture));
   delete goFixture.authority_seed_hex;
@@ -1105,7 +1258,6 @@ test("Go discovery gateway serves FED_RESOLVE, FED_QUERY, and FED_TASK_OPEN to N
   goFixture.worker_profiles = [
     { ...fixture.worker_profile, tool: "summarize.mock" },
     {
-      key_file: "state/go-fed-discovery-translator.seed",
       alias: "agent://zone-b/translator",
       tool: "mcp.stdio",
       tool_name: "translate",
@@ -1116,7 +1268,6 @@ test("Go discovery gateway serves FED_RESOLVE, FED_QUERY, and FED_TASK_OPEN to N
       policy: { allow_network: false, approval_required: ["tool"] },
     },
     {
-      key_file: "state/go-fed-discovery-mock-translator.seed",
       alias: "agent://zone-b/mock-translator",
       tool: "translate.mock",
       transports: ["fed+tcp://127.0.0.1:8995"],
@@ -1124,7 +1275,6 @@ test("Go discovery gateway serves FED_RESOLVE, FED_QUERY, and FED_TASK_OPEN to N
       policy: { allow_network: false },
     },
     {
-      key_file: "state/go-fed-discovery-semantic-summarizer.seed",
       alias: "agent://zone-b/semantic-summarize-text-fast",
       tool: "summarize.mock",
       transports: ["fed+tcp://127.0.0.1:8997"],
@@ -1132,7 +1282,6 @@ test("Go discovery gateway serves FED_RESOLVE, FED_QUERY, and FED_TASK_OPEN to N
       policy: { allow_network: false },
     },
     {
-      key_file: "state/go-fed-discovery-strict-translator.seed",
       alias: "agent://zone-b/strict-translator",
       tool: "mcp.stdio",
       tool_name: "translate",
@@ -1143,7 +1292,6 @@ test("Go discovery gateway serves FED_RESOLVE, FED_QUERY, and FED_TASK_OPEN to N
       policy: { allow_network: false, approval_required: ["tool"] },
     },
     {
-      key_file: "state/go-fed-discovery-slow.seed",
       alias: "agent://zone-b/slow",
       tool: "external.stdio",
       tool_command: [process.execPath, `${process.cwd()}/state/go-fed-slow-tool.mjs`],
@@ -1153,7 +1301,6 @@ test("Go discovery gateway serves FED_RESOLVE, FED_QUERY, and FED_TASK_OPEN to N
       policy: { allow_network: false, approval_required: ["tool"] },
     },
     {
-      key_file: "state/go-fed-discovery-container-claimed.seed",
       alias: "agent://zone-b/container-claimed",
       tool: "external.stdio",
       tool_command: [process.execPath, `${process.cwd()}/state/go-fed-container-marker-tool.mjs`],
@@ -1163,7 +1310,6 @@ test("Go discovery gateway serves FED_RESOLVE, FED_QUERY, and FED_TASK_OPEN to N
       policy: { allow_network: false, approval_required: ["tool"] },
     },
     {
-      key_file: "state/go-fed-discovery-malformed-approval.seed",
       alias: "agent://zone-b/malformed-approval",
       tool: "external.stdio",
       tool_command: [process.execPath, `${process.cwd()}/state/go-fed-container-marker-tool.mjs`],
@@ -1174,16 +1320,21 @@ test("Go discovery gateway serves FED_RESOLVE, FED_QUERY, and FED_TASK_OPEN to N
     },
   ];
   delete goFixture.worker_profile;
+  const workerSeeds = [
+    fixture.worker_seed_hex,
+    "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f",
+    "909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+    "b0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecf",
+    "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+    "c0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf",
+    "d0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeef",
+    "e0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+  ];
+  const runtime = await createManagedTestRuntime(authorityZoneFromFixture(fixture), goFixture.worker_profiles.map((profile, index) => (
+    agentFromSeed(profile.alias, workerSeeds[index], profile.policy, profile.transports, profile.capabilities)
+  )));
+  goFixture.worker_profiles = goFixture.worker_profiles.map((profile, index) => managedWorkerProfile(profile, runtime.workers[index]));
   await writeFile("state/go-fed-discovery-dynamic-worker.json", `${JSON.stringify(goFixture, null, 2)}\n`);
-  await writeFile("state/go-fed-discovery-authority.seed", `${fixture.authority_seed_hex}\n`);
-  await writeFile("state/go-fed-discovery-worker.seed", `${fixture.worker_seed_hex}\n`);
-  await writeFile("state/go-fed-discovery-translator.seed", "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f\n");
-  await writeFile("state/go-fed-discovery-mock-translator.seed", "909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeaf\n");
-  await writeFile("state/go-fed-discovery-semantic-summarizer.seed", "b0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecf\n");
-  await writeFile("state/go-fed-discovery-strict-translator.seed", "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf\n");
-  await writeFile("state/go-fed-discovery-slow.seed", "c0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf\n");
-  await writeFile("state/go-fed-discovery-container-claimed.seed", "d0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeef\n");
-  await writeFile("state/go-fed-discovery-malformed-approval.seed", "e0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff\n");
   await writeFile("state/go-fed-mcp-server.mjs", `
 import readline from "node:readline";
 const requireLocale = process.argv.includes("--require-locale");
@@ -1278,6 +1429,9 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
   }, null, 2)}\n`);
   await writeTrustedZones("state/go-fed-discovery-trusted-origin.json", [zoneA]);
   await writeFile("state/node-trusts-go-discovery.json", `${JSON.stringify({ zones: [fixture.authority, zoneA.descriptor] }, null, 2)}\n`);
+  const nodeClient = await createManagedTestGatewayConfig(zoneA, requester);
+  const previousGatewayConfig = process.env.AGNET_MANAGED_RUNTIME_CONFIG;
+  process.env.AGNET_MANAGED_RUNTIME_CONFIG = nodeClient.configPath;
   const gateway = spawn("go", [
     "run",
     "./cmd/go-fed-discovery",
@@ -1297,10 +1451,7 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     "state/go-fed-discovery-trusted-origin.json",
     "--fixture",
     "state/go-fed-discovery-dynamic-worker.json",
-    "--authority-key",
-    "state/go-fed-discovery-authority.seed",
-    "--worker-key",
-    "state/go-fed-discovery-worker.seed",
+    ...managedRuntimeArguments(runtime),
     "--audit",
     "state/go-fed-discovery-audit.log",
   ], {
@@ -2653,20 +2804,14 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
       task: { ...unsupportedSandboxTask, signature: signObject(requester.privateKey, unsupportedSandboxTask) },
     }, unsupportedSandboxTask.task_id);
     assert.equal(unsupportedSandboxFrames.at(-1).type, "FED_TASK_ERROR");
-    assert.match(unsupportedSandboxFrames.at(-1).error, /unsupported sandbox claim: container-namespace/);
+    assert.match(unsupportedSandboxFrames.at(-1).error, /container-namespace sandbox claim requires docker profile/);
     assert.equal(unsupportedSandboxFrames.some((frame) => frame.type === "FED_TASK_EVENT" && frame.event.type === "approval.required"), false);
     assert.equal(await approvalState(humanPort, unsupportedSandboxTask.task_id), undefined);
     await assert.rejects(readFile("state/go-fed-container-claim-ran.txt", "utf8"), /ENOENT/);
     const unsupportedSandboxState = JSON.parse(await readFile("state/go-fed-discovery-audit-tasks/go_fed_task_container_claim_rejected.json", "utf8"));
     assert.equal(unsupportedSandboxState.status, "failed");
-    assert.match(unsupportedSandboxState.error, /unsupported sandbox claim: container-namespace/);
-    assert.deepEqual(unsupportedSandboxState.sandbox_probe, {
-      claim: "container-namespace",
-      supported: false,
-      runtime_configured: false,
-      runtime_available: false,
-      reason: "container namespace sandbox runtime is not configured",
-    });
+    assert.match(unsupportedSandboxState.error, /container-namespace sandbox claim requires docker profile/);
+    assert.equal(unsupportedSandboxState.sandbox_probe, undefined);
 
     const missingRetryOfFrames = await exchangeFrames(port, {
       type: "FED_TASK_RETRY",
@@ -3170,5 +3315,9 @@ process.stdout.write(JSON.stringify({ text: "# Container Claim Marker\\n\\nRan" 
     } catch {
       gateway.kill("SIGINT");
     }
+    await runtime.cleanup();
+    if (previousGatewayConfig === undefined) delete process.env.AGNET_MANAGED_RUNTIME_CONFIG;
+    else process.env.AGNET_MANAGED_RUNTIME_CONFIG = previousGatewayConfig;
+    await nodeClient.cleanup();
   }
 });

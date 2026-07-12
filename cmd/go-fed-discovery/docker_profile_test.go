@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-const testDockerImage = "registry.example/agent/tool@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+const testDockerImage = "registry.example/agent/tool:stable-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 func validDockerWorkerProfile() DockerWorkerProfile {
 	return DockerWorkerProfile{
@@ -62,7 +62,10 @@ func TestDockerWorkerProfileRejectsInvalidImage(t *testing.T) {
 		{name: "missing image", image: ""},
 		{name: "uppercase", image: "registry.example/Agent/tool@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
 		{name: "tag only", image: "registry.example/agent/tool:latest"},
-		{name: "tag with digest", image: "registry.example/agent/tool:latest@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
+		{name: "empty tag", image: "registry.example/agent/tool:@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
+		{name: "uppercase tag", image: "registry.example/agent/tool:Stable@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
+		{name: "malformed tag", image: "registry.example/agent/tool:stable:1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
+		{name: "multiple digest separators", image: "registry.example/agent/tool:stable@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
 		{name: "unsupported digest algorithm", image: "registry.example/agent/tool@sha512:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
 		{name: "short digest", image: "registry.example/agent/tool@sha256:0123456789abcdef"},
 		{name: "nonhex digest", image: "registry.example/agent/tool@sha256:zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"},

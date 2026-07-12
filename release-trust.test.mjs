@@ -1,12 +1,57 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile, rm, writeFile } from "node:fs/promises";
-import { test } from "node:test";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { after, test } from "node:test";
 import { promisify } from "node:util";
-import { canonical, loadOrCreateAgent, signObject } from "./asp-core.mjs";
+import { canonical, createAgent, signObject } from "./asp-core.mjs";
+import { migrateKey } from "./agnet-key.mjs";
 
 const execFileAsync = promisify(execFile);
+
+async function writeRestricted(path, bytes) {
+  await writeFile(path, bytes, { mode: 0o600 });
+  await chmod(path, 0o600);
+}
+
+async function createManagedSigner(alias, transport, capability) {
+  const root = await mkdtemp(join(tmpdir(), "agnet-release-trust-signer-"));
+  await chmod(root, 0o700);
+  const signer = createAgent(alias, {}, [transport], [capability]);
+  const keyPath = join(root, "identity.pkcs8");
+  const descriptorPath = join(root, "descriptor.json");
+  const passphrasePath = join(root, "passphrase");
+  const storePath = join(root, "store");
+  const configPath = join(root, "managed-signer.json");
+  await writeRestricted(keyPath, Buffer.from(signer.privateKey.export({ format: "der", type: "pkcs8" })));
+  await writeRestricted(descriptorPath, Buffer.from(canonical(signer.descriptor)));
+  await writeRestricted(passphrasePath, Buffer.from("release trust test passphrase\n"));
+  await migrateKey({ storePath, keyPath, keyType: "ed25519-pkcs8", identityKind: "aid", descriptorPath, passphrasePath, iterations: 100000 });
+  await writeRestricted(configPath, Buffer.from(JSON.stringify({
+    storePath,
+    passphraseFile: passphrasePath,
+    alias,
+    policy: signer.descriptor.policy,
+    transports: signer.descriptor.transports,
+    capabilities: signer.descriptor.capabilities,
+  })));
+  return { root, configPath };
+}
+
+const managedPackageSigner = await createManagedSigner("agent://package-proof/signer", "asp+local://package-proof", "package.proof.sign");
+const managedReleaseSigner = await createManagedSigner("agent://release-trust/signer", "asp+local://release-trust", "release.trust.sign");
+process.env.AGNET_PACKAGE_PROOF_SIGNER_CONFIG = managedPackageSigner.configPath;
+process.env.AGNET_RELEASE_TRUST_SIGNER_CONFIG = managedReleaseSigner.configPath;
+after(async () => {
+  delete process.env.AGNET_PACKAGE_PROOF_SIGNER_CONFIG;
+  delete process.env.AGNET_RELEASE_TRUST_SIGNER_CONFIG;
+  await Promise.all([
+    rm(managedPackageSigner.root, { recursive: true, force: true }),
+    rm(managedReleaseSigner.root, { recursive: true, force: true }),
+  ]);
+});
 const releaseTrustPath = "state/package-proof/release-trust.json";
 let releaseTrustPromise;
 
@@ -31,7 +76,7 @@ async function writeMutatedReleaseTrust(path, proof, patch) {
 }
 
 async function signReleaseTrustBody(proofBody) {
-  const signer = await loadOrCreateAgent("agent://release-trust/signer", "state/keys/release-trust-signer.pkcs8", {}, ["asp+local://release-trust"], ["release.trust.sign"]);
+  const signer = createAgent("agent://release-trust/signer", {}, ["asp+local://release-trust"], ["release.trust.sign"]);
   return signReleaseTrustBodyWithSigner(proofBody, signer);
 }
 
@@ -167,7 +212,7 @@ test("release trust verifier rejects invalid ASP signatures", async () => {
 
 test("release trust verifier rejects signers without release trust capability", async () => {
   const proof = await readReleaseTrust();
-  const signer = await loadOrCreateAgent("agent://release-trust/no-capability", "state/keys/release-trust-no-capability.pkcs8", {}, ["asp+local://release-trust"], []);
+  const signer = createAgent("agent://release-trust/no-capability", {}, ["asp+local://release-trust"], []);
   const noCapabilityProof = signReleaseTrustBodyWithSigner(proof, signer);
   await writeFile("state/package-proof/release-trust-signer-capability-missing.json", `${JSON.stringify(noCapabilityProof, null, 2)}\n`);
 
@@ -176,7 +221,7 @@ test("release trust verifier rejects signers without release trust capability", 
 
 test("release trust verifier rejects untrusted release signers", async () => {
   const proof = await readReleaseTrust();
-  const other = await loadOrCreateAgent("agent://release-trust/other-signer", "state/keys/release-trust-other-signer.pkcs8", {}, ["asp+local://release-trust"], ["release.trust.sign"]);
+  const other = createAgent("agent://release-trust/other-signer", {}, ["asp+local://release-trust"], ["release.trust.sign"]);
   await writeFile("state/package-proof/untrusted-release-signers.json", `${JSON.stringify({ signers: [other.descriptor] }, null, 2)}\n`);
 
   await rejectsWithMessage(["asp-verify.mjs", "release-trust", releaseTrustPath, "state/package-proof/untrusted-release-signers.json"], "release trust signer untrusted");

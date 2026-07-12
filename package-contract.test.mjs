@@ -1,12 +1,51 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { test } from "node:test";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { after, test } from "node:test";
 import { promisify } from "node:util";
-import { canonical, loadOrCreateAgent, publicKeyFromDescriptor, signObject, verifyObject } from "./asp-core.mjs";
+import { canonical, createAgent, publicKeyFromDescriptor, signObject, verifyObject } from "./asp-core.mjs";
+import { migrateKey } from "./agnet-key.mjs";
 
 const execFileAsync = promisify(execFile);
+
+async function writeRestricted(path, bytes) {
+  await writeFile(path, bytes, { mode: 0o600 });
+  await chmod(path, 0o600);
+}
+
+async function createManagedSigner(alias, capability) {
+  const root = await mkdtemp(join(tmpdir(), "agnet-package-proof-signer-"));
+  await chmod(root, 0o700);
+  const signer = createAgent(alias, {}, ["asp+local://package-proof"], [capability]);
+  const keyPath = join(root, "identity.pkcs8");
+  const descriptorPath = join(root, "descriptor.json");
+  const passphrasePath = join(root, "passphrase");
+  const storePath = join(root, "store");
+  const configPath = join(root, "managed-signer.json");
+  await writeRestricted(keyPath, Buffer.from(signer.privateKey.export({ format: "der", type: "pkcs8" })));
+  await writeRestricted(descriptorPath, Buffer.from(canonical(signer.descriptor)));
+  await writeRestricted(passphrasePath, Buffer.from("package proof test passphrase\n"));
+  await migrateKey({ storePath, keyPath, keyType: "ed25519-pkcs8", identityKind: "aid", descriptorPath, passphrasePath, iterations: 100000 });
+  await writeRestricted(configPath, Buffer.from(JSON.stringify({
+    storePath,
+    passphraseFile: passphrasePath,
+    alias,
+    policy: signer.descriptor.policy,
+    transports: signer.descriptor.transports,
+    capabilities: signer.descriptor.capabilities,
+  })));
+  return { root, configPath };
+}
+
+const managedSigner = await createManagedSigner("agent://package-proof/signer", "package.proof.sign");
+process.env.AGNET_PACKAGE_PROOF_SIGNER_CONFIG = managedSigner.configPath;
+after(async () => {
+  delete process.env.AGNET_PACKAGE_PROOF_SIGNER_CONFIG;
+  await rm(managedSigner.root, { recursive: true, force: true });
+});
 
 async function writeMutatedPackageProof(path, proof, patch) {
   const proofBody = { ...proof, ...patch, manifest: path.split("/").at(-1) };
@@ -14,7 +53,7 @@ async function writeMutatedPackageProof(path, proof, patch) {
 }
 
 async function signPackageProofBody(proofBody) {
-  const signer = await loadOrCreateAgent("agent://package-proof/signer", "state/keys/package-proof-signer.pkcs8", {}, ["asp+local://package-proof"], ["package.proof.sign"]);
+  const signer = createAgent("agent://package-proof/signer", {}, ["asp+local://package-proof"], ["package.proof.sign"]);
   return signPackageProofBodyWithSigner(proofBody, signer);
 }
 
@@ -178,7 +217,7 @@ test("package proof verifier rejects signers without package proof capability", 
   await rm("state/package-proof", { recursive: true, force: true });
   await execFileAsync(process.execPath, ["scripts/package-proof.mjs"]);
   const proof = JSON.parse(await readFile("state/package-proof/package-proof.json", "utf8"));
-  const signer = await loadOrCreateAgent("agent://package-proof/no-capability", "state/keys/package-proof-no-capability.pkcs8", {}, ["asp+local://package-proof"], []);
+  const signer = createAgent("agent://package-proof/no-capability", {}, ["asp+local://package-proof"], []);
   const noCapabilityProof = signPackageProofBodyWithSigner({ ...proof, manifest: "signer-capability-missing.json" }, signer);
   await writeFile("state/package-proof/signer-capability-missing.json", `${JSON.stringify(noCapabilityProof, null, 2)}\n`);
 
@@ -208,7 +247,7 @@ test("package proof verifier accepts trusted package signers", async () => {
 test("package proof verifier rejects untrusted package signers", async () => {
   await rm("state/package-proof", { recursive: true, force: true });
   await execFileAsync(process.execPath, ["scripts/package-proof.mjs"]);
-  const other = await loadOrCreateAgent("agent://package-proof/other-signer", "state/keys/package-proof-other-signer.pkcs8", {}, ["asp+local://package-proof"], ["package.proof.sign"]);
+  const other = createAgent("agent://package-proof/other-signer", {}, ["asp+local://package-proof"], ["package.proof.sign"]);
   await writeFile("state/package-proof/untrusted-signers.json", `${JSON.stringify({ signers: [other.descriptor] }, null, 2)}\n`);
 
   await assert.rejects(

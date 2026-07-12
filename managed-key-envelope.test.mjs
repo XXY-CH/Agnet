@@ -148,7 +148,7 @@ test("readRestrictedFile verifies the opened file and parent chain", async () =>
 
   const hardlinkPath = join(root, "hardlink");
   await link(safePath, hardlinkPath);
-  await assert.rejects(readRestrictedFile(safePath, { label: "passphrase", maxBytes: 1024 }), /link count must be one/);
+  await assert.rejects(readRestrictedFile(safePath, { label: "passphrase", maxBytes: 1024 }), /link count must be (?:one|1)/);
 
   const unsafeRoot = await mkdtemp(join(tmpdir(), "agnet-u8-unsafe-"));
   await chmod(unsafeRoot, 0o777);

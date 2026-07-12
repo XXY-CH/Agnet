@@ -2058,12 +2058,65 @@ func TestExecuteSwarmRejectsWorkerCapabilitySubstitution(t *testing.T) {
 			}},
 		},
 	}
+	managedKeyDir := t.TempDir()
+	authoritySeed := authorityKey.Seed()
+	authorityStore := writeManagedRuntimeStore(t, managedKeyDir, "policy-authority", authority, authoritySeed, managedkey.IdentityZID, managedkey.KeyTypeSeed)
+	clear(authoritySeed)
+	originalSeed := originalKey.Seed()
+	originalStore := writeManagedRuntimeStore(t, managedKeyDir, "policy-original", policyOriginalDescriptor, originalSeed, managedkey.IdentityAID, managedkey.KeyTypeSeed)
+	clear(originalSeed)
+	replacementSeed := replacementKey.Seed()
+	replacementStore := writeManagedRuntimeStore(t, managedKeyDir, "policy-replacement", policyReplacementDescriptor, replacementSeed, managedkey.IdentityAID, managedkey.KeyTypeSeed)
+	clear(replacementSeed)
+
+	managedAuthority, err := loadManagedIdentity(authorityStore, managedkey.IdentityZID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(managedAuthority.PrivateKey)
+	managedOriginal, err := loadManagedIdentity(originalStore, managedkey.IdentityAID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(managedOriginal.PrivateKey)
+	managedReplacement, err := loadManagedIdentity(replacementStore, managedkey.IdentityAID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(managedReplacement.PrivateKey)
+
 	policyFixture := Fixture{
 		Authority:           authority,
-		AuthorityPrivateKey: authorityKey,
+		AuthorityPrivateKey: managedAuthority.PrivateKey,
+		AuthorityGeneration: managedAuthority.KeyGeneration,
+		AuthorityGenerationPin: WorkerGenerationPin{
+			StorePath:      authorityStore.StorePath,
+			PassphraseFile: authorityStore.PassphraseFile,
+			RecordDigest:   managedAuthority.KeyGeneration.RecordDigest,
+		},
 		Workers: []Worker{
-			{Profile: policyOriginalProfile, Descriptor: policyOriginalDescriptor, PrivateKey: originalKey},
-			{Profile: policyReplacementProfile, Descriptor: policyReplacementDescriptor, PrivateKey: replacementKey},
+			{
+				Profile:       policyOriginalProfile,
+				Descriptor:    policyOriginalDescriptor,
+				PrivateKey:    managedOriginal.PrivateKey,
+				GenerationRef: managedOriginal.KeyGeneration,
+				WorkerGenerationPin: WorkerGenerationPin{
+					StorePath:      originalStore.StorePath,
+					PassphraseFile: originalStore.PassphraseFile,
+					RecordDigest:   managedOriginal.KeyGeneration.RecordDigest,
+				},
+			},
+			{
+				Profile:       policyReplacementProfile,
+				Descriptor:    policyReplacementDescriptor,
+				PrivateKey:    managedReplacement.PrivateKey,
+				GenerationRef: managedReplacement.KeyGeneration,
+				WorkerGenerationPin: WorkerGenerationPin{
+					StorePath:      replacementStore.StorePath,
+					PassphraseFile: replacementStore.PassphraseFile,
+					RecordDigest:   managedReplacement.KeyGeneration.RecordDigest,
+				},
+			},
 		},
 		Runtime: &TaskRuntime{running: map[string]context.CancelFunc{}, cancelled: map[string]bool{}},
 	}

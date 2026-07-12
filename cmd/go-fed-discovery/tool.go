@@ -12,18 +12,27 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"strconv"
+	"runtime"
 	"strings"
 	"time"
 )
 
 func runTool(ctx context.Context, profile WorkerProfile, task, origin map[string]any, artifactStoreDir, liveTranscriptDir string) (string, ToolResult, map[string]any, error) {
-	return runToolWithDockerAdapter(ctx, nil, profile, task, origin, artifactStoreDir, liveTranscriptDir)
+	return runToolWithContainerAdapter(ctx, nil, profile, task, origin, artifactStoreDir, liveTranscriptDir)
 }
 
-// runToolWithDockerAdapter is the sole container execution seam. Passing a nil
-// adapter deliberately rejects a container profile rather than falling through
-// to a host, external, or MCP tool.
+// runToolWithDockerAdapter is retained for Docker-focused callers. Apple and
+// Docker adapters share the deliberately narrow DockerAdapter result contract.
 func runToolWithDockerAdapter(ctx context.Context, adapter DockerAdapter, profile WorkerProfile, task, origin map[string]any, artifactStoreDir, liveTranscriptDir string) (string, ToolResult, map[string]any, error) {
+	return runToolWithContainerAdapter(ctx, adapter, profile, task, origin, artifactStoreDir, liveTranscriptDir)
+}
+
+// runToolWithContainerAdapter is the sole container execution seam. Passing a
+// nil adapter deliberately rejects a container profile rather than falling
+// through to a host, external, or MCP tool.
+func runToolWithContainerAdapter(ctx context.Context, adapter DockerAdapter, profile WorkerProfile, task, origin map[string]any, artifactStoreDir, liveTranscriptDir string) (string, ToolResult, map[string]any, error) {
 	tool := profile.Tool
 	if tool == "" {
 		tool = "text.echo"
@@ -58,18 +67,28 @@ func runToolWithDockerAdapter(ctx context.Context, adapter DockerAdapter, profil
 
 func runDockerTool(ctx context.Context, adapter DockerAdapter, profile WorkerProfile) (ToolResult, map[string]any, error) {
 	if profile.Docker == nil {
-		return ToolResult{}, nil, errors.New("container-namespace sandbox claim requires docker profile")
+		return ToolResult{}, nil, errors.New("container_profile_missing")
 	}
 	request, err := validateDockerWorkerProfile(*profile.Docker)
 	if err != nil {
-		return ToolResult{}, nil, err
+		return ToolResult{}, nil, errors.New("container_profile_invalid")
 	}
 	if adapter == nil {
-		return ToolResult{}, nil, errors.New("container-namespace sandbox adapter is not configured")
+		return ToolResult{}, nil, errors.New("container_adapter_unavailable")
+	}
+	runtimeKind, err := configuredContainerRuntime()
+	if err != nil {
+		return ToolResult{}, nil, errors.New("container_runtime_invalid")
 	}
 	dockerResult, err := adapter.Run(ctx, request)
 	if err != nil {
-		return ToolResult{}, nil, err
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return ToolResult{}, nil, errors.New("container_timeout")
+		}
+		return ToolResult{}, nil, errors.New("container_adapter_failed")
+	}
+	if err := validateContainerAdapterEvidence(request, runtimeKind, dockerResult.Evidence); err != nil {
+		return ToolResult{}, nil, errors.New("container_evidence_invalid")
 	}
 	return ToolResult{
 		Result:              dockerResult.Result,
@@ -79,6 +98,120 @@ func runDockerTool(ctx context.Context, adapter DockerAdapter, profile WorkerPro
 		Evidence:            dockerResult.Evidence,
 	}, map[string]any{"mode": "container-namespace"}, nil
 }
+
+const containerAdapterEvidenceFormat = "agnet-container-adapter-evidence/v1"
+
+func containerAdapterConstraints(request DockerRunRequest) map[string]any {
+	return map[string]any{
+		"command":                 append([]string(nil), request.Command...),
+		"cpu_millis":              float64(dockerNanoCPUs(request.CPUs) / 1_000_000),
+		"memory_bytes":            float64(request.MemoryBytes),
+		"timeout_millis":          float64(request.TimeoutMillis),
+		"max_output_bytes":        float64(request.MaxOutputBytes),
+		"max_scratch_input_bytes": float64(request.MaxScratchInputBytes),
+		"max_scratch_bytes":       float64(request.MaxScratchBytes),
+		"network":                 "none",
+		"read_only_rootfs":        true,
+		"user":                    dockerContainerUser,
+		"cap_drop":                []string{"ALL"},
+		"nofile_limit":            float64(64),
+	}
+}
+
+func dockerRuntimeIdentity(probe DockerProbe) map[string]any {
+	return map[string]any{
+		"runtime":                 "docker",
+		"image":                   probe.Image,
+		"image_id":                probe.ImageID,
+		"image_descriptor_digest": probe.ImageDescriptorDigest,
+		"command_path":            probe.CommandPath,
+		"socket_path":             probe.SocketPath,
+		"socket_device":            strconv.FormatUint(probe.Socket.Device, 10),
+		"socket_inode":             strconv.FormatUint(probe.Socket.Inode, 10),
+		"socket_mode":              strconv.FormatUint(uint64(probe.Socket.Mode), 10),
+		"socket_uid":               strconv.FormatUint(uint64(probe.Socket.UID), 10),
+		"binary_digest":            probe.BinaryDigest,
+		"client_version":           probe.ClientVersion,
+		"client_api_version":       probe.ClientAPIVersion,
+		"daemon_id":                probe.DaemonID,
+		"daemon_version":           probe.DaemonVersion,
+		"daemon_api_version":       probe.DaemonAPIVersion,
+	}
+}
+
+func appleRuntimeIdentity(proof AppleContainerPreflightEvidence) map[string]any {
+	return map[string]any{
+		"runtime":                 "apple-container",
+		"image":                   proof.Image,
+		"image_id":                proof.ImageID,
+		"image_descriptor_digest": proof.ImageDescriptorDigest,
+		"binary_path":             proof.BinaryPath,
+		"binary_digest":            proof.BinaryDigestBefore,
+		"cli_version":              proof.CLIVersionBefore,
+		"cli_commit":               proof.CLICommit,
+		"api_server_version":       proof.APIServerVersion,
+		"api_server_commit":        proof.APIServerCommit,
+		"app_root":                 proof.AppRoot,
+	}
+}
+
+func requiredContainerRuntimeIdentityFields(runtimeKind string) []string {
+	if runtimeKind == "docker" {
+		return []string{"runtime", "image", "image_id", "image_descriptor_digest", "command_path", "socket_path", "socket_device", "socket_inode", "socket_mode", "socket_uid", "binary_digest", "client_version", "client_api_version", "daemon_id", "daemon_version", "daemon_api_version"}
+	}
+	return []string{"runtime", "image", "image_id", "image_descriptor_digest", "binary_path", "binary_digest", "cli_version", "cli_commit", "api_server_version", "api_server_commit", "app_root"}
+}
+
+func validateContainerRuntimeIdentity(runtimeKind string, image, imageID string, identity any, digest any) error {
+	runtimeIdentity, ok := identity.(map[string]any)
+	if !ok || !hasRequiredAllowedMapFields(runtimeIdentity, requiredContainerRuntimeIdentityFields(runtimeKind), nil) ||
+		runtimeIdentity["runtime"] != runtimeKind || runtimeIdentity["image"] != image || runtimeIdentity["image_id"] != imageID || digest != digestHex(runtimeIdentity) {
+		return errors.New("runtime identity")
+	}
+	for _, field := range requiredContainerRuntimeIdentityFields(runtimeKind) {
+		if optionalString(runtimeIdentity[field]) == "" {
+			return errors.New("runtime identity")
+		}
+	}
+	return nil
+}
+
+func validateContainerAdapterEvidence(request DockerRunRequest, runtimeKind string, evidence map[string]any) error {
+	if !hasRequiredAllowedMapFields(evidence, []string{"format", "runtime", "image", "image_id", "container_id", "runtime_identity", "runtime_identity_digest", "constraints", "configuration_digest", "observed"}, nil) ||
+		evidence["format"] != containerAdapterEvidenceFormat || optionalString(evidence["runtime"]) != runtimeKind {
+		return errors.New("runtime")
+	}
+	if runtimeKind != "docker" && runtimeKind != "apple-container" {
+		return errors.New("runtime")
+	}
+	if optionalString(evidence["image"]) != request.Image {
+		return errors.New("image")
+	}
+	_, imageID, found := strings.Cut(request.Image, "@sha256:")
+	if !found || optionalString(evidence["image_id"]) != imageID {
+		return errors.New("image identity")
+	}
+	containerID := optionalString(evidence["container_id"])
+	if runtimeKind == "docker" && !validDockerContainerID(containerID) {
+		return errors.New("container identity")
+	}
+	if runtimeKind == "apple-container" && validateAppleContainerID(containerID) != nil {
+		return errors.New("container identity")
+	}
+	if err := validateContainerRuntimeIdentity(runtimeKind, request.Image, imageID, evidence["runtime_identity"], evidence["runtime_identity_digest"]); err != nil {
+		return err
+	}
+	constraints, ok := evidence["constraints"].(map[string]any)
+	if !ok || !reflect.DeepEqual(constraints, containerAdapterConstraints(request)) || evidence["configuration_digest"] != digestHex(constraints) {
+		return errors.New("constraints")
+	}
+	observed, ok := evidence["observed"].(map[string]any)
+	if !ok || !hasRequiredAllowedMapFields(observed, []string{"exit_code"}, nil) || observed["exit_code"] != float64(0) {
+		return errors.New("observed")
+	}
+	return nil
+}
+
 
 func inProcessSandbox() map[string]any {
 	return map[string]any{"mode": "in-process"}
@@ -141,10 +274,33 @@ func sandboxClaimProbe(claim string) map[string]any {
 }
 
 func containerNamespaceProbe(claim string) map[string]any {
+	runtimeKind, err := configuredContainerRuntime()
+	if err != nil {
+		return map[string]any{
+			"claim":     claim,
+			"supported": false,
+			"reason":    err.Error(),
+		}
+	}
 	return map[string]any{
 		"claim":     claim,
+		"runtime":   runtimeKind,
 		"supported": false,
-		"reason":    "container namespace execution requires a DockerAdapter",
+		"reason":    "container namespace execution requires an approved " + runtimeKind + " adapter",
+	}
+}
+
+func configuredContainerRuntime() (string, error) {
+	switch selected := os.Getenv("AGNET_CONTAINER_RUNTIME"); selected {
+	case "docker", "apple-container":
+		return selected, nil
+	case "":
+		if runtime.GOOS == "darwin" {
+			return "apple-container", nil
+		}
+		return "docker", nil
+	default:
+		return "", errors.New("AGNET_CONTAINER_RUNTIME must be exactly docker or apple-container")
 	}
 }
 

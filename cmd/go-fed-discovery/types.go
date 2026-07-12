@@ -26,6 +26,7 @@ type Fixture struct {
 	ArtifactStoreDir    string              `json:"-"`
 	LiveTranscriptDir   string              `json:"-"`
 	Runtime             *TaskRuntime        `json:"-"`
+	ContainerAdapter    DockerAdapter         `json:"-"`
 	QueueActorPolicy    map[string][]string `json:"-"`
 	ApprovalActorPolicy map[string][]string `json:"-"`
 	ApprovalSessions    map[string]string   `json:"-"`

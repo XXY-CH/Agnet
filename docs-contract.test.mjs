@@ -2403,7 +2403,7 @@ test("v13 public docs open the Ultimate-facing protocol milestone without scope 
   assert.match(roadmap, /upper-layer demo\/master-agent orchestration stays outside this repository/);
   assert.match(roadmap, /A2A\/ARD compatibility stays parked/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
-  assert.match(status, /状态：v14 active at v14\.10/);
+  assert.match(status, /状态：v14 active at v14\.11/);
   assert.match(status, /v13.15-node-receipt-checkpoint-verification/);
   assert.match(status, /v13\.1 reachability evidence gates are active: verifier-owned scope classes and observer evidence binding landed with tests; real hosted external-host evidence is still pending/);
   assert.match(boundary, /Open v13 as the Ultimate-facing protocol milestone/);
@@ -2431,7 +2431,7 @@ test("v13.1 public docs describe active reachability scope without hosted exit d
   assert.match(draft, /reports `reachability_scope: "container-observer"` for `vantage: "container"`/);
   assert.match(draft, /`reachability_scope: "external-host"` for `vantage: "external-host"` only when the signed receipt `listen_host` is a globally routable literal IP/);
   assert.match(draft, /Observer-backed scopes return `reachability_observer_zid`/);
-  assert.match(status, /状态：v14 active at v14\.10/);
+  assert.match(status, /状态：v14 active at v14\.11/);
   assert.match(status, /v13\.1 reachability evidence gates are active: verifier-owned scope classes and observer evidence binding landed with tests; real hosted external-host evidence is still pending as the remaining v13\.1 exit criterion/);
   assert.match(status, /`external-host` requires a globally routable literal-IP listen host; hostname listen hosts are out of scope for this slice/);
   assert.match(boundary, /状态：active/);
@@ -2462,8 +2462,8 @@ test("v13.2 public docs describe release trust without supply-chain overclaims",
   assert.match(draft, /node asp-verify\.mjs release-trust <release-trust\.json> \[trusted-release-signers\.json\]/);
   assert.match(draft, /Release trust staleness means `package_proof_digest` no longer matches the verified referenced package proof/);
   assert.match(draft, /Trusted release signer pinning applies to the release signer only\. It does not pin or replace the embedded package proof signer trust decision/);
-  assert.match(status, /状态：v14 active at v14\.10/);
-  assert.match(status, /当前代码基线：`v14\.10-node-ready-dag-parity`/);
+  assert.match(status, /状态：v14 active at v14\.11/);
+  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
   assert.match(status, /asp-verify\.mjs release-trust <release-trust\.json> \[trusted-release-signers\.json\] verifies `asp-release-trust\/v1` release trust manifests/);
   assert.match(status, /scripts\/release-trust\.mjs verifies the existing package proof first/);
   assert.match(boundary, /状态：complete/);
@@ -2489,8 +2489,8 @@ test("v13.4 public docs describe evidence-first semantic discovery without marke
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
   assert.match(draft, /`FED_QUERY` may carry an `intent` string for semantic discovery/);
   assert.match(draft, /Ranking is deterministic and evidence-first: exact capability match, trusted capability credential, signed credential claims, audit-backed reputation, zone-chain provenance, verifier-owned routing signals, and semantic token overlap are exposed as inspectable evidence/);
-  assert.match(status, /状态：v14 active at v14\.10/);
-  assert.match(status, /当前代码基线：`v14\.10-node-ready-dag-parity`/);
+  assert.match(status, /状态：v14 active at v14\.11/);
+  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
   assert.match(status, /Node federation gateway evidence-first semantic discovery\/reputation ranking/);
   assert.match(boundary, /状态：complete/);
   assert.match(boundary, /Land the first evidence-first semantic discovery\/reputation ranking primitive without adding vector infrastructure/);
@@ -2513,8 +2513,8 @@ test("v13.5 public docs describe scheduler-owned ready-DAG Swarm without orchest
   assert.match(roadmap, /No automatic task decomposition, no parallel worker pool, no upper-layer master-agent orchestration, and no economic settlement in this slice/);
   assert.match(draft, /`FED_SWARM_SCHEDULE` accepts a signed Swarm DAG and executes steps in deterministic ready order/);
   assert.match(draft, /The close proof may include signed scheduler evidence with `mode: "ready-dag"` and the executed `step_order`/);
-  assert.match(status, /状态：v14 active at v14\.10/);
-  assert.match(status, /当前代码基线：`v14\.10-node-ready-dag-parity`/);
+  assert.match(status, /状态：v14 active at v14\.11/);
+  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
   assert.match(status, /Go `FED_SWARM_SCHEDULE` scheduler-owned ready-DAG execution/);
   assert.match(boundary, /状态：complete/);
   assert.match(boundary, /Land the first scheduler-owned ready-DAG Swarm execution primitive/);
@@ -2540,8 +2540,8 @@ test("v13.6 public docs describe sandbox proof verification without attestation 
   assert.match(roadmap, /Hardware remote attestation remains unimplemented and fail-closed/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
   assert.match(draft, /node asp-verify\.mjs sandbox-proof <frame\.json> <trusted-zones\.json> \[required-sandbox-class\]/);
-  assert.match(status, /状态：v14 active at v14\.10/);
-  assert.match(status, /当前代码基线：`v14\.10-node-ready-dag-parity`/);
+  assert.match(status, /状态：v14 active at v14\.11/);
+  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
   assert.match(status, /sandbox-proof <frame\.json> <trusted-zones\.json> \[required-sandbox-class\]/);
   assert.match(boundary, /状态：complete/);
   assert.match(boundary, /It verifies a signed `local\.sandbox\.v1` proof embedded in a verified `FED_RECEIPT` frame/);
@@ -2564,8 +2564,8 @@ test("v13.7 public docs describe signed sandbox attestation without hardware ove
   assert.match(roadmap, /Signed sandbox attestation evidence is not hardware remote attestation by itself/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
   assert.match(draft, /node asp-verify\.mjs sandbox-attestation <frame\.json> <trusted-zones\.json> <attestation\.json> <trusted-attestors\.json>/);
-  assert.match(status, /状态：v14 active at v14\.10/);
-  assert.match(status, /当前代码基线：`v14\.10-node-ready-dag-parity`/);
+  assert.match(status, /状态：v14 active at v14\.11/);
+  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
   assert.match(status, /sandbox-attestation <frame\.json> <trusted-zones\.json> <attestation\.json> <trusted-attestors\.json>/);
   assert.match(boundary, /状态：complete/);
   assert.match(boundary, /It verifies `asp-sandbox-attestation\/v1` signed evidence/);
@@ -2587,8 +2587,8 @@ test("v13.8 public docs describe pinned external observer identity without hoste
   assert.match(roadmap, /Pinned external observer identity/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
   assert.match(draft, /AGNET_REACHABILITY_OBSERVER_SEED_HEX/);
-  assert.match(status, /状态：v14 active at v14\.10/);
-  assert.match(status, /当前代码基线：`v14\.10-node-ready-dag-parity`/);
+  assert.match(status, /状态：v14 active at v14\.11/);
+  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
   assert.match(status, /observer identity can be pinned before a hosted run/);
   assert.match(boundary, /状态：complete/);
   assert.match(boundary, /pre-pinned trusted observer identity/);
@@ -2613,8 +2613,8 @@ test("v13.9 public docs describe hosted observer runner without hiding IPv6 bloc
   assert.match(roadmap, /GitHub hosted observer runner/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
   assert.match(draft, /AGNET_PUBLIC_LISTEN_HOST/);
-  assert.match(status, /状态：v14 active at v14\.10/);
-  assert.match(status, /当前代码基线：`v14\.10-node-ready-dag-parity`/);
+  assert.match(status, /状态：v14 active at v14\.11/);
+  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
   for (const doc of [roadmap, status, boundary]) {
     assert.match(doc, /28916288568/);
     assert.match(doc, /ENETUNREACH/);
@@ -2659,8 +2659,8 @@ test("v13.11 public docs record audit-backed receipt-count reputation without or
   assert.match(roadmap, /状态：active at v13\.15/);
   assert.match(roadmap, /## v13\.11: Audit-Backed Receipt-Count Reputation/);
   assert.match(boundary, /状态：complete/);
-  assert.match(status, /状态：v14 active at v14\.10/);
-  assert.match(status, /当前代码基线：`v14\.10-node-ready-dag-parity`/);
+  assert.match(status, /状态：v14 active at v14\.11/);
+  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
 });
 
@@ -2683,8 +2683,8 @@ test("v13.12 public docs record credential valid_until expiry without credential
   assert.match(roadmap, /状态：active at v13\.15/);
   assert.match(roadmap, /## v13\.12: Credential Validity Window/);
   assert.match(boundary, /状态：complete/);
-  assert.match(status, /状态：v14 active at v14\.10/);
-  assert.match(status, /当前代码基线：`v14\.10-node-ready-dag-parity`/);
+  assert.match(status, /状态：v14 active at v14\.11/);
+  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
 });
 
@@ -2708,8 +2708,8 @@ test("v13.13 public docs record zone revocation in discovery without oracle over
   assert.match(roadmap, /状态：active at v13\.15/);
   assert.match(roadmap, /## v13\.13: Zone Revocation in FED_QUERY Discovery/);
   assert.match(boundary, /状态：complete/);
-  assert.match(status, /状态：v14 active at v14\.10/);
-  assert.match(status, /当前代码基线：`v14\.10-node-ready-dag-parity`/);
+  assert.match(status, /状态：v14 active at v14\.11/);
+  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
 });
 
@@ -2734,8 +2734,8 @@ test("v13.14 public docs record multi-signal agent score without oracle or ML ov
   assert.match(roadmap, /状态：active at v13\.15/);
   assert.match(roadmap, /## v13\.14: Multi-Signal Agent Score in Reputation/);
   assert.match(boundary, /状态：complete/);
-  assert.match(status, /状态：v14 active at v14\.10/);
-  assert.match(status, /当前代码基线：`v14\.10-node-ready-dag-parity`/);
+  assert.match(status, /状态：v14 active at v14\.11/);
+  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
 });
 
@@ -2762,8 +2762,8 @@ test("v13.15 public docs record Node receipt checkpoint verification without res
   assert.match(roadmap, /## v13\.15: Node Receipt Checkpoint Verification/);
   assert.match(boundary, /状态：complete/);
   assert.match(boundary, /receipt-carried checkpoint evidence/);
-  assert.match(status, /状态：v14 active at v14\.10/);
-  assert.match(status, /当前代码基线：`v14\.10-node-ready-dag-parity`/);
+  assert.match(status, /状态：v14 active at v14\.11/);
+  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
   assert.match(draft, /Node `FED_RECEIPT` verification requires `checkpoint_refs` and `checkpoints` to have equal length/);
 });
@@ -2793,8 +2793,8 @@ test("v14 public docs open the overlay/swarm/routing milestone without terminal 
   assert.match(boundary, /Overlay Network/);
   assert.match(boundary, /Agent Swarm Layer/);
   assert.match(boundary, /Multi-signal routing/);
-  assert.match(status, /状态：v14 active at v14\.10/);
-  assert.match(status, /当前代码基线：`v14\.10-node-ready-dag-parity`/);
+  assert.match(status, /状态：v14 active at v14\.11/);
+  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
   for (const doc of [readme, roadmap, boundary, status, draft]) {
     assert.doesNotMatch(doc, /P2P DHT is implemented/i);
@@ -2841,8 +2841,8 @@ test("v14.3 public docs record cross-zone trust chains without PKI overclaims", 
   assert.match(boundary, /协议标签：`v14\.3-protocol`/);
   assert.match(boundary, /zone_trust_chain/);
   assert.match(boundary, /zoneTrustDelegation/);
-  assert.match(status, /状态：v14 active at v14\.10/);
-  assert.match(status, /当前代码基线：`v14\.10-node-ready-dag-parity`/);
+  assert.match(status, /状态：v14 active at v14\.11/);
+  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
   assert.match(draft, /zone_trust_chain/);
   assert.match(draft, /zoneTrustDelegation/);
@@ -2939,8 +2939,8 @@ test("v14.7 public docs record policy and risk routing signals", async () => {
     assert.match(doc, /policy_match/);
     assert.match(doc, /risk_match/);
   }
-  assert.match(status, /状态：v14 active at v14\.10/);
-  assert.match(status, /当前代码基线：`v14\.10-node-ready-dag-parity`/);
+  assert.match(status, /状态：v14 active at v14\.11/);
+  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
   assert.match(reputation, /Missing cost, latency, availability, policy, or risk evidence stays neutral/);
   assert.doesNotMatch(boundary, /new trust oracle is implemented/i);
@@ -2969,8 +2969,8 @@ test("v14.8 public docs record deterministic Swarm conflict resolution without m
     assert.match(doc, /higher agent_score reputation/);
     assert.match(doc, /alias_tiebreak/);
   }
-  assert.match(status, /状态：v14 active at v14\.10/);
-  assert.match(status, /当前代码基线：`v14\.10-node-ready-dag-parity`/);
+  assert.match(status, /状态：v14 active at v14\.11/);
+  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
   for (const doc of [roadmap, boundary, status, draft]) {
     assert.match(doc, /No voting\/quorum|not voting\/quorum/i);
@@ -2990,7 +2990,7 @@ test("v14.8 public docs record deterministic Swarm conflict resolution without m
     assert.match(doc, /still pending/);
   }
   assert.match(v149Boundary, /192\.168\.64\.6/);
-  assert.match(status, /The active protocol tag is `v14\.10-protocol`/);
+  assert.match(status, /The active protocol tag is `v14\.11-apple-private-workspace-proof`/);
   assert.match(status, /reachability scope classes \(`local-interface`, `container-observer`, `cross-netns`, `external-host`\)/);
   assert.match(draft, /cross-netns.*literal private inter-namespace IP/);
   assert.match(federation, /`cross-netns` for trusted separate-network-namespace evidence over a literal private IP/);
@@ -3024,9 +3024,9 @@ test("v14.10 public docs record Node ready-DAG parity without orchestration over
     assert.match(doc, /self-dependencies/);
     assert.match(doc, /cycle|unresolvable graph/);
   }
-  assert.match(status, /状态：v14 active at v14\.10/);
-  assert.match(status, /当前代码基线：`v14\.10-node-ready-dag-parity`/);
-  assert.match(status, /The active protocol tag is `v14\.10-protocol`/);
+  assert.match(status, /状态：v14 active at v14\.11/);
+  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /The active protocol tag is `v14\.11-apple-private-workspace-proof`/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
   assert.match(draft, /Node and Go gateways accept `FED_SWARM_SCHEDULE`/);
   for (const doc of [readme, roadmap, boundary, status, draft]) {
@@ -3036,4 +3036,32 @@ test("v14.10 public docs record Node ready-DAG parity without orchestration over
     assert.match(doc, /No LLM scheduling|not LLM scheduling/i);
     assert.match(doc, /No new trust inputs|not new trust inputs/i);
   }
+});
+
+test("v14.11 docs state the Apple private-workspace proof and its limits", async () => {
+  const [boundary, status, changelog] = await Promise.all([
+    readFile("docs/v14.11-boundary.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/CHANGELOG.md", "utf8"),
+  ]);
+
+  for (const doc of [boundary, status, changelog]) {
+    assert.match(doc, /private.*workspace/i);
+    assert.match(doc, /read-write.*`\/work`|`\/work`.*read-write/i);
+    assert.match(doc, /symlinks.*hardlinks.*devices/i);
+    assert.match(doc, /no default route.*DNS|network\/DNS/i);
+    assert.match(doc, /not full Docker isolation parity/i);
+    assert.match(doc, /tmpfs quota/i);
+    assert.match(doc, /PID parity.*nproc|nproc.*PID parity/i);
+  }
+  assert.match(boundary, /状态：complete/);
+  assert.match(boundary, /workspace device, inode, owner UID, and mode/);
+  assert.match(boundary, /当前协议基线：`v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /状态：v14 active at v14\.11/);
+  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /The active protocol tag is `v14\.11-apple-private-workspace-proof`/);
+  assert.doesNotMatch(status, /状态：v14 active at v14\.10/);
+  assert.doesNotMatch(status, /当前代码基线：`v14\.10-node-ready-dag-parity`/);
+  assert.doesNotMatch(status, /The active protocol tag is `v14\.10-protocol`/);
+  assert.match(changelog, /\[v14\.11\]/);
 });

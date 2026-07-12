@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -20,8 +21,32 @@ func (a *binaryDockerAdapter) Run(_ context.Context, request DockerRunRequest) (
 	return a.result, nil
 }
 
+func TestContainerNamespaceProbe(t *testing.T) {
+	t.Setenv("AGNET_CONTAINER_RUNTIME", "")
+	defaultProbe := containerNamespaceProbe("container-namespace")
+	if got := defaultProbe["runtime"]; got != "apple-container" {
+		t.Fatalf("Darwin default runtime = %q, want apple-container", got)
+	}
+	if defaultProbe["supported"] != false {
+		t.Fatalf("default probe must not claim an execution adapter: %#v", defaultProbe)
+	}
+
+	t.Setenv("AGNET_CONTAINER_RUNTIME", "docker")
+	dockerProbe := containerNamespaceProbe("container-namespace")
+	if got := dockerProbe["runtime"]; got != "docker" {
+		t.Fatalf("explicit Docker runtime = %q", got)
+	}
+
+	t.Setenv("AGNET_CONTAINER_RUNTIME", "/tmp/untrusted-runtime")
+	invalidProbe := containerNamespaceProbe("container-namespace")
+	if invalidProbe["supported"] != false || !strings.Contains(invalidProbe["reason"].(string), "AGNET_CONTAINER_RUNTIME") {
+		t.Fatalf("unsafe runtime probe = %#v", invalidProbe)
+	}
+}
+
 func TestRunToolReturnsBinary(t *testing.T) {
 	t.Chdir(t.TempDir())
+	t.Setenv("AGNET_CONTAINER_RUNTIME", "docker")
 	want := []byte{0x00, 0xff, 0x01, '\n', 0x80}
 	marker := filepath.Join(t.TempDir(), "host-external-ran")
 	adapter := &binaryDockerAdapter{result: DockerRunResult{
@@ -29,7 +54,12 @@ func TestRunToolReturnsBinary(t *testing.T) {
 		MediaType:           "application/octet-stream",
 		Transcript:          []byte{0x00, 0xff},
 		TranscriptMediaType: "application/octet-stream",
-		Evidence:            map[string]any{"runtime": "test-adapter"},
+		Evidence: map[string]any{
+			"runtime": "docker",
+			"image": "registry.example/agent/tool@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+			"image_id": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+			"container_id": strings.Repeat("a", 64),
+		},
 	}}
 	profile := WorkerProfile{
 		Tool:         "external.stdio",
@@ -48,6 +78,11 @@ func TestRunToolReturnsBinary(t *testing.T) {
 			},
 		},
 	}
+	request, err := validateDockerWorkerProfile(*profile.Docker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter.result.Evidence = verifiedContainerAdapterEvidence("docker", request)
 	_, result, sandbox, err := runToolWithDockerAdapter(context.Background(), adapter, profile, nil, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +122,7 @@ func TestRunToolRejectsContainerWithoutAdapter(t *testing.T) {
 		},
 	}
 	_, _, _, err := runTool(context.Background(), profile, map[string]any{"task_id": "container_no_adapter"}, map[string]any{}, "", "")
-	if err == nil || err.Error() != "container-namespace sandbox adapter is not configured" {
+	if err == nil || err.Error() != "container_adapter_unavailable" {
 		t.Fatalf("runTool() error = %v", err)
 	}
 

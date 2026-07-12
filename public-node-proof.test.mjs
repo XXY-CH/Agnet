@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash, createPrivateKey } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { networkInterfaces } from "node:os";
 import { test } from "node:test";
@@ -11,12 +11,21 @@ import { canonical, createZone, loadTrustedZones, signObject, verifyFederatedRec
 const execFileAsync = promisify(execFile);
 
 function globalIpv6ListenHost() {
+
   for (const entries of Object.values(networkInterfaces())) {
     for (const entry of entries ?? []) {
       if (entry.family === "IPv6" && !entry.internal && !entry.address.startsWith("fe80:")) return entry.address;
     }
   }
   return "";
+}
+
+async function assertManagedProofIdentity(storePath, passphrasePath, legacySeedPath) {
+  const [store, passphrase] = await Promise.all([stat(storePath), stat(passphrasePath)]);
+  assert.equal(store.isDirectory(), true);
+  assert.equal(passphrase.mode & 0o777, 0o600);
+  await assert.rejects(readFile(legacySeedPath), /ENOENT/);
+  await assert.rejects(readFile(legacySeedPath.replace(".seed", ".migration.pkcs8")), /ENOENT/);
 }
 
 function privateKeyFromSeed(seedHex) {
@@ -93,6 +102,8 @@ test("public node proof starts a public-listen gateway", async (t) => {
   assert.match(result.artifact_tamper_error, /artifact bytes digest mismatch/);
   assert.equal(result.swarm_id, "swarm://public-node-proof/two-step");
   assert.equal(result.swarm_step_count, 2);
+  await assertManagedProofIdentity("state/keys/public-node-proof-authority", "state/public-node-proof-authority.passphrase", "state/public-node-proof-authority.seed");
+  await assertManagedProofIdentity("state/keys/public-node-proof-worker", "state/public-node-proof-worker.passphrase", "state/public-node-proof-worker.seed");
   assert.deepEqual(result.swarm_step_ids, ["summary", "dependent"]);
   assert.equal(result.swarm_close_signature, true);
   assert.equal(result.swarm_close_receipts, true);

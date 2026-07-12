@@ -1,14 +1,146 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
-import { createHash } from "node:crypto";
-import { lstat, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { createHash, createPrivateKey } from "node:crypto";
+import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import net from "node:net";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { promisify } from "node:util";
-import { AUDIT_ZERO_HASH, auditEntry, canonical, createZone, publicKeyFromDescriptor, signObject, signedReceiptDigest, swarmExecutionBinding, swarmPlan, verifyObject, verifySwarmClose, verifySwarmPlan, verifyZoneTrustDelegation, writeTrustedZones, zoneBinding, zoneRevocation, zoneTrustDelegation } from "./asp-core.mjs";
+import { AUDIT_ZERO_HASH, agentFromPrivateKey, auditEntry, canonical, createAgent, createZone, publicKeyFromDescriptor, signObject, signedReceiptDigest, swarmExecutionBinding, swarmPlan, verifyObject, verifySwarmClose, verifySwarmPlan, verifyZoneTrustDelegation, writeTrustedZones, zoneBinding, zoneFromPrivateKey, zoneRevocation, zoneTrustDelegation } from "./asp-core.mjs";
+import { migrateKey } from "./agnet-key.mjs";
 import { queryMatch } from "./federation-gateway.mjs";
+import { loadManagedAgent, loadManagedZone } from "./managed-key-runtime.mjs";
 
 const execFileAsync = promisify(execFile);
+const MANAGED_PASSPHRASE = Buffer.from("federation gateway managed test passphrase\n");
+
+async function createManagedGatewayFixture() {
+  const root = await mkdtemp(join(tmpdir(), "agnet-federation-gateway-"));
+  const zones = new Map();
+  const agents = new Map();
+
+  async function provision(identity, identityKind) {
+    const identityValue = identityKind === "aid" ? identity.aid : identity.zid;
+    const identityRoot = join(root, identityKind, createHash("sha256").update(identityValue).digest("hex"));
+    const keyPath = join(identityRoot, "key.pkcs8");
+    const descriptorPath = join(identityRoot, "descriptor.json");
+    const passphrasePath = join(identityRoot, "passphrase");
+    const storePath = join(identityRoot, "store");
+    await mkdir(identityRoot, { recursive: true, mode: 0o700 });
+    await chmod(identityRoot, 0o700);
+    await Promise.all([
+      writeFile(keyPath, identity.privateKey.export({ format: "der", type: "pkcs8" }), { mode: 0o600 }),
+      writeFile(descriptorPath, canonical(identity.descriptor), { mode: 0o600 }),
+      writeFile(passphrasePath, MANAGED_PASSPHRASE, { mode: 0o600 }),
+    ]);
+    await Promise.all([keyPath, descriptorPath, passphrasePath].map((path) => chmod(path, 0o600)));
+    await migrateKey({ storePath, keyPath, keyType: "ed25519-pkcs8", identityKind, descriptorPath, passphrasePath, iterations: 100000 });
+    const config = identityKind === "aid"
+      ? { storePath, passphraseFile: passphrasePath, alias: identity.alias, policy: identity.descriptor.policy, transports: identity.descriptor.transports, capabilities: identity.descriptor.capabilities }
+      : { storePath, passphraseFile: passphrasePath, name: identity.name };
+    return { config, identity: identityKind === "aid" ? await loadManagedAgent(config) : await loadManagedZone(config) };
+  }
+
+  async function zone(name) {
+    let item = zones.get(name);
+    if (!item) {
+      item = await provision(createZone(name), "zid");
+      zones.set(name, item);
+    }
+    return item.identity;
+  }
+
+  async function agent(alias, policy = {}, transports = ["asp+local://demo"], capabilities = []) {
+    let item = agents.get(alias);
+    if (!item) {
+      item = await provision(createAgent(alias, policy, transports, capabilities), "aid");
+      agents.set(alias, item);
+    }
+    return item.identity;
+  }
+
+  try {
+    const [zoneA, zoneB, requester, worker, semanticWorker, migrationWorker] = await Promise.all([
+      zone("zone://a"),
+      zone("zone://b"),
+      agent("agent://zone-a/requester"),
+      agent("agent://zone-b/summarizer", { allow_network: false, write_prefixes: ["artifact://local/"] }, ["asp+local://demo"], ["summarize.text", "migration.shared"]),
+      agent("agent://zone-b/semantic-summarize-text-fast", { allow_network: true, write_prefixes: ["artifact://local/"] }, ["asp+local://demo"], ["summarize.text.fast", "migration.shared"]),
+      agent("agent://zone-b/migration-summarizer", { allow_network: true, write_prefixes: ["artifact://local/"] }, ["asp+local://demo"], ["summarize.text", "migration.shared"]),
+    ]);
+    const configPath = join(root, "managed-runtime.json");
+    await writeFile(configPath, `${JSON.stringify({
+      server: {
+        zone: zones.get("zone://b").config,
+        worker: agents.get(worker.alias).config,
+        semanticWorker: agents.get(semanticWorker.alias).config,
+        migrationWorker: agents.get(migrationWorker.alias).config,
+      },
+      client: {
+        zone: zones.get(zoneA.name).config,
+        requester: agents.get(requester.alias).config,
+      },
+    })}\n`, { mode: 0o600 });
+    await chmod(configPath, 0o600);
+    return { configPath, zone, agent, cleanup: () => rm(root, { recursive: true, force: true }) };
+  } catch (error) {
+    await rm(root, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+const managedGateway = await createManagedGatewayFixture();
+process.env.AGNET_MANAGED_RUNTIME_CONFIG = managedGateway.configPath;
+after(() => managedGateway.cleanup());
+
+const managedZone = (name) => managedGateway.zone(name);
+const managedAgent = (alias, policy = {}, transports = ["asp+local://demo"], capabilities = []) => managedGateway.agent(alias, policy, transports, capabilities);
+
+function privateKeyFromSeed(seed) {
+  return createPrivateKey({
+    key: Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), seed]),
+    format: "der",
+    type: "pkcs8",
+  });
+}
+
+async function createManagedGoClient() {
+  const root = await mkdtemp(join(tmpdir(), "agnet-federation-go-client-"));
+  const authoritySeed = Buffer.from("101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f", "hex");
+  const requesterSeed = Buffer.from("303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f", "hex");
+
+  async function migrateSeed(name, identity, seed, identityKind) {
+    const identityRoot = join(root, name);
+    const keyPath = join(identityRoot, "key.seed");
+    const descriptorPath = join(identityRoot, "descriptor.json");
+    const passphrasePath = join(identityRoot, "passphrase");
+    const storePath = join(identityRoot, "store");
+    await mkdir(identityRoot, { recursive: true, mode: 0o700 });
+    await chmod(identityRoot, 0o700);
+    await Promise.all([
+      writeFile(keyPath, seed, { mode: 0o600 }),
+      writeFile(descriptorPath, canonical(identity.descriptor), { mode: 0o600 }),
+      writeFile(passphrasePath, MANAGED_PASSPHRASE, { mode: 0o600 }),
+    ]);
+    await Promise.all([keyPath, descriptorPath, passphrasePath].map((path) => chmod(path, 0o600)));
+    await migrateKey({ storePath, keyPath, keyType: "ed25519-seed", identityKind, descriptorPath, passphrasePath, iterations: 100000 });
+    return { storePath, passphrasePath };
+  }
+
+  try {
+    const authority = zoneFromPrivateKey("zone://go-client", privateKeyFromSeed(authoritySeed));
+    const requester = agentFromPrivateKey("agent://go-client/requester", privateKeyFromSeed(requesterSeed), {}, ["go-client://local"], ["summarize.text"]);
+    return {
+      authority: await migrateSeed("authority", authority, authoritySeed, "zid"),
+      requester: await migrateSeed("requester", requester, requesterSeed, "aid"),
+      cleanup: () => rm(root, { recursive: true, force: true }),
+    };
+  } catch (error) {
+    await rm(root, { recursive: true, force: true });
+    throw error;
+  }
+}
 async function writeAuditLog(records) {
   await mkdir("state", { recursive: true });
   let prevHash = AUDIT_ZERO_HASH;
@@ -70,7 +202,7 @@ test("Zone trust delegation verifies authority signature and rejects tampering",
 
 function waitForGateway(child) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("gateway did not start")), 3000);
+    const timer = setTimeout(() => reject(new Error("gateway did not start")), 30000);
     child.stdout.on("data", (chunk) => {
       const line = chunk.toString().split("\n").find((item) => item.trim().startsWith("{"));
       if (!line) return;
@@ -203,8 +335,8 @@ function withManuallySignedSwarmExecutionBinding(coordinator, frame) {
 
 
 test("Federation Gateway queryMatch scores only active credentials", async () => {
-  const zone = await loadOrCreateZone("zone://query-match-zone", "state/keys/query-match-zone.pkcs8");
-  const worker = await loadOrCreateAgent("agent://query-match/summarizer", "state/keys/query-match-summarizer.pkcs8", {}, ["asp+local://demo"], ["summarize.text"]);
+  const zone = await managedZone("zone://query-match-zone");
+  const worker = await managedAgent("agent://query-match/summarizer", {}, ["asp+local://demo"], ["summarize.text"]);
   const futureMatch = queryMatch(zone, worker, "summarize.text", "", {
     evidence: ["local-demo"],
     completed_receipts: 0,
@@ -241,8 +373,8 @@ test("Federation Gateway queryMatch scores only active credentials", async () =>
 });
 
 test("Federation Gateway queryMatch exposes multi-signal agent reputation score", async () => {
-  const zone = await loadOrCreateZone("zone://query-match-agent-score-zone", "state/keys/query-match-agent-score-zone.pkcs8");
-  const worker = await loadOrCreateAgent("agent://query-match/agent-score-summarizer", "state/keys/query-match-agent-score-summarizer.pkcs8", {}, ["asp+local://demo"], ["summarize.text"]);
+  const zone = await managedZone("zone://query-match-agent-score-zone");
+  const worker = await managedAgent("agent://query-match/agent-score-summarizer", {}, ["asp+local://demo"], ["summarize.text"]);
   const lastCompletedAt = new Date(Date.now() - 30 * 60 * 1000).toISOString();
 
   const match = queryMatch(zone, worker, "summarize.text", "", {
@@ -276,14 +408,8 @@ test("Federation Gateway queryMatch exposes multi-signal agent reputation score"
 });
 
 test("Federation Gateway queryMatch exposes v14.2 routing evidence signals", async () => {
-  const zone = await loadOrCreateZone("zone://query-match-routing-zone", "state/keys/query-match-routing-zone.pkcs8");
-  const worker = await loadOrCreateAgent(
-    "agent://query-match/routing-summarizer",
-    "state/keys/query-match-routing-summarizer.pkcs8",
-    { cost_tokens_per_task: 1 },
-    ["asp+local://demo"],
-    ["summarize.text"],
-  );
+  const zone = await managedZone("zone://query-match-routing-zone");
+  const worker = await managedAgent("agent://query-match/routing-summarizer", { cost_tokens_per_task: 1 }, ["asp+local://demo"], ["summarize.text"]);
 
   const match = queryMatch(zone, worker, "summarize.text", "", {
     evidence: ["local-demo"],
@@ -309,14 +435,8 @@ test("Federation Gateway queryMatch exposes v14.2 routing evidence signals", asy
 });
 
 test("Federation Gateway queryMatch exposes v14.7 policy and risk routing signals", async () => {
-  const zone = await loadOrCreateZone("zone://query-match-policy-risk-zone", "state/keys/query-match-policy-risk-zone.pkcs8");
-  const worker = await loadOrCreateAgent(
-    "agent://query-match/policy-risk-summarizer",
-    "state/keys/query-match-policy-risk-summarizer.pkcs8",
-    { allow_network: false, write_prefixes: ["artifact://local/"] },
-    ["asp+local://demo"],
-    ["summarize.text"],
-  );
+  const zone = await managedZone("zone://query-match-policy-risk-zone");
+  const worker = await managedAgent("agent://query-match/policy-risk-summarizer", { allow_network: false, write_prefixes: ["artifact://local/"] }, ["asp+local://demo"], ["summarize.text"]);
   const credentialClaims = {
     evidence: ["local-demo"],
     completed_receipts: 3,
@@ -345,21 +465,9 @@ test("Federation Gateway queryMatch exposes v14.7 policy and risk routing signal
 });
 
 test("Federation Gateway queryMatch ranks lower-cost workers above equivalent neutral-cost workers", async () => {
-  const zone = await loadOrCreateZone("zone://query-match-cost-ranking-zone", "state/keys/query-match-cost-ranking-zone.pkcs8");
-  const lowCostWorker = await loadOrCreateAgent(
-    "agent://query-match/low-cost-summarizer",
-    "state/keys/query-match-low-cost-summarizer.pkcs8",
-    { cost_tokens_per_task: 1 },
-    ["asp+local://demo"],
-    ["summarize.text"],
-  );
-  const neutralCostWorker = await loadOrCreateAgent(
-    "agent://query-match/neutral-cost-summarizer",
-    "state/keys/query-match-neutral-cost-summarizer.pkcs8",
-    {},
-    ["asp+local://demo"],
-    ["summarize.text"],
-  );
+  const zone = await managedZone("zone://query-match-cost-ranking-zone");
+  const lowCostWorker = await managedAgent("agent://query-match/low-cost-summarizer", { cost_tokens_per_task: 1 }, ["asp+local://demo"], ["summarize.text"]);
+  const neutralCostWorker = await managedAgent("agent://query-match/neutral-cost-summarizer", {}, ["asp+local://demo"], ["summarize.text"]);
   const credentialClaims = {
     evidence: ["local-demo"],
     completed_receipts: 1,
@@ -376,8 +484,8 @@ test("Federation Gateway queryMatch ranks lower-cost workers above equivalent ne
 });
 
 test("Federation Gateway queryMatch applies matching zone revocations as an agent score penalty", async () => {
-  const zone = await loadOrCreateZone("zone://query-match-agent-score-revocation-zone", "state/keys/query-match-agent-score-revocation-zone.pkcs8");
-  const worker = await loadOrCreateAgent("agent://query-match/agent-score-revoked-summarizer", "state/keys/query-match-agent-score-revoked-summarizer.pkcs8", {}, ["asp+local://demo"], ["summarize.text"]);
+  const zone = await managedZone("zone://query-match-agent-score-revocation-zone");
+  const worker = await managedAgent("agent://query-match/agent-score-revoked-summarizer", {}, ["asp+local://demo"], ["summarize.text"]);
   const lastCompletedAt = new Date(Date.now() - 30 * 60 * 1000).toISOString();
   const credentialClaims = {
     evidence: ["local-demo"],
@@ -409,8 +517,8 @@ test("Federation Gateway queryMatch applies matching zone revocations as an agen
 
 test("Federation Gateway completes a cross-Zone task", async () => {
   const port = 8991;
-  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  const zoneA = await managedZone("zone://a");
+  const zoneB = await managedZone("zone://b");
   await writeTrustedZones("state/zone-a-trust.json", [zoneB, zoneA]);
   await writeTrustedZones("state/zone-b-trust.json", [zoneA]);
 
@@ -443,8 +551,8 @@ test("Federation Gateway completes a cross-Zone task", async () => {
 
 test("rejects unsigned or substituted executable Swarm before execution", async (t) => {
   const port = 9032;
-  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/fed-zone-a-requester.pkcs8");
+  const zoneA = await managedZone("zone://a");
+  const requester = await managedAgent("agent://zone-a/requester");
   await writeTrustedZones("state/zone-b-u2-preflight-trust.json", [zoneA]);
   const gateway = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-u2-preflight-trust.json"], {
     cwd: process.cwd(),
@@ -567,9 +675,9 @@ test("rejects unsigned or substituted executable Swarm before execution", async 
 
 test("derives final_output only from one terminal result in gateway v2 close", async () => {
   const port = 9034;
-  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
-  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/fed-zone-a-requester.pkcs8");
+  const zoneA = await managedZone("zone://a");
+  const zoneB = await managedZone("zone://b");
+  const requester = await managedAgent("agent://zone-a/requester");
   await writeTrustedZones("state/zone-b-u3-final-output-trust.json", [zoneA]);
   const gateway = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-u3-final-output-trust.json"], {
     cwd: process.cwd(),
@@ -658,9 +766,9 @@ test("derives final_output only from one terminal result in gateway v2 close", a
 
 test("Swarm decomposition plan verifies and links to close plan digest", async () => {
   const port = 9021;
-  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
-  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/fed-zone-a-requester.pkcs8");
+  const zoneA = await managedZone("zone://a");
+  const zoneB = await managedZone("zone://b");
+  const requester = await managedAgent("agent://zone-a/requester");
   await writeTrustedZones("state/fed-trusted-zones.json", [zoneA]);
   const child = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/fed-trusted-zones.json"], { stdio: ["ignore", "pipe", "inherit"] });
   try {
@@ -745,9 +853,9 @@ test("Swarm decomposition plan verifies and links to close plan digest", async (
 
 test("Federation Gateway schedules out-of-order Swarm steps in deterministic ready-DAG order", async () => {
   const port = 9023;
-  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
-  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/fed-zone-a-requester.pkcs8");
+  const zoneA = await managedZone("zone://a");
+  const zoneB = await managedZone("zone://b");
+  const requester = await managedAgent("agent://zone-a/requester");
   await writeTrustedZones("state/zone-b-schedule-trust.json", [zoneA]);
   const child = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-schedule-trust.json"], { stdio: ["ignore", "pipe", "inherit"] });
   try {
@@ -805,8 +913,8 @@ test("Federation Gateway schedules out-of-order Swarm steps in deterministic rea
 
 test("Federation Gateway rejects invalid ready-DAG graphs before executing any step", async () => {
   const port = 9025;
-  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/fed-zone-a-requester.pkcs8");
+  const zoneA = await managedZone("zone://a");
+  const requester = await managedAgent("agent://zone-a/requester");
   await writeTrustedZones("state/zone-b-schedule-preflight-trust.json", [zoneA]);
   const child = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-schedule-preflight-trust.json"], { stdio: ["ignore", "pipe", "inherit"] });
   try {
@@ -861,8 +969,8 @@ test("Federation Gateway rejects invalid ready-DAG graphs before executing any s
 
 test("Federation Gateway rejects an unresolvable ready-DAG before executing any step", async () => {
   const port = 9024;
-  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/fed-zone-a-requester.pkcs8");
+  const zoneA = await managedZone("zone://a");
+  const requester = await managedAgent("agent://zone-a/requester");
   await writeTrustedZones("state/zone-b-schedule-cycle-trust.json", [zoneA]);
   const child = spawn(process.execPath, ["federation-gateway.mjs", "serve", String(port), "state/zone-b-schedule-cycle-trust.json"], { stdio: ["ignore", "pipe", "inherit"] });
   try {
@@ -899,9 +1007,9 @@ test("Federation Gateway rejects an unresolvable ready-DAG before executing any 
 
 test("Federation Gateway closes Swarm steps with signed micro-contracts", async () => {
   const port = 8998;
-  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
-  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/fed-zone-a-requester.pkcs8", {}, ["fed+tcp://127.0.0.1:8998"], ["request.task"]);
+  const zoneA = await managedZone("zone://a");
+  const zoneB = await managedZone("zone://b");
+  const requester = await managedAgent("agent://zone-a/requester", {}, ["fed+tcp://127.0.0.1:8998"], ["request.task"]);
   await writeTrustedZones("state/zone-a-trust.json", [zoneB, zoneA]);
   await writeTrustedZones("state/zone-b-trust.json", [zoneA]);
 
@@ -979,9 +1087,9 @@ test("Federation Gateway closes Swarm steps with signed micro-contracts", async 
 
 test("Federation Gateway migrates a failed Swarm step to the next same-capability worker", async () => {
   const port = 9014;
-  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
-  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/fed-zone-a-requester.pkcs8", {}, [`fed+tcp://127.0.0.1:${port}`], ["request.task"]);
+  const zoneA = await managedZone("zone://a");
+  const zoneB = await managedZone("zone://b");
+  const requester = await managedAgent("agent://zone-a/requester", {}, [`fed+tcp://127.0.0.1:${port}`], ["request.task"]);
   await writeTrustedZones("state/zone-a-migration-trust.json", [zoneB, zoneA]);
   await writeTrustedZones("state/zone-b-migration-trust.json", [zoneA]);
 
@@ -1051,7 +1159,7 @@ test("Federation Gateway migrates a failed Swarm step to the next same-capabilit
 
 test("Federation Gateway rejects an untrusted origin Zone", async () => {
   const port = 8992;
-  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  const zoneB = await managedZone("zone://b");
   await writeTrustedZones("state/zone-a-trust-untrusted-test.json", [zoneB]);
   await writeTrustedZones("state/zone-b-empty-trust.json", []);
 
@@ -1080,8 +1188,8 @@ test("Federation Gateway rejects an untrusted origin Zone", async () => {
 
 test("Federation Gateway resolves a remote agent alias", async () => {
   const port = 8993;
-  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  const zoneA = await managedZone("zone://a");
+  const zoneB = await managedZone("zone://b");
   await writeTrustedZones("state/zone-a-resolve-trust.json", [zoneB]);
   await writeTrustedZones("state/zone-b-resolve-trust.json", [zoneA]);
 
@@ -1112,8 +1220,8 @@ test("Federation Gateway resolves a remote agent alias", async () => {
 
 test("Federation Gateway queries exact remote capabilities", async () => {
   const port = 8994;
-  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  const zoneA = await managedZone("zone://a");
+  const zoneB = await managedZone("zone://b");
   await writeTrustedZones("state/zone-a-query-trust.json", [zoneB]);
   await writeTrustedZones("state/zone-b-query-trust.json", [zoneA]);
 
@@ -1163,9 +1271,9 @@ test("Federation Gateway queries exact remote capabilities", async () => {
 });
 test("Federation Gateway reports audit-backed completed receipt reputation", async () => {
   const port = 9001;
-  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
-  const worker = await loadOrCreateAgent("agent://zone-b/summarizer", "state/keys/fed-zone-b-summarizer.pkcs8");
+  const zoneA = await managedZone("zone://a");
+  const zoneB = await managedZone("zone://b");
+  const worker = await managedAgent("agent://zone-b/summarizer");
   const auditLastCompletedAt = new Date(Date.now() - 30 * 60 * 1000).toISOString();
   await writeTrustedZones("state/zone-a-audit-backed-query-trust.json", [zoneB]);
   await writeTrustedZones("state/zone-b-audit-backed-query-trust.json", [zoneA]);
@@ -1219,11 +1327,11 @@ test("Federation Gateway reports audit-backed completed receipt reputation", asy
 
 test("Federation Gateway ranks semantic discovery by verifiable evidence first", async () => {
   const port = 8996;
-  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  const zoneA = await managedZone("zone://a");
+  const zoneB = await managedZone("zone://b");
   await writeTrustedZones("state/zone-a-semantic-query-trust.json", [zoneB]);
   await writeTrustedZones("state/zone-b-semantic-query-trust.json", [zoneA]);
-  const worker = await loadOrCreateAgent("agent://zone-b/summarizer", "state/keys/fed-zone-b-summarizer.pkcs8");
+  const worker = await managedAgent("agent://zone-b/summarizer");
   await writeAuditLog([
     { kind: "fed_receipt", to: worker.aid, status: "completed", task_id: "semantic_query_1" },
     { kind: "fed_receipt", to: worker.aid, status: "completed", task_id: "semantic_query_2" },
@@ -1266,8 +1374,8 @@ test("Federation Gateway ranks semantic discovery by verifiable evidence first",
 
 test("Federation Gateway hands off task from capability query result", async () => {
   const port = 8995;
-  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  const zoneA = await managedZone("zone://a");
+  const zoneB = await managedZone("zone://b");
   await writeTrustedZones("state/zone-a-capability-handoff-trust.json", [zoneB, zoneA]);
   await writeTrustedZones("state/zone-b-capability-handoff-trust.json", [zoneA]);
 
@@ -1298,17 +1406,16 @@ test("Federation Gateway hands off task from capability query result", async () 
 
 test("Go client completes a task against Node Federation Gateway", async () => {
   const port = 8997;
-  const goAuthorityKey = "state/go-client-zone.seed";
-  const goRequesterKey = "state/go-client-requester.seed";
-  await writeFile(goAuthorityKey, "101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f\n");
-  await writeFile(goRequesterKey, "303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f\n");
-  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  const goClient = await createManagedGoClient();
+  const zoneB = await managedZone("zone://b");
   const goZone = JSON.parse((await execFileAsync("go", [
     "run",
     "./cmd/go-fed-discovery",
     "--print-zone",
-    "--authority-key",
-    goAuthorityKey,
+    "--authority-store",
+    goClient.authority.storePath,
+    "--authority-passphrase-file",
+    goClient.authority.passphrasePath,
   ])).stdout);
   await writeTrustedZones("state/go-client-trusts-node.json", [zoneB, goZone]);
   await writeFile("state/node-trusts-go-client.json", `${JSON.stringify({ zones: [goZone] }, null, 2)}\n`);
@@ -1328,10 +1435,14 @@ test("Go client completes a task against Node Federation Gateway", async () => {
       String(port),
       "--trusted",
       "state/go-client-trusts-node.json",
-      "--authority-key",
-      goAuthorityKey,
-      "--worker-key",
-      goRequesterKey,
+      "--authority-store",
+      goClient.authority.storePath,
+      "--authority-passphrase-file",
+      goClient.authority.passphrasePath,
+      "--worker-store",
+      goClient.requester.storePath,
+      "--worker-passphrase-file",
+      goClient.requester.passphrasePath,
     ]);
     const result = JSON.parse(stdout);
     assert.equal(result.origin_zone, goZone.zid);
@@ -1339,14 +1450,15 @@ test("Go client completes a task against Node Federation Gateway", async () => {
     assert.equal(result.events.at(-1).type, "task.completed");
   } finally {
     gateway.kill("SIGINT");
+    await goClient.cleanup();
   }
 });
 
 test("Node client rejects Go receipt when task evidence digest mismatches", async () => {
   const port = 8998;
-  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
-  const worker = await loadOrCreateAgent("agent://zone-b/summarizer", "state/keys/fed-zone-b-summarizer.pkcs8");
+  const zoneA = await managedZone("zone://a");
+  const zoneB = await managedZone("zone://b");
+  const worker = await managedAgent("agent://zone-b/summarizer");
   await writeTrustedZones("state/node-client-task-evidence-trust.json", [zoneB, zoneA]);
 
   const server = net.createServer((socket) => {
@@ -1401,8 +1513,8 @@ test("Node client rejects Go receipt when task evidence digest mismatches", asyn
 
 test("Federation Gateway rejects capability handoff when no match exists", async () => {
   const port = 8996;
-  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
+  const zoneA = await managedZone("zone://a");
+  const zoneB = await managedZone("zone://b");
   await writeTrustedZones("state/zone-a-capability-miss-trust.json", [zoneB]);
   await writeTrustedZones("state/zone-b-capability-miss-trust.json", [zoneA]);
 
@@ -1432,10 +1544,10 @@ test("Federation Gateway rejects capability handoff when no match exists", async
 
 test("Federation Gateway resolves conflicting Swarm artifact refs by higher reputation", async () => {
   const port = 9022;
-  const zoneA = await loadOrCreateZone("zone://a", "state/keys/fed-zone-a.pkcs8");
-  const zoneB = await loadOrCreateZone("zone://b", "state/keys/fed-zone-b.pkcs8");
-  const requester = await loadOrCreateAgent("agent://zone-a/requester", "state/keys/fed-zone-a-requester.pkcs8", {}, [`fed+tcp://127.0.0.1:${port}`], ["request.task"]);
-  const highReputationWorker = await loadOrCreateAgent("agent://zone-b/migration-summarizer", "state/keys/fed-zone-b-migration-summarizer.pkcs8");
+  const zoneA = await managedZone("zone://a");
+  const zoneB = await managedZone("zone://b");
+  const requester = await managedAgent("agent://zone-a/requester", {}, [`fed+tcp://127.0.0.1:${port}`], ["request.task"]);
+  const highReputationWorker = await managedAgent("agent://zone-b/migration-summarizer");
   await writeTrustedZones("state/zone-a-conflict-resolution-trust.json", [zoneB, zoneA]);
   await writeTrustedZones("state/zone-b-conflict-resolution-trust.json", [zoneA]);
   await writeAuditLog([

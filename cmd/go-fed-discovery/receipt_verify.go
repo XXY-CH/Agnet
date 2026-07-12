@@ -1072,6 +1072,171 @@ func verifyPolicyScope(receipt map[string]any) error {
 	return nil
 }
 
+// verifyDockerSandboxEvidence validates the complete, receipt-carried evidence
+// produced by either supported constrained container runtime. The historical
+// name is retained because Docker was the first runtime; generic sandbox
+// claims are deliberately not accepted here.
+func verifyDockerSandboxEvidence(evidence map[string]any, profile DockerWorkerProfile) error {
+	if !hasRequiredAllowedMapFields(evidence,
+		[]string{"format", "runtime", "image", "image_id", "container_id", "runtime_identity", "runtime_identity_digest", "constraints", "configuration_digest", "observed", "task_id", "task_digest", "profile_digest", "generation_digest", "result_digest", "transcript_digest"},
+		nil,
+	) {
+		return errors.New("container evidence fields invalid")
+	}
+	if evidence["format"] != "agnet-container-evidence/v2" {
+		return errors.New("container evidence format invalid")
+	}
+	runtime := optionalString(evidence["runtime"])
+	if runtime != "docker" && runtime != "apple-container" {
+		return errors.New("container evidence runtime invalid")
+	}
+	if evidence["image"] != profile.Image || validateDockerImage(profile.Image) != nil {
+		return errors.New("container evidence image mismatch")
+	}
+	imageID := optionalString(evidence["image_id"])
+	if !isHexDigest(imageID) {
+		return errors.New("container evidence image ID invalid")
+	}
+	containerID := optionalString(evidence["container_id"])
+	if runtime == "docker" && !validDockerContainerID(containerID) {
+		return errors.New("docker container evidence identifier invalid")
+	}
+	if runtime == "apple-container" && validateAppleContainerID(containerID) != nil {
+		return errors.New("apple container evidence identifier invalid")
+	}
+	if err := validateContainerRuntimeIdentity(runtime, profile.Image, imageID, evidence["runtime_identity"], evidence["runtime_identity_digest"]); err != nil {
+		return errors.New("container runtime identity mismatch")
+	}
+	constraints, ok := evidence["constraints"].(map[string]any)
+	if !ok || !reflect.DeepEqual(constraints, dockerReceiptConstraints(profile)) || evidence["configuration_digest"] != digestHex(constraints) {
+		return errors.New("container configuration mismatch")
+	}
+	observed, ok := evidence["observed"].(map[string]any)
+	if !ok || !hasRequiredAllowedMapFields(observed, []string{"exit_code", "result_bytes", "transcript_bytes", "artifact_count"}, nil) ||
+		!nonNegativeWholeNumber(observed["result_bytes"]) || !nonNegativeWholeNumber(observed["transcript_bytes"]) || !nonNegativeWholeNumber(observed["artifact_count"]) || observed["exit_code"] != float64(0) {
+		return errors.New("container observed counts invalid")
+	}
+	if err := validateTaskID(optionalString(evidence["task_id"])); err != nil {
+		return errors.New("container evidence task ID invalid")
+	}
+	for _, field := range []string{"task_digest", "generation_digest", "result_digest", "transcript_digest"} {
+		if !isHexDigest(optionalString(evidence[field])) {
+			return errors.New("container evidence " + field + " invalid")
+		}
+	}
+	if evidence["profile_digest"] != dockerReceiptProfileDigest(profile) {
+		return errors.New("container evidence profile mismatch")
+	}
+	return nil
+}
+
+func dockerReceiptConstraints(profile DockerWorkerProfile) map[string]any {
+	request, err := validateDockerWorkerProfile(profile)
+	if err != nil {
+		return nil
+	}
+	return containerAdapterConstraints(request)
+}
+
+func dockerReceiptProfileDigest(profile DockerWorkerProfile) string {
+	encoded, err := json.Marshal(profile)
+	if err != nil {
+		return ""
+	}
+	var profileMap map[string]any
+	if err := json.Unmarshal(encoded, &profileMap); err != nil {
+		return ""
+	}
+	return digestHex(profileMap)
+}
+
+func nonNegativeWholeNumber(value any) bool {
+	number, ok := value.(float64)
+	return ok && number >= 0 && number == math.Trunc(number)
+}
+func verifyContainerReceiptEvidence(receipt, sandbox, proof map[string]any) error {
+	evidenceValue, evidencePresent := sandbox["container_evidence"]
+	profileValue, profilePresent := receipt["container_profile"]
+	generationValue, generationPresent := receipt["container_generation_digest"]
+	if !evidencePresent && !profilePresent && !generationPresent {
+		if receipt["sandbox_claim"] == "container-namespace" || sandbox["runtime"] != nil {
+			return errors.New("container receipt evidence missing")
+		}
+		return nil
+	}
+	if !evidencePresent || !profilePresent || !generationPresent {
+		return errors.New("container receipt binding missing")
+	}
+	evidence, ok := evidenceValue.(map[string]any)
+	if !ok {
+		return errors.New("container receipt evidence invalid")
+	}
+	proofSandbox, ok := proof["sandbox"].(map[string]any)
+	if !ok || !reflect.DeepEqual(proofSandbox["container_evidence"], evidence) {
+		return errors.New("container receipt proof evidence mismatch")
+	}
+	profile, err := dockerProfileFromReceipt(profileValue)
+	if err != nil {
+		return err
+	}
+	if err := verifyDockerSandboxEvidence(evidence, profile); err != nil {
+		return err
+	}
+	if evidence["profile_digest"] != digestHex(profileValue) {
+		return errors.New("container receipt profile digest mismatch")
+	}
+	if evidence["task_id"] != receipt["task_id"] || evidence["task_digest"] != receipt["task_digest"] || evidence["generation_digest"] != generationValue {
+		return errors.New("container receipt task or generation binding mismatch")
+	}
+	result, ok := receipt["result_artifact"].(map[string]any)
+	if !ok || evidence["result_digest"] != result["sha256"] {
+		return errors.New("container receipt result binding mismatch")
+	}
+	resultManifest, err := receiptArtifactManifest(receipt, optionalString(result["uri"]))
+	if err != nil || !sameObservedManifestSize(evidence, "result_bytes", resultManifest) {
+		return errors.New("container receipt result binding mismatch")
+	}
+	transcript, ok := sandbox["tool_transcript_manifest"].(map[string]any)
+	if !ok || evidence["transcript_digest"] != transcript["sha256"] || !sameObservedManifestSize(evidence, "transcript_bytes", transcript) {
+		return errors.New("container receipt transcript binding mismatch")
+	}
+	manifests, err := artifactManifestsFromAny(receipt["artifact_manifests"])
+	if err != nil || !sameObservedManifestSize(evidence, "artifact_count", map[string]any{"size": float64(len(manifests))}) {
+		return errors.New("container receipt artifact count mismatch")
+	}
+	return nil
+}
+
+func dockerProfileFromReceipt(value any) (DockerWorkerProfile, error) {
+	profileMap, ok := value.(map[string]any)
+	if !ok || !hasRequiredAllowedMapFields(profileMap, []string{"image", "command", "limits"}, []string{"scratch_inputs"}) {
+		return DockerWorkerProfile{}, errors.New("container receipt profile invalid")
+	}
+	limits, ok := profileMap["limits"].(map[string]any)
+	if !ok || !hasRequiredAllowedMapFields(limits, []string{"cpu_millis", "memory_bytes", "timeout_millis", "max_output_bytes", "max_scratch_input_bytes", "max_scratch_bytes"}, nil) {
+		return DockerWorkerProfile{}, errors.New("container receipt profile limits invalid")
+	}
+	encoded, err := json.Marshal(profileMap)
+	if err != nil {
+		return DockerWorkerProfile{}, errors.New("container receipt profile invalid")
+	}
+	decoder := json.NewDecoder(strings.NewReader(string(encoded)))
+	decoder.DisallowUnknownFields()
+	var profile DockerWorkerProfile
+	if err := decoder.Decode(&profile); err != nil || decoder.More() {
+		return DockerWorkerProfile{}, errors.New("container receipt profile invalid")
+	}
+	if _, err := validateDockerWorkerProfile(profile); err != nil {
+		return DockerWorkerProfile{}, errors.New("container receipt profile invalid")
+	}
+	return profile, nil
+}
+
+func sameObservedManifestSize(evidence map[string]any, observedField string, manifest map[string]any) bool {
+	observed, _ := evidence["observed"].(map[string]any)
+	return observed[observedField] == manifest["size"]
+}
+
 func verifySandboxProof(zoneKey ed25519.PublicKey, receipt map[string]any) error {
 	proof, ok := receipt["sandbox_proof"].(map[string]any)
 	if !ok {
@@ -1101,6 +1266,9 @@ func verifySandboxProof(zoneKey ed25519.PublicKey, receipt map[string]any) error
 	}
 	if claim, ok := receipt["sandbox_claim"]; ok && proof["sandbox_claim"] != claim {
 		return errors.New("sandbox proof claim mismatch")
+	}
+	if err := verifyContainerReceiptEvidence(receipt, sandbox, proof); err != nil {
+		return err
 	}
 	if err := verifyMapSignature(zoneKey, proof, "sandbox_signature"); err != nil {
 		return errors.New("sandbox proof signature verification failed")
