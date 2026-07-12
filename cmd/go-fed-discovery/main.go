@@ -40,6 +40,8 @@ func main() {
 	workerPassphrasePath := flag.String("worker-passphrase-file", "state/keys/go-fed-worker.passphrase", "managed worker passphrase file")
 	workerRecordDigest := flag.String("worker-record-digest", "", "optional exact worker managed generation record digest")
 	auditPath := flag.String("audit", "state/go-fed-audit.log", "audit JSONL file")
+	swarmStorageRoot := flag.String("swarm-storage-root", "", "optional durable Swarm journal storage root for Human Gateway")
+	swarmID := flag.String("swarm-id", "", "optional durable Swarm identifier for Human Gateway")
 	verifyAudit := flag.Bool("verify-audit", false, "verify audit JSONL file and exit")
 	verifyReceiptPath := flag.String("verify-receipt", "", "verify one receipt record JSON file and exit")
 	verifyTaskPath := flag.String("verify-task", "", "optional signed task JSON file for --verify-receipt task_digest check")
@@ -182,7 +184,7 @@ func main() {
 		Authority: ManagedKeyConfig{StorePath: *authorityStorePath, PassphraseFile: *authorityPassphrasePath, RecordDigest: *authorityRecordDigest},
 		Worker:    ManagedKeyConfig{StorePath: *workerStorePath, PassphraseFile: *workerPassphrasePath, RecordDigest: *workerRecordDigest},
 	}
-	if err := serve(*listenHost, *port, *wsPort, *humanPort, *humanToken, *humanActorPolicyPath, *tlsCertPath, *tlsKeyPath, *tlsClientCAPath, *artifactStoreDir, *fixturePath, *trustPath, runtimeKeys, *auditPath); err != nil {
+	if err := serve(*listenHost, *port, *wsPort, *humanPort, *humanToken, *humanActorPolicyPath, *tlsCertPath, *tlsKeyPath, *tlsClientCAPath, *artifactStoreDir, *fixturePath, *trustPath, *swarmStorageRoot, *swarmID, runtimeKeys, *auditPath); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -438,8 +440,12 @@ func trustedZonesMapFromBundle(value map[string]any) (map[string]map[string]any,
 	return out, nil
 }
 
-func serve(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, tlsClientCAPath, artifactStoreDir, fixturePath, trustPath string, runtimeKeys ManagedRuntimeConfig, auditPath string) error {
+func serve(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, tlsClientCAPath, artifactStoreDir, fixturePath, trustPath, swarmStorageRoot, swarmID string, runtimeKeys ManagedRuntimeConfig, auditPath string) error {
 	fixture, err := loadManagedFixture(fixturePath, runtimeKeys)
+	if err != nil {
+		return err
+	}
+	journal, err := openHumanGatewayJournal(swarmStorageRoot, swarmID)
 	if err != nil {
 		return err
 	}
@@ -490,7 +496,7 @@ func serve(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath
 		if err != nil {
 			return err
 		}
-		go serveHumanGateway(humanListener, auditPath, fixture, humanToken, listenHost)
+		go serveHumanGateway(humanListener, auditPath, fixture, humanToken, listenHost, journal)
 	}
 	if wsPort != "" || humanPort != "" {
 		status := map[string]any{"go_fed_discovery": "listening", "listen_host": listenHost, "port": listenPort, "public_transport": fixture.PublicTransport, "transport": transport}
@@ -515,6 +521,23 @@ func serve(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath
 		go handle(conn, fixture, trusted)
 	}
 }
+
+func openHumanGatewayJournal(storageRoot, swarmID string) (*SwarmJournal, error) {
+	if (storageRoot == "") != (swarmID == "") {
+		return nil, errors.New("both --swarm-storage-root and --swarm-id are required")
+	}
+	if storageRoot == "" {
+		return nil, nil
+	}
+	journal, err := OpenSwarmJournal(storageRoot, swarmID)
+	if err != nil {
+		return nil, fmt.Errorf("open configured swarm journal: %w", err)
+	}
+	if _, err := ReadSwarmView(journal); err != nil {
+		return nil, fmt.Errorf("validate configured swarm journal: %w", err)
+	}
+	return journal, nil
+	}
 
 func listenFederation(host, port, tlsCertPath, tlsKeyPath, tlsClientCAPath string) (net.Listener, string, error) {
 	if (tlsCertPath == "") != (tlsKeyPath == "") {

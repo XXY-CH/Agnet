@@ -16,7 +16,13 @@ import (
 	"time"
 )
 
+// auditProof is retained for the legacy FED audit protocol. It is not a
+// durable Swarm-state reader; Swarm status comes only from ReadSwarmView.
 func (f Fixture) auditProof(taskID string) (map[string]any, error) {
+	return f.legacyAuditProof(taskID)
+}
+
+func (f Fixture) legacyAuditProof(taskID string) (map[string]any, error) {
 	if f.Audit == nil {
 		return nil, errors.New("audit log unavailable")
 	}
@@ -224,7 +230,13 @@ func (f Fixture) sendTaskEvent(send sendFunc, event map[string]any) error {
 	return nil
 }
 
+// appendAudit is the legacy FED audit append path. It never publishes or
+// advances durable Swarm state, which is journal-owned.
 func (f Fixture) appendAudit(record map[string]any) error {
+	return f.appendLegacyAudit(record)
+}
+
+func (f Fixture) appendLegacyAudit(record map[string]any) error {
 	if f.Audit == nil {
 		return nil
 	}

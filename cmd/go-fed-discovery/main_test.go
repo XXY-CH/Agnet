@@ -2849,7 +2849,7 @@ func TestSwarmRejectsManagedPointerDrift(t *testing.T) {
 func TestServeRejectsInvalidManaged(t *testing.T) {
 	fixturePath, runtimeKeys := managedRuntimeFixture(t, managedkey.KeyTypeSeed)
 	runtimeKeys.Authority.RecordDigest = strings.Repeat("0", 64)
-	if err := serve("127.0.0.1", "0", "", "", "", "", "", "", "", "", fixturePath, "", runtimeKeys, filepath.Join(t.TempDir(), "audit.log")); err == nil {
+	if err := serve("127.0.0.1", "0", "", "", "", "", "", "", "", "", fixturePath, "", "", "", runtimeKeys, filepath.Join(t.TempDir(), "audit.log")); err == nil {
 		t.Fatal("invalid managed authority reached listener initialization")
 	}
 }

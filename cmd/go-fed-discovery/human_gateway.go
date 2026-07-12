@@ -14,9 +14,15 @@ import (
 	"strings"
 )
 
-func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture, humanToken string, listenHost string) {
-	taskStateDir := taskStateDirForAudit(auditPath)
-	queueDir := queueDirForAudit(auditPath)
+func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture, humanToken string, listenHost string, journal *SwarmJournal) {
+	_ = http.Serve(listener, newHumanGatewayServer(auditPath, fixture, humanToken, listenHost, journal))
+}
+
+func newHumanGatewayServer(auditPath string, fixture Fixture, humanToken string, listenHost string, journal *SwarmJournal) *http.ServeMux {
+	return newHumanGatewayMux(auditPath, fixture, humanToken, listenHost, journal)
+}
+
+func newHumanGatewayMux(auditPath string, fixture Fixture, humanToken string, listenHost string, journal *SwarmJournal) *http.ServeMux {
 	approvalDir := approvalDirForAudit(auditPath)
 	mux := http.NewServeMux()
 	requireWriteToken := func(w http.ResponseWriter, r *http.Request) bool {
@@ -64,12 +70,7 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		tasks, err := readTaskStates(taskStateDir)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		queue, err := readTaskStates(queueDir)
+		tasks, queue, err := humanGatewayDurableSwarmData(journal)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -119,7 +120,7 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 		_ = json.NewEncoder(w).Encode(map[string]any{"entries": entries})
 	})
 	mux.HandleFunc("/api/tasks", func(w http.ResponseWriter, r *http.Request) {
-		tasks, err := readTaskStates(taskStateDir)
+		tasks, _, err := humanGatewayDurableSwarmData(journal)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -132,7 +133,7 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		queue, err := readTaskStates(queueDir)
+		_, queue, err := humanGatewayDurableSwarmData(journal)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -603,7 +604,8 @@ func serveHumanGateway(listener net.Listener, auditPath string, fixture Fixture,
 		_, _ = w.Write(data)
 	})
 	mux.Handle("/artifacts/", http.StripPrefix("/artifacts/", http.FileServer(http.Dir("artifacts"))))
-	_ = http.Serve(listener, mux)
+	return mux
+
 }
 
 func readAuditEntriesOrEmpty(path string) ([]map[string]any, error) {
@@ -612,6 +614,59 @@ func readAuditEntriesOrEmpty(path string) ([]map[string]any, error) {
 		return []map[string]any{}, nil
 	}
 	return entries, err
+}
+
+// humanGatewayDurableSwarmData exposes only the replay-backed Swarm view. Legacy
+// task and queue state files remain command-local metadata and are never read here.
+func humanGatewayDurableSwarmData(journal *SwarmJournal) ([]map[string]any, []map[string]any, error) {
+	if journal == nil {
+		return []map[string]any{}, []map[string]any{}, nil
+	}
+	view, err := ReadSwarmView(journal)
+	if err != nil {
+		return nil, nil, err
+	}
+	data, err := json.Marshal(view)
+	if err != nil {
+		return nil, nil, fmt.Errorf("encode durable swarm view: %w", err)
+	}
+	var projection struct {
+		Steps  []map[string]any `json:"steps"`
+		Leases []map[string]any `json:"leases"`
+	}
+	if err := json.Unmarshal(data, &projection); err != nil {
+		return nil, nil, fmt.Errorf("decode durable swarm view: %w", err)
+	}
+
+	leases := make(map[string]map[string]any, len(projection.Leases))
+	queue := make([]map[string]any, 0, len(projection.Leases))
+	for _, lease := range projection.Leases {
+		stepID := optionalString(lease["step_id"])
+		if stepID == "" {
+			return nil, nil, errors.New("durable swarm view lease missing step_id")
+		}
+		leases[stepID] = lease
+		queue = append(queue, map[string]any{
+			"task_id":  stepID,
+			"status":   "running",
+			"worker":   optionalString(lease["owner"]),
+			"lease_id": fmt.Sprint(lease["fence"]),
+		})
+	}
+
+	tasks := make([]map[string]any, 0, len(projection.Steps))
+	for _, step := range projection.Steps {
+		stepID := optionalString(step["step_id"])
+		if stepID == "" {
+			return nil, nil, errors.New("durable swarm view step missing step_id")
+		}
+		step["task_id"] = stepID
+		if lease, ok := leases[stepID]; ok {
+			step["worker"] = optionalString(lease["owner"])
+		}
+		tasks = append(tasks, step)
+	}
+	return tasks, queue, nil
 }
 
 func taskStateDirForAudit(auditPath string) string {
