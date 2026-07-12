@@ -80,6 +80,85 @@ test("pure journal reducer enforces ready DAG ordering, dispatch readiness, and 
   assert.throws(() => verifySwarmJournal([opened, ready, swarmJournalEntry({ ...wrongCandidatePreimage, prev_hash: ready.hash })]), /dispatch|candidate|readiness/i);
 });
 
+test("pure journal reducer rejects observations and signed receipts at a lease deadline", async () => {
+  const vector = await loadDurableVector("asp-u29-node-swarm-durable.json");
+  const lateObservation = structuredClone(vector.journal.slice(0, 4));
+  lateObservation.at(-1).timestamp = lateObservation.at(-1).payload.claim.deadline;
+  assert.throws(() => verifySwarmJournal(rechain(lateObservation)), /observation.*live|observation.*fence/i);
+
+  const lateReceipt = structuredClone(vector.journal.slice(0, 6));
+  lateReceipt.at(-1).timestamp = lateReceipt.at(-1).payload.claim.deadline;
+  assert.throws(() => verifySwarmJournal(rechain(lateReceipt)), /receipt.*live|receipt.*invalid/i);
+});
+
+test("pure journal reducer renews exact live leases and expires them before retry migration", () => {
+  const opened = entry(1, "swarm.opened", openedPayload());
+  const wave = { step_ids: ["prepare"], recorded_at: "2026-07-12T13:14:16.123456789Z" };
+  const ready = entry(2, "wave.ready", { schema_version: 1, wave }, 1, opened.hash);
+  const claim = { step_id: "prepare", owner: "coordinator", fence: 1, attempt: 1, candidate_index: 0, capability: "", candidate: openedPayload().spec.steps[0].candidates[0], deadline: "2026-07-12T13:14:18.123456789Z" };
+  const dispatched = entry(3, "wave.dispatched", { schema_version: 1, wave, claims: [claim] }, 2, ready.hash);
+  const renewedClaim = { ...claim, deadline: "2026-07-12T13:14:20.123456789Z" };
+  const renewed = entry(4, "lease.renewed", { schema_version: 1, claim: renewedClaim }, 3, dispatched.hash);
+  const observed = entry(5, "lease.observed", { schema_version: 1, claim: renewedClaim, outcome: "reported" }, 4, renewed.hash);
+  const renewedState = verifySwarmJournal([opened, ready, dispatched, renewed, observed]).state;
+  assert.equal(renewedState.leases[0].deadline, renewedClaim.deadline);
+  assert.equal(renewedState.steps[0].observations.at(-1).outcome, "reported");
+
+  const wrongOwner = entry(4, "lease.renewed", { schema_version: 1, claim: { ...renewedClaim, owner: "attacker" } }, 3, dispatched.hash);
+  assert.throws(() => verifySwarmJournal(rechain([opened, ready, dispatched, wrongOwner])), /renewal.*live|renewal.*lease/i);
+  const nonExtending = entry(4, "lease.renewed", { schema_version: 1, claim }, 3, dispatched.hash);
+  assert.throws(() => verifySwarmJournal(rechain([opened, ready, dispatched, nonExtending])), /renewal.*live|renewal.*lease/i);
+
+  const retryOpenedPayload = openedPayload();
+  retryOpenedPayload.spec.steps[0].attempt_policy.max_attempts = 2;
+  retryOpenedPayload.spec.steps[0].candidates.push({ ...retryOpenedPayload.spec.steps[0].candidates[0], alias: "agent://worker/retry" });
+  const retryOpened = entry(1, "swarm.opened", retryOpenedPayload);
+  const retryReady = entry(2, "wave.ready", { schema_version: 1, wave }, 1, retryOpened.hash);
+  const firstClaim = { ...claim, candidate: retryOpenedPayload.spec.steps[0].candidates[0] };
+  const firstDispatch = entry(3, "wave.dispatched", { schema_version: 1, wave, claims: [firstClaim] }, 2, retryReady.hash);
+  const expired = entry(4, "lease.expired", { schema_version: 1, now: "2026-07-12T13:14:18.123456789Z", claims: [firstClaim] }, 3, firstDispatch.hash);
+  const expiredState = verifySwarmJournal([retryOpened, retryReady, firstDispatch, expired]).state;
+  assert.equal(expiredState.status, "open");
+  assert.equal(expiredState.steps[0].status, "pending");
+  assert.equal(expiredState.steps[0].attempts, 1);
+  assert.equal(expiredState.steps[0].observations.at(-1).outcome, "expired");
+
+  const staleObservation = entry(5, "lease.observed", { schema_version: 1, claim: firstClaim, outcome: "late" }, 4, expired.hash);
+  assert.throws(() => verifySwarmJournal(rechain([retryOpened, retryReady, firstDispatch, expired, staleObservation])), /observation.*live|observation.*fence/i);
+  const retryWave = { step_ids: ["prepare"], recorded_at: "2026-07-12T13:14:19.123456789Z" };
+  const retryReadyAfterExpiry = entry(5, "wave.ready", { schema_version: 1, wave: retryWave }, 4, expired.hash);
+  const retryClaim = { ...firstClaim, owner: "coordinator-retry", fence: 2, attempt: 2, candidate_index: 1, candidate: retryOpenedPayload.spec.steps[0].candidates[1], deadline: "2026-07-12T13:14:22.123456789Z" };
+  const retryDispatch = entry(6, "wave.dispatched", { schema_version: 1, wave: retryWave, claims: [retryClaim] }, 5, retryReadyAfterExpiry.hash);
+  const retryState = verifySwarmJournal([retryOpened, retryReady, firstDispatch, expired, retryReadyAfterExpiry, retryDispatch]).state;
+  assert.equal(retryState.last_fence, 2);
+  assert.deepEqual(retryState.leases, [retryClaim]);
+  assert.equal(retryState.steps[0].attempts, 2);
+  const staleAfterMigration = entry(7, "lease.observed", { schema_version: 1, claim: firstClaim, outcome: "late" }, 6, retryDispatch.hash);
+  assert.throws(() => verifySwarmJournal(rechain([retryOpened, retryReady, firstDispatch, expired, retryReadyAfterExpiry, retryDispatch, staleAfterMigration])), /observation.*live|observation.*fence/i);
+});
+
+test("pure journal reducer retains active leases behind the ready-wave barrier and requires canonical lease timestamps", () => {
+  const multiStepPayload = openedPayload();
+  multiStepPayload.spec.steps[0].attempt_policy.max_attempts = 2;
+  multiStepPayload.spec.steps.push({ ...structuredClone(multiStepPayload.spec.steps[0]), step_id: "verify" });
+  const opened = entry(1, "swarm.opened", multiStepPayload);
+  const wave = { step_ids: ["prepare", "verify"], recorded_at: "2026-07-12T13:14:16.123456789Z" };
+  const ready = entry(2, "wave.ready", { schema_version: 1, wave }, 1, opened.hash);
+  const firstClaim = { step_id: "prepare", owner: "coordinator", fence: 1, attempt: 1, candidate_index: 0, capability: "", candidate: multiStepPayload.spec.steps[0].candidates[0], deadline: "2026-07-12T13:14:18.123456789Z" };
+  const secondClaim = { step_id: "verify", owner: "coordinator", fence: 2, attempt: 1, candidate_index: 0, capability: "", candidate: multiStepPayload.spec.steps[1].candidates[0], deadline: "2026-07-12T13:14:30.123456789Z" };
+  const dispatched = entry(3, "wave.dispatched", { schema_version: 1, wave, claims: [firstClaim, secondClaim] }, 2, ready.hash);
+  const expired = entry(4, "lease.expired", { schema_version: 1, now: firstClaim.deadline, claims: [firstClaim] }, 3, dispatched.hash);
+  const prematureRetry = entry(5, "wave.ready", { schema_version: 1, wave: { step_ids: ["prepare"], recorded_at: "2026-07-12T13:14:19.123456789Z" } }, 4, expired.hash);
+  assert.throws(() => verifySwarmJournal(rechain([opened, ready, dispatched, expired, prematureRetry])), /ready.*(barrier|wave)|leasing/i);
+
+  const singleOpened = entry(1, "swarm.opened", openedPayload());
+  const singleWave = { step_ids: ["prepare"], recorded_at: "2026-07-12T13:14:16.123456789Z" };
+  const singleReady = entry(2, "wave.ready", { schema_version: 1, wave: singleWave }, 1, singleOpened.hash);
+  const noncanonicalDeadline = { step_id: "prepare", owner: "coordinator", fence: 1, attempt: 1, candidate_index: 0, capability: "", candidate: openedPayload().spec.steps[0].candidates[0], deadline: "2026-07-12T13:14:18.10Z" };
+  const noncanonicalDispatch = entry(3, "wave.dispatched", { schema_version: 1, wave: singleWave, claims: [noncanonicalDeadline] }, 2, singleReady.hash);
+  assert.throws(() => verifySwarmJournal([singleOpened, singleReady, noncanonicalDispatch]), /dispatch.*claim|dispatch.*readiness/i);
+});
+
 test("disband is canonical, signed, and bound to completed output", () => {
   const zone = createZone("zone://node-parity");
   const completed = {

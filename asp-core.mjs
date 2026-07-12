@@ -704,6 +704,35 @@ function durableTimestamp(value, label) {
   return value;
 }
 
+const DURABLE_LEASE_CLAIM_FIELDS = ["attempt", "candidate", "candidate_index", "capability", "deadline", "fence", "owner", "step_id"];
+
+function durableLeaseTimestamp(value, label) {
+  durableTimestamp(value, label);
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?Z$/.exec(value);
+  if (!match || match[7]?.endsWith("0")) throw new Error(`${label} invalid`);
+  const parsed = new Date(value);
+  if (parsed.getUTCFullYear() !== Number(match[1]) || parsed.getUTCMonth() + 1 !== Number(match[2]) || parsed.getUTCDate() !== Number(match[3]) || parsed.getUTCHours() !== Number(match[4]) || parsed.getUTCMinutes() !== Number(match[5]) || parsed.getUTCSeconds() !== Number(match[6])) throw new Error(`${label} invalid`);
+  return value;
+}
+
+function durableLeaseClaim(claim, label) {
+  if (!hasExactFields(claim, DURABLE_LEASE_CLAIM_FIELDS) || typeof claim.step_id !== "string" || claim.step_id === "" || typeof claim.owner !== "string" || claim.owner === "" || !Number.isSafeInteger(claim.fence) || claim.fence < 1 || !Number.isSafeInteger(claim.attempt) || claim.attempt < 1 || !Number.isSafeInteger(claim.candidate_index) || claim.candidate_index < 0 || typeof claim.capability !== "string" || !durablePlainObject(claim.candidate, label)) throw new Error(`${label} invalid`);
+  durableLeaseTimestamp(claim.deadline, `${label} deadline`);
+  return claim;
+}
+
+function durableLeaseIdentityEqual(left, right) {
+  return left.step_id === right.step_id && left.owner === right.owner && left.fence === right.fence && left.attempt === right.attempt && left.candidate_index === right.candidate_index && left.capability === right.capability && canonical(left.candidate) === canonical(right.candidate);
+}
+
+function durableDerivedSwarmStatus(steps) {
+  if (steps.some((step) => step.status === "failed")) return "failed";
+  if (steps.some((step) => step.status === "running")) return "running";
+  if (steps.every((step) => step.status === "completed")) return "completed";
+  if (steps.every((step) => step.status === "cancelled")) return "cancelled";
+  return "open";
+}
+
 function durablePlainObject(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} invalid`);
   return value;
@@ -921,6 +950,7 @@ function reduceDurableEntry(prior, entry) {
   if (entry.prior_state_version !== prior.version) throw new Error("swarm journal state versions are not contiguous");
   const next = structuredClone(prior);
   if (prior.status === "disbanded") throw new Error("swarm is terminal");
+  if (prior.status === "failed" && entry.kind !== "lease.expired") throw new Error("swarm is failed");
   if (entry.kind === "swarm.opened") {
     if (prior.version !== 0) throw new Error("swarm already opened");
     next.spec = structuredClone(entry.payload.spec);
@@ -929,25 +959,25 @@ function reduceDurableEntry(prior, entry) {
     next.dispatch_waves = [];
     next.status = "open";
   } else if (entry.kind === "wave.ready") {
-    if (prior.version === 0 || prior.status === "closing" || prior.status === "completed") throw new Error("swarm must open before leasing");
+    if (prior.version === 0 || prior.status === "closing" || prior.status === "completed" || prior.ready_wave || prior.steps.some((step) => step.status === "running")) throw new Error("swarm ready wave does not match Kahn layer");
     const wave = durableWave(entry.payload, "swarm ready");
-    for (const stepId of wave.step_ids) {
-      const step = next.steps.find((item) => item.step_id === stepId);
-      if (!step || step.status !== "pending" || step.depends_on.some((dependency) => next.steps.find((item) => item.step_id === dependency)?.status !== "completed")) throw new Error("swarm ready wave not ready");
-    }
+    durableLeaseTimestamp(entry.timestamp, "swarm ready timestamp");
+    durableLeaseTimestamp(wave.recorded_at, "swarm ready recorded_at");
+    const expectedStepIds = prior.steps.filter((step) => step.status === "pending" && step.depends_on.every((dependency) => prior.steps.find((item) => item.step_id === dependency)?.status === "completed")).map((step) => step.step_id);
+    if (wave.recorded_at !== entry.timestamp || canonical(wave.step_ids) !== canonical(expectedStepIds)) throw new Error("swarm ready wave does not match Kahn layer");
     next.ready_wave = structuredClone(wave);
     next.ready_waves.push(structuredClone(wave));
   } else if (entry.kind === "wave.dispatched") {
     if (prior.version === 0 || !prior.ready_wave || prior.status === "closing" || prior.status === "completed") throw new Error("swarm dispatch requires ready wave");
     const wave = durableWave(entry.payload, "swarm dispatch", ["claims", "schema_version", "wave"]);
-    if (!hasExactFields(entry.payload, ["claims", "schema_version", "wave"]) || canonical(wave) !== canonical(prior.ready_wave) || !Array.isArray(entry.payload.claims) || entry.payload.claims.length !== wave.step_ids.length) throw new Error("swarm dispatch readiness invalid");
+    durableLeaseTimestamp(entry.timestamp, "swarm dispatch timestamp");
+    if (!hasExactFields(entry.payload, ["claims", "schema_version", "wave"]) || canonical(wave) !== canonical(prior.ready_wave) || !Array.isArray(entry.payload.claims) || entry.payload.claims.length !== wave.step_ids.length || (prior.leases ?? []).length !== 0) throw new Error("swarm dispatch readiness invalid");
     const claims = [];
     for (const [index, claim] of entry.payload.claims.entries()) {
-      if (!hasExactFields(claim, ["attempt", "candidate", "candidate_index", "capability", "deadline", "fence", "owner", "step_id"]) || claim.step_id !== wave.step_ids[index] || typeof claim.owner !== "string" || claim.owner === "" || !Number.isSafeInteger(claim.fence) || claim.fence !== prior.last_fence + index + 1 || !Number.isSafeInteger(claim.attempt) || claim.attempt < 1 || !Number.isSafeInteger(claim.candidate_index) || claim.candidate_index !== claim.attempt - 1 || typeof claim.capability !== "string" || typeof claim.deadline !== "string") throw new Error("swarm dispatch claim invalid");
-      durableTimestamp(claim.deadline, "swarm dispatch deadline");
+      durableLeaseClaim(claim, "swarm dispatch claim");
       const step = next.steps.find((item) => item.step_id === claim.step_id);
       const specStep = prior.spec.steps.find((item) => item.step_id === claim.step_id);
-      if (!step || !specStep || step.status !== "pending" || claim.attempt !== step.attempts + 1 || claim.attempt > specStep.attempt_policy.max_attempts || claim.candidate_index >= specStep.candidates.length || claim.capability !== (specStep.capability ?? "") || canonical(claim.candidate) !== canonical(specStep.candidates[claim.candidate_index]) || Date.parse(claim.deadline) <= Date.parse(entry.timestamp)) throw new Error("swarm dispatch readiness invalid");
+      if (claim.step_id !== wave.step_ids[index] || claim.fence !== prior.last_fence + index + 1 || claim.attempt !== step?.attempts + 1 || claim.attempt > specStep?.attempt_policy.max_attempts || claim.candidate_index !== claim.attempt - 1 || claim.candidate_index >= specStep?.candidates.length || claim.capability !== (specStep?.capability ?? "") || canonical(claim.candidate) !== canonical(specStep?.candidates[claim.candidate_index]) || claim.deadline <= entry.timestamp) throw new Error("swarm dispatch readiness invalid");
       step.status = "running";
       step.attempts = claim.attempt;
       next.last_fence = claim.fence;
@@ -958,21 +988,48 @@ function reduceDurableEntry(prior, entry) {
     delete next.ready_wave;
     next.dispatch_waves.push({ wave: structuredClone(wave), attempts: structuredClone(claims) });
     next.status = "running";
+  } else if (entry.kind === "lease.renewed") {
+    if (prior.version === 0 || !hasExactFields(entry.payload, ["claim", "schema_version"]) || entry.payload.schema_version !== 1) throw new Error("lease renewal payload invalid");
+    const claim = durableLeaseClaim(entry.payload.claim, "lease renewal claim");
+    durableLeaseTimestamp(entry.timestamp, "lease renewal timestamp");
+    const leaseIndex = (prior.leases ?? []).findIndex((item) => item.step_id === claim.step_id);
+    const lease = prior.leases?.[leaseIndex];
+    if (!lease || !durableLeaseIdentityEqual(lease, claim) || entry.timestamp > lease.deadline || claim.deadline <= entry.timestamp || claim.deadline <= lease.deadline) throw new Error("lease renewal does not match live lease");
+    next.leases[leaseIndex] = structuredClone(claim);
   } else if (entry.kind === "lease.observed") {
-    if (prior.version === 0 || !hasExactFields(entry.payload, ["claim", "outcome", "schema_version"]) || entry.payload.schema_version !== 1 || !durablePlainObject(entry.payload.claim, "swarm observation claim") || typeof entry.payload.outcome !== "string" || entry.payload.outcome === "") throw new Error("swarm observation invalid");
-    const claim = entry.payload.claim;
+    if (prior.version === 0 || !hasExactFields(entry.payload, ["claim", "outcome", "schema_version"]) || entry.payload.schema_version !== 1 || typeof entry.payload.outcome !== "string" || entry.payload.outcome === "") throw new Error("swarm observation invalid");
+    const claim = durableLeaseClaim(entry.payload.claim, "swarm observation claim");
+    durableLeaseTimestamp(entry.timestamp, "swarm observation timestamp");
     const lease = (prior.leases ?? []).find((item) => item.step_id === claim.step_id);
-    if (!lease || !durableClaimEqual(lease, claim)) throw new Error("swarm observation fence invalid");
+    if (!lease || !durableClaimEqual(lease, claim) || entry.timestamp >= claim.deadline) throw new Error("swarm observation does not match live lease");
     const step = next.steps.find((item) => item.step_id === claim.step_id);
-    if (!step) throw new Error("swarm observation invalid");
+    if (!step || step.status !== "running" || step.attempts !== claim.attempt) throw new Error("swarm observation step state invalid");
     step.observations.push({ claim: structuredClone(claim), outcome: entry.payload.outcome, observed_at: entry.timestamp });
+  } else if (entry.kind === "lease.expired") {
+    if (prior.version === 0 || !hasExactFields(entry.payload, ["claims", "now", "schema_version"]) || entry.payload.schema_version !== 1 || entry.payload.now !== entry.timestamp || !Array.isArray(entry.payload.claims) || entry.payload.claims.length === 0) throw new Error("lease expiry payload invalid");
+    durableLeaseTimestamp(entry.timestamp, "lease expiry timestamp");
+    durableLeaseTimestamp(entry.payload.now, "lease expiry now");
+    for (const claim of entry.payload.claims) {
+      durableLeaseClaim(claim, "lease expiry claim");
+      const leaseIndex = next.leases.findIndex((item) => item.step_id === claim.step_id);
+      const lease = next.leases[leaseIndex];
+      if (!lease || !durableClaimEqual(lease, claim) || claim.deadline > entry.payload.now) throw new Error("lease expiry does not match live lease");
+      const step = next.steps.find((item) => item.step_id === claim.step_id);
+      const specStep = prior.spec.steps.find((item) => item.step_id === claim.step_id);
+      if (!step || !specStep || step.status !== "running" || step.attempts !== claim.attempt) throw new Error("lease expiry step state invalid");
+      step.observations.push({ claim: structuredClone(claim), outcome: "expired", observed_at: entry.payload.now });
+      step.status = step.attempts >= specStep.attempt_policy.max_attempts ? "failed" : "pending";
+      next.leases.splice(leaseIndex, 1);
+    }
+    delete next.ready_wave;
   } else if (entry.kind === "receipt.committed") {
-    if (prior.status !== "running" || entry.payload.schema_version !== 1 || !durablePlainObject(entry.payload.claim, "swarm receipt claim")) throw new Error("swarm receipt invalid");
-    const claim = entry.payload.claim;
+    if (prior.status !== "running" || !hasExactFields(entry.payload, ["auxiliary", "claim", "receipt", "receipt_digest", "result", "schema_version"]) || entry.payload.schema_version !== 1) throw new Error("swarm receipt invalid");
+    const claim = durableLeaseClaim(entry.payload.claim, "swarm receipt claim");
+    durableLeaseTimestamp(entry.timestamp, "swarm receipt timestamp");
     const step = next.steps.find((item) => item.step_id === claim.step_id);
     const lease = (prior.leases ?? []).find((item) => item.step_id === claim.step_id);
     const receiptBytes = durableBase64(entry.payload.receipt, "swarm receipt");
-    if (!step || step.status !== "running" || !lease || !durableClaimEqual(lease, claim) || durableHex(entry.payload.receipt_digest, "swarm receipt digest") !== createHash("sha256").update(receiptBytes).digest("hex")) throw new Error("swarm receipt invalid");
+    if (!step || step.status !== "running" || step.attempts !== claim.attempt || !lease || !durableClaimEqual(lease, claim) || entry.timestamp >= claim.deadline || durableHex(entry.payload.receipt_digest, "swarm receipt digest") !== createHash("sha256").update(receiptBytes).digest("hex")) throw new Error("swarm receipt does not match live lease");
     const receipt = durableCanonicalJson(receiptBytes, "swarm receipt");
     const specStep = prior.spec.steps.find((item) => item.step_id === claim.step_id);
     if (!specStep || !durableReceiptMatchesCommit(prior, specStep, claim, entry.payload, receipt) || !verifyObject(publicKeyFromDescriptor({ public_key_spki: claim.candidate?.public_key_spki }), (() => { const { signature, ...body } = receipt; return body; })(), receipt.signature)) throw new Error("swarm receipt signature invalid");
@@ -981,7 +1038,6 @@ function reduceDurableEntry(prior, entry) {
     step.observations.push({ claim: structuredClone(claim), outcome: "receipt.committed", observed_at: entry.timestamp });
     next.receipts ??= {};
     next.receipts[claim.step_id] = { digest: entry.payload.receipt_digest, result: structuredClone(entry.payload.result) };
-    next.status = next.steps.every((item) => item.status === "completed") ? "completed" : "running";
   } else if (entry.kind === "close.stored") {
     if (prior.status !== "completed" || (prior.leases ?? []).length !== 0 || !hasExactFields(entry.payload, ["close", "digest", "schema_version"]) || entry.payload.schema_version !== 1) throw new Error("illegal swarm close");
     const closeBytes = durableBase64(entry.payload.close, "swarm close");
@@ -1022,6 +1078,7 @@ function reduceDurableEntry(prior, entry) {
   } else {
     throw new Error("swarm journal transition kind invalid");
   }
+  if (["wave.ready", "wave.dispatched", "lease.renewed", "lease.observed", "lease.expired", "receipt.committed"].includes(entry.kind)) next.status = durableDerivedSwarmStatus(next.steps);
   next.version = entry.state_version;
   return next;
 }
