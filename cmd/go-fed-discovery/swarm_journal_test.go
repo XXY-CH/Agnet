@@ -387,3 +387,71 @@ func journalTestHash(entry SwarmJournalEntry) string {
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
 }
+
+func TestSwarmJournalAppendRejectsInvalidTypedCandidatesWithoutMutation(t *testing.T) {
+	journal := newTestSwarmJournal(t)
+	if _, err := OpenVerifiedSwarm(journal, reducerTestDurableSpec(t), swarmJournalTestTime); err != nil {
+		t.Fatal(err)
+	}
+	for _, candidate := range []struct {
+		name    string
+		kind    string
+		payload any
+	}{
+		{name: "illegal transition", kind: "step.completed", payload: map[string]any{"schema_version": 1, "step_id": "prepare"}},
+		{name: "malformed registered payload", kind: "step.started", payload: map[string]any{"schema_version": 2, "step_id": "prepare"}},
+	} {
+		t.Run(candidate.name, func(t *testing.T) {
+			before, err := os.ReadFile(journal.Path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := journal.Append(candidate.kind, candidate.payload, 1, 2, swarmJournalTestTime.Add(time.Second)); err == nil {
+				t.Fatalf("Append accepted %s", candidate.name)
+			}
+			after, err := os.ReadFile(journal.Path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(after, before) {
+				t.Fatalf("%s changed journal bytes: got %q; want %q", candidate.name, after, before)
+			}
+			entries := mustReplaySwarm(t, journal)
+			if len(entries) != 1 || entries[0].Hash == "" {
+				t.Fatalf("%s changed journal head: %#v", candidate.name, entries)
+			}
+		})
+	}
+}
+
+func TestSwarmJournalAppendValidatesOpeningSeedBeforeDurableWrite(t *testing.T) {
+	journal := newTestSwarmJournal(t)
+	if _, err := journal.Append("swarm.opened", map[string]any{"schema_version": 1}, 0, 1, swarmJournalTestTime); err == nil {
+		t.Fatal("Append accepted an invalid opening seed")
+	}
+	if _, err := os.Stat(journal.Path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("invalid opening seed created journal: %v", err)
+	}
+}
+
+func TestSwarmJournalPreservesFutureEntriesDuringTypedReplay(t *testing.T) {
+	journal := newTestSwarmJournal(t)
+	if _, err := OpenVerifiedSwarm(journal, reducerTestDurableSpec(t), swarmJournalTestTime); err != nil {
+		t.Fatal(err)
+	}
+	future, err := journal.Append("future.audit", map[string]any{"event": "recorded"}, 1, 2, swarmJournalTestTime.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := mustReplaySwarm(t, journal)
+	if len(entries) != 2 || !reflect.DeepEqual(entries[1], future) {
+		t.Fatalf("typed replay dropped future entry: %#v", entries)
+	}
+	state, err := ReduceSwarmEntries(entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Version != 2 || state.Status != SwarmStatusOpen {
+		t.Fatalf("future entry changed typed state: %#v", state)
+	}
+}

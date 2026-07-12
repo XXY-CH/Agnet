@@ -57,9 +57,11 @@ type SwarmJournal struct {
 	Path     string
 	LockPath string
 
-	fault SwarmFaultInjector
-	mu    sync.Mutex
-	poison error
+	expectedSwarmID string
+	storageKey      string
+	fault           SwarmFaultInjector
+	mu              sync.Mutex
+	poison          error
 }
 
 // OpenSwarmJournal opens and validates the authoritative journal for swarmID. It never falls back
@@ -68,13 +70,19 @@ func OpenSwarmJournal(storageRoot, swarmID string, faults ...SwarmFaultInjector)
 	if storageRoot == "" || swarmID == "" {
 		return nil, errors.New("swarm journal storage root and swarm id are required")
 	}
+	storageKey, err := swarmStorageKey(swarmID)
+	if err != nil {
+		return nil, err
+	}
 	dir, err := openSwarmStorageDir(storageRoot, swarmID)
 	if err != nil {
 		return nil, err
 	}
 	journal := &SwarmJournal{
-		Path:     filepath.Join(dir, "journal.ndjson"),
-		LockPath: filepath.Join(dir, "journal.lock"),
+		Path:            filepath.Join(dir, "journal.ndjson"),
+		LockPath:        filepath.Join(dir, "journal.lock"),
+		expectedSwarmID: swarmID,
+		storageKey:      storageKey,
 	}
 	if len(faults) > 1 {
 		return nil, errors.New("at most one swarm journal fault injector is allowed")
@@ -175,6 +183,9 @@ func (j *SwarmJournal) Append(kind string, payload any, priorStateVersion, state
 		if err != nil {
 			return err
 		}
+		if err := j.validateTypedAppend(entries, entry); err != nil {
+			return err
+		}
 		if err := j.appendLocked(entry); err != nil {
 			return err
 		}
@@ -182,6 +193,38 @@ func (j *SwarmJournal) Append(kind string, payload any, priorStateVersion, state
 		return nil
 	})
 	return appended, err
+}
+
+func (j *SwarmJournal) validateTypedAppend(entries []SwarmJournalEntry, candidate SwarmJournalEntry) error {
+	if len(entries) == 0 {
+		if candidate.Kind != "swarm.opened" {
+			return nil
+		}
+		state, err := ReduceSwarmEntry(SwarmState{}, candidate)
+		if err != nil {
+			return fmt.Errorf("swarm journal candidate state: %w", err)
+		}
+		return j.validateTypedStateIdentity(state)
+	}
+	if entries[0].Kind != "swarm.opened" {
+		return nil
+	}
+	state, err := ReduceSwarmEntries(entries)
+	if err != nil {
+		return fmt.Errorf("swarm journal state replay: %w", err)
+	}
+	state, err = reduceSwarmTypedEntry(state, candidate)
+	if err != nil {
+		return fmt.Errorf("swarm journal candidate state: %w", err)
+	}
+	return j.validateTypedStateIdentity(state)
+}
+
+func (j *SwarmJournal) validateTypedStateIdentity(state SwarmState) error {
+	if state.Spec.SwarmID != j.expectedSwarmID {
+		return errors.New("swarm journal identity conflicts with durable seed")
+	}
+	return nil
 }
 
 func (j *SwarmJournal) replayLocked() ([]SwarmJournalEntry, error) {
@@ -227,6 +270,15 @@ func (j *SwarmJournal) replayLocked() ([]SwarmJournalEntry, error) {
 		if err := file.Sync(); err != nil {
 			j.poison = err
 			return nil, fmt.Errorf("swarm journal recovery rollback sync: %w", err)
+		}
+	}
+	if len(entries) != 0 && entries[0].Kind == "swarm.opened" {
+		state, err := ReduceSwarmEntries(entries)
+		if err != nil {
+			return nil, fmt.Errorf("swarm journal state replay: %w", err)
+		}
+		if err := j.validateTypedStateIdentity(state); err != nil {
+			return nil, err
 		}
 	}
 	return entries, nil
