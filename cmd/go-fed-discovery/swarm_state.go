@@ -48,6 +48,10 @@ type DurableWorkerCandidate struct {
 	GenerationPin    WorkerGenerationPin `json:"generation_pin"`
 	PublicKeySPKI    string              `json:"public_key_spki"`
 	DescriptorDigest string              `json:"descriptor_digest"`
+	// Runtime is the exact non-secret container profile captured at dispatch.
+	// Key material is intentionally excluded; generation pin remains authoritative.
+	Runtime          *WorkerProfile      `json:"runtime,omitempty"`
+	RuntimeKind      string              `json:"runtime_kind,omitempty"`
 }
 
 // DurableSwarmStepSpec is the complete immutable execution input for one ordered step.
@@ -214,6 +218,15 @@ func validateDurableSwarmSpec(spec DurableSwarmSpec) error {
 			key, der, err := publicKey(map[string]any{"public_key_spki": candidate.PublicKeySPKI})
 			if err != nil || len(key) != 32 || candidate.AID != aidFromSPKI(der) {
 				return errors.New("swarm durable worker verification pin invalid")
+			}
+			if candidate.Runtime != nil {
+				runtime := candidate.Runtime
+				if runtime.KeyFile != "" || runtime.KeyStore != "" || runtime.PassphraseFile != "" || runtime.KeyGeneration != (WorkerGenerationPin{}) || (candidate.RuntimeKind != "" && candidate.RuntimeKind != "docker" && candidate.RuntimeKind != "apple-container") {
+					return errors.New("swarm durable worker runtime invalid")
+				}
+				if candidate.RuntimeKind != "" && (runtime.SandboxClaim != "container-namespace" || runtime.Docker == nil) {
+					return errors.New("swarm durable worker runtime invalid")
+				}
 			}
 		}
 		seen[step.StepID] = true
@@ -540,7 +553,21 @@ func durableCandidateForWorker(worker *Worker) (DurableWorkerCandidate, error) {
 	if err != nil || optionalString(worker.Descriptor["aid"]) != aidFromSPKI(der) || !bytes.Equal(key, worker.PrivateKey.Public().(ed25519.PublicKey)) {
 		return DurableWorkerCandidate{}, errors.New("worker durable verification pin invalid")
 	}
-	return DurableWorkerCandidate{Alias: optionalString(worker.Descriptor["alias"]), AID: optionalString(worker.Descriptor["aid"]), GenerationPin: worker.WorkerGenerationPin, PublicKeySPKI: optionalString(worker.Descriptor["public_key_spki"]), DescriptorDigest: worker.GenerationRef.DescriptorDigest}, nil
+	runtime := worker.Profile
+	runtime.KeyFile, runtime.KeyStore, runtime.PassphraseFile, runtime.KeyGeneration = "", "", "", WorkerGenerationPin{}
+	runtime.ToolCommand = append([]string(nil), runtime.ToolCommand...)
+	if runtime.Docker != nil {
+		docker := *runtime.Docker
+		docker.Command = append([]string(nil), runtime.Docker.Command...)
+		docker.ScratchInputs = append([]DockerScratchInput(nil), runtime.Docker.ScratchInputs...)
+		runtime.Docker = &docker
+	}
+	runtimeKind := ""
+	if runtime.SandboxClaim == "container-namespace" {
+		runtimeKind, err = configuredContainerRuntime()
+		if err != nil { return DurableWorkerCandidate{}, errors.New("worker durable runtime pin invalid") }
+	}
+	return DurableWorkerCandidate{Alias: optionalString(worker.Descriptor["alias"]), AID: optionalString(worker.Descriptor["aid"]), GenerationPin: worker.WorkerGenerationPin, PublicKeySPKI: optionalString(worker.Descriptor["public_key_spki"]), DescriptorDigest: worker.GenerationRef.DescriptorDigest, Runtime: &runtime, RuntimeKind: runtimeKind}, nil
 }
 
 // OpenVerifiedSwarm verifies Phase A before opening the authoritative journal.

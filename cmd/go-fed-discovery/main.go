@@ -52,7 +52,15 @@ func main() {
 	printZone := flag.Bool("print-zone", false, "print the authority Zone descriptor and exit")
 	interopRequestPort := flag.String("interop-request", "", "send one FED_TASK_OPEN request to a Node federation gateway port and exit")
 	verifySwarmOutputSchedulerGate := flag.Bool("verify-swarm-output-scheduler-gate", false, "verify Swarm output proof and print scheduler completion gate JSON")
+	localSwarmWorker := flag.Bool("local-swarm-worker", false, "internal local Swarm worker mode")
 	flag.Parse()
+	if *localSwarmWorker {
+		if err := localSwarmWorkerMain(os.Stdin, os.Stdout, getLocalSwarmWorkerDeps()); err != nil {
+			fmt.Fprintln(os.Stderr, "local swarm worker failed")
+			os.Exit(1)
+		}
+		return
+	}
 
 	if *printZone {
 		authority, err := loadManagedIdentity(ManagedKeyConfig{StorePath: *authorityStorePath, PassphraseFile: *authorityPassphrasePath, RecordDigest: *authorityRecordDigest}, "zid")

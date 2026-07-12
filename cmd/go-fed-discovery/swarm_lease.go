@@ -444,7 +444,7 @@ func validateDispatchClaim(state SwarmState, wave ReadyWave, claim LeaseClaim, p
 		return errors.New("dispatch lease claim invalid")
 	}
 	index := swarmStepIndex(state.Steps, claim.StepID)
-	if index < 0 || state.Steps[index].Status != SwarmStepStatusPending || claim.Attempt != state.Steps[index].Attempts+1 || claim.CandidateIndex != claim.Attempt-1 || claim.CandidateIndex >= uint64(len(state.Spec.Steps[index].Candidates)) || claim.Capability != state.Spec.Steps[index].Capability || claim.Candidate != state.Spec.Steps[index].Candidates[claim.CandidateIndex] || claim.Attempt > state.Spec.Steps[index].AttemptPolicy.MaxAttempts {
+	if index < 0 || state.Steps[index].Status != SwarmStepStatusPending || claim.Attempt != state.Steps[index].Attempts+1 || claim.CandidateIndex != claim.Attempt-1 || claim.CandidateIndex >= uint64(len(state.Spec.Steps[index].Candidates)) || claim.Capability != state.Spec.Steps[index].Capability || !reflect.DeepEqual(claim.Candidate, state.Spec.Steps[index].Candidates[claim.CandidateIndex]) || claim.Attempt > state.Spec.Steps[index].AttemptPolicy.MaxAttempts {
 		return errors.New("dispatch lease candidate or budget invalid")
 	}
 	return nil
@@ -460,5 +460,5 @@ func leaseIndex(leases []LeaseClaim, stepID string) int {
 }
 
 func sameLeaseIdentity(a, b LeaseClaim) bool {
-	return a.StepID == b.StepID && a.Owner == b.Owner && a.Fence == b.Fence && a.Attempt == b.Attempt && a.CandidateIndex == b.CandidateIndex && a.Capability == b.Capability && a.Candidate == b.Candidate
+	return a.StepID == b.StepID && a.Owner == b.Owner && a.Fence == b.Fence && a.Attempt == b.Attempt && a.CandidateIndex == b.CandidateIndex && a.Capability == b.Capability && reflect.DeepEqual(a.Candidate, b.Candidate)
 }

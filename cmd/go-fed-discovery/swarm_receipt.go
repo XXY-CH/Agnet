@@ -257,7 +257,7 @@ func CommitReceipt(journal *SwarmJournal, commit ReceiptCommit, timestamp time.T
 
 func exactCommittedReceipt(payload receiptCommittedPayload, commit ReceiptCommit) bool {
 	raw, err := base64.RawURLEncoding.DecodeString(payload.Receipt)
-	return err == nil && payload.SchemaVersion == swarmStateSchemaVersion && payload.Claim == commit.Claim && payload.ReceiptDigest == commit.Receipt.Digest && bytes.Equal(raw, commit.Receipt.Bytes)
+	return err == nil && payload.SchemaVersion == swarmStateSchemaVersion && reflect.DeepEqual(payload.Claim, commit.Claim) && payload.ReceiptDigest == commit.Receipt.Digest && bytes.Equal(raw, commit.Receipt.Bytes)
 }
 
 func committedDependencyTriples(state SwarmState, stepIndex int) (map[string]ArtifactTriple, error) {
