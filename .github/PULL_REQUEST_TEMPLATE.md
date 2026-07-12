@@ -6,8 +6,8 @@ What boundary does this PR close?
 
 - [ ] Added or updated a failing test first
 - [ ] `go test ./...`
-- [ ] `node --test --test-concurrency=1 go-fed-discovery.test.mjs`
-- [ ] `node --test --test-concurrency=1 *.test.mjs`
+- [ ] `node --test --test-concurrency=1 test/go-fed-discovery.test.mjs`
+- [ ] `node --test --test-concurrency=1 test/*.test.mjs`
 
 ## Capability Claim
 

@@ -8,8 +8,8 @@ import net from "node:net";
 import { chmod, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { agentFromPrivateKey, canonical, zoneFromPrivateKey } from "./asp-core.mjs";
-import { migrateKey } from "./agnet-key.mjs";
+import { agentFromPrivateKey, canonical, zoneFromPrivateKey } from "../asp-core.mjs"
+import { migrateKey } from "../agnet-key.mjs"
 
 const execFileAsync = promisify(execFile);
 

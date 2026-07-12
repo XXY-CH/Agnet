@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 
-import { canonical, computeAid, computeZid } from "./asp-core.mjs";
-import { openKeyEnvelope, parseKeyEnvelope, readRestrictedFile, sealKeyEnvelope } from "./managed-key.mjs";
+import { canonical, computeAid, computeZid } from "../asp-core.mjs"
+import { openKeyEnvelope, parseKeyEnvelope, readRestrictedFile, sealKeyEnvelope } from "../managed-key.mjs"
 
 const PKCS8_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
 const PASSPHRASE = Buffer.from("u8 deterministic passphrase <>&\n");

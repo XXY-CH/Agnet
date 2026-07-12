@@ -72,7 +72,7 @@ Remaining exit criterion:
 - `scripts/release-trust.mjs` consumes the existing package proof artifact path, verifies the package proof first, and writes signed release trust evidence for the produced tarball.
 - `asp-verify.mjs release-trust <release-trust.json> [trusted-release-signers.json]` verifies package-proof binding, tarball bytes, release signer capability, trusted release signer pins, and manifest signature.
 - Negative gates reject malformed, stale, mismatched, unsigned, wrong-signer, untrusted-signer, unsafe-path, invalid timestamp, and extra-argument release trust evidence.
-- `release-trust.test.mjs` covers happy path, trusted signer pinning, and fail-closed release trust mutations; `docs-contract.test.mjs` guards the public docs boundary.
+- `test/release-trust.test.mjs` covers happy path, trusted signer pinning, and fail-closed release trust mutations; `test/docs-contract.test.mjs` guards the public docs boundary.
 
 验收边界：
 
@@ -130,7 +130,7 @@ Remaining exit criterion:
 - Candidate results expose `discovery_evidence` for identity, exact/semantic capability match, trusted credential state, and receipt-count reputation input.
 - Ranking output is deterministic for a fixed input and explains score components through `ranking.score` and `ranking.reasons`.
 - The exact capability candidate with trusted credential and receipt-count evidence outranks the semantic-only candidate.
-- `federation-gateway.test.mjs` covers the evidence-first ranking boundary; `docs-contract.test.mjs` guards the public wording.
+- `test/federation-gateway.test.mjs` covers the evidence-first ranking boundary; `test/docs-contract.test.mjs` guards the public wording.
 
 不做：
 
@@ -150,7 +150,7 @@ Remaining exit criterion:
 - Every scheduled step still uses the existing signed task execution path and produces audit-backed receipts.
 - `FED_SWARM_CLOSE` remains complete, ordered, deduplicated, digest-checked, and tied to the same audit.
 - Close proof carries signed scheduler evidence with `mode: "ready-dag"` and the executed `step_order`.
-- `go-fed-discovery.test.mjs` covers out-of-order ready-DAG execution, dependency artifact binding, and close proof scheduler evidence.
+- `test/go-fed-discovery.test.mjs` covers out-of-order ready-DAG execution, dependency artifact binding, and close proof scheduler evidence.
 
 不做：
 
@@ -170,7 +170,7 @@ Remaining exit criterion:
 - `queryMatch` returns `discovery_evidence` with `capability`, `credential`, and `reputation` fields, plus `ranking.score` and `ranking.reasons` — mirroring the Node federation-gateway.mjs surface from v13.4.
 - `semanticScore` and `tokenize` helpers compute token-overlap intent scoring over alias and capabilities.
 - Results are sorted by ranking score descending (alias ascending as a tiebreaker).
-- `go-fed-discovery.test.mjs` covers semantic intent query, discovery_evidence shape, ranking score comparison, and ranking reasons.
+- `test/go-fed-discovery.test.mjs` covers semantic intent query, discovery_evidence shape, ranking score comparison, and ranking reasons.
 
 不做：
 
@@ -188,7 +188,7 @@ Remaining exit criterion:
 - Go FED_QUERY reputation counts completed `go_fed_receipt` audit records for each worker AID from `f.Audit.Path`.
 - Missing, empty, unreadable, or partially malformed audit logs fail safe to zero counted receipts instead of inventing reputation.
 - `discovery_evidence.reputation.completed_receipts` remains inspectable, and receipt counts come from the persisted audit log.
-- `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs`, and `docs-contract.test.mjs` cover the audit-backed receipt-count boundary.
+- `test/federation-gateway.test.mjs`, `test/go-fed-discovery.test.mjs`, and `test/docs-contract.test.mjs` cover the audit-backed receipt-count boundary.
 
 不做：
 
@@ -209,7 +209,7 @@ Remaining exit criterion:
 - Node credential verification rejects malformed, non-string, unparseable, or past `valid_until` claims before treating a credential as active.
 - Node and Go `FED_QUERY` ranking only adds credential contribution inside `agent_score` when the credential is active.
 - Credentials without `valid_until` keep the existing active behavior.
-- `capability-credential.test.mjs`, `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs`, and `docs-contract.test.mjs` cover the credential validity window boundary.
+- `test/capability-credential.test.mjs`, `test/federation-gateway.test.mjs`, `test/go-fed-discovery.test.mjs`, and `test/docs-contract.test.mjs` cover the credential validity window boundary.
 
 不做：
 
@@ -230,7 +230,7 @@ Remaining exit criterion:
 - Go `FED_QUERY` loads fixture revocations and validates authority Zone revocation signatures before treating a worker credential as active.
 - `discovery_evidence.credential.trusted` still reports whether signed capability credentials exist, while `discovery_evidence.credential.active` fails closed to `false` for revoked worker AIDs or aliases.
 - revoked workers lose credential contribution in `agent_score` and no `credential_active` ranking reason; non-revoked workers keep the existing active behavior.
-- `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs`, and `docs-contract.test.mjs` cover the zone revocation in discovery boundary.
+- `test/federation-gateway.test.mjs`, `test/go-fed-discovery.test.mjs`, and `test/docs-contract.test.mjs` cover the zone revocation in discovery boundary.
 
 不做：
 
@@ -250,7 +250,7 @@ Remaining exit criterion:
 - `agent_score.receipt_score` is derived from completed receipts, `credential_score` from active credential state, `freshness_score` from recent `last_completed_at`, and `revocation_penalty` from signed local authority Zone revocations.
 - `ranking.score` now equals `agent_score.total` plus exact capability and semantic intent scores, so reputation effects are not hidden as separate ranking boosts.
 - Missing receipt timestamps fail safe to no freshness contribution instead of inventing recency.
-- `federation-gateway.test.mjs`, `go-fed-discovery.test.mjs`, and `docs-contract.test.mjs` cover the multi-signal agent score reputation boundary.
+- `test/federation-gateway.test.mjs`, `test/go-fed-discovery.test.mjs`, and `test/docs-contract.test.mjs` cover the multi-signal agent score reputation boundary.
 
 不做：
 
@@ -271,7 +271,7 @@ Remaining exit criterion:
 - `checkpoint_refs` must be non-empty strings when present; `checkpoints` must be objects when present; the two lists must have equal length.
 - Each checkpoint must bind the same receipt `task_id`, match the corresponding `checkpoint_refs` entry, continue the parent chain from `receipt.resumed_from` or `null`, and verify with the worker `checkpoint_signature`.
 - `asp-verify.mjs fed-receipt <frame.json> <trusted-zones.json> [task.json]` inherits the same checkpoint evidence rejection.
-- `test-vectors.test.mjs` covers accepted signed checkpoint evidence, ref mismatch rejection, checkpoint signature mismatch rejection, and CLI acceptance/rejection.
+- `test/test-vectors.test.mjs` covers accepted signed checkpoint evidence, ref mismatch rejection, checkpoint signature mismatch rejection, and CLI acceptance/rejection.
 - `docs/v13.15-boundary.md` records the narrow proof boundary and non-goals.
 
 不做：
@@ -292,8 +292,8 @@ Remaining exit criterion:
 ## 验收
 
 ```bash
-node --test --test-concurrency=1 docs-contract.test.mjs
+node --test --test-concurrency=1 test/docs-contract.test.mjs
 gofmt -l . && git diff --check
 go test ./...
-node --test --test-concurrency=1 *.test.mjs
+node --test --test-concurrency=1 test/*.test.mjs
 ```

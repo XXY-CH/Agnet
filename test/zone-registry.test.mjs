@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import { test } from "node:test";
-import { createAgent, createZone, loadRegistry, resolveAgent, writeRegistry } from "./asp-core.mjs";
+import { createAgent, createZone, loadRegistry, resolveAgent, writeRegistry } from "../asp-core.mjs"
 
 test("zone-signed registry binding resolves agent alias", async () => {
   const zone = createZone("zone://local");

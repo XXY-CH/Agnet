@@ -160,7 +160,7 @@
 - `docs/asp-core-draft.md` documents identity, Zone trust, `FED_TASK_OPEN`, `FED_RECEIPT`, artifact manifests, local artifact byte checks, and audit hash-chain evidence.
 - The draft states that `aid:` is canonical and `did:key` is only an Ed25519 bridge field.
 - The draft explicitly keeps compatibility, scheduling, public discovery, remote artifact fetch, receipt stores, batch verification, reputation, payments, and product UI out of scope.
-- `docs-contract.test.mjs` guards the core boundary phrases.
+- `test/docs-contract.test.mjs` guards the core boundary phrases.
 
 不做：
 
@@ -207,7 +207,7 @@
 - `scripts/proof-demo.sh` runs `node mvp-demo.mjs`.
 - The script verifies the generated local artifact manifest with `node asp-verify.mjs artifact`.
 - The script prints one JSON result with `proof_demo`, `task_id`, `receipt_signature`, `artifact_verify`, and `artifact_uri`.
-- `proof-demo.test.mjs` proves the script runs and returns the expected proof summary.
+- `test/proof-demo.test.mjs` proves the script runs and returns the expected proof summary.
 
 不做：
 
@@ -229,7 +229,7 @@
 - `Dockerfile` runs `bash scripts/proof-demo.sh` in a Node image.
 - `.dockerignore` keeps local state, artifacts, logs, and `.git` out of the image build context.
 - `scripts/docker-proof-demo.sh` builds `agnet-proof-demo` and runs it.
-- `docker-demo.test.mjs` guards that the Docker demo delegates to the local proof script.
+- `test/docker-demo.test.mjs` guards that the Docker demo delegates to the local proof script.
 
 不做：
 
@@ -253,7 +253,7 @@
 - `mvp-demo.mjs` emits a local `FED_RECEIPT` frame and trusted Zone set for the same demo receipt.
 - `scripts/proof-demo.sh` writes `state/proof-demo-fed-receipt.json` and `state/proof-demo-trusted-zones.json`.
 - `scripts/proof-demo.sh` verifies those files with `node asp-verify.mjs fed-receipt-artifacts`.
-- `proof-demo.test.mjs` proves the emitted files can be re-verified by the existing CLI.
+- `test/proof-demo.test.mjs` proves the emitted files can be re-verified by the existing CLI.
 
 不做：
 
@@ -277,7 +277,7 @@
 - Go `FED_SWARM_CLOSE` includes a `close` proof object.
 - `close.step_receipts` lists completed steps in execution order with `step_id`, `task_id`, and `receipt_digest`.
 - `close.close_signature` is signed by the local Zone authority key.
-- `go-fed-discovery.test.mjs` verifies the close proof contents and signature.
+- `test/go-fed-discovery.test.mjs` verifies the close proof contents and signature.
 
 不做：
 
@@ -300,7 +300,7 @@
 - Go `executeSwarm` appends `go_swarm_close` audit records with the Zone-signed close proof.
 - `--verify-audit` verifies `go_swarm_close.close_signature`.
 - `--verify-audit` checks close `step_receipts` against same-audit Swarm receipt state by `step_id`, `task_id`, and `receipt_digest`.
-- `go-fed-discovery.test.mjs` proves live Swarm close records appear through the Human Gateway audit API.
+- `test/go-fed-discovery.test.mjs` proves live Swarm close records appear through the Human Gateway audit API.
 - `cmd/go-fed-discovery/main_test.go` proves a tampered close receipt digest is rejected.
 
 不做：
@@ -480,7 +480,7 @@
 - `scripts/public-node-proof.sh` builds the Go gateway and runs a proof helper.
 - `scripts/public-node-proof.mjs` starts the gateway with `--listen-host 0.0.0.0`.
 - The proof output includes `public_node_proof: "ok"`, `listen_host: "0.0.0.0"`, `public_transport: true`, and `transport: "fed+tcp"`.
-- `public-node-proof.test.mjs` runs the proof script end to end.
+- `test/public-node-proof.test.mjs` runs the proof script end to end.
 
 不做：
 
@@ -596,7 +596,7 @@
 - `scripts/public-node-proof.mjs` writes the fetched audit receipt proof to `state/public-node-proof-fed-receipt.json`.
 - It writes the matching trusted Zone set to `state/public-node-proof-trusted-zones.json`.
 - The proof output includes `receipt_frame` and `trusted_zones` paths.
-- `public-node-proof.test.mjs` verifies those files with `node asp-verify.mjs fed-receipt`.
+- `test/public-node-proof.test.mjs` verifies those files with `node asp-verify.mjs fed-receipt`.
 
 不做：
 
@@ -704,7 +704,7 @@
 - `Dockerfile.public-node-proof` builds `cmd/go-fed-discovery` in a Go build stage.
 - The runtime image uses Node and runs the existing `scripts/public-node-proof.mjs` proof helper.
 - `scripts/docker-public-node-proof.sh` builds `agnet-public-node-proof` and runs it.
-- `docker-demo.test.mjs` guards that the Docker public proof delegates to the existing public-listen proof path.
+- `test/docker-demo.test.mjs` guards that the Docker public proof delegates to the existing public-listen proof path.
 - Verified `bash scripts/docker-public-node-proof.sh` on Docker Server `29.0.1`.
 - The Docker public proof run produced `public_node_proof: "ok"`, `public_transport: true`, `fed_receipt_artifacts_verify: "ok"`, `artifact_reject: true`, and `artifact_tamper_reject: true`.
 
@@ -732,8 +732,8 @@
 - `package.json` exposes `asp-core.mjs` as the package root export.
 - `package.json` uses `license: "UNLICENSED"` to preserve the current no-open-source-license boundary.
 - `asp-verify.mjs` has a Node shebang and executable bit for package-bin execution.
-- `package-contract.test.mjs` proves package metadata points at existing verifier files.
-- `package-contract.test.mjs` proves `npm exec --package . -- asp-verify fed-receipt <frame> <trusted-zones>` runs the existing verifier CLI.
+- `test/package-contract.test.mjs` proves package metadata points at existing verifier files.
+- `test/package-contract.test.mjs` proves `npm exec --package . -- asp-verify fed-receipt <frame> <trusted-zones>` runs the existing verifier CLI.
 
 不做：
 
@@ -759,7 +759,7 @@
 - The public proof uses the existing fixed two-step Swarm path: `summary` then `dependent`.
 - The proof verifies the returned `FED_SWARM_CLOSE.close_signature` with the existing Zone authority descriptor.
 - The proof verifies the close proof step receipts match the received Swarm receipts by step id, task id, and receipt digest.
-- `public-node-proof.test.mjs` asserts `swarm_id`, step count, ordered step ids, close signature verification, and close receipt matching.
+- `test/public-node-proof.test.mjs` asserts `swarm_id`, step count, ordered step ids, close signature verification, and close receipt matching.
 
 不做：
 
@@ -786,7 +786,7 @@
 - `Dockerfile.public-node-proof` declares `AGNET_NODE_BASE_IMAGE` with default `node:22-bookworm-slim`.
 - `scripts/docker-proof-demo.sh` passes `AGNET_NODE_BASE_IMAGE` as a build argument.
 - `scripts/docker-public-node-proof.sh` passes `AGNET_GO_BASE_IMAGE` and `AGNET_NODE_BASE_IMAGE` as build arguments.
-- `docker-demo.test.mjs` guards both override contracts.
+- `test/docker-demo.test.mjs` guards both override contracts.
 
 不做：
 
@@ -810,7 +810,7 @@
 
 - `scripts/public-node-proof.mjs` emits `swarm_close_digest`.
 - The digest is `sha256(canonical(close proof body without close_signature))`, reusing the existing Node canonical JSON helper.
-- `public-node-proof.test.mjs` recomputes the digest from `state/public-node-proof-audit.log` and checks it matches the proof output.
+- `test/public-node-proof.test.mjs` recomputes the digest from `state/public-node-proof-audit.log` and checks it matches the proof output.
 
 不做：
 
@@ -832,7 +832,7 @@
 
 - `scripts/public-node-proof.mjs` writes `state/public-node-proof-swarm-close.json`.
 - The proof output includes `swarm_close_frame` with that path.
-- `public-node-proof.test.mjs` reads the frame file and checks its close digest matches `swarm_close_digest`.
+- `test/public-node-proof.test.mjs` reads the frame file and checks its close digest matches `swarm_close_digest`.
 
 不做：
 
@@ -855,7 +855,7 @@
 
 - `scripts/public-node-proof.mjs` writes `state/public-node-proof-swarm-close-trusted-zones.json`.
 - The proof output includes `swarm_close_trusted_zones` with that path.
-- `public-node-proof.test.mjs` checks the trusted Zone file matches the close frame Zone.
+- `test/public-node-proof.test.mjs` checks the trusted Zone file matches the close frame Zone.
 
 不做：
 
@@ -879,8 +879,8 @@
 - `asp-core.mjs` exports `verifySwarmClose(frame, trustedZones)`.
 - `node asp-verify.mjs swarm-close <frame.json> <trusted-zones.json>` verifies the close frame Zone signature.
 - The command recomputes `swarm_close_digest` from the canonical close body without `close_signature`.
-- `public-node-proof.test.mjs` verifies the public-listen proof's generated close frame/trusted-Zone files through the CLI.
-- `test-vectors.test.mjs` rejects a tampered close signature.
+- `test/public-node-proof.test.mjs` verifies the public-listen proof's generated close frame/trusted-Zone files through the CLI.
+- `test/test-vectors.test.mjs` rejects a tampered close signature.
 
 不做：
 
@@ -906,7 +906,7 @@
 
 - `test-vectors/asp-v10.38-fed-swarm-close.json` captures one portable two-step close frame.
 - The vector includes trusted Zone material, the close body, canonical close JSON, expected step ids, and expected `swarm_close_digest`.
-- `test-vectors.test.mjs` verifies the vector through `verifySwarmClose`.
+- `test/test-vectors.test.mjs` verifies the vector through `verifySwarmClose`.
 
 不做：
 
@@ -932,7 +932,7 @@
 
 - `asp-verify.mjs` reuses `loadTrustedZones` for all trusted-Zone verifier commands.
 - `fed-receipt`, `fed-receipt-artifacts`, and `swarm-close` now verify trusted Zone descriptor signatures before verification.
-- `test-vectors.test.mjs` proves `swarm-close` rejects a trusted-Zone file with a tampered `zone_signature`.
+- `test/test-vectors.test.mjs` proves `swarm-close` rejects a trusted-Zone file with a tampered `zone_signature`.
 
 不做：
 
@@ -978,7 +978,7 @@
 
 - `scripts/proof-demo.sh` forwards `receipt_digest` from `asp-verify.mjs fed-receipt-artifacts`.
 - `scripts/public-node-proof.mjs` forwards `receipt_digest` from `asp-verify.mjs fed-receipt-artifacts`.
-- `proof-demo.test.mjs` and `public-node-proof.test.mjs` assert the summary digest equals `sha256(canonical(receipt body without signature))`.
+- `test/proof-demo.test.mjs` and `test/public-node-proof.test.mjs` assert the summary digest equals `sha256(canonical(receipt body without signature))`.
 
 不做：
 
@@ -1000,7 +1000,7 @@
 
 - `scripts/public-node-proof.mjs` runs `asp-verify.mjs swarm-close` after writing the Swarm close frame and trusted Zone file.
 - The public proof summary includes top-level `swarm_close_verify: "ok"`.
-- `public-node-proof.test.mjs` asserts the summary exposes the CLI verification result.
+- `test/public-node-proof.test.mjs` asserts the summary exposes the CLI verification result.
 
 不做：
 
@@ -1025,7 +1025,7 @@
 
 - `scripts/proof-demo.sh` forwards `artifact_count` from `asp-verify.mjs fed-receipt-artifacts`.
 - `scripts/public-node-proof.mjs` forwards `artifact_count` from `asp-verify.mjs fed-receipt-artifacts`.
-- `proof-demo.test.mjs` and `public-node-proof.test.mjs` assert the summary artifact count is `1` for the current proof fixtures.
+- `test/proof-demo.test.mjs` and `test/public-node-proof.test.mjs` assert the summary artifact count is `1` for the current proof fixtures.
 
 不做：
 
@@ -1122,7 +1122,7 @@
 - README marks v10 closed at `v10.47-protocol`.
 - This roadmap marks v10 closed and records v10.47 as the closeout slice.
 - `docs/asp-core-draft.md` points to the current closed prototype tag.
-- `docs-contract.test.mjs` guards the public closeout wording.
+- `test/docs-contract.test.mjs` guards the public closeout wording.
 - `docs/v10.47-boundary.md` records the closeout boundary and remaining v11+ candidates.
 
 不做：

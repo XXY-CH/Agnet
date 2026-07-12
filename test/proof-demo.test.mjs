@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { access, readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { canonical } from "./asp-core.mjs";
+import { canonical } from "../asp-core.mjs"
 
 const execFileAsync = promisify(execFile);
 

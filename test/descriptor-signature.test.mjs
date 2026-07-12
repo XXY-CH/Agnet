@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createAgent, resolveAgent } from "./asp-core.mjs";
+import { createAgent, resolveAgent } from "../asp-core.mjs"
 
 test("registry descriptor tampering is rejected", () => {
   const agent = createAgent("agent://local/summarizer", {

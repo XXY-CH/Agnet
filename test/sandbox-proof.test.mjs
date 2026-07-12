@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { canonical, createAgent, createZone, signObject, zoneBinding } from "./asp-core.mjs";
+import { canonical, createAgent, createZone, signObject, zoneBinding } from "../asp-core.mjs"
 
 const execFileAsync = promisify(execFile);
 

@@ -1,4 +1,4 @@
-package agnet
+package verifier_test
 
 import (
 	"agnet/verifier"
@@ -139,9 +139,9 @@ func verifyU7SwarmOutputVectorInGo(t *testing.T, path, origin string) {
 }
 
 func TestNodeCreatedSwarmOutputVectorVerifiesInGo(t *testing.T) {
-	verifyU7SwarmOutputVectorInGo(t, "test-vectors/asp-u7-node-created-swarm-output.json", "node-created")
+	verifyU7SwarmOutputVectorInGo(t, "../test-vectors/asp-u7-node-created-swarm-output.json", "node-created")
 }
 
 func TestGoCreatedSwarmOutputVectorVerifiesInGo(t *testing.T) {
-	verifyU7SwarmOutputVectorInGo(t, "test-vectors/asp-u7-go-created-swarm-output.json", "go-created")
+	verifyU7SwarmOutputVectorInGo(t, "../test-vectors/asp-u7-go-created-swarm-output.json", "go-created")
 }

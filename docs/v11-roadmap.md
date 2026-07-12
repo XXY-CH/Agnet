@@ -1793,7 +1793,7 @@
 
 - Go server-mode task receipts include `transport_proof` when the gateway has a configured federation listener.
 - The proof binds `transport`, `listen_host`, `port`, and `public_transport` into the worker-signed receipt body.
-- `public-node-proof.test.mjs` asserts the verifier-ready receipt frame carries the same transport proof as the startup status JSON.
+- `test/public-node-proof.test.mjs` asserts the verifier-ready receipt frame carries the same transport proof as the startup status JSON.
 - Existing receipt signature, task digest, artifact closure, Swarm close, and public-listen proof checks remain unchanged.
 
 不做：

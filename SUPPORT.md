@@ -17,7 +17,7 @@ Include:
 - Node and Go versions.
 - Exact command.
 - Full failure output.
-- Whether `go test ./...` and `node --test --test-concurrency=1 *.test.mjs` pass.
+- Whether `go test ./...` and `node --test --test-concurrency=1 test/*.test.mjs` pass.
 
 ## Scope
 

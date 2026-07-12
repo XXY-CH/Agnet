@@ -16,11 +16,11 @@ Run the normal checks:
 
 ```bash
 go test ./...
-node --test --test-concurrency=1 go-fed-discovery.test.mjs
-node --test --test-concurrency=1 *.test.mjs
+node --test --test-concurrency=1 test/go-fed-discovery.test.mjs
+node --test --test-concurrency=1 test/*.test.mjs
 ```
 
-Run `go-fed-discovery.test.mjs` separately from the full `*.test.mjs` command. They touch shared local state and can produce false audit-chain failures if run in parallel.
+Run `test/go-fed-discovery.test.mjs` separately from the full `test/*.test.mjs` command. They touch shared local state and can produce false audit-chain failures if run in parallel.
 
 ## Change Process
 

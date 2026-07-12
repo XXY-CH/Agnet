@@ -3,9 +3,9 @@ import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { canonical, createAgent, createZone } from "./asp-core.mjs";
-import { migrateKey } from "./agnet-key.mjs";
-import { loadManagedAgent, loadManagedZone } from "./managed-key-runtime.mjs";
+import { canonical, createAgent, createZone } from "../asp-core.mjs"
+import { migrateKey } from "../agnet-key.mjs"
+import { loadManagedAgent, loadManagedZone } from "../managed-key-runtime.mjs"
 
 const PASSPHRASE = Buffer.from("persistent identity test passphrase\n");
 

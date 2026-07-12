@@ -3,26 +3,22 @@ import { createPrivateKey } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-import {
-  agentFromPrivateKey,
-  aliasRebindingProof,
-  descriptorBody,
-  canonical,
-  rotationProof,
-  signObject,
-  zoneFromPrivateKey,
-} from "./asp-core.mjs";
-import {
-  createRotationGenerationRecord,
-  createSignedGenerationRecord,
-  generationBody,
-  parseGenerationRecord,
-  recordDigest,
-  verifyGenerationChain,
-  verifyGenerationRebinding,
-  verifyGenerationRecord,
-} from "./managed-key.mjs";
-import { sealKeyEnvelope } from "./managed-key.mjs";
+import { agentFromPrivateKey,
+aliasRebindingProof,
+descriptorBody,
+canonical,
+rotationProof,
+signObject,
+zoneFromPrivateKey, } from "../asp-core.mjs"
+import { createRotationGenerationRecord,
+createSignedGenerationRecord,
+generationBody,
+parseGenerationRecord,
+recordDigest,
+verifyGenerationChain,
+verifyGenerationRebinding,
+verifyGenerationRecord, } from "../managed-key.mjs"
+import { sealKeyEnvelope } from "../managed-key.mjs"
 
 const PKCS8_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
 const ZERO_DIGEST = "0".repeat(64);

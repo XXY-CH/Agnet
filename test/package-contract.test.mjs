@@ -6,8 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { promisify } from "node:util";
-import { canonical, createAgent, publicKeyFromDescriptor, signObject, verifyObject } from "./asp-core.mjs";
-import { migrateKey } from "./agnet-key.mjs";
+import { canonical, createAgent, publicKeyFromDescriptor, signObject, verifyObject } from "../asp-core.mjs"
+import { migrateKey } from "../agnet-key.mjs"
 
 const execFileAsync = promisify(execFile);
 

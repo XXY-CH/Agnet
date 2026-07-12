@@ -1,15 +1,13 @@
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import { test } from "node:test";
-import {
-  createAgent,
-  createZone,
-  loadTrustedZones,
-  verifyZoneDescriptor,
-  verifyZoneBinding,
-  writeTrustedZones,
-  zoneBinding,
-} from "./asp-core.mjs";
+import { createAgent,
+createZone,
+loadTrustedZones,
+verifyZoneDescriptor,
+verifyZoneBinding,
+writeTrustedZones,
+zoneBinding, } from "../asp-core.mjs"
 
 test("trusted Zone store loads verified Zone descriptors", async () => {
   const zone = createZone("zone://remote-b");

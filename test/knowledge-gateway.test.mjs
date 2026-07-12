@@ -1,12 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  createZone,
-  knowledgeQuery,
-  knowledgeResponse,
-  verifyKnowledgeQuery,
-  verifyKnowledgeResponse,
-} from "./asp-core.mjs";
+import { createZone,
+knowledgeQuery,
+knowledgeResponse,
+verifyKnowledgeQuery,
+verifyKnowledgeResponse, } from "../asp-core.mjs"
 
 const POLICY_DIGEST = "a".repeat(64);
 const WRONG_QUERY_DIGEST = "b".repeat(64);

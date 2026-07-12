@@ -7,9 +7,9 @@ import { join } from "node:path";
 import net from "node:net";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { AUDIT_ZERO_HASH, agentFromPrivateKey, auditEntry, canonical, capabilityCredentialId, createAgent, loadRegistry, publicKeyFromDescriptor, resolveAgent, rotationProof, signObject, signedReceiptDigest, swarmExecutionBinding, swarmPlan, verifyAliasRebindingProof, verifyCredentialStatus, verifyObject, verifySwarmClose, writeTrustedZones, zoneBinding, zoneFromPrivateKey, zoneRevocation } from "./asp-core.mjs";
-import { migrateKey } from "./agnet-key.mjs";
-import { loadManagedZone } from "./managed-key-runtime.mjs";
+import { AUDIT_ZERO_HASH, agentFromPrivateKey, auditEntry, canonical, capabilityCredentialId, createAgent, loadRegistry, publicKeyFromDescriptor, resolveAgent, rotationProof, signObject, signedReceiptDigest, swarmExecutionBinding, swarmPlan, verifyAliasRebindingProof, verifyCredentialStatus, verifyObject, verifySwarmClose, writeTrustedZones, zoneBinding, zoneFromPrivateKey, zoneRevocation } from "../asp-core.mjs"
+import { migrateKey } from "../agnet-key.mjs"
+import { loadManagedZone } from "../managed-key-runtime.mjs"
 
 const execFileAsync = promisify(execFile);
 

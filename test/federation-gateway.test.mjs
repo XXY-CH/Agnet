@@ -7,10 +7,10 @@ import { join } from "node:path";
 import net from "node:net";
 import { after, test } from "node:test";
 import { promisify } from "node:util";
-import { AUDIT_ZERO_HASH, agentFromPrivateKey, auditEntry, canonical, createAgent, createZone, publicKeyFromDescriptor, signObject, signedReceiptDigest, swarmExecutionBinding, swarmPlan, verifyObject, verifySwarmClose, verifySwarmPlan, verifyZoneTrustDelegation, writeTrustedZones, zoneBinding, zoneFromPrivateKey, zoneRevocation, zoneTrustDelegation } from "./asp-core.mjs";
-import { migrateKey } from "./agnet-key.mjs";
-import { queryMatch } from "./federation-gateway.mjs";
-import { loadManagedAgent, loadManagedZone } from "./managed-key-runtime.mjs";
+import { AUDIT_ZERO_HASH, agentFromPrivateKey, auditEntry, canonical, createAgent, createZone, publicKeyFromDescriptor, signObject, signedReceiptDigest, swarmExecutionBinding, swarmPlan, verifyObject, verifySwarmClose, verifySwarmPlan, verifyZoneTrustDelegation, writeTrustedZones, zoneBinding, zoneFromPrivateKey, zoneRevocation, zoneTrustDelegation } from "../asp-core.mjs"
+import { migrateKey } from "../agnet-key.mjs"
+import { queryMatch } from "../federation-gateway.mjs"
+import { loadManagedAgent, loadManagedZone } from "../managed-key-runtime.mjs"
 
 const execFileAsync = promisify(execFile);
 const MANAGED_PASSPHRASE = Buffer.from("federation gateway managed test passphrase\n");

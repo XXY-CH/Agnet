@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { publishOwnedFileAtomically, safeOpenOwnedBytes, safeOpenOwnedJson } from "./secure-input.mjs";
+import { publishOwnedFileAtomically, safeOpenOwnedBytes, safeOpenOwnedJson } from "../secure-input.mjs"
 
 const MAX_INPUT_BYTES = 1024 * 1024;
 
@@ -226,10 +226,10 @@ test("forced unsupported atomic rename fails closed only through explicit test h
 });
 
 test("generation lock is reacquirable after the holder dies abruptly", async (t) => {
-  const { holdOwnedGenerationLock } = await import("./secure-input.mjs");
+  const { holdOwnedGenerationLock } = await import("../secure-input.mjs");
   const dir = await workspace(t, "agnet-secure-lock-death-");
   const lock = join(dir, "0000000000000001.install.lock");
-  const helper = fileURLToPath(new URL("./secure-input-openat.py", import.meta.url));
+  const helper = fileURLToPath(new URL("../secure-input-openat.py", import.meta.url));
   const holder = spawn("/usr/bin/python3", ["-I", helper, "--hold-generation-lock", lock, String(process.getuid()), "-", "-"], {
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -249,7 +249,7 @@ test("generation lock is reacquirable after the holder dies abruptly", async (t)
 });
 
 test("held generation lock is permanent and permits retry after release", async (t) => {
-  const { holdOwnedGenerationLock } = await import("./secure-input.mjs");
+  const { holdOwnedGenerationLock } = await import("../secure-input.mjs");
   const dir = await workspace(t, "agnet-secure-lock-");
   const lock = join(dir, "0000000000000001.install.lock");
   const release = await holdOwnedGenerationLock(lock);

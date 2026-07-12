@@ -28,8 +28,8 @@ assignees: ""
 ## Verification
 
 - [ ] `go test ./...`
-- [ ] `node --test --test-concurrency=1 go-fed-discovery.test.mjs`
-- [ ] `node --test --test-concurrency=1 *.test.mjs`
+- [ ] `node --test --test-concurrency=1 test/go-fed-discovery.test.mjs`
+- [ ] `node --test --test-concurrency=1 test/*.test.mjs`
 
 ## Notes
 

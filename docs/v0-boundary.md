@@ -60,7 +60,7 @@ requester process
 ## v0 验收命令
 
 ```bash
-node --test --test-concurrency=1 *.test.mjs
+node --test --test-concurrency=1 test/*.test.mjs
 ```
 
 必须通过：

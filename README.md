@@ -66,8 +66,8 @@ flowchart LR
 ```bash
 bash scripts/proof-demo.sh
 node asp-verify.mjs fed-receipt-artifacts state/proof-demo-fed-receipt.json state/proof-demo-trusted-zones.json
-node --test --test-concurrency=1 docs-contract.test.mjs
-node --test --test-concurrency=1 *.test.mjs
+node --test --test-concurrency=1 test/docs-contract.test.mjs
+node --test --test-concurrency=1 test/*.test.mjs
 go test ./...
 ```
 

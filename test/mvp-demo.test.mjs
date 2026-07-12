@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { promisify } from "node:util";
-import { canonical, verifyLocalArtifact } from "./asp-core.mjs";
+import { canonical, verifyLocalArtifact } from "../asp-core.mjs"
 
 const execFileAsync = promisify(execFile);
 

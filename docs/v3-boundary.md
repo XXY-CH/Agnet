@@ -53,7 +53,7 @@ This is the first point where Go is no longer only a discovery gateway.
 ## 验收
 
 ```bash
-node --test --test-concurrency=1 *.test.mjs
+node --test --test-concurrency=1 test/*.test.mjs
 go test ./...
 ```
 

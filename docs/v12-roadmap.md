@@ -13,7 +13,7 @@
 - `scripts/public-node-proof.mjs` writes `state/public-node-proof-bundle.json`.
 - The bundle records `receipt_frame`, `trusted_zones`, `receipt_digest`, artifact URI/SHA-256/manifest-hash lists, signed `transport_proof`, Swarm close proof paths, and `swarm_close_digest`.
 - The public proof summary returns `bundle_manifest`.
-- `public-node-proof.test.mjs` verifies the bundle exactly matches the receipt verifier output and Swarm close proof output.
+- `test/public-node-proof.test.mjs` verifies the bundle exactly matches the receipt verifier output and Swarm close proof output.
 
 不做：
 
@@ -34,7 +34,7 @@
 
 - `asp-verify.mjs proof-bundle <bundle.json>` verifies the receipt, artifact bytes, signed transport proof fields, and Swarm close digest named by the bundle.
 - The command rejects manifest fields that do not match the existing verifier-owned receipt/artifact/Swarm close outputs.
-- `public-node-proof.test.mjs` covers a successful bundle verification and a tampered `receipt_digest` rejection.
+- `test/public-node-proof.test.mjs` covers a successful bundle verification and a tampered `receipt_digest` rejection.
 
 不做：
 
@@ -55,7 +55,7 @@
 
 - `scripts/public-node-proof.mjs` runs `asp-verify.mjs proof-bundle state/public-node-proof-bundle.json` after writing the bundle.
 - The public proof summary returns `proof_bundle_verify: "ok"`.
-- `public-node-proof.test.mjs` asserts the summary exposes that result.
+- `test/public-node-proof.test.mjs` asserts the summary exposes that result.
 
 不做：
 
@@ -76,7 +76,7 @@
 
 - `scripts/public-node-proof.mjs` writes proof file references like `public-node-proof-fed-receipt.json` inside the bundle instead of `state/...`.
 - `asp-verify.mjs proof-bundle <bundle.json>` resolves relative proof file paths from the bundle directory.
-- `public-node-proof.test.mjs` asserts the bundle contains self-relative proof file paths.
+- `test/public-node-proof.test.mjs` asserts the bundle contains self-relative proof file paths.
 
 不做：
 
@@ -98,7 +98,7 @@
 
 - `asp-verify.mjs proof-bundle <bundle.json>` rejects empty, absolute, backslash-bearing, `.` segment, and `..` segment proof-file paths before file reads.
 - Rejections name the unsafe bundle field, such as `bundle receipt_frame path invalid`.
-- `public-node-proof.test.mjs` covers parent traversal and absolute-path tampering.
+- `test/public-node-proof.test.mjs` covers parent traversal and absolute-path tampering.
 
 不做：
 
@@ -120,7 +120,7 @@
 
 - `asp-verify.mjs proof-bundle <bundle.json>` checks `proof === "public-node-proof"` immediately after parsing the bundle manifest.
 - Wrong proof types are rejected before receipt, trusted-Zone, or Swarm proof-file path reads.
-- `public-node-proof.test.mjs` covers wrong proof type plus escaping path tampering.
+- `test/public-node-proof.test.mjs` covers wrong proof type plus escaping path tampering.
 
 不做：
 
@@ -143,7 +143,7 @@
 
 - `asp-verify.mjs proof-bundle <bundle.json>` rejects `null` or array bundle manifests with `bundle manifest invalid`.
 - The manifest object check runs before the proof type check and before proof-file path reads.
-- `public-node-proof.test.mjs` covers `null` and `[]` bundle files.
+- `test/public-node-proof.test.mjs` covers `null` and `[]` bundle files.
 
 不做：
 
@@ -167,7 +167,7 @@
 
 - `asp-verify.mjs proof-bundle <bundle.json>` resolves and validates `receipt_frame`, `trusted_zones`, `swarm_close_frame`, and `swarm_close_trusted_zones` before reading any of them.
 - Unsafe later path fields fail with their own field-specific error even if an earlier path is safe but missing.
-- `public-node-proof.test.mjs` covers an escaping `swarm_close_frame` masked by a missing `receipt_frame`.
+- `test/public-node-proof.test.mjs` covers an escaping `swarm_close_frame` masked by a missing `receipt_frame`.
 
 不做：
 
@@ -191,7 +191,7 @@
 
 - `asp-verify.mjs proof-bundle <bundle.json>` accepts exactly one bundle path argument.
 - Extra positional arguments fall through to the existing usage error instead of being ignored.
-- `public-node-proof.test.mjs` covers `proof-bundle <bundle.json> extra.json`.
+- `test/public-node-proof.test.mjs` covers `proof-bundle <bundle.json> extra.json`.
 
 不做：
 
@@ -216,7 +216,7 @@
 
 - `asp-verify.mjs proof-bundle <bundle.json>` requires exactly two CLI tokens after the script name: `proof-bundle` and one bundle path.
 - Empty-string extra positional arguments are rejected by the same usage path as non-empty extras.
-- `public-node-proof.test.mjs` covers `proof-bundle <bundle.json> ""`.
+- `test/public-node-proof.test.mjs` covers `proof-bundle <bundle.json> ""`.
 
 不做：
 
@@ -240,7 +240,7 @@
 - `asp-verify.mjs artifact <manifest.json>` requires exactly one manifest path.
 - `asp-verify.mjs fed-receipt <frame.json> <trusted-zones.json> [task.json]` and `fed-receipt-artifacts` accept only their no-task and one-task forms.
 - `asp-verify.mjs swarm-close <frame.json> <trusted-zones.json>` rejects extra positional arguments.
-- `mvp-demo.test.mjs` and `test-vectors.test.mjs` cover extra positional argument rejection across the sibling verifier commands.
+- `test/mvp-demo.test.mjs` and `test/test-vectors.test.mjs` cover extra positional argument rejection across the sibling verifier commands.
 
 不做：
 
@@ -266,7 +266,7 @@
 
 - `asp-verify.mjs proof-bundle <bundle.json>` requires verified receipt `transport_proof.public_transport === true`.
 - A bundle that matches a signed receipt with `public_transport: false` is rejected with `bundle public_transport proof missing`.
-- `public-node-proof.test.mjs` covers a re-signed non-public transport receipt and matching bundle.
+- `test/public-node-proof.test.mjs` covers a re-signed non-public transport receipt and matching bundle.
 
 不做：
 
@@ -291,7 +291,7 @@
 
 - `asp-verify.mjs proof-bundle <bundle.json>` requires verified receipt `transport_proof` to include non-empty `transport`, non-empty `listen_host`, decimal-string `port`, and `public_transport: true`.
 - A bundle that matches a signed receipt with only `public_transport: true` is rejected with `bundle transport_proof invalid`.
-- `public-node-proof.test.mjs` covers a re-signed incomplete transport proof receipt and matching bundle.
+- `test/public-node-proof.test.mjs` covers a re-signed incomplete transport proof receipt and matching bundle.
 
 不做：
 
@@ -317,7 +317,7 @@
 
 - `asp-verify.mjs proof-bundle <bundle.json>` requires verified receipt `transport_proof.transport === "fed+tcp"`.
 - A bundle that matches a signed receipt with `transport: "asp+local"` and `public_transport: true` is rejected with `bundle transport_proof invalid`.
-- `public-node-proof.test.mjs` covers a re-signed local-transport receipt and matching bundle.
+- `test/public-node-proof.test.mjs` covers a re-signed local-transport receipt and matching bundle.
 
 不做：
 
@@ -343,7 +343,7 @@
 
 - `asp-verify.mjs proof-bundle <bundle.json>` rejects verified receipt transport proofs whose `listen_host` is `localhost`, `::1`, or IPv4 `127.*`.
 - A bundle that matches a signed receipt with `listen_host: "127.0.0.1"` and `public_transport: true` is rejected with `bundle transport_proof invalid`.
-- `public-node-proof.test.mjs` covers a re-signed loopback-listen receipt and matching bundle.
+- `test/public-node-proof.test.mjs` covers a re-signed loopback-listen receipt and matching bundle.
 
 不做：
 
@@ -371,7 +371,7 @@
 - Go `isPublicListenHost` rejects `0.0.0.0` and `::` instead of treating unspecified bind addresses as public.
 - `scripts/public-node-proof.mjs` binds the proof gateway to the first non-loopback IPv4 address instead of `0.0.0.0`.
 - `asp-verify.mjs proof-bundle <bundle.json>` rejects signed receipt transport proofs whose `listen_host` is `0.0.0.0` or `::`.
-- `public-node-proof.test.mjs` covers a re-signed unspecified-listen receipt and matching bundle.
+- `test/public-node-proof.test.mjs` covers a re-signed unspecified-listen receipt and matching bundle.
 
 不做：
 
@@ -397,7 +397,7 @@
 
 - `asp-verify.mjs proof-bundle <bundle.json>` returns `reachability_scope: "local-interface"`.
 - `scripts/public-node-proof.mjs` forwards the verifier-owned `reachability_scope` into the public proof summary.
-- `public-node-proof.test.mjs` covers both the public proof summary and direct `proof-bundle` verifier output.
+- `test/public-node-proof.test.mjs` covers both the public proof summary and direct `proof-bundle` verifier output.
 
 不做：
 
@@ -422,7 +422,7 @@
 新增：
 
 - `asp-verify.mjs proof-bundle <bundle.json>` rejects bundle manifests that include `reachability_scope`.
-- `public-node-proof.test.mjs` covers a manifest trying to self-claim `reachability_scope: "external-host"`.
+- `test/public-node-proof.test.mjs` covers a manifest trying to self-claim `reachability_scope: "external-host"`.
 - `docs/asp-core-draft.md` documents `reachability_scope` as verifier-owned output.
 
 不做：
@@ -449,7 +449,7 @@
 
 - `scripts/package-proof.mjs` runs `npm pack --json --pack-destination state/package-proof`.
 - The script returns `package_proof: "ok"`, package name/version, tarball path, size, unpacked size, SHA-1 shasum, SHA-512 integrity, and packaged file list.
-- `package-contract.test.mjs` covers tarball creation and the expected package file list.
+- `test/package-contract.test.mjs` covers tarball creation and the expected package file list.
 
 不做：
 
@@ -477,7 +477,7 @@
 新增：
 
 - `scripts/package-proof.mjs` computes `sha256` over the produced npm tarball.
-- `package-contract.test.mjs` verifies `sha256` is 64 lowercase hex and matches the tarball bytes.
+- `test/package-contract.test.mjs` verifies `sha256` is 64 lowercase hex and matches the tarball bytes.
 
 不做：
 
@@ -507,7 +507,7 @@
 
 - `scripts/package-proof.mjs` writes `state/package-proof/package-proof.json`.
 - The script returns `manifest: "state/package-proof/package-proof.json"` in stdout.
-- `package-contract.test.mjs` verifies the manifest JSON exactly matches the stdout proof object.
+- `test/package-contract.test.mjs` verifies the manifest JSON exactly matches the stdout proof object.
 
 不做：
 
@@ -538,7 +538,7 @@
 
 - `scripts/package-proof.mjs` computes `proof_digest` as `sha256(canonical(proof without proof_digest))`.
 - The persisted `state/package-proof/package-proof.json` and stdout proof include the same `proof_digest`.
-- `package-contract.test.mjs` recomputes the digest from the proof body.
+- `test/package-contract.test.mjs` recomputes the digest from the proof body.
 
 不做：
 
@@ -569,7 +569,7 @@
 
 - `asp-verify.mjs package-proof <manifest.json>` verifies `proof_digest`, tarball `sha256`, and tarball size.
 - The command returns `package_proof_verify: "ok"` plus package name, version, filename, tarball, SHA-256, and proof digest.
-- `package-contract.test.mjs` runs the verifier against the real `state/package-proof/package-proof.json` output.
+- `test/package-contract.test.mjs` runs the verifier against the real `state/package-proof/package-proof.json` output.
 
 不做：
 
@@ -600,7 +600,7 @@
 新增：
 
 - `asp-verify.mjs package-proof <manifest.json>` rejects `null` and array package proof manifests with `package proof manifest invalid`.
-- `package-contract.test.mjs` covers both non-object manifest shapes.
+- `test/package-contract.test.mjs` covers both non-object manifest shapes.
 
 不做：
 
@@ -632,7 +632,7 @@
 
 - `asp-verify.mjs package-proof <manifest.json>` rejects absolute and parent-directory tarball paths with `package proof tarball path invalid`.
 - The package proof tarball path gate reuses the same non-empty, no-backslash, no-dot-segment path shape used by proof bundle file paths.
-- `package-contract.test.mjs` covers absolute and `..` tarball paths.
+- `test/package-contract.test.mjs` covers absolute and `..` tarball paths.
 
 不做：
 
@@ -664,7 +664,7 @@
 
 - `asp-verify.mjs package-proof <manifest.json>` resolves safe tarball paths relative to the manifest file before checking tarball SHA-256 and size.
 - `scripts/package-proof.mjs` writes `tarball` and `manifest` as package-directory-relative file names.
-- `package-contract.test.mjs` covers a manifest in a nested proof directory with a sibling tarball.
+- `test/package-contract.test.mjs` covers a manifest in a nested proof directory with a sibling tarball.
 
 不做：
 
@@ -695,7 +695,7 @@
 
 - `asp-verify.mjs package-proof <manifest.json>` checks `shasum` as SHA-1 over the manifest-relative tarball bytes.
 - `asp-verify.mjs package-proof <manifest.json>` checks `integrity` as the npm `sha512-<base64>` string over the manifest-relative tarball bytes.
-- `package-contract.test.mjs` covers mismatched `shasum` and `integrity` fields while keeping `proof_digest` self-consistent.
+- `test/package-contract.test.mjs` covers mismatched `shasum` and `integrity` fields while keeping `proof_digest` self-consistent.
 
 不做：
 
@@ -724,7 +724,7 @@
 新增：
 
 - `asp-verify.mjs package-proof <manifest.json>` returns verified `size`, `shasum`, and `integrity` fields in its JSON output.
-- `package-contract.test.mjs` asserts successful package proof verification returns the same verified metadata as the proof manifest.
+- `test/package-contract.test.mjs` asserts successful package proof verification returns the same verified metadata as the proof manifest.
 
 不做：
 
@@ -754,7 +754,7 @@
 新增：
 
 - `asp-verify.mjs package-proof <manifest.json>` requires `filename` to equal the final path segment of `tarball`.
-- `package-contract.test.mjs` covers a self-consistent proof digest whose `filename` lies about the tarball being verified.
+- `test/package-contract.test.mjs` covers a self-consistent proof digest whose `filename` lies about the tarball being verified.
 
 不做：
 
@@ -785,7 +785,7 @@
 
 - `asp-verify.mjs package-proof <manifest.json>` requires `files` to be a non-empty array of unique safe relative paths.
 - File entries with absolute paths, backslashes, empty path segments, `.` segments, or `..` segments are rejected with `package proof files invalid`.
-- `package-contract.test.mjs` covers a self-consistent proof digest whose `files` field is not an array and whose file list escapes the package root.
+- `test/package-contract.test.mjs` covers a self-consistent proof digest whose `files` field is not an array and whose file list escapes the package root.
 
 不做：
 
@@ -816,7 +816,7 @@
 新增：
 
 - `asp-verify.mjs package-proof <manifest.json>` requires `manifest` to equal the final path segment of the verifier input path.
-- `package-contract.test.mjs` covers a self-consistent proof digest whose `manifest` field names a different manifest file.
+- `test/package-contract.test.mjs` covers a self-consistent proof digest whose `manifest` field names a different manifest file.
 
 不做：
 
@@ -847,7 +847,7 @@
 新增：
 
 - `asp-verify.mjs package-proof <manifest.json>` requires `filename` to equal `<name>-<version>.tgz` for the current local npm package proof.
-- `package-contract.test.mjs` covers a self-consistent proof digest whose package `name` no longer matches the tarball filename.
+- `test/package-contract.test.mjs` covers a self-consistent proof digest whose package `name` no longer matches the tarball filename.
 
 不做：
 
@@ -904,7 +904,7 @@
 - `asp-verify.mjs proof-bundle <bundle.json> [external-trusted-zones.json]` accepts an optional external observer trusted-Zone file.
 - `bundle.external_reachability` must be signed by a trusted observer Zone and bind `proof: "external-reachability"`, `observer_zid`, the verified `transport_proof`, the verified `receipt_digest`, and `reached: true`.
 - Bundles that include external reachability evidence without the extra trust input fail closed.
-- `public-node-proof.test.mjs` covers local default scope, trusted external-host upgrade, missing external trust rejection, and invalid external signature rejection.
+- `test/public-node-proof.test.mjs` covers local default scope, trusted external-host upgrade, missing external trust rejection, and invalid external signature rejection.
 
 不做：
 
@@ -929,7 +929,7 @@
 - The script verifies the bundle receipt digest and transport proof against the signed receipt before observing.
 - The script TCP-connects to `transport_proof.listen_host:port`, then writes an observed bundle containing signed `external_reachability` evidence.
 - The script writes the observer trusted-Zone file separately from the bundle.
-- `public-node-proof.test.mjs` covers observer-written evidence that is accepted by `asp-verify.mjs proof-bundle <observed-bundle.json> <observer-trusted-zones.json>`.
+- `test/public-node-proof.test.mjs` covers observer-written evidence that is accepted by `asp-verify.mjs proof-bundle <observed-bundle.json> <observer-trusted-zones.json>`.
 
 不做：
 
@@ -953,7 +953,7 @@
 - `scripts/docker-external-reachability-observer.sh <bundle.json> <observed-bundle.json> <observer-trusted-zones.json>` runs the existing observer script inside Docker.
 - The wrapper uses `${AGNET_NODE_BASE_IMAGE:-node:22-bookworm-slim}` for constrained Docker environments.
 - The wrapper mounts the repo at `/app`, adds `host.docker.internal` through Docker's host gateway, and delegates directly to `node scripts/external-reachability-observer.mjs "$@"`.
-- `docker-demo.test.mjs` covers the wrapper contract without making Docker a required full-suite dependency.
+- `test/docker-demo.test.mjs` covers the wrapper contract without making Docker a required full-suite dependency.
 
 不做：
 
@@ -1002,7 +1002,7 @@
 - `state/package-proof/package-proof.json` includes a signer Agent descriptor and package proof signature.
 - `asp-verify.mjs package-proof <manifest.json>` verifies the signer descriptor and package proof signature.
 - The verifier returns `signer_aid` in its JSON output.
-- `package-contract.test.mjs` covers valid signed package proofs plus missing and invalid package proof signatures.
+- `test/package-contract.test.mjs` covers valid signed package proofs plus missing and invalid package proof signatures.
 
 不做：
 
@@ -1027,7 +1027,7 @@
 - Trusted signer descriptors are validated through the existing Agent descriptor path.
 - When supplied, the trusted signer set must include the package proof signer `aid`.
 - Successful trusted verification returns `signer_trusted: true`.
-- `package-contract.test.mjs` covers trusted signer acceptance and untrusted signer rejection.
+- `test/package-contract.test.mjs` covers trusted signer acceptance and untrusted signer rejection.
 
 不做：
 
@@ -1049,7 +1049,7 @@
 
 - `asp-verify.mjs package-proof <manifest.json> <trusted-signers.json>` rejects `null` trusted signer files with `trusted package signer list missing`.
 - The trusted signer loader checks the parsed trust file is an object or array before reading `signers`.
-- `package-contract.test.mjs` covers null trusted signer list rejection.
+- `test/package-contract.test.mjs` covers null trusted signer list rejection.
 
 不做：
 
@@ -1072,7 +1072,7 @@
 
 - `asp-verify.mjs package-proof <manifest.json>` checks package proof type, proof digest, signer signature, trusted signer pin, manifest filename, tarball filename, package identity, and packaged file list shape before reading the tarball.
 - Malformed packaged file lists fail with `package proof files invalid` even when the referenced tarball is missing.
-- `package-contract.test.mjs` covers malformed file-list rejection before tarball reads.
+- `test/package-contract.test.mjs` covers malformed file-list rejection before tarball reads.
 
 不做：
 
@@ -1096,7 +1096,7 @@
 
 - `asp-verify.mjs package-proof <manifest.json>` rejects empty or non-string `name`, `version`, and `filename` values with `package proof identity invalid`.
 - Package identity binding now happens only after those identity fields are scalar strings.
-- `package-contract.test.mjs` covers an array-valued package `name` that previously passed through JavaScript string coercion.
+- `test/package-contract.test.mjs` covers an array-valued package `name` that previously passed through JavaScript string coercion.
 
 不做：
 
@@ -1121,7 +1121,7 @@
 - `asp-verify.mjs package-proof <manifest.json>` rejects empty or non-string `shasum`, `integrity`, and `sha256` values with `package proof byte metadata invalid`.
 - It also rejects missing, negative, or non-integer `size` values with the same error.
 - Byte metadata shape validation runs before reading tarball bytes.
-- `package-contract.test.mjs` covers malformed byte metadata rejection before tarball reads.
+- `test/package-contract.test.mjs` covers malformed byte metadata rejection before tarball reads.
 
 不做：
 
@@ -1146,7 +1146,7 @@
 
 - `asp-verify.mjs package-proof <manifest.json>` rejects verified signer descriptors that do not declare `package.proof.sign` with `package proof signer capability missing`.
 - Trusted package signer descriptors must also declare `package.proof.sign` before they can be used as a package proof trust root.
-- `package-contract.test.mjs` covers a valid ASP signer descriptor and package proof signature that previously passed without the package proof signing capability.
+- `test/package-contract.test.mjs` covers a valid ASP signer descriptor and package proof signature that previously passed without the package proof signing capability.
 
 不做：
 
@@ -1172,7 +1172,7 @@
 - This roadmap marks v12 closed and records v12.45 as the closeout slice.
 - `docs/asp-core-draft.md` points to the current closed prototype tag.
 - `docs/implementation-status.md` names the closed v12 baseline and summarizes the closed v12 proof surface.
-- `docs-contract.test.mjs` guards the public closeout wording.
+- `test/docs-contract.test.mjs` guards the public closeout wording.
 - `docs/v12.45-boundary.md` records the closeout boundary and remaining v13+ candidates.
 
 不做：

@@ -7,13 +7,11 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
 
-import { agentFromPrivateKey, canonical, publicKeyFromDescriptor, signObject, verifyObject, zoneFromPrivateKey } from "./asp-core.mjs";
-import { migrateKey, rewrapKey } from "./agnet-key.mjs";
-import {
-  loadManagedAgent,
-  loadManagedZone,
-  loadVerifiedKeyGeneration,
-} from "./managed-key-runtime.mjs";
+import { agentFromPrivateKey, canonical, publicKeyFromDescriptor, signObject, verifyObject, zoneFromPrivateKey } from "../asp-core.mjs"
+import { migrateKey, rewrapKey } from "../agnet-key.mjs"
+import { loadManagedAgent,
+loadManagedZone,
+loadVerifiedKeyGeneration, } from "../managed-key-runtime.mjs"
 
 const PKCS8_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
 const PASSPHRASE = Buffer.from("u13 managed runtime passphrase\n");

@@ -39,10 +39,10 @@ ASP is the narrow waist across the middle layers. A runtime may schedule, route,
 
 | Layer | Implemented in this repo | Main files |
 | --- | --- | --- |
-| Trust & Verification | `aid:` identities, Zone descriptors, signatures, credentials, revocation, sandbox proof, sandbox attestation, package/release trust | `asp-core.mjs`, `asp-verify.mjs`, `capability-credential.test.mjs`, `revocation.test.mjs`, `sandbox-proof.test.mjs`, `release-trust.test.mjs` |
+| Trust & Verification | `aid:` identities, Zone descriptors, signatures, credentials, revocation, sandbox proof, sandbox attestation, package/release trust | `asp-core.mjs`, `asp-verify.mjs`, `test/capability-credential.test.mjs`, `test/revocation.test.mjs`, `test/sandbox-proof.test.mjs`, `test/release-trust.test.mjs` |
 | Agent Task Fabric | `FED_TASK_OPEN`, signed receipts, artifacts, checkpoints, audit hash chain, queue/resume evidence | `federation-gateway.mjs`, `cmd/go-fed-discovery/main.go`, `test-vectors/`, `verifier/` |
-| Agent Discovery | `FED_RESOLVE`, evidence-first `FED_QUERY`, credentials, reputation, routing signals, cross-zone trust provenance | `federation-gateway.mjs`, `go-fed-discovery.test.mjs`, `zone-registry.test.mjs` |
-| Agent Swarm Layer | `FED_SWARM_OPEN`, `FED_SWARM_SCHEDULE`, `FED_SWARM_CLOSE`, micro-contracts, dependency-ready scheduling, migration logs | `federation-gateway.mjs`, `cmd/go-fed-discovery/main.go`, `go-fed-discovery.test.mjs` |
+| Agent Discovery | `FED_RESOLVE`, evidence-first `FED_QUERY`, credentials, reputation, routing signals, cross-zone trust provenance | `federation-gateway.mjs`, `test/go-fed-discovery.test.mjs`, `test/zone-registry.test.mjs` |
+| Agent Swarm Layer | `FED_SWARM_OPEN`, `FED_SWARM_SCHEDULE`, `FED_SWARM_CLOSE`, micro-contracts, dependency-ready scheduling, migration logs | `federation-gateway.mjs`, `cmd/go-fed-discovery/main.go`, `test/go-fed-discovery.test.mjs` |
 | Overlay edge | Local TCP federation, optional WebSocket/Human Gateway paths, TLS/mTLS on the Go listener | `cmd/go-fed-discovery/main.go`, `scripts/public-node-proof.mjs` |
 
 ## Proof flow

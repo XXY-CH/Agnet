@@ -7,9 +7,9 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
 
-import { canonical, createAgent, createZone, decodeBase64UrlExact, deriveSwarmFinalOutput, signObject, signedReceiptDigest, swarmExecutionBinding, swarmPlan, verifySwarmExecutionBinding, verifySwarmPlan, zoneBinding, zoneRevocation } from "./asp-core.mjs";
-import { safeOpenOwnedJson } from "./secure-input.mjs";
-import { applySwarmOutputVerificationReplay, createSwarmOutputTrustInputsForTest, createSwarmOutputVerification, loadSwarmOutputTrustInputs, verifySwarmOutputVerification } from "./swarm-output-verification.mjs";
+import { canonical, createAgent, createZone, decodeBase64UrlExact, deriveSwarmFinalOutput, signObject, signedReceiptDigest, swarmExecutionBinding, swarmPlan, verifySwarmExecutionBinding, verifySwarmPlan, zoneBinding, zoneRevocation } from "../asp-core.mjs"
+import { safeOpenOwnedJson } from "../secure-input.mjs"
+import { applySwarmOutputVerificationReplay, createSwarmOutputTrustInputsForTest, createSwarmOutputVerification, loadSwarmOutputTrustInputs, verifySwarmOutputVerification } from "../swarm-output-verification.mjs"
 
 const MAX_INPUT_BYTES = 1024 * 1024;
 const execFileAsync = promisify(execFile);

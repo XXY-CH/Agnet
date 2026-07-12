@@ -3,18 +3,16 @@ import { createHash, createPrivateKey } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 
-import {
-  canonical,
-  computeAid,
-  publicKeyFromDescriptor,
-  createZone,
-  signObject,
-  swarmDisband,
-  swarmJournalEntry,
-  verifySwarmCloseV2,
-  verifySwarmDisband,
-  verifySwarmJournal,
-} from "./asp-core.mjs";
+import { canonical,
+computeAid,
+publicKeyFromDescriptor,
+createZone,
+signObject,
+swarmDisband,
+swarmJournalEntry,
+verifySwarmCloseV2,
+verifySwarmDisband,
+verifySwarmJournal, } from "../asp-core.mjs"
 
 const ZERO_HASH = "0".repeat(64);
 const hex = (value) => createHash("sha256").update(typeof value === "string" ? value : canonical(value)).digest("hex");
@@ -198,14 +196,14 @@ test("v2 close verifier accepts exact parallel-ready-dag evidence and rejects wa
 });
 
 test("pure Node durable surface does not expose durability or scheduler operations", async () => {
-  const surface = await import("./asp-core.mjs");
+  const surface = await import("../asp-core.mjs");
   for (const name of ["appendSwarmJournal", "openSwarmJournal", "writeSwarmJournal", "scheduleSwarm", "runSwarm", "spawnSwarm"]) {
     assert.equal(name in surface, false, `${name} must not be exported`);
   }
 });
 
 async function loadDurableVector(name) {
-  return JSON.parse(await readFile(new URL(`./test-vectors/${name}`, import.meta.url), "utf8"));
+  return JSON.parse(await readFile(new URL(`../test-vectors/${name}`, import.meta.url), "utf8"));
 }
 
 function rechain(entries) {
@@ -306,7 +304,7 @@ test("Node emits the fixed Node-origin durable vector with pure constructors and
   const generated = buildNodeCreatedDurableVector(sharedNodeVectorInput(await loadDurableVector("asp-u29-go-swarm-durable.json")));
   assert.equal(generated.evidence.frozen_authority.zid, generated.journal[0].payload.spec.local_authority.zid);
   if (process.env.UPDATE_U29_NODE_VECTOR === "1") {
-    await writeFile(new URL("./test-vectors/asp-u29-node-swarm-durable.json", import.meta.url), `${JSON.stringify(generated, null, 2)}\n`, { mode: 0o600 });
+    await writeFile(new URL("../test-vectors/asp-u29-node-swarm-durable.json", import.meta.url), `${JSON.stringify(generated, null, 2)}\n`, { mode: 0o600 });
   } else {
     assert.deepEqual(generated, await loadDurableVector("asp-u29-node-swarm-durable.json"));
   }

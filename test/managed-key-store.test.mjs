@@ -7,18 +7,14 @@ import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-import {
-  agentFromPrivateKey,
-  canonical,
-  zoneFromPrivateKey,
-} from "./asp-core.mjs";
-import {
-  createRotationGenerationRecord,
-  createSignedGenerationRecord,
-  generationBody,
-  sealKeyEnvelope,
-} from "./managed-key.mjs";
-import { ERR_KEY_RECOVERY_REQUIRED, ManagedKeyStore } from "./managed-key-store.mjs";
+import { agentFromPrivateKey,
+canonical,
+zoneFromPrivateKey, } from "../asp-core.mjs"
+import { createRotationGenerationRecord,
+createSignedGenerationRecord,
+generationBody,
+sealKeyEnvelope, } from "../managed-key.mjs"
+import { ERR_KEY_RECOVERY_REQUIRED, ManagedKeyStore } from "../managed-key-store.mjs"
 
 const PKCS8_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
 const PASSPHRASE = Buffer.from("u10 managed store passphrase\n");
@@ -251,7 +247,7 @@ test("same-generation contenders continue safely after a killed lock holder", as
   const generations = join(root, "generations");
   const generationLock = join(generations, "0000000000000002.install.lock");
   const generationsIdentity = await stat(generations);
-  const helper = fileURLToPath(new URL("./secure-input-openat.py", import.meta.url));
+  const helper = fileURLToPath(new URL("../secure-input-openat.py", import.meta.url));
   const holder = spawn("/usr/bin/python3", ["-I", helper, "--hold-generation-lock", generationLock, String(process.getuid()), String(generationsIdentity.dev), String(generationsIdentity.ino)], { stdio: ["pipe", "pipe", "pipe"] });
   await new Promise((resolveReady, rejectReady) => {
     let output = "";

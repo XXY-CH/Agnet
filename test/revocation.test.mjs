@@ -1,15 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  createAgent,
-  createZone,
-  loadRegistry,
-  resolveAgent,
-  verifyNotRevoked,
-  verifyZoneRevocation,
-  writeRegistry,
-  zoneRevocation,
-} from "./asp-core.mjs";
+import { createAgent,
+createZone,
+loadRegistry,
+resolveAgent,
+verifyNotRevoked,
+verifyZoneRevocation,
+writeRegistry,
+zoneRevocation, } from "../asp-core.mjs"
 
 test("zone revocation rejects revoked aid", async () => {
   const zone = createZone("zone://local");

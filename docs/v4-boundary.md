@@ -51,7 +51,7 @@ This is Git-like only in the evidence-chain sense: signed hashes and parent link
 
 ```bash
 go test ./...
-node --test --test-concurrency=1 *.test.mjs
+node --test --test-concurrency=1 test/*.test.mjs
 ```
 
 The Go integration test must fail if checkpoint evidence is missing from event stream, receipt, or audit verification。

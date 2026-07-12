@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createAgent, rotationProof, verifyRotationProof } from "./asp-core.mjs";
+import { createAgent, rotationProof, verifyRotationProof } from "../asp-core.mjs"
 
 test("key rotation proof links previous and next agent identities", () => {
   const previous = createAgent("agent://local/summarizer");

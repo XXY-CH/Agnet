@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile, rm } from "node:fs/promises";
-import { appendAudit, AUDIT_ZERO_HASH, auditEntry, verifyAuditEntries } from "./asp-core.mjs";
+import { appendAudit, AUDIT_ZERO_HASH, auditEntry, verifyAuditEntries } from "../asp-core.mjs"
 
 test("audit hash chain detects tampering", () => {
   const first = auditEntry(AUDIT_ZERO_HASH, { kind: "event", type: "task.started", task_id: "task_1" });

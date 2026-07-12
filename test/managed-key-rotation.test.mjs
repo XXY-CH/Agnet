@@ -5,10 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { agentFromPrivateKey, canonical, signObject, zoneFromPrivateKey } from "./asp-core.mjs";
-import { parseGenerationRecord, verifyGenerationChain, verifyGenerationRecord } from "./managed-key.mjs";
-import { migrateKey, rotateAgent } from "./agnet-key.mjs";
-import { ManagedKeyStore } from "./managed-key-store.mjs";
+import { agentFromPrivateKey, canonical, signObject, zoneFromPrivateKey } from "../asp-core.mjs"
+import { parseGenerationRecord, verifyGenerationChain, verifyGenerationRecord } from "../managed-key.mjs"
+import { migrateKey, rotateAgent } from "../agnet-key.mjs"
+import { ManagedKeyStore } from "../managed-key-store.mjs"
 
 const PKCS8_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
 const AGENT_PASSPHRASE = Buffer.from("u12 agent passphrase\n");

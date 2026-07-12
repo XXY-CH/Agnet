@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CREDENTIAL_VALID_UNTIL_PATTERN, capabilityCredential, capabilityCredentialId, createAgent, createZone, signObject, verifyCapabilityCredential, verifyCredentialStatus } from "./asp-core.mjs";
+import { CREDENTIAL_VALID_UNTIL_PATTERN, capabilityCredential, capabilityCredentialId, createAgent, createZone, signObject, verifyCapabilityCredential, verifyCredentialStatus } from "../asp-core.mjs"
 
 test("Zone-signed capability credential verifies against subject descriptor", () => {
   const authority = createZone("zone://security-authority");

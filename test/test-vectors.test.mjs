@@ -4,8 +4,8 @@ import { createHash, createPrivateKey, createPublicKey } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { canonical, computeAid, createAgent, createZone, deriveSwarmFinalOutput, descriptorBody, didKeyFromDescriptor, didKeyFromPublicKeySPKI, publicKeyFromDescriptor, publicKeySPKIFromDidKey, signObject, signedReceiptDigest, swarmExecutionBinding, swarmPlan, verifyFederatedReceipt, verifyFederatedTaskOpen, verifyObject, verifyReceiptArtifactManifests, verifyResultArtifact, verifySwarmClose, verifySwarmExecutionBinding, verifySwarmPlan, writeArtifact, zoneBinding, zoneDescriptorBody } from "./asp-core.mjs";
-import { applySwarmOutputVerificationReplay, createSwarmOutputTrustInputsForTest, verifySwarmOutputVerification } from "./swarm-output-verification.mjs";
+import { canonical, computeAid, createAgent, createZone, deriveSwarmFinalOutput, descriptorBody, didKeyFromDescriptor, didKeyFromPublicKeySPKI, publicKeyFromDescriptor, publicKeySPKIFromDidKey, signObject, signedReceiptDigest, swarmExecutionBinding, swarmPlan, verifyFederatedReceipt, verifyFederatedTaskOpen, verifyObject, verifyReceiptArtifactManifests, verifyResultArtifact, verifySwarmClose, verifySwarmExecutionBinding, verifySwarmPlan, writeArtifact, zoneBinding, zoneDescriptorBody } from "../asp-core.mjs"
+import { applySwarmOutputVerificationReplay, createSwarmOutputTrustInputsForTest, verifySwarmOutputVerification } from "../swarm-output-verification.mjs"
 
 const execFileAsync = promisify(execFile);
 

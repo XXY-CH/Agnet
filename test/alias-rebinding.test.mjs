@@ -1,12 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  aliasRebindingProof,
-  createAgent,
-  createZone,
-  rotationProof,
-  verifyAliasRebindingProof,
-} from "./asp-core.mjs";
+import { aliasRebindingProof,
+createAgent,
+createZone,
+rotationProof,
+verifyAliasRebindingProof, } from "../asp-core.mjs"
 
 test("zone can approve alias rebinding after agent key rotation", () => {
   const zone = createZone("zone://local");

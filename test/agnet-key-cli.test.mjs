@@ -7,10 +7,10 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
 
-import { agentFromPrivateKey, canonical, zoneFromPrivateKey } from "./asp-core.mjs";
-import { openKeyEnvelope, parseKeyEnvelope } from "./managed-key.mjs";
-import { ManagedKeyStore } from "./managed-key-store.mjs";
-import { migrateKey, recoverKey, rewrapKey } from "./agnet-key.mjs";
+import { agentFromPrivateKey, canonical, zoneFromPrivateKey } from "../asp-core.mjs"
+import { openKeyEnvelope, parseKeyEnvelope } from "../managed-key.mjs"
+import { ManagedKeyStore } from "../managed-key-store.mjs"
+import { migrateKey, recoverKey, rewrapKey } from "../agnet-key.mjs"
 
 const execFileAsync = promisify(execFile);
 const PKCS8_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");

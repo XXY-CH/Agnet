@@ -52,7 +52,7 @@ Task execution 仍由 Node Federation Gateway 路径证明。
 ## 验收
 
 ```bash
-node --test --test-concurrency=1 *.test.mjs
+node --test --test-concurrency=1 test/*.test.mjs
 go test ./...
 ```
 

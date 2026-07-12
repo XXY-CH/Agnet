@@ -48,7 +48,7 @@ Zone A requester
 ## v1 验收
 
 ```bash
-node --test --test-concurrency=1 *.test.mjs
+node --test --test-concurrency=1 test/*.test.mjs
 go test ./...
 ```
 

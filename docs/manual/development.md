@@ -11,8 +11,8 @@ This repository is a local-first research prototype. Keep changes boundary-first
 ## Focused commands
 
 ```bash
-node --test --test-concurrency=1 docs-contract.test.mjs
-node --test --test-concurrency=1 *.test.mjs
+node --test --test-concurrency=1 test/docs-contract.test.mjs
+node --test --test-concurrency=1 test/*.test.mjs
 go test ./...
 ```
 
@@ -66,8 +66,8 @@ go test ./...
 
 ## Docs contract
 
-`docs-contract.test.mjs` guards public docs phrasing across roadmap, boundary, draft, status, and README files. After README or docs restructuring, run:
+`test/docs-contract.test.mjs` guards public docs phrasing across roadmap, boundary, draft, status, and README files. After README or docs restructuring, run:
 
 ```bash
-node --test --test-concurrency=1 docs-contract.test.mjs
+node --test --test-concurrency=1 test/docs-contract.test.mjs
 ```

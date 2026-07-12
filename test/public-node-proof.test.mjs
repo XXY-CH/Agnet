@@ -6,7 +6,7 @@ import net from "node:net";
 import { networkInterfaces } from "node:os";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { canonical, createZone, loadTrustedZones, signObject, verifyFederatedReceipt, zoneFromPrivateKey } from "./asp-core.mjs";
+import { canonical, createZone, loadTrustedZones, signObject, verifyFederatedReceipt, zoneFromPrivateKey } from "../asp-core.mjs"
 
 const execFileAsync = promisify(execFile);
 
