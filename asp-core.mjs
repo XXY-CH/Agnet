@@ -684,6 +684,403 @@ export function verifyAuditEntries(entries) {
   return true;
 }
 
+const SWARM_JOURNAL_FORMAT = "agnet-local-swarm-journal/v1";
+const SWARM_JOURNAL_ZERO_HASH = "0".repeat(64);
+const SWARM_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/;
+const SWARM_JOURNAL_FIELDS = ["format", "hash", "kind", "payload", "prev_hash", "prior_state_version", "sequence", "state_version", "timestamp"];
+
+function durableHex(value, label) {
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value)) throw new Error(`${label} invalid`);
+  return value;
+}
+
+function durableSafeInteger(value, label, minimum = 0) {
+  if (!Number.isSafeInteger(value) || value < minimum) throw new Error(`${label} must be a safe integer`);
+  return value;
+}
+
+function durableTimestamp(value, label) {
+  if (typeof value !== "string" || !SWARM_TIMESTAMP_PATTERN.test(value) || Number.isNaN(Date.parse(value))) throw new Error(`${label} invalid`);
+  return value;
+}
+
+function durablePlainObject(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} invalid`);
+  return value;
+}
+
+function durableFreeze(value) {
+  if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
+  for (const item of Object.values(value)) durableFreeze(item);
+  return Object.freeze(value);
+}
+
+function swarmJournalHash(entry) {
+  const { hash, ...preimage } = entry;
+  return createHash("sha256").update(canonical(preimage)).digest("hex");
+}
+
+function durableEntryFields(entry, constructing = false) {
+  const value = durablePlainObject(entry, "swarm journal entry");
+  const fields = Object.keys(value).sort();
+  const expected = constructing ? SWARM_JOURNAL_FIELDS.filter((field) => field !== "hash") : SWARM_JOURNAL_FIELDS;
+  if (fields.length !== expected.length || !fields.every((field, index) => field === expected[index])) throw new Error("swarm journal entry fields invalid");
+  if (value.format !== SWARM_JOURNAL_FORMAT) throw new Error("swarm journal format invalid");
+  durableSafeInteger(value.sequence, "swarm journal sequence", 1);
+  durableSafeInteger(value.prior_state_version, "swarm journal prior state version");
+  durableSafeInteger(value.state_version, "swarm journal state version", 1);
+  if (value.prior_state_version >= Number.MAX_SAFE_INTEGER || value.state_version !== value.prior_state_version + 1) throw new Error("swarm journal state versions are not contiguous");
+  if (typeof value.kind !== "string" || value.kind === "" || value.kind.includes("\0")) throw new Error("swarm journal kind invalid");
+  durablePlainObject(value.payload, "swarm journal payload");
+  durableTimestamp(value.timestamp, "swarm journal timestamp");
+  durableHex(value.prev_hash, "swarm journal previous hash");
+  if (!constructing) durableHex(value.hash, "swarm journal hash");
+}
+
+/** Construct one immutable, canonical journal entry. This pure helper performs no I/O. */
+export function swarmJournalEntry(entry) {
+  durableEntryFields(entry, true);
+  const result = { ...entry, payload: structuredClone(entry.payload) };
+  result.hash = swarmJournalHash(result);
+  return durableFreeze(result);
+}
+
+const DURABLE_GENERATION_PIN_FIELDS = ["passphrase_file", "record_digest", "store_path"];
+const DURABLE_SPEC_REQUIRED_FIELDS = ["authority_generation_pin", "binding", "plan", "request", "schema_version", "steps", "swarm_id"];
+const DURABLE_SPEC_OPTIONAL_FIELDS = ["local_authority"];
+const DURABLE_STEP_REQUIRED_FIELDS = ["attempt_policy", "candidates", "step_id"];
+const DURABLE_STEP_OPTIONAL_FIELDS = ["capability", "depends_on", "task_digest", "task_id"];
+const DURABLE_CANDIDATE_REQUIRED_FIELDS = ["aid", "alias", "descriptor_digest", "generation_pin", "public_key_spki"];
+const DURABLE_CANDIDATE_OPTIONAL_FIELDS = ["descriptor", "runtime", "runtime_kind", "zone_binding"];
+
+function durableGenerationPin(value, label, required) {
+  if (!hasExactFields(value, DURABLE_GENERATION_PIN_FIELDS)) throw new Error(`${label} invalid`);
+  for (const field of ["store_path", "passphrase_file"]) {
+    if (typeof value[field] !== "string" || (required && value[field] === "")) throw new Error(`${label} invalid`);
+  }
+  if (typeof value.record_digest !== "string" || (required && !/^[0-9a-f]{64}$/.test(value.record_digest)) || (!required && value.record_digest !== "" && !/^[0-9a-f]{64}$/.test(value.record_digest))) throw new Error(`${label} invalid`);
+}
+
+function durableFrozenJson(value, label) {
+  if (typeof value !== "string" || value === "") throw new Error(`${label} invalid`);
+  return durableCanonicalJson(Buffer.from(value), label);
+}
+
+function durableFrozenCandidate(candidate, authority, frozen) {
+  if (!hasRequiredAllowedFields(candidate, DURABLE_CANDIDATE_REQUIRED_FIELDS, DURABLE_CANDIDATE_OPTIONAL_FIELDS)) throw new Error("swarm durable worker verification pin invalid");
+  if (typeof candidate.alias !== "string" || candidate.alias === "" || candidate.alias.includes("\0") || typeof candidate.aid !== "string" || candidate.aid === "" || candidate.aid.includes("\0") || !/^[0-9a-f]{64}$/.test(candidate.descriptor_digest)) throw new Error("swarm durable worker verification pin invalid");
+  durableGenerationPin(candidate.generation_pin, "swarm durable worker verification pin", true);
+  let publicKey;
+  try { publicKey = publicKeyFromDescriptor({ public_key_spki: candidate.public_key_spki }); } catch { throw new Error("swarm durable worker verification pin invalid"); }
+  if (computeAid(publicKey) !== candidate.aid) throw new Error("swarm durable worker verification pin invalid");
+  if (candidate.runtime !== undefined && (!durablePlainObject(candidate.runtime, "swarm durable worker runtime") || (candidate.runtime_kind !== undefined && candidate.runtime_kind !== "docker" && candidate.runtime_kind !== "apple-container"))) throw new Error("swarm durable worker runtime invalid");
+  if (!frozen) return;
+  if (typeof candidate.descriptor !== "string" || typeof candidate.zone_binding !== "string") throw new Error("swarm durable worker descriptor pin invalid");
+  const descriptor = durableFrozenJson(candidate.descriptor, "swarm durable worker descriptor");
+  const zoneBinding = durableFrozenJson(candidate.zone_binding, "swarm durable worker zone binding");
+  if (!durablePlainObject(descriptor, "swarm durable worker descriptor") || createHash("sha256").update(canonical(descriptor)).digest("hex") !== candidate.descriptor_digest || descriptor.aid !== candidate.aid || descriptor.public_key_spki !== candidate.public_key_spki) throw new Error("swarm durable worker descriptor pin invalid");
+  try { resolveAgent(new Map([[candidate.alias, { descriptor, zone: authority, zone_binding: zoneBinding }]]), candidate.alias); } catch { throw new Error("swarm durable worker descriptor pin invalid"); }
+}
+
+function durableSpecSteps(payload) {
+  if (!hasExactFields(payload, ["schema_version", "spec"]) || payload.schema_version !== 1 || !hasRequiredAllowedFields(payload.spec, DURABLE_SPEC_REQUIRED_FIELDS, DURABLE_SPEC_OPTIONAL_FIELDS) || payload.spec.schema_version !== 1) throw new Error("swarm opened payload invalid");
+  const { swarm_id: swarmId, steps } = payload.spec;
+  if (typeof swarmId !== "string" || swarmId === "" || swarmId.includes("\0") || !Array.isArray(steps) || steps.length === 0) throw new Error("swarm opened payload invalid");
+  for (const field of ["plan", "binding", "request"]) durableCanonicalJson(durableBase64(payload.spec[field], `swarm durable ${field}`), `swarm durable ${field}`);
+  const frozen = payload.spec.local_authority !== undefined;
+  let authority;
+  if (frozen) {
+    durableGenerationPin(payload.spec.authority_generation_pin, "swarm durable local authority pin", true);
+    try { authority = verifyZoneDescriptor(payload.spec.local_authority).descriptor; } catch { throw new Error("swarm durable local authority pin invalid"); }
+  } else {
+    durableGenerationPin(payload.spec.authority_generation_pin, "swarm durable local authority pin", false);
+  }
+  const ids = new Set();
+  return steps.map((step) => {
+    if (!hasRequiredAllowedFields(step, DURABLE_STEP_REQUIRED_FIELDS, DURABLE_STEP_OPTIONAL_FIELDS) || typeof step.step_id !== "string" || step.step_id === "" || step.step_id.includes("\0") || ids.has(step.step_id) || !hasExactFields(step.attempt_policy, ["max_attempts"]) || !Number.isSafeInteger(step.attempt_policy.max_attempts) || step.attempt_policy.max_attempts < 1 || !Array.isArray(step.candidates) || step.candidates.length === 0) throw new Error("swarm durable step invalid");
+    if (frozen && (typeof step.task_id !== "string" || step.task_id === "" || step.task_id.includes("\0") || !/^[0-9a-f]{64}$/.test(step.task_digest))) throw new Error("swarm durable signed task identity invalid");
+    const dependencies = step.depends_on ?? [];
+    if (!Array.isArray(dependencies) || new Set(dependencies).size !== dependencies.length || dependencies.some((dependency) => typeof dependency !== "string" || !ids.has(dependency))) throw new Error("swarm durable step dependency invalid");
+    for (const candidate of step.candidates) durableFrozenCandidate(candidate, authority, frozen);
+    ids.add(step.step_id);
+    return { step_id: step.step_id, depends_on: [...dependencies], status: "pending", attempts: 0, observations: [] };
+  });
+}
+
+function durableWave(payload, label, payloadFields = ["schema_version", "wave"]) {
+  if (!hasExactFields(payload, payloadFields) || payload.schema_version !== 1 || !hasExactFields(payload.wave, ["recorded_at", "step_ids"]) || !Array.isArray(payload.wave.step_ids) || payload.wave.step_ids.length === 0 || payload.wave.step_ids.some((stepId) => typeof stepId !== "string" || stepId === "")) throw new Error(`${label} wave invalid`);
+  if (new Set(payload.wave.step_ids).size !== payload.wave.step_ids.length) throw new Error(`${label} wave duplicate step`);
+  durableTimestamp(payload.wave.recorded_at, `${label} recorded_at`);
+  return payload.wave;
+}
+
+function durableBase64(value, label) {
+  if (typeof value !== "string" || value === "" || value.includes("=") || !/^[A-Za-z0-9_-]+$/.test(value)) throw new Error(`${label} invalid`);
+  let decoded;
+  try { decoded = Buffer.from(value, "base64url"); } catch { throw new Error(`${label} invalid`); }
+  if (decoded.toString("base64url") !== value) throw new Error(`${label} invalid`);
+  return decoded;
+}
+
+function durableCanonicalJson(bytes, label) {
+  let value;
+  try { value = JSON.parse(bytes.toString("utf8")); } catch { throw new Error(`${label} invalid`); }
+  if (canonical(value) !== bytes.toString("utf8")) throw new Error(`${label} noncanonical`);
+  return value;
+}
+
+function durableAuthority(state) {
+  const authority = state.spec?.local_authority;
+  if (!authority || typeof authority !== "object") throw new Error("swarm frozen local authority missing");
+  return authority;
+}
+
+function durableClaimEqual(left, right) {
+  return canonical(left) === canonical(right);
+}
+
+function durableCloseReplayEvidence(state) {
+  const binding = durableCanonicalJson(durableBase64(state.spec.binding, "swarm durable binding"), "swarm durable binding");
+  if (!durablePlainObject(binding, "swarm close binding") || binding.format !== "asp-swarm-execution-binding/v1" || binding.swarm_id !== state.spec.swarm_id || !/^[0-9a-f]{64}$/.test(binding.plan_digest) || !/^[0-9a-f]{64}$/.test(binding.execution_graph_digest)) throw new Error("swarm close binding invalid");
+  const receipts = state.spec.steps.map((specStep) => {
+    const step = state.steps.find((item) => item.step_id === specStep.step_id);
+    const receipt = state.receipts?.[specStep.step_id];
+    if (!step || step.status !== "completed" || !receipt || typeof specStep.task_id !== "string" || specStep.task_id === "" || !/^[0-9a-f]{64}$/.test(receipt.digest)) throw new Error("swarm close receipt missing");
+    return {
+      step_id: specStep.step_id,
+      task_id: specStep.task_id,
+      signed_receipt_digest: receipt.digest,
+      observations: step.observations.map(({ claim, outcome, observed_at }) => ({ attempt: claim.attempt, candidate: claim.candidate, owner: claim.owner, fence: claim.fence, outcome, observed_at })),
+    };
+  });
+  const referenced = new Set(state.spec.steps.flatMap((step) => step.depends_on ?? []));
+  const terminal = state.spec.steps.filter((step) => !referenced.has(step.step_id));
+  if (terminal.length !== 1) throw new Error("single terminal step required");
+  const terminalIndex = state.spec.steps.findIndex((step) => step.step_id === terminal[0].step_id);
+  const result = state.receipts?.[terminal[0].step_id]?.result;
+  if (!durablePlainObject(result, "terminal result artifact")) throw new Error("terminal result artifact missing");
+  return {
+    format: "asp-swarm-close/v2",
+    swarm_id: state.spec.swarm_id,
+    plan_digest: binding.plan_digest,
+    execution_graph_digest: binding.execution_graph_digest,
+    step_receipts: receipts,
+    final_output: { step_id: terminal[0].step_id, task_id: terminal[0].task_id, signed_receipt_digest: receipts[terminalIndex].signed_receipt_digest, artifact: result, selection_rule: "single-terminal-result" },
+    scheduler: { mode: "parallel-ready-dag", ready_waves: state.ready_waves ?? [], dispatch_waves: state.dispatch_waves ?? [] },
+  };
+}
+
+function verifyDurableCloseReplay(close, state) {
+  const expected = durableCloseReplayEvidence(state);
+  if (!hasExactFields(close, [...Object.keys(expected), "close_signature"].sort())) throw new Error("swarm close replay fields invalid");
+  for (const [field, value] of Object.entries(expected)) {
+    if (canonical(close[field]) !== canonical(value)) throw new Error(`swarm close ${field} evidence mismatch`);
+  }
+}
+
+function durableArtifactTriple(value, label) {
+  if (!hasExactFields(value, ["manifest_hash", "sha256", "uri"]) || !/^[0-9a-f]{64}$/.test(value.sha256) || value.manifest_hash !== value.sha256 || value.uri !== `artifact://local/sha256/${value.sha256}`) throw new Error(`${label} invalid`);
+  return value;
+}
+
+function durableReceiptMatchesCommit(state, specStep, claim, payload, receipt) {
+  const requiredReceipt = ["attempt", "auxiliary", "capability", "fence", "format", "graph_digest", "result", "signature", "step_id", "swarm_id", "task_digest", "worker_aid", "worker_generation_pin"];
+  const bindingBytes = durableBase64(state.spec.binding, "swarm durable binding");
+  if (!hasExactFields(payload, ["auxiliary", "claim", "receipt", "receipt_digest", "result", "schema_version"]) || !hasRequiredAllowedFields(receipt, requiredReceipt, ["dependencies", "task_id"]) || !Array.isArray(payload.auxiliary) || !Array.isArray(receipt.auxiliary)) return false;
+  try {
+    durableArtifactTriple(payload.result, "swarm receipt result");
+    for (const artifact of payload.auxiliary) durableArtifactTriple(artifact, "swarm receipt auxiliary");
+    durableArtifactTriple(receipt.result, "swarm receipt result");
+    for (const artifact of receipt.auxiliary) durableArtifactTriple(artifact, "swarm receipt auxiliary");
+  } catch { return false; }
+  if (receipt.format !== "agnet-receipt/v2" || receipt.swarm_id !== state.spec.swarm_id || receipt.step_id !== claim.step_id || receipt.task_digest !== specStep.task_digest || receipt.graph_digest !== createHash("sha256").update(bindingBytes).digest("hex") || receipt.capability !== (specStep.capability ?? "") || receipt.worker_aid !== claim.candidate?.aid || receipt.attempt !== claim.attempt || receipt.fence !== claim.fence || canonical(receipt.worker_generation_pin) !== canonical(claim.candidate?.generation_pin) || canonical(receipt.result) !== canonical(payload.result) || canonical(receipt.auxiliary) !== canonical(payload.auxiliary)) return false;
+  if (specStep.task_id && receipt.task_id !== specStep.task_id) return false;
+  const expectedDependencies = specStep.depends_on ?? [];
+  const receiptDependencies = receipt.dependencies ?? [];
+  if (!Array.isArray(receiptDependencies) || receiptDependencies.length !== expectedDependencies.length) return false;
+  for (const dependency of receiptDependencies) {
+    if (!hasExactFields(dependency, ["artifact", "step_id"]) || typeof dependency.step_id !== "string" || dependency.step_id === "") return false;
+    try { durableArtifactTriple(dependency.artifact, "swarm receipt dependency"); } catch { return false; }
+  }
+  const dependencies = new Map(receiptDependencies.map((dependency) => [dependency.step_id, dependency.artifact]));
+  return dependencies.size === expectedDependencies.length && expectedDependencies.every((stepId) => canonical(dependencies.get(stepId)) === canonical(state.receipts?.[stepId]?.result));
+}
+
+function durableOutputVerifiedPayload(payload) {
+  for (const field of ["canonical_proof_digest", "close_digest", "proof_digest", "submission_digest", "trust_inputs_digest"]) durableHex(payload[field], `output ${field}`);
+  for (const field of ["swarm_id", "verification_id", "verified_at", "verifier_aid", "verifier_zone"]) {
+    if (typeof payload[field] !== "string" || payload[field] === "" || payload[field].includes("\0")) throw new Error(`output ${field} invalid`);
+  }
+  if (payload.verification_id.length > 256 || payload.prior_status !== "closing" || payload.next_status !== "completed" || payload.replay_decision !== "accepted" || !durablePlainObject(payload.final_output, "output final output")) throw new Error("output verification invalid");
+  durableTimestamp(payload.completed_at, "output completed_at");
+  const signature = durableBase64(payload.completion_signature, "output completion signature");
+  if (signature.length !== 64) throw new Error("output completion signature invalid");
+}
+
+function reduceDurableEntry(prior, entry) {
+  if (entry.prior_state_version !== prior.version) throw new Error("swarm journal state versions are not contiguous");
+  const next = structuredClone(prior);
+  if (prior.status === "disbanded") throw new Error("swarm is terminal");
+  if (entry.kind === "swarm.opened") {
+    if (prior.version !== 0) throw new Error("swarm already opened");
+    next.spec = structuredClone(entry.payload.spec);
+    next.steps = durableSpecSteps(entry.payload);
+    next.ready_waves = [];
+    next.dispatch_waves = [];
+    next.status = "open";
+  } else if (entry.kind === "wave.ready") {
+    if (prior.version === 0 || prior.status === "closing" || prior.status === "completed") throw new Error("swarm must open before leasing");
+    const wave = durableWave(entry.payload, "swarm ready");
+    for (const stepId of wave.step_ids) {
+      const step = next.steps.find((item) => item.step_id === stepId);
+      if (!step || step.status !== "pending" || step.depends_on.some((dependency) => next.steps.find((item) => item.step_id === dependency)?.status !== "completed")) throw new Error("swarm ready wave not ready");
+    }
+    next.ready_wave = structuredClone(wave);
+    next.ready_waves.push(structuredClone(wave));
+  } else if (entry.kind === "wave.dispatched") {
+    if (prior.version === 0 || !prior.ready_wave || prior.status === "closing" || prior.status === "completed") throw new Error("swarm dispatch requires ready wave");
+    const wave = durableWave(entry.payload, "swarm dispatch", ["claims", "schema_version", "wave"]);
+    if (!hasExactFields(entry.payload, ["claims", "schema_version", "wave"]) || canonical(wave) !== canonical(prior.ready_wave) || !Array.isArray(entry.payload.claims) || entry.payload.claims.length !== wave.step_ids.length) throw new Error("swarm dispatch readiness invalid");
+    const claims = [];
+    for (const [index, claim] of entry.payload.claims.entries()) {
+      if (!hasExactFields(claim, ["attempt", "candidate", "candidate_index", "capability", "deadline", "fence", "owner", "step_id"]) || claim.step_id !== wave.step_ids[index] || typeof claim.owner !== "string" || claim.owner === "" || !Number.isSafeInteger(claim.fence) || claim.fence !== prior.last_fence + index + 1 || !Number.isSafeInteger(claim.attempt) || claim.attempt < 1 || !Number.isSafeInteger(claim.candidate_index) || claim.candidate_index !== claim.attempt - 1 || typeof claim.capability !== "string" || typeof claim.deadline !== "string") throw new Error("swarm dispatch claim invalid");
+      durableTimestamp(claim.deadline, "swarm dispatch deadline");
+      const step = next.steps.find((item) => item.step_id === claim.step_id);
+      const specStep = prior.spec.steps.find((item) => item.step_id === claim.step_id);
+      if (!step || !specStep || step.status !== "pending" || claim.attempt !== step.attempts + 1 || claim.attempt > specStep.attempt_policy.max_attempts || claim.candidate_index >= specStep.candidates.length || claim.capability !== (specStep.capability ?? "") || canonical(claim.candidate) !== canonical(specStep.candidates[claim.candidate_index]) || Date.parse(claim.deadline) <= Date.parse(entry.timestamp)) throw new Error("swarm dispatch readiness invalid");
+      step.status = "running";
+      step.attempts = claim.attempt;
+      next.last_fence = claim.fence;
+      step.observations.push({ claim: structuredClone(claim), outcome: "dispatched", observed_at: entry.timestamp });
+      claims.push(structuredClone(claim));
+    }
+    next.leases = claims;
+    delete next.ready_wave;
+    next.dispatch_waves.push({ wave: structuredClone(wave), attempts: structuredClone(claims) });
+    next.status = "running";
+  } else if (entry.kind === "lease.observed") {
+    if (prior.version === 0 || !hasExactFields(entry.payload, ["claim", "outcome", "schema_version"]) || entry.payload.schema_version !== 1 || !durablePlainObject(entry.payload.claim, "swarm observation claim") || typeof entry.payload.outcome !== "string" || entry.payload.outcome === "") throw new Error("swarm observation invalid");
+    const claim = entry.payload.claim;
+    const lease = (prior.leases ?? []).find((item) => item.step_id === claim.step_id);
+    if (!lease || !durableClaimEqual(lease, claim)) throw new Error("swarm observation fence invalid");
+    const step = next.steps.find((item) => item.step_id === claim.step_id);
+    if (!step) throw new Error("swarm observation invalid");
+    step.observations.push({ claim: structuredClone(claim), outcome: entry.payload.outcome, observed_at: entry.timestamp });
+  } else if (entry.kind === "receipt.committed") {
+    if (prior.status !== "running" || entry.payload.schema_version !== 1 || !durablePlainObject(entry.payload.claim, "swarm receipt claim")) throw new Error("swarm receipt invalid");
+    const claim = entry.payload.claim;
+    const step = next.steps.find((item) => item.step_id === claim.step_id);
+    const lease = (prior.leases ?? []).find((item) => item.step_id === claim.step_id);
+    const receiptBytes = durableBase64(entry.payload.receipt, "swarm receipt");
+    if (!step || step.status !== "running" || !lease || !durableClaimEqual(lease, claim) || durableHex(entry.payload.receipt_digest, "swarm receipt digest") !== createHash("sha256").update(receiptBytes).digest("hex")) throw new Error("swarm receipt invalid");
+    const receipt = durableCanonicalJson(receiptBytes, "swarm receipt");
+    const specStep = prior.spec.steps.find((item) => item.step_id === claim.step_id);
+    if (!specStep || !durableReceiptMatchesCommit(prior, specStep, claim, entry.payload, receipt) || !verifyObject(publicKeyFromDescriptor({ public_key_spki: claim.candidate?.public_key_spki }), (() => { const { signature, ...body } = receipt; return body; })(), receipt.signature)) throw new Error("swarm receipt signature invalid");
+    step.status = "completed";
+    next.leases = (prior.leases ?? []).filter((item) => item.step_id !== claim.step_id);
+    step.observations.push({ claim: structuredClone(claim), outcome: "receipt.committed", observed_at: entry.timestamp });
+    next.receipts ??= {};
+    next.receipts[claim.step_id] = { digest: entry.payload.receipt_digest, result: structuredClone(entry.payload.result) };
+    next.status = next.steps.every((item) => item.status === "completed") ? "completed" : "running";
+  } else if (entry.kind === "close.stored") {
+    if (prior.status !== "completed" || (prior.leases ?? []).length !== 0 || !hasExactFields(entry.payload, ["close", "digest", "schema_version"]) || entry.payload.schema_version !== 1) throw new Error("illegal swarm close");
+    const closeBytes = durableBase64(entry.payload.close, "swarm close");
+    if (durableHex(entry.payload.digest, "swarm close digest") !== createHash("sha256").update(closeBytes).digest("hex")) throw new Error("swarm close digest invalid");
+    const close = durableCanonicalJson(closeBytes, "swarm close");
+    const authority = durableAuthority(prior);
+    verifySwarmCloseV2({ type: "FED_SWARM_CLOSE", swarm_id: prior.spec.swarm_id, zone: authority, close }, new Map([[authority.zid, authority]]));
+    next.stored_close = { bytes: closeBytes.toString("base64url"), digest: entry.payload.digest, close };
+    verifyDurableCloseReplay(close, prior);
+    next.status = "closing";
+  } else if (entry.kind === "output.verification_failed") {
+    if (prior.status !== "closing" || !hasExactFields(entry.payload, ["error_code", "schema_version", "submission_digest"]) || entry.payload.schema_version !== 1 || !/^[0-9a-f]{64}$/.test(entry.payload.submission_digest) || entry.payload.error_code !== "output_proof_rejected") throw new Error("output verification failure invalid");
+  } else if (entry.kind === "output.verified") {
+    if (prior.status !== "closing" || !prior.stored_close || !hasExactFields(entry.payload, ["canonical_proof_digest", "close", "close_digest", "completed_at", "completion_signature", "final_output", "next_status", "prior_status", "proof", "proof_digest", "replay_decision", "schema_version", "submission_digest", "swarm_id", "trust_inputs_digest", "verification_id", "verified_at", "verifier_aid", "verifier_zone"]) || entry.payload.schema_version !== 1) throw new Error("output verification invalid");
+    const payload = entry.payload;
+    durableOutputVerifiedPayload(payload);
+    const proofBytes = durableBase64(payload.proof, "output proof");
+    const closeBytes = durableBase64(payload.close, "output close");
+    if (durableHex(payload.canonical_proof_digest, "output proof digest") !== createHash("sha256").update(proofBytes).digest("hex") || durableHex(payload.close_digest, "output close digest") !== prior.stored_close.digest || closeBytes.toString("base64url") !== prior.stored_close.bytes || payload.swarm_id !== prior.spec.swarm_id || payload.prior_status !== "closing" || payload.next_status !== "completed" || payload.completed_at !== entry.timestamp || !/^[0-9a-f]{64}$/.test(payload.trust_inputs_digest)) throw new Error("output verification binding invalid");
+    const proof = durableCanonicalJson(proofBytes, "output proof");
+    const finalOutput = durableCanonicalJson(Buffer.from(canonical(payload.final_output)), "output final output");
+    if (canonical(finalOutput) !== canonical(prior.stored_close.close.final_output)) throw new Error("output verification evidence mismatch");
+    const { completion_signature, ...body } = payload;
+    if (typeof completion_signature !== "string" || !verifyObject(publicKeyFromDescriptor(durableAuthority(prior)), body, completion_signature)) throw new Error("output verification signature invalid");
+    next.output_verification = { close_digest: payload.close_digest, trust_inputs_digest: payload.trust_inputs_digest, digest: createHash("sha256").update(canonical(payload)).digest("hex"), completed_at: payload.completed_at, proof: proofBytes.toString("base64url") };
+    next.status = "completed";
+  } else if (entry.kind === "swarm.disbanded") {
+    if (prior.status !== "completed" || !prior.output_verification || entry.timestamp !== prior.output_verification.completed_at || !hasExactFields(entry.payload, ["digest", "disband", "schema_version"]) || entry.payload.schema_version !== 1) throw new Error("swarm disband invalid");
+    const disbandBytes = durableBase64(entry.payload.disband, "swarm disband");
+    if (durableHex(entry.payload.digest, "swarm disband digest") !== createHash("sha256").update(disbandBytes).digest("hex")) throw new Error("swarm disband digest invalid");
+    const disband = durableCanonicalJson(disbandBytes, "swarm disband");
+    const close = prior.stored_close.close;
+    verifySwarmDisband(disband, durableAuthority(prior), { swarm_id: prior.spec.swarm_id, plan_digest: close.plan_digest, execution_graph_digest: close.execution_graph_digest, close_digest: prior.stored_close.digest, output_verification_digest: prior.output_verification.digest, completed_at: prior.output_verification.completed_at });
+    next.disband = { bytes: disbandBytes.toString("base64url"), digest: entry.payload.digest, disband };
+    next.status = "disbanded";
+  } else if (entry.kind.startsWith("future.")) {
+    // Explicit forward-compatible non-state entries preserve journal continuity only.
+  } else {
+    throw new Error("swarm journal transition kind invalid");
+  }
+  next.version = entry.state_version;
+  return next;
+}
+
+/** Verify exact journal preimages and replay the recognized immutable state machine without I/O. */
+export function verifySwarmJournal(entries) {
+  if (!Array.isArray(entries)) throw new Error("swarm journal entries invalid");
+  let previousHash = SWARM_JOURNAL_ZERO_HASH;
+  let previousVersion = 0;
+  let state = { version: 0, status: "", steps: [], leases: [], last_fence: 0 };
+  for (const [index, entry] of entries.entries()) {
+    durableEntryFields(entry);
+    if (entry.sequence !== index + 1) throw new Error("swarm journal sequence invalid");
+    if (entry.prior_state_version !== previousVersion || entry.prev_hash !== previousHash) throw new Error("swarm journal chain invalid");
+    if (entry.hash !== swarmJournalHash(entry)) throw new Error("swarm journal hash invalid");
+    state = reduceDurableEntry(state, entry);
+    previousHash = entry.hash;
+    previousVersion = entry.state_version;
+  }
+  return durableFreeze({ entries: entries.map((entry) => durableFreeze(structuredClone(entry))), head: previousHash, state });
+}
+
+const SWARM_DISBAND_FIELDS = ["close_digest", "disband_signature", "disbanded_at", "execution_graph_digest", "format", "output_verification_digest", "plan_digest", "swarm_id"];
+
+function swarmDisbandBody(value) {
+  const { disband_signature, ...body } = value;
+  return body;
+}
+
+function validateSwarmDisbandBinding(binding) {
+  durablePlainObject(binding, "swarm disband binding");
+  for (const field of ["swarm_id", "plan_digest", "execution_graph_digest", "close_digest", "output_verification_digest"]) {
+    if (typeof binding[field] !== "string" || binding[field] === "") throw new Error("swarm disband binding invalid");
+  }
+  for (const field of ["plan_digest", "execution_graph_digest", "close_digest", "output_verification_digest"]) durableHex(binding[field], `swarm disband ${field}`);
+  durableTimestamp(binding.completed_at, "swarm disband timestamp");
+}
+
+/** Create a signed immutable disband record from completed verified output only. */
+export function swarmDisband(authorityZone, completedOutput) {
+  if (!authorityZone?.privateKey || !authorityZone?.descriptor) throw new Error("swarm disband authority missing");
+  validateSwarmDisbandBinding(completedOutput);
+  const body = { format: "asp-swarm-disband/v1", swarm_id: completedOutput.swarm_id, plan_digest: completedOutput.plan_digest, execution_graph_digest: completedOutput.execution_graph_digest, close_digest: completedOutput.close_digest, output_verification_digest: completedOutput.output_verification_digest, disbanded_at: completedOutput.completed_at };
+  return durableFreeze({ ...body, disband_signature: signObject(authorityZone.privateKey, body) });
+}
+
+/** Verify a canonical signed disband record against frozen completed-output bindings. */
+export function verifySwarmDisband(disband, authorityDescriptor, completedOutput) {
+  if (!hasExactFields(disband, SWARM_DISBAND_FIELDS) || disband.format !== "asp-swarm-disband/v1") throw new Error("swarm disband fields invalid");
+  validateSwarmDisbandBinding({ ...completedOutput, completed_at: completedOutput?.completed_at });
+  for (const field of ["swarm_id", "plan_digest", "execution_graph_digest", "close_digest", "output_verification_digest"]) {
+    if (disband[field] !== completedOutput[field]) throw new Error("swarm disband binding mismatch");
+  }
+  if (disband.disbanded_at !== completedOutput.completed_at) throw new Error("swarm disband timestamp mismatch");
+  durableTimestamp(disband.disbanded_at, "swarm disband timestamp");
+  if (typeof disband.disband_signature !== "string" || disband.disband_signature === "" || !verifyObject(publicKeyFromDescriptor(authorityDescriptor), swarmDisbandBody(disband), disband.disband_signature)) throw new Error("swarm disband signature invalid");
+  return durableFreeze({ disband: structuredClone(disband), digest: createHash("sha256").update(canonical(disband)).digest("hex") });
+}
+
 let auditLock = Promise.resolve();
 
 export async function appendAudit(record) {
@@ -762,6 +1159,7 @@ export function verifyFederatedTaskOpen(frame, trustedZones, workerDescriptor) {
   if (!frame.task || typeof frame.task !== "object" || Array.isArray(frame.task)) throw new Error("task open task missing");
   const originZone = verifyZoneDescriptor(frame.origin_zone).descriptor;
   assertTrustedZones(trustedZones);
+
   const trusted = trustedZones.get(originZone.zid);
   if (!trusted || trusted.public_key_spki !== originZone.public_key_spki) {
     throw new Error(`untrusted zone: ${originZone.zid}`);
@@ -808,7 +1206,7 @@ function verifyReceiptCheckpoints(publicKey, receipt) {
   const checkpoints = receiptCheckpoints(receipt.checkpoints);
   if (refs.length !== checkpoints.length) throw new Error("receipt checkpoint ref count mismatch");
   let parent = Object.prototype.hasOwnProperty.call(receipt, "resumed_from") ? receipt.resumed_from : null;
-  for (let index = 0; index < checkpoints.length; index++) {
+  for (let index = 0; index < checkpoints.length; index += 1) {
     const checkpoint = checkpoints[index];
     if (checkpoint.task_id !== receipt.task_id) throw new Error("checkpoint task mismatch");
     if (checkpoint.checkpoint_id !== refs[index]) throw new Error("checkpoint ref mismatch");
@@ -953,6 +1351,39 @@ function verifySwarmScheduler(closeBody, stepById, requireReceiptOrder) {
   }
 }
 
+function verifyParallelReadyDagScheduler(closeBody, stepById) {
+  const scheduler = closeBody.scheduler;
+  if (!hasExactFields(scheduler, ["dispatch_waves", "mode", "ready_waves"]) || scheduler.mode !== "parallel-ready-dag" || !Array.isArray(scheduler.ready_waves) || !Array.isArray(scheduler.dispatch_waves) || scheduler.ready_waves.length !== scheduler.dispatch_waves.length || scheduler.ready_waves.length === 0) throw new Error("swarm close parallel scheduler invalid");
+  const validateWave = (wave, label) => {
+    if (!hasExactFields(wave, ["recorded_at", "step_ids"]) || !Array.isArray(wave.step_ids) || wave.step_ids.length === 0 || new Set(wave.step_ids).size !== wave.step_ids.length || wave.step_ids.some((stepId) => typeof stepId !== "string" || !stepById.has(stepId))) throw new Error(`swarm close ${label} wave invalid`);
+    durableTimestamp(wave.recorded_at, `swarm close ${label} recorded_at`);
+  };
+  const attempts = [];
+  for (const [index, ready] of scheduler.ready_waves.entries()) {
+    validateWave(ready, "ready");
+    const dispatched = scheduler.dispatch_waves[index];
+    if (!hasExactFields(dispatched, ["attempts", "wave"]) || !Array.isArray(dispatched.attempts) || dispatched.attempts.length !== ready.step_ids.length) throw new Error("swarm close dispatch wave invalid");
+    validateWave(dispatched.wave, "dispatch");
+    if (canonical(dispatched.wave) !== canonical(ready)) throw new Error("swarm close dispatch wave order mismatch");
+    const fences = new Set();
+    for (const [attemptIndex, attempt] of dispatched.attempts.entries()) {
+      if (!durablePlainObject(attempt, "swarm close dispatch attempt") || attempt.step_id !== ready.step_ids[attemptIndex] || typeof attempt.owner !== "string" || attempt.owner === "" || !Number.isSafeInteger(attempt.fence) || attempt.fence < 1 || fences.has(attempt.fence) || !Number.isSafeInteger(attempt.attempt) || attempt.attempt < 1 || !Number.isSafeInteger(attempt.candidate_index) || attempt.candidate_index < 0 || typeof attempt.capability !== "string" || attempt.capability === "" || !durablePlainObject(attempt.candidate, "swarm close dispatch candidate")) throw new Error("swarm close dispatch attempt invalid");
+      fences.add(attempt.fence);
+      durableTimestamp(attempt.deadline, "swarm close dispatch deadline");
+      attempts.push(attempt);
+    }
+  }
+  for (const [stepId, step] of stepById) {
+    if (step.observations === undefined) continue;
+    if (!Array.isArray(step.observations)) throw new Error("swarm close observations invalid");
+    for (const observation of step.observations) {
+      if (!hasExactFields(observation, ["attempt", "candidate", "fence", "observed_at", "outcome", "owner"]) || !Number.isSafeInteger(observation.attempt) || observation.attempt < 1 || !Number.isSafeInteger(observation.fence) || observation.fence < 1 || typeof observation.owner !== "string" || observation.owner === "" || typeof observation.outcome !== "string" || observation.outcome === "" || !durablePlainObject(observation.candidate, "swarm close observation candidate")) throw new Error("swarm close observation invalid");
+      durableTimestamp(observation.observed_at, "swarm close observation timestamp");
+      if (!attempts.some((attempt) => attempt.step_id === stepId && attempt.owner === observation.owner && attempt.fence === observation.fence && attempt.attempt === observation.attempt && canonical(attempt.candidate) === canonical(observation.candidate))) throw new Error("swarm close observation binding invalid");
+    }
+  }
+}
+
 const SWARM_CLOSE_V1_REQUIRED_FIELDS = ["close_signature", "format", "step_receipts", "swarm_id"];
 const SWARM_CLOSE_V1_OPTIONAL_FIELDS = ["conflict_resolutions", "execution_graph_digest", "micro_contracts", "migration_log", "plan_digest", "scheduler"];
 const SWARM_CLOSE_V2_REQUIRED_FIELDS = ["close_signature", "execution_graph_digest", "final_output", "format", "plan_digest", "step_receipts", "swarm_id"];
@@ -983,13 +1414,13 @@ function verifySwarmCloseIdentity(frame, closeBody) {
   if (frame.swarm_id !== closeBody.swarm_id) throw new Error("swarm close frame id mismatch");
 }
 
-function verifySwarmCloseStepReceipts(closeBody, digestField, fieldsError) {
+function verifySwarmCloseStepReceipts(closeBody, digestField, fieldsError, allowObservations = false) {
   if (!Array.isArray(closeBody.step_receipts) || closeBody.step_receipts.length === 0) throw new Error("swarm close step receipts missing");
   const requiredFields = [digestField, "step_id", "task_id"].sort();
   const stepIds = new Set();
   const stepById = new Map();
   for (const step of closeBody.step_receipts) {
-    if (!hasRequiredAllowedFields(step, requiredFields, ["worker"])) throw new Error(fieldsError);
+    if (!hasRequiredAllowedFields(step, requiredFields, allowObservations ? ["observations", "worker"] : ["worker"])) throw new Error(fieldsError);
     if (typeof step.step_id !== "string" || step.step_id === "") throw new Error("swarm close step identity missing");
     if (step.step_id.includes("\0")) throw new Error("swarm close identity contains NUL");
     if (stepIds.has(step.step_id)) throw new Error("swarm close duplicate step receipt");
@@ -1007,7 +1438,8 @@ function verifySwarmCloseAuxiliaryEvidence(closeBody, stepById, zone, requireSch
   verifySwarmMigrationLog(closeBody, stepById);
   verifySwarmMicroContracts(closeBody, stepById);
   verifySwarmConflictResolutions(closeBody, stepById, zone);
-  verifySwarmScheduler(closeBody, stepById, requireSchedulerReceiptOrder);
+  if (closeBody.scheduler?.mode === "parallel-ready-dag") verifyParallelReadyDagScheduler(closeBody, stepById);
+  else verifySwarmScheduler(closeBody, stepById, requireSchedulerReceiptOrder);
 }
 
 function verifySwarmCloseSignature(zone, closeBody, closeSignature) {
@@ -1056,7 +1488,7 @@ export function verifySwarmCloseV2(frame, trustedZones) {
   verifySwarmCloseIdentity(frame, closeBody);
   if (typeof closeBody.plan_digest !== "string" || !/^[0-9a-f]{64}$/.test(closeBody.plan_digest)) throw new Error("swarm close plan digest invalid");
   if (typeof closeBody.execution_graph_digest !== "string" || !/^[0-9a-f]{64}$/.test(closeBody.execution_graph_digest)) throw new Error("swarm close execution graph digest invalid");
-  const stepById = verifySwarmCloseStepReceipts(closeBody, "signed_receipt_digest", "swarm close v2 step fields invalid");
+  const stepById = verifySwarmCloseStepReceipts(closeBody, "signed_receipt_digest", "swarm close v2 step fields invalid", true);
   verifySwarmCloseFinalOutput(closeBody, stepById);
   verifySwarmCloseAuxiliaryEvidence(closeBody, stepById, zone, false);
   verifySwarmCloseSignature(zone, closeBody, close_signature);

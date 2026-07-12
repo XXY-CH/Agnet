@@ -40,14 +40,6 @@ func swarmMutationAllowed(state SwarmState) error {
 	return nil
 }
 
-func requireMutableSwarmJournal(journal *SwarmJournal) error {
-	if journal == nil { return errors.New("swarm journal is required") }
-	return journal.WithLockedReplay(func(entries []SwarmJournalEntry) error {
-		state, err := ReduceSwarmEntries(entries)
-		if err != nil { return err }
-		return swarmMutationAllowed(state)
-	})
-}
 
 func BuildSwarmDisband(journal *SwarmJournal) (StoredSwarmDisband, error) {
 	if journal == nil { return StoredSwarmDisband{}, errors.New("swarm journal is required") }
@@ -66,13 +58,12 @@ func buildSwarmDisbandLocked(state SwarmState) (StoredSwarmDisband, error) {
 	planDigest, graphDigest, err := swarmCloseBindingDigests(state.Spec)
 	if err != nil { return StoredSwarmDisband{}, err }
 	if !isHexDigest(state.OutputVerification.Digest) || state.OutputVerification.CloseDigest != state.StoredClose.Digest || state.OutputVerification.CompletedAt == "" { return StoredSwarmDisband{}, errors.New("swarm disband output verification invalid") }
-	wire := swarmDisbandWire{Format: swarmDisbandFormat, SwarmID: state.Spec.SwarmID, PlanDigest: planDigest, ExecutionGraphDigest: graphDigest, CloseDigest: state.StoredClose.Digest, OutputVerificationDigest: state.OutputVerification.Digest, DisbandedAt: state.OutputVerification.CompletedAt}
+	body := swarmDisbandBody(swarmDisbandWire{Format: swarmDisbandFormat, SwarmID: state.Spec.SwarmID, PlanDigest: planDigest, ExecutionGraphDigest: graphDigest, CloseDigest: state.StoredClose.Digest, OutputVerificationDigest: state.OutputVerification.Digest, DisbandedAt: state.OutputVerification.CompletedAt})
 	key, err := pinnedCloseAuthorityKey(state.Spec)
 	if err != nil { return StoredSwarmDisband{}, errors.New("swarm disband authority unavailable") }
 	defer clear(key)
-	signed := signBodyWithKey(key, swarmDisbandBody(wire), "disband_signature")
-	wire.DisbandSignature, _ = signed["disband_signature"].(string)
-	raw, err := canonicalJSON(wire)
+	signed := signBodyWithKey(key, body, "disband_signature")
+	raw, err := canonicalJSON(signed)
 	if err != nil { return StoredSwarmDisband{}, err }
 	if err := verifySwarmDisbandAgainstState(raw, state); err != nil { return StoredSwarmDisband{}, err }
 	return StoredSwarmDisband{Bytes: raw, Digest: digestBytesHex(raw)}, nil
@@ -146,7 +137,9 @@ func verifySwarmDisbandAgainstState(raw []byte, state SwarmState) error {
 	decoder := json.NewDecoder(bytes.NewReader(raw)); decoder.DisallowUnknownFields()
 	var wire swarmDisbandWire
 	if err := decoder.Decode(&wire); err != nil || ensureSwarmJSONEOF(decoder) != nil { return errors.New("swarm disband invalid") }
-	canonical, err := canonicalJSON(wire)
+	var signed map[string]any
+	if err := json.Unmarshal(raw, &signed); err != nil { return errors.New("swarm disband invalid") }
+	canonical, err := canonicalJSON(signed)
 	if err != nil || !bytes.Equal(canonical, raw) || wire.Format != swarmDisbandFormat || wire.SwarmID != state.Spec.SwarmID || !isHexDigest(wire.PlanDigest) || !isHexDigest(wire.ExecutionGraphDigest) || wire.CloseDigest != state.StoredClose.Digest || wire.OutputVerificationDigest != state.OutputVerification.Digest || wire.DisbandedAt != state.OutputVerification.CompletedAt { return errors.New("swarm disband binding invalid") }
 	if _, err := parseCanonicalSwarmTimestamp(wire.DisbandedAt); err != nil { return errors.New("swarm disband timestamp invalid") }
 	signature, err := base64.RawURLEncoding.DecodeString(wire.DisbandSignature)

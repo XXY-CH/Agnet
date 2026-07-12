@@ -42,6 +42,7 @@ type SwarmView struct {
 	Leases             []LeaseClaim             `json:"leases"`
 	CommittedArtifacts map[string]ArtifactTriple `json:"committed_artifacts"`
 	LastFence          LeaseFence               `json:"last_fence"`
+	DisbandDigest      string                   `json:"disband_digest,omitempty"`
 }
 
 // SwarmViewPaths identifies every disposable projection for one journal.
@@ -228,6 +229,7 @@ func (m *SwarmMaterializer) deriveLocked(entries []SwarmJournalEntry) (map[strin
 		Leases:             cloneLeaseClaims(state.Leases),
 		CommittedArtifacts: cloneCommittedArtifacts(state.CommittedArtifacts),
 		LastFence:          state.LastFence,
+		DisbandDigest:      state.StoredDisband.Digest,
 	}
 	queue := swarmQueueView{
 		Format: swarmViewFormat, SwarmID: view.SwarmID, Version: view.Version, JournalHead: view.JournalHead,

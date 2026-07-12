@@ -3,7 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { BlockList, isIP } from "node:net";
 import { basename, dirname, join } from "node:path";
-import { canonical, loadTrustedZones, publicKeyFromDescriptor, resolveAgent, verifyFederatedReceipt, verifyLocalArtifact, verifyObject, verifySwarmClose } from "./asp-core.mjs";
+import { canonical, loadTrustedZones, publicKeyFromDescriptor, resolveAgent, verifyFederatedReceipt, verifyLocalArtifact, verifyObject, verifySwarmClose, verifySwarmDisband, verifySwarmJournal } from "./asp-core.mjs";
 import { loadSwarmOutputTrustInputs, verifySwarmOutputVerification } from "./swarm-output-verification.mjs";
 
 const args = process.argv.slice(2);
@@ -250,6 +250,17 @@ try {
     const frame = JSON.parse(await readFile(file, "utf8"));
     const verified = verifySwarmClose(frame, await loadTrustedZones(trustedFile));
     console.log(JSON.stringify({ swarm_close_verify: "ok", swarm_id: verified.close.swarm_id, swarm_close_digest: verified.closeDigest }));
+  } else if (command === "swarm-journal" && file && args.length === 2) {
+    const vector = JSON.parse(await readFile(file, "utf8"));
+    const journal = Array.isArray(vector) ? vector : vector.journal;
+    const verified = verifySwarmJournal(journal);
+    console.log(JSON.stringify({ swarm_journal_verify: "ok", entry_count: verified.entries.length, head: verified.head, state_version: verified.state.version }));
+  } else if (command === "swarm-disband" && file && trustedFile && taskFile && args.length === 4) {
+    const disband = JSON.parse(await readFile(file, "utf8"));
+    const authority = JSON.parse(await readFile(trustedFile, "utf8"));
+    const completed = JSON.parse(await readFile(taskFile, "utf8"));
+    const verified = verifySwarmDisband(disband, authority, completed);
+    console.log(JSON.stringify({ swarm_disband_verify: "ok", swarm_id: verified.disband.swarm_id, disband_digest: verified.digest }));
   } else if (command === "swarm-output" && file && args.length === 2) {
     const baseDir = dirname(file);
     const bundle = JSON.parse(await readFile(file, "utf8"));
@@ -389,7 +400,7 @@ try {
     if (reachability) output.reachability_observer_zid = reachability.reachability_observer_zid;
     console.log(JSON.stringify(output));
   } else {
-    throw new Error("usage: node asp-verify.mjs artifact <manifest.json> | fed-receipt <frame.json> <trusted-zones.json> [task.json] | fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] | swarm-close <frame.json> <trusted-zones.json> | swarm-output <bundle.json> | sandbox-proof <frame.json> <trusted-zones.json> [required-sandbox-class] | sandbox-attestation <frame.json> <trusted-zones.json> <attestation.json> <trusted-attestors.json> | package-proof <manifest.json> [trusted-signers.json] | release-trust <release-trust.json> [trusted-release-signers.json] | proof-bundle <bundle.json> [external-trusted-zones.json]");
+    throw new Error("usage: node asp-verify.mjs artifact <manifest.json> | fed-receipt <frame.json> <trusted-zones.json> [task.json] | fed-receipt-artifacts <frame.json> <trusted-zones.json> [task.json] | swarm-close <frame.json> <trusted-zones.json> | swarm-journal <journal-or-vector.json> | swarm-disband <disband.json> <authority-zone.json> <completed-output.json> | swarm-output <bundle.json> | sandbox-proof <frame.json> <trusted-zones.json> [required-sandbox-class] | sandbox-attestation <frame.json> <trusted-zones.json> <attestation.json> <trusted-attestors.json> | package-proof <manifest.json> [trusted-signers.json] | release-trust <release-trust.json> [trusted-release-signers.json] | proof-bundle <bundle.json> [external-trusted-zones.json]");
   }
 } catch (error) {
   console.error(error.message);

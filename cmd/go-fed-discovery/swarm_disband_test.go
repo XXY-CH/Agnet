@@ -69,6 +69,35 @@ func TestU28DisbandRequiresCompletedVerifiedOutput(t *testing.T) {
 	}
 }
 
+func TestU28DisbandRecoversDurableCrashPoints(t *testing.T) {
+	journal, spec := newCloseTestJournal(t)
+	completeDisbandTestJournal(t, journal, spec)
+	want, err := BuildSwarmDisband(journal)
+	if err != nil { t.Fatal(err) }
+	failure := errors.New("disband sync interrupted")
+	journal.fault = func(point SwarmFaultPoint) error {
+		if point == SwarmFaultFileSync { return failure }
+		return nil
+	}
+	if _, err := EnsureDisband(journal); !errors.Is(err, failure) { t.Fatalf("file-sync disband error = %v", err) }
+	journal.fault = nil
+	got, err := EnsureDisband(journal)
+	if err != nil || !bytes.Equal(got.Bytes, want.Bytes) { t.Fatalf("rollback retry = %#v, %v", got, err) }
+	entries := mustReplaySwarm(t, journal)
+	if len(entries) == 0 { t.Fatal("journal unexpectedly empty") }
+	responseLostJournal, responseLostSpec := newCloseTestJournal(t)
+	completeDisbandTestJournal(t, responseLostJournal, responseLostSpec)
+	responseLost := errors.New("disband response lost")
+	fired := false
+	responseLostJournal.fault = func(point SwarmFaultPoint) error {
+		if point == SwarmFaultParentSync && !fired { fired = true; return responseLost }
+		return nil
+	}
+	if _, err := EnsureDisband(responseLostJournal); !errors.Is(err, responseLost) { t.Fatalf("response-loss disband error = %v", err) }
+	responseLostJournal.fault = nil
+	if _, err := EnsureDisband(responseLostJournal); err != nil { t.Fatalf("response-loss retry = %v", err) }
+}
+
 func TestU28DisbandRejectsEveryMutationAndProjectsRawRecord(t *testing.T) {
 	journal, spec := newCloseTestJournal(t)
 	completeDisbandTestJournal(t, journal, spec)
