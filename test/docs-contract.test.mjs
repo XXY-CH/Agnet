@@ -2386,7 +2386,7 @@ test("v13 public docs open the Ultimate-facing protocol milestone without scope 
     readFile("docs/v13.0-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v14 active at `v14\.10-protocol`/);
+  assert.match(readme, /v14 active at `v14\.11-phase-c`/);
   assert.match(readme, /`docs\/v13-roadmap\.md` - closed v13 roadmap\./);
   assert.match(readme, /`docs\/v13\.0-boundary\.md` - v13 opening boundary\./);
   assert.match(roadmap, /状态：active at v13\.15/);
@@ -2453,7 +2453,7 @@ test("v13.2 public docs describe release trust without supply-chain overclaims",
 
   const formatNonClaims = /`asp-release-trust\/v1`.*not CycloneDX, not SPDX, not SLSA provenance, not npm registry signing, not package publish, not release transparency,.*not a generic supply-chain platform/s;
   for (const doc of [roadmap, draft, status, boundary]) assert.match(doc, formatNonClaims);
-  assert.match(readme, /v14 active at `v14\.10-protocol`/);
+  assert.match(readme, /v14 active at `v14\.11-phase-c`/);
   assert.doesNotMatch(readme, /release trust\/SBOM remain pending v13 gates/);
   assert.match(roadmap, /状态：active at v13\.15/);
   assert.match(roadmap, /状态：complete\n目标：把 v12 package proof 推进到 release trust\/SBOM evidence over the produced artifact/);
@@ -2463,7 +2463,7 @@ test("v13.2 public docs describe release trust without supply-chain overclaims",
   assert.match(draft, /Release trust staleness means `package_proof_digest` no longer matches the verified referenced package proof/);
   assert.match(draft, /Trusted release signer pinning applies to the release signer only\. It does not pin or replace the embedded package proof signer trust decision/);
   assert.match(status, /状态：v14 active at v14\.11/);
-  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /当前代码基线：`v14\.11-phase-c-local-foundations`/);
   assert.match(status, /asp-verify\.mjs release-trust <release-trust\.json> \[trusted-release-signers\.json\] verifies `asp-release-trust\/v1` release trust manifests/);
   assert.match(status, /scripts\/release-trust\.mjs verifies the existing package proof first/);
   assert.match(boundary, /状态：complete/);
@@ -2482,7 +2482,7 @@ test("v13.4 public docs describe evidence-first semantic discovery without marke
     readFile("docs/v13.4-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v14 active at `v14\.10-protocol`/);
+  assert.match(readme, /v14 active at `v14\.11-phase-c`/);
   assert.match(roadmap, /状态：active at v13\.15/);
   assert.match(roadmap, /状态：complete\n目标：在 Node federation gateway 上增加证据优先的 semantic discovery\/reputation ranking primitive/);
   assert.match(roadmap, /No vector database, no global reputation coin, no public marketplace, and no Go query parity in this slice/);
@@ -2490,7 +2490,7 @@ test("v13.4 public docs describe evidence-first semantic discovery without marke
   assert.match(draft, /`FED_QUERY` may carry an `intent` string for semantic discovery/);
   assert.match(draft, /Ranking is deterministic and evidence-first: exact capability match, trusted capability credential, signed credential claims, audit-backed reputation, zone-chain provenance, verifier-owned routing signals, and semantic token overlap are exposed as inspectable evidence/);
   assert.match(status, /状态：v14 active at v14\.11/);
-  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /当前代码基线：`v14\.11-phase-c-local-foundations`/);
   assert.match(status, /Node federation gateway evidence-first semantic discovery\/reputation ranking/);
   assert.match(boundary, /状态：complete/);
   assert.match(boundary, /Land the first evidence-first semantic discovery\/reputation ranking primitive without adding vector infrastructure/);
@@ -2507,14 +2507,14 @@ test("v13.5 public docs describe scheduler-owned ready-DAG Swarm without orchest
     readFile("docs/v13.5-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v14 active at `v14\.10-protocol`/);
+  assert.match(readme, /v14 active at `v14\.11-phase-c`/);
   assert.match(roadmap, /状态：active at v13\.15/);
   assert.match(roadmap, /状态：complete\n目标：把 explicit two-step Swarm proof 推进到 scheduler-owned ready-DAG execution primitive/);
   assert.match(roadmap, /No automatic task decomposition, no parallel worker pool, no upper-layer master-agent orchestration, and no economic settlement in this slice/);
   assert.match(draft, /`FED_SWARM_SCHEDULE` accepts a signed Swarm DAG and executes steps in deterministic ready order/);
   assert.match(draft, /The close proof may include signed scheduler evidence with `mode: "ready-dag"` and the executed `step_order`/);
   assert.match(status, /状态：v14 active at v14\.11/);
-  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /当前代码基线：`v14\.11-phase-c-local-foundations`/);
   assert.match(status, /Go `FED_SWARM_SCHEDULE` scheduler-owned ready-DAG execution/);
   assert.match(boundary, /状态：complete/);
   assert.match(boundary, /Land the first scheduler-owned ready-DAG Swarm execution primitive/);
@@ -2531,7 +2531,7 @@ test("v13.6 public docs describe sandbox proof verification without attestation 
     readFile("docs/v13.6-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v14 active at `v14\.10-protocol`/);
+  assert.match(readme, /v14 active at `v14\.11-phase-c`/);
   assert.match(readme, /`asp-verify\.mjs sandbox-proof <frame\.json> <trusted-zones\.json> \[required-sandbox-class\]`/);
   assert.doesNotMatch(readme, /strong sandbox\/remote attestation remain pending v13 gates/);
   assert.match(roadmap, /状态：active at v13\.15/);
@@ -2541,7 +2541,7 @@ test("v13.6 public docs describe sandbox proof verification without attestation 
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
   assert.match(draft, /node asp-verify\.mjs sandbox-proof <frame\.json> <trusted-zones\.json> \[required-sandbox-class\]/);
   assert.match(status, /状态：v14 active at v14\.11/);
-  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /当前代码基线：`v14\.11-phase-c-local-foundations`/);
   assert.match(status, /sandbox-proof <frame\.json> <trusted-zones\.json> \[required-sandbox-class\]/);
   assert.match(boundary, /状态：complete/);
   assert.match(boundary, /It verifies a signed `local\.sandbox\.v1` proof embedded in a verified `FED_RECEIPT` frame/);
@@ -2557,7 +2557,7 @@ test("v13.7 public docs describe signed sandbox attestation without hardware ove
     readFile("docs/v13.7-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v14 active at `v14\.10-protocol`/);
+  assert.match(readme, /v14 active at `v14\.11-phase-c`/);
   assert.match(readme, /`asp-verify\.mjs sandbox-attestation <frame\.json> <trusted-zones\.json> <attestation\.json> <trusted-attestors\.json>`/);
   assert.match(roadmap, /状态：active at v13\.15/);
   assert.match(roadmap, /`asp-verify\.mjs sandbox-attestation <frame\.json> <trusted-zones\.json> <attestation\.json> <trusted-attestors\.json>`/);
@@ -2565,7 +2565,7 @@ test("v13.7 public docs describe signed sandbox attestation without hardware ove
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
   assert.match(draft, /node asp-verify\.mjs sandbox-attestation <frame\.json> <trusted-zones\.json> <attestation\.json> <trusted-attestors\.json>/);
   assert.match(status, /状态：v14 active at v14\.11/);
-  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /当前代码基线：`v14\.11-phase-c-local-foundations`/);
   assert.match(status, /sandbox-attestation <frame\.json> <trusted-zones\.json> <attestation\.json> <trusted-attestors\.json>/);
   assert.match(boundary, /状态：complete/);
   assert.match(boundary, /It verifies `asp-sandbox-attestation\/v1` signed evidence/);
@@ -2581,14 +2581,14 @@ test("v13.8 public docs describe pinned external observer identity without hoste
     readFile("docs/v13.8-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v14 active at `v14\.10-protocol`/);
+  assert.match(readme, /v14 active at `v14\.11-phase-c`/);
   assert.match(readme, /`AGNET_REACHABILITY_OBSERVER_SEED_HEX`/);
   assert.match(roadmap, /状态：active at v13\.15/);
   assert.match(roadmap, /Pinned external observer identity/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
   assert.match(draft, /AGNET_REACHABILITY_OBSERVER_SEED_HEX/);
   assert.match(status, /状态：v14 active at v14\.11/);
-  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /当前代码基线：`v14\.11-phase-c-local-foundations`/);
   assert.match(status, /observer identity can be pinned before a hosted run/);
   assert.match(boundary, /状态：complete/);
   assert.match(boundary, /pre-pinned trusted observer identity/);
@@ -2606,7 +2606,7 @@ test("v13.9 public docs describe hosted observer runner without hiding IPv6 bloc
     readFile("docs/v13.9-boundary.md", "utf8"),
   ]);
 
-  assert.match(readme, /v14 active at `v14\.10-protocol`/);
+  assert.match(readme, /v14 active at `v14\.11-phase-c`/);
   assert.match(readme, /AGNET_PUBLIC_LISTEN_HOST/);
   assert.match(readme, /AGNET_PUBLIC_PROOF_KEEPALIVE_MS/);
   assert.match(roadmap, /状态：active at v13\.15/);
@@ -2614,7 +2614,7 @@ test("v13.9 public docs describe hosted observer runner without hiding IPv6 bloc
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
   assert.match(draft, /AGNET_PUBLIC_LISTEN_HOST/);
   assert.match(status, /状态：v14 active at v14\.11/);
-  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /当前代码基线：`v14\.11-phase-c-local-foundations`/);
   for (const doc of [roadmap, status, boundary]) {
     assert.match(doc, /28916288568/);
     assert.match(doc, /ENETUNREACH/);
@@ -2654,13 +2654,13 @@ test("v13.11 public docs record audit-backed receipt-count reputation without or
     assert.match(doc, /not a hardcoded demo value, not cross-session (?:ML|learned scoring), (?:and )?not (?:a )?(?:global reputation oracle|third-party reputation service)/);
     assert.doesNotMatch(doc, /ephemeral receipt count/);
   }
-  assert.match(readme, /v14 active at `v14\.10-protocol`/);
+  assert.match(readme, /v14 active at `v14\.11-phase-c`/);
   assert.match(readme, /`docs\/v13\.11-boundary\.md` - v13\.11 audit-backed receipt-count reputation boundary\./);
   assert.match(roadmap, /状态：active at v13\.15/);
   assert.match(roadmap, /## v13\.11: Audit-Backed Receipt-Count Reputation/);
   assert.match(boundary, /状态：complete/);
   assert.match(status, /状态：v14 active at v14\.11/);
-  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /当前代码基线：`v14\.11-phase-c-local-foundations`/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
 });
 
@@ -2678,13 +2678,13 @@ test("v13.12 public docs record credential valid_until expiry without credential
     assert.doesNotMatch(doc, /hardware key management/i);
     assert.doesNotMatch(doc, /cross-zone credential exchange/i);
   }
-  assert.match(readme, /v14 active at `v14\.10-protocol`/);
+  assert.match(readme, /v14 active at `v14\.11-phase-c`/);
   assert.match(readme, /`docs\/v13\.12-boundary\.md` - v13\.12 credential valid_until expiry boundary\./);
   assert.match(roadmap, /状态：active at v13\.15/);
   assert.match(roadmap, /## v13\.12: Credential Validity Window/);
   assert.match(boundary, /状态：complete/);
   assert.match(status, /状态：v14 active at v14\.11/);
-  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /当前代码基线：`v14\.11-phase-c-local-foundations`/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
 });
 
@@ -2703,13 +2703,13 @@ test("v13.13 public docs record zone revocation in discovery without oracle over
     assert.doesNotMatch(doc, /global revocation list/i);
     assert.doesNotMatch(doc, /revocation oracle/i);
   }
-  assert.match(readme, /v14 active at `v14\.10-protocol`/);
+  assert.match(readme, /v14 active at `v14\.11-phase-c`/);
   assert.match(readme, /`docs\/v13\.13-boundary\.md` - v13\.13 authority Zone revocation discovery boundary\./);
   assert.match(roadmap, /状态：active at v13\.15/);
   assert.match(roadmap, /## v13\.13: Zone Revocation in FED_QUERY Discovery/);
   assert.match(boundary, /状态：complete/);
   assert.match(status, /状态：v14 active at v14\.11/);
-  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /当前代码基线：`v14\.11-phase-c-local-foundations`/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
 });
 
@@ -2729,13 +2729,13 @@ test("v13.14 public docs record multi-signal agent score without oracle or ML ov
     assert.doesNotMatch(doc, /global reputation oracle/i);
     assert.doesNotMatch(doc, /machine learning/i);
   }
-  assert.match(readme, /v14 active at `v14\.10-protocol`/);
+  assert.match(readme, /v14 active at `v14\.11-phase-c`/);
   assert.match(readme, /`docs\/v13\.14-boundary\.md` - v13\.14 multi-signal agent score reputation boundary\./);
   assert.match(roadmap, /状态：active at v13\.15/);
   assert.match(roadmap, /## v13\.14: Multi-Signal Agent Score in Reputation/);
   assert.match(boundary, /状态：complete/);
   assert.match(status, /状态：v14 active at v14\.11/);
-  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /当前代码基线：`v14\.11-phase-c-local-foundations`/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
 });
 
@@ -2756,14 +2756,14 @@ test("v13.15 public docs record Node receipt checkpoint verification without res
     assert.doesNotMatch(doc, /scheduler orchestration is complete/i);
     assert.doesNotMatch(doc, /A2A\/ARD compatibility is implemented/i);
   }
-  assert.match(readme, /v14 active at `v14\.10-protocol`/);
+  assert.match(readme, /v14 active at `v14\.11-phase-c`/);
   assert.match(readme, /`docs\/v13\.15-boundary\.md` - v13\.15 Node receipt checkpoint verification boundary\./);
   assert.match(roadmap, /状态：active at v13\.15/);
   assert.match(roadmap, /## v13\.15: Node Receipt Checkpoint Verification/);
   assert.match(boundary, /状态：complete/);
   assert.match(boundary, /receipt-carried checkpoint evidence/);
   assert.match(status, /状态：v14 active at v14\.11/);
-  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /当前代码基线：`v14\.11-phase-c-local-foundations`/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
   assert.match(draft, /Node `FED_RECEIPT` verification requires `checkpoint_refs` and `checkpoints` to have equal length/);
 });
@@ -2777,10 +2777,10 @@ test("v14 public docs open the overlay/swarm/routing milestone without terminal 
     readFile("docs/asp-core-draft.md", "utf8"),
   ]);
 
-  assert.match(readme, /v14 active at `v14\.10-protocol`/);
+  assert.match(readme, /v14 active at `v14\.11-phase-c`/);
   assert.match(readme, /`docs\/v14-roadmap\.md` - active v14 roadmap\./);
   assert.match(readme, /`docs\/v14\.0-boundary\.md` - v14 opening boundary\./);
-  assert.match(roadmap, /状态：active at v14\.10/);
+  assert.match(roadmap, /状态：active at v14\.11 \/ Phase C/);
   assert.match(roadmap, /## v14\.1: Swarm Micro-contracts/);
   assert.match(roadmap, /## v14\.2: Multi-signal FED_QUERY routing/);
   assert.match(roadmap, /## v14\.3: Cross-zone trust chains/);
@@ -2794,7 +2794,7 @@ test("v14 public docs open the overlay/swarm/routing milestone without terminal 
   assert.match(boundary, /Agent Swarm Layer/);
   assert.match(boundary, /Multi-signal routing/);
   assert.match(status, /状态：v14 active at v14\.11/);
-  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /当前代码基线：`v14\.11-phase-c-local-foundations`/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
   for (const doc of [readme, roadmap, boundary, status, draft]) {
     assert.doesNotMatch(doc, /P2P DHT is implemented/i);
@@ -2833,7 +2833,7 @@ test("v14.3 public docs record cross-zone trust chains without PKI overclaims", 
     readFile("docs/asp-core-draft.md", "utf8"),
   ]);
 
-  assert.match(readme, /v14 active at `v14\.10-protocol`/);
+  assert.match(readme, /v14 active at `v14\.11-phase-c`/);
   assert.match(readme, /`docs\/v14\.3-boundary\.md` - v14\.3 cross-zone trust chain boundary\./);
   assert.match(roadmap, /## v14\.3: Cross-zone trust chains\n\n状态：complete/);
   assert.match(roadmap, /zone_trust_chain/);
@@ -2842,7 +2842,7 @@ test("v14.3 public docs record cross-zone trust chains without PKI overclaims", 
   assert.match(boundary, /zone_trust_chain/);
   assert.match(boundary, /zoneTrustDelegation/);
   assert.match(status, /状态：v14 active at v14\.11/);
-  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /当前代码基线：`v14\.11-phase-c-local-foundations`/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
   assert.match(draft, /zone_trust_chain/);
   assert.match(draft, /zoneTrustDelegation/);
@@ -2861,7 +2861,7 @@ test("v14.4 public docs record task failure migration evidence", async () => {
     readFile("docs/asp-core-draft.md", "utf8"),
   ]);
 
-  assert.match(readme, /v14 active at `v14\.10-protocol`/);
+  assert.match(readme, /v14 active at `v14\.11-phase-c`/);
   assert.match(readme, /`docs\/v14\.4-boundary\.md` - v14\.4 task failure migration boundary\./);
   assert.match(roadmap, /## v14\.4: Task failure migration\n\n状态：complete/);
   assert.match(boundary, /协议标签：`v14\.4-protocol`/);
@@ -2931,8 +2931,8 @@ test("v14.7 public docs record policy and risk routing signals", async () => {
     readFile("docs/manual/reputation.md", "utf8"),
   ]);
 
-  assert.match(readme, /v14 active at `v14\.10-protocol`/);
-  assert.match(roadmap, /状态：active at v14\.10/);
+  assert.match(readme, /v14 active at `v14\.11-phase-c`/);
+  assert.match(roadmap, /状态：active at v14\.11 \/ Phase C/);
   assert.match(roadmap, /## v14\.7: Policy and risk routing signals/);
   assert.match(boundary, /协议标签：`v14\.7-protocol`/);
   for (const doc of [readme, roadmap, boundary, status, draft, reputation]) {
@@ -2940,7 +2940,7 @@ test("v14.7 public docs record policy and risk routing signals", async () => {
     assert.match(doc, /risk_match/);
   }
   assert.match(status, /状态：v14 active at v14\.11/);
-  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /当前代码基线：`v14\.11-phase-c-local-foundations`/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
   assert.match(reputation, /Missing cost, latency, availability, policy, or risk evidence stays neutral/);
   assert.doesNotMatch(boundary, /new trust oracle is implemented/i);
@@ -2959,9 +2959,9 @@ test("v14.8 public docs record deterministic Swarm conflict resolution without m
   ]);
   const crossNetnsDocs = [readme, roadmap, v149Boundary, status, draft, federation];
 
-  assert.match(readme, /v14 active at `v14\.10-protocol`/);
+  assert.match(readme, /v14 active at `v14\.11-phase-c`/);
   assert.match(readme, /`docs\/v14\.8-boundary\.md` - v14\.8 Swarm conflict resolution boundary\./);
-  assert.match(roadmap, /状态：active at v14\.10/);
+  assert.match(roadmap, /状态：active at v14\.11 \/ Phase C/);
   assert.match(roadmap, /## v14\.8: Swarm Conflict Resolution/);
   assert.match(boundary, /协议标签：`v14\.8-protocol`/);
   for (const doc of [roadmap, boundary, status, draft]) {
@@ -2970,7 +2970,7 @@ test("v14.8 public docs record deterministic Swarm conflict resolution without m
     assert.match(doc, /alias_tiebreak/);
   }
   assert.match(status, /状态：v14 active at v14\.11/);
-  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /当前代码基线：`v14\.11-phase-c-local-foundations`/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
   for (const doc of [roadmap, boundary, status, draft]) {
     assert.match(doc, /No voting\/quorum|not voting\/quorum/i);
@@ -2990,7 +2990,7 @@ test("v14.8 public docs record deterministic Swarm conflict resolution without m
     assert.match(doc, /still pending/);
   }
   assert.match(v149Boundary, /192\.168\.64\.6/);
-  assert.match(status, /The active protocol tag is `v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /The current protocol baseline remains `v14\.11-phase-c-local-foundations`/);
   assert.match(status, /reachability scope classes \(`local-interface`, `container-observer`, `cross-netns`, `external-host`\)/);
   assert.match(draft, /cross-netns.*literal private inter-namespace IP/);
   assert.match(federation, /`cross-netns` for trusted separate-network-namespace evidence over a literal private IP/);
@@ -3008,9 +3008,9 @@ test("v14.10 public docs record Node ready-DAG parity without orchestration over
     readFile("docs/CHANGELOG.md", "utf8"),
   ]);
 
-  assert.match(readme, /v14 active at `v14\.10-protocol`/);
+  assert.match(readme, /v14 active at `v14\.11-phase-c`/);
   assert.match(readme, /v14\.10 Node ready-DAG parity/);
-  assert.match(roadmap, /状态：active at v14\.10/);
+  assert.match(roadmap, /状态：active at v14\.11 \/ Phase C/);
   assert.match(roadmap, /## v14\.10: Node FED_SWARM_SCHEDULE ready-DAG parity/);
   assert.match(boundary, /状态：complete/);
   assert.match(boundary, /协议标签：`v14\.10-protocol`/);
@@ -3025,8 +3025,8 @@ test("v14.10 public docs record Node ready-DAG parity without orchestration over
     assert.match(doc, /cycle|unresolvable graph/);
   }
   assert.match(status, /状态：v14 active at v14\.11/);
-  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
-  assert.match(status, /The active protocol tag is `v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /当前代码基线：`v14\.11-phase-c-local-foundations`/);
+  assert.match(status, /The current protocol baseline remains `v14\.11-phase-c-local-foundations`/);
   assert.match(draft, /local-first prototype at `v14\.10-protocol`/);
   assert.match(draft, /Node and Go gateways accept `FED_SWARM_SCHEDULE`/);
   for (const doc of [readme, roadmap, boundary, status, draft]) {
@@ -3058,8 +3058,8 @@ test("v14.11 docs state the Apple private-workspace proof and its limits", async
   assert.match(boundary, /workspace device, inode, owner UID, and mode/);
   assert.match(boundary, /当前协议基线：`v14\.11-apple-private-workspace-proof`/);
   assert.match(status, /状态：v14 active at v14\.11/);
-  assert.match(status, /当前代码基线：`v14\.11-apple-private-workspace-proof`/);
-  assert.match(status, /The active protocol tag is `v14\.11-apple-private-workspace-proof`/);
+  assert.match(status, /当前代码基线：`v14\.11-phase-c-local-foundations`/);
+  assert.match(status, /The current protocol baseline remains `v14\.11-phase-c-local-foundations`/);
   assert.doesNotMatch(status, /状态：v14 active at v14\.10/);
   assert.doesNotMatch(status, /当前代码基线：`v14\.10-node-ready-dag-parity`/);
   assert.doesNotMatch(status, /The active protocol tag is `v14\.10-protocol`/);
@@ -3093,5 +3093,57 @@ test("Phase C U19-U30 durable Swarm documentation preserves authority and proof 
   }
   assert.match(status, /journal\/view replacement.*close\/disband append faults.*receipt synchronization before response.*stale-lease rejection after reclaim.*concurrent-coordinator exclusion.*ready-wave barriers/);
   assert.match(draft, /replayable views are materialized from validated replay rather than used as authority/);
+  assert.match(changelog, /\[Phase C U19-U30\] - 2026-07-12/);
+});
+
+test("current docs distinguish the Phase C local proof kernel from the Ultimate product", async () => {
+  const [readme, status, roadmap, vision, architecture, changelog] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile("docs/v14-roadmap.md", "utf8"),
+    readFile("docs/agent-space-ultimate-vision.md", "utf8"),
+    readFile("docs/manual/architecture.md", "utf8"),
+    readFile("docs/CHANGELOG.md", "utf8"),
+  ]);
+
+  for (const doc of [readme, status, roadmap, architecture]) {
+    assert.match(doc, /v14\.11/);
+    assert.match(doc, /Phase C/);
+    assert.match(doc, /Node is a pure verifier of fixed offline U29 vectors/);
+    assert.match(doc, /Live public proof excludes durable Swarm completion/);
+  }
+  assert.match(readme, /badge\/tests-531-brightgreen/);
+  assert.match(readme, /FED_SWARM_SCHEDULE[\s\S]*serially/);
+  assert.doesNotMatch(readme, /v14 active at `v14\.10-protocol`/);
+  assert.doesNotMatch(roadmap, /状态：active at v14\.10/);
+  assert.match(status, /## 距离 Ultimate/);
+  for (const layer of [
+    "Overlay",
+    "Discovery",
+    "Task Fabric",
+    "Swarm",
+    "Trust",
+    "Knowledge",
+    "Semantic OS / Human",
+    "Economy / Governance / Ops",
+  ]) {
+    assert.match(status, new RegExp(`\\| ${layer.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")} \\|`));
+  }
+  assert.match(vision, /30-unit local foundation slice is complete/);
+  assert.match(vision, /\[INFERENCE\] full Ultimate is ~55-65%/);
+  for (const program of [
+    "Public overlay and reachability",
+    "Distributed discovery and reputation",
+    "Remote task fabric and artifact plane",
+    "Cross-host Swarm coordination",
+    "Hardware-backed trust and isolation",
+    "Knowledge network",
+    "Semantic OS and human governance",
+    "Economy, governance, and production operations",
+  ]) {
+    assert.match(vision, new RegExp(program.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")));
+  }
+  assert.match(architecture, /## Remaining layers/);
+  assert.match(changelog, /\[Ultimate gap alignment\] - 2026-07-13/);
   assert.match(changelog, /\[Phase C U19-U30\] - 2026-07-12/);
 });

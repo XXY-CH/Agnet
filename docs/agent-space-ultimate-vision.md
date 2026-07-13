@@ -3,6 +3,27 @@
 状态：Vision Draft 0  
 关系：本文描述长期终局，不作为第一版实现范围。可落地版本见 `docs/agent-space-architecture.md`。
 
+## Current status (2026-07-13)
+
+The 30-unit local foundation slice is complete: U1-U30 now provide a local proof kernel spanning signed transport/task/receipt/artifact/reachability evidence and the Phase C Go-local durable Swarm. The durable Swarm uses a same-host filesystem journal under OS process locks, replayable views, deterministic parallel ready waves, a byte-stable close, output verification, and irreversible signed disband. Workers remain at-least-once; only the fenced signed receipt commitment is exactly-once. Node is a pure verifier of fixed offline U29 vectors for this durable format.
+
+The current proof boundary is intentionally narrower than the vision: live public proof covers transport/task/receipt/artifact/reachability, not durable Swarm completion. The completed slice does not claim globally distributed operation, public durable-Swarm completion, real Docker smoke, hardware attestation, cross-host operation, remote artifact handling, or exactly-once worker execution.
+
+[INFERENCE] full Ultimate is ~55-65% complete. This is an architectural-coverage estimate, not a production-readiness metric: the proof kernel spans much of the narrow waist, while every distributed, economic, human-facing, and operational layer below remains incomplete.
+
+### Remaining programs, in dependency order
+
+| # | Program | Why it follows | Exit criterion |
+| --- | --- | --- | --- |
+| 1 | Public overlay and reachability | Extends the scoped local transport proof before workloads can leave one host/Zone. | Independent, globally routable multi-zone reachability evidence; relay/NAT policy; observable routing failure semantics. |
+| 2 | Distributed discovery and reputation | Needs public topology before capability and reputation information can be safely propagated. | Interoperable distributed capability discovery, freshness/revocation propagation, reputation provenance, and abuse/Sybil controls. |
+| 3 | Remote task fabric and artifact plane | Needs discovered peers and routable Zones before remote work can be recovered and audited. | Multi-host task/event recovery, durable remote artifact references and retrieval, and end-to-end receipt/artifact verification. |
+| 4 | Cross-host Swarm coordination | Builds on a remote fabric; the completed Phase C journal remains explicitly same-host. | Membership, leases/fencing, recovery, deterministic scheduling, and close/disband evidence across independent hosts. |
+| 5 | Hardware-backed trust and isolation | Cross-host execution needs stronger evidence than local sandbox claims. | Hardware-backed attestation or equivalent verifiable isolation evidence, distributed revocation, and production key lifecycle. |
+| 6 | Knowledge network | Requires trusted remote work and artifacts before knowledge can be attributed and reused. | Ingestion, citation/conflict graph, semantic index, source reputation, freshness, and license-policy enforcement. |
+| 7 | Semantic OS and human governance | Requires task, trust, and knowledge evidence that people and organizations can inspect and control. | Intent workspace, explainability, approvals, revocation, organizational policy, and accountable human-facing workflow. |
+| 8 | Economy, governance, and production operations | Depends on measurable work, trust, human controls, and a stable distributed fabric. | Metering, quotas, settlement, disputes, governance controls, observability, incident response, and production SLOs. |
+
 ## 1. 终极目标
 
 Agent Space 的终局不是一个 Agent 聊天平台，也不是一个更复杂的 API 网关。

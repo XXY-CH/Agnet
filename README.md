@@ -2,11 +2,12 @@
 
 Agnet is the proof layer for agent work.
 
-[![Protocol](https://img.shields.io/badge/protocol-v14.10--protocol-blue)](docs/v14-roadmap.md) [![Tests](https://img.shields.io/badge/tests-326-brightgreen)](#quick-start) [![Go](https://img.shields.io/badge/go-1.26.1-00ADD8)](go.mod)
+[![Protocol](https://img.shields.io/badge/protocol-v14.11--phase--c-blue)](docs/v14-roadmap.md) [![Tests](https://img.shields.io/badge/tests-531-brightgreen)](#quick-start) [![Go](https://img.shields.io/badge/go-1.26.1-00ADD8)](go.mod)
 
-Status: research prototype, local-first, v14 active at `v14.10-protocol`. Historical baseline: v14.9 cross-netns reachability, v13 active-through `v13.15-protocol`, and v12 closed at `v12.45-protocol`.
+Status: research prototype, local-first, v14 active at `v14.11-phase-c`. The U1-U30 local Swarm foundations are complete; Node has 531/531 passing tests and the Go gates pass. This is a completed local proof kernel, not the Ultimate product.
+Historical baseline: v14.9 cross-netns reachability, v13 active-through `v13.15-protocol`, and v12 closed at `v12.45-protocol`.
 
-v14.10 brings Node to Go ready-DAG parity: `FED_SWARM_SCHEDULE` deterministically topologically orders signed Swarm steps using original input order as the ready-step tie rule, executes them serially, and signs close `scheduler: { mode: "ready-dag", step_order: [...] }`. Invalid graphs fail before execution. No parallel execution, no resource scheduling, no economic ranking, no LLM scheduling, and no new trust inputs.
+v14.11 closes two scoped local slices: Apple private-workspace isolation proof on Darwin and Phase C U19-U30's Go-local durable Swarm. `FED_SWARM_SCHEDULE` remains a Node serial ready-DAG contract: it deterministically orders signed dependency-ready steps using original input order as the tie rule, executes them serially, and signs `scheduler: { mode: "ready-dag", step_order: [...] }`. Phase C instead proves journal-backed deterministic parallel ready waves on one host. Neither slice claims global distribution, public durable-Swarm completion, real Docker smoke, hardware attestation, or exactly-once worker execution.
 
 ## What ASP is
 
@@ -81,12 +82,14 @@ go test ./...
 - Knowledge Gateway: `FED_KNOWLEDGE_QUERY` and `FED_KNOWLEDGE_RESPONSE` bind cited freshness/license results to a signed query digest.
 - Conflict resolution: `FED_SWARM_CLOSE.close.conflict_resolutions` records signed, deterministic same-artifact conflict choices.
 - Cross-netns reachability: trusted private-IP observer evidence records separate network namespace reachability without claiming public `external-host` success.
+- v14.11 / Phase C U19-U30: a Darwin private-workspace proof and a Go-local, journal-authoritative durable Swarm foundation. Its same-host filesystem journal under OS process locks materializes replayable views, records deterministic parallel ready waves and a byte-stable close, gates irreversible signed disband on output verification, and keeps workers at-least-once while only the fenced signed receipt commitment is exactly-once. Node is a pure verifier of fixed offline U29 vectors for this durable format; Live public proof excludes durable Swarm completion and makes no claim of real container smoke, cross-host operation, remote artifact handling, or exactly-once worker execution.
 
 ## Repo map quicklinks
 
 | Read | For |
 | --- | --- |
 | [Architecture](docs/manual/architecture.md) | Proof layers, data flow, and how Node/Go pieces relate. |
+| [Ultimate vision and remaining programs](docs/agent-space-ultimate-vision.md) | Current architectural coverage, the `[INFERENCE]` 55–65% estimate, and eight dependency-ordered programs still required for the Ultimate product. |
 | [Protocol](docs/manual/protocol.md) | ASP frames: `FED_TASK_OPEN`, `FED_RECEIPT`, `FED_SWARM_*`, `FED_SWARM_PLAN`, discovery, audit, artifacts. |
 | [Verifier CLI](docs/manual/verifier-cli.md) | Full `asp-verify.mjs` command syntax and failure modes. |
 | [Federation](docs/manual/federation.md) | Gateway setup, trusted Zones, TLS/mTLS, cross-zone usage. |
@@ -113,7 +116,7 @@ go test ./...
 | v14.8 Swarm conflict resolution | Complete | `conflict_resolutions` entries bind artifact ref, candidate steps, chosen worker, reason, digest, and Zone signature | Not voting/quorum, automatic content merge, payment/settlement, or non-local-first arbitration. |
 | v14.9 cross-netns reachability | Complete | `cross-netns` scope verifies trusted observer evidence from a separate netns/VM over a private literal IP | Not public reachability; not hosted external-host completion. |
 | v14.10 Node ready-DAG parity | Complete | Node `FED_SWARM_SCHEDULE` orders dependency-ready steps deterministically and signs exact scheduler evidence | No parallel execution, no resource scheduling, no economic ranking, no LLM scheduling, and no new trust inputs. |
-| Phase C U19-U30 durable local Swarm | Complete | Go same-host filesystem journal under OS process locks is authoritative, materializes replayable views, executes workers at-least-once, commits a fenced signed receipt commitment exactly-once, runs deterministic parallel ready waves, stores a byte-stable close, and gates an irreversible signed disband on output verification. | Node is a pure verifier of fixed offline U29 vectors for this durable format. Live public proof excludes durable Swarm completion; Phase C claims no real container smoke, cross-host operation, remote artifact handling, or exactly-once worker execution. |
+| v14.11 / Phase C local foundation closure | Complete local proof kernel | Darwin private-workspace proof; Go same-host journal under OS process locks, replayable views, deterministic parallel ready waves, byte-stable close, output verification, and irreversible signed disband | Node is a pure verifier of fixed offline U29 vectors for this durable format. Live public proof excludes durable Swarm completion; no global distribution, real Docker smoke, hardware attestation, cross-host operation, remote artifacts, or exactly-once worker execution. |
 
 ## Non-claims
 

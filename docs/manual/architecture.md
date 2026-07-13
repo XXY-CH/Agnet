@@ -42,7 +42,7 @@ ASP is the narrow waist across the middle layers. A runtime may schedule, route,
 | Trust & Verification | `aid:` identities, Zone descriptors, signatures, credentials, revocation, sandbox proof, sandbox attestation, package/release trust | `asp-core.mjs`, `asp-verify.mjs`, `test/capability-credential.test.mjs`, `test/revocation.test.mjs`, `test/sandbox-proof.test.mjs`, `test/release-trust.test.mjs` |
 | Agent Task Fabric | `FED_TASK_OPEN`, signed receipts, artifacts, checkpoints, audit hash chain, queue/resume evidence | `federation-gateway.mjs`, `cmd/go-fed-discovery/main.go`, `test-vectors/`, `verifier/` |
 | Agent Discovery | `FED_RESOLVE`, evidence-first `FED_QUERY`, credentials, reputation, routing signals, cross-zone trust provenance | `federation-gateway.mjs`, `test/go-fed-discovery.test.mjs`, `test/zone-registry.test.mjs` |
-| Agent Swarm Layer | `FED_SWARM_OPEN`, `FED_SWARM_SCHEDULE`, `FED_SWARM_CLOSE`, micro-contracts, dependency-ready scheduling, migration logs | `federation-gateway.mjs`, `cmd/go-fed-discovery/main.go`, `test/go-fed-discovery.test.mjs` |
+| Agent Swarm Layer | `FED_SWARM_OPEN`, serial Node `FED_SWARM_SCHEDULE`, `FED_SWARM_CLOSE`, micro-contracts, dependency-ready scheduling, migration logs, and Go-local Phase C durable journal/lease/receipt/close/disband proof | `federation-gateway.mjs`, `cmd/go-fed-discovery/main.go`, `test/go-fed-discovery.test.mjs` |
 | Overlay edge | Local TCP federation, optional WebSocket/Human Gateway paths, TLS/mTLS on the Go listener | `cmd/go-fed-discovery/main.go`, `scripts/public-node-proof.mjs` |
 
 ## Proof flow
@@ -60,12 +60,18 @@ ASP is the narrow waist across the middle layers. A runtime may schedule, route,
 The Node implementation is the compact reference surface for protocol primitives and the verifier CLI. The Go gateway is the larger federation/runtime slice with TCP serving, Human Gateway UI, queue flows, Swarm scheduling, artifact mirror checks, TLS/mTLS, and reusable receipt verifier package.
 
 Shared JSON vectors in `test-vectors/` keep interop anchored. Node and Go both verify `FED_TASK_OPEN` and `FED_RECEIPT` vectors; Node verifies the `FED_SWARM_CLOSE` vector; Go verifies audit-backed Swarm behavior through integration tests.
-### Phase C durable local Swarm boundary
+### v14.11 / Phase C durable local Swarm boundary
 
 Phase C U19-U30 is complete for the Go-local runtime. Its same-host filesystem journal under OS process locks is authoritative and materializes replayable views; workers execute at-least-once, while a fenced signed receipt commitment is exactly-once. Deterministic parallel ready waves, a byte-stable close, output verification, and irreversible signed disband all derive from that journal. Observed crash/concurrency proof boundaries cover journal/view replacement and close/disband append faults, receipt synchronization before response, stale-lease rejection after reclaim, concurrent-coordinator exclusion, and ready-wave barriers.
 
 Node is a pure verifier of fixed offline U29 vectors for this durable format. Live public proof excludes durable Swarm completion; Phase C makes no claim of real container smoke, cross-host operation, remote artifact handling, or exactly-once worker execution.
 
+
+## Remaining layers
+
+The implemented proof surfaces are not an implementation of every layer in the map. The remaining dependency order is: public overlay and reachability; distributed discovery and reputation; remote task fabric and artifact plane; cross-host Swarm coordination; hardware-backed trust and isolation; knowledge network; Semantic OS and human governance; economy, governance, and production operations. Each later layer must consume verifier-readable task, receipt, artifact, and audit evidence rather than replace it.
+
+`FED_SWARM_SCHEDULE` stays serial in Node. Phase C's parallel ready waves belong only to the Go same-host journal runtime. Live public proof is transport/task/receipt/artifact/reachability; Node's durable Swarm proof is fixed offline U29 vectors.
 
 ## What is deliberately outside
 

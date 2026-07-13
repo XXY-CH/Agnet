@@ -1,6 +1,12 @@
 # Changelog
 
 All notable changes from v13.0 through v14.11, plus the Phase C durability slice, are summarized here. Format follows Keep a Changelog with concise Added / Changed / Fixed bullets.
+
+## [Ultimate gap alignment] - 2026-07-13
+
+### Changed
+- Public status now separates the completed U1-U30 local proof kernel from the full Ultimate product and records eight dependency-ordered remaining programs with explicit exit criteria.
+- Live public proof remains transport/task/receipt/artifact/reachability evidence; durable Swarm verification in Node remains an explicitly offline fixed-vector proof.
 ## [Phase C U19-U30] - 2026-07-12 - Durable local Swarm
 
 ### Added
