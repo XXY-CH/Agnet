@@ -1,5 +1,7 @@
 artifacts/
 state/
+dist/
+*.tgz
 
 .compound-engineering/
 

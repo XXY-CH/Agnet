@@ -235,12 +235,23 @@ func artifactPublicationReady(artifactStoreDir string) bool {
 	return true
 }
 
-func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worker, task map[string]any, parentCheckpoint any, restoredStateDigest string, retryOf any, requireHumanApproval bool, receiptExtra map[string]any, onReceipt func(map[string]any) error) error {
+func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worker, task map[string]any, parentCheckpoint any, restoredStateDigest string, retryOf any, requireHumanApproval bool, receiptExtra map[string]any, onReceipt func(map[string]any) error) (resultErr error) {
 	taskID := fmt.Sprint(task["task_id"])
+	defer func() {
+		if resultErr == nil || f.Runtime.WasCancelled(taskID) || errors.Is(resultErr, context.Canceled) {
+			return
+		}
+		if receiptErr := f.failTask(send, origin, worker, task, resultErr); receiptErr != nil {
+			resultErr = fmt.Errorf("%v; failure receipt: %w", resultErr, receiptErr)
+		}
+	}()
 	ctx, cancelRun := context.WithCancel(context.Background())
 	f.Runtime.Register(taskID, cancelRun)
 	defer cancelRun()
 	defer f.Runtime.Unregister(taskID)
+	if f.Runtime.WasCancelled(taskID) {
+		return context.Canceled
+	}
 	if err := worker.reloadPinnedGeneration(); err != nil {
 		return err
 	}
@@ -253,7 +264,7 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		if errors.As(err, &claimErr) {
 			extra["sandbox_probe"] = claimErr.probe
 		}
-		_ = f.writeTaskState(taskID, "failed", worker, extra)
+		_ = f.writeTaskState(taskID, "failing", worker, extra)
 		return err
 	}
 	approvals := toolApprovalReasons(worker.Profile)
@@ -280,10 +291,13 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 			return err
 		}
 	}
+	if f.Runtime.WasCancelled(taskID) {
+		return context.Canceled
+	}
 	if err := f.sendTaskEvent(send, map[string]any{"type": "task.started", "task_id": taskID, "by": worker.Descriptor["aid"], "zone": f.Authority["zid"]}); err != nil {
 		return err
 	}
-	if err := f.writeTaskState(taskID, "running", worker, map[string]any{}); err != nil {
+	if err := f.writeTaskState(taskID, "running", worker, map[string]any{"signed_task": task}); err != nil {
 		return err
 	}
 	policyScope := taskPolicyScope(worker.Profile, worker.Descriptor, task)
@@ -302,9 +316,25 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		if f.Runtime.WasCancelled(taskID) {
 			return err
 		}
-		_ = f.writeTaskState(taskID, "failed", worker, map[string]any{"error": err.Error()})
+		_ = f.writeTaskState(taskID, "failing", worker, map[string]any{"error": err.Error()})
 		return err
 	}
+	if _, err := f.transitionTaskState(taskID, "completing", optionalString(worker.Descriptor["aid"]), map[string]any{}); err != nil {
+		if state, stateErr := f.readTaskState(taskID); stateErr == nil && (optionalString(state["status"]) == "cancelling" || optionalString(state["status"]) == "cancelled") {
+			return context.Canceled
+		}
+		return err
+	}
+	if !f.Runtime.BeginCompletion(taskID) {
+		return context.Canceled
+	}
+	completionFinished := false
+	defer func() {
+		if !completionFinished {
+			f.Runtime.AbortCompletion(taskID)
+			_ = f.writeTaskState(taskID, "failing", worker, map[string]any{"error": "completion aborted"})
+		}
+	}()
 	if toolResult.MediaType == "" {
 		return errors.New("tool result media type missing")
 	}
@@ -356,6 +386,7 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		"origin_zone":        origin["zid"],
 		"executing_zone":     f.Authority["zid"],
 		"to":                 worker.Descriptor["aid"],
+		"status":             "completed",
 		"artifact_refs":      artifactRefs,
 		"artifact_manifests": artifactManifests,
 		"result_artifact":    map[string]any{"uri": artifactManifest["uri"], "sha256": artifactManifest["sha256"], "manifest_hash": artifactManifest["manifest_hash"]},
@@ -436,13 +467,39 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		"receipt":      receiptRecord["receipt"],
 	})
 	send(map[string]any{"type": "FED_TASK_CLOSE", "task_id": taskID})
+	f.Runtime.FinishCompletion(taskID)
+	completionFinished = true
 	return nil
+}
+
+func (f Fixture) originalTaskForReceipt(taskID string) (map[string]any, error) {
+	if item, err := f.readQueueItem(taskID); err == nil {
+		if task, ok := item["task"].(map[string]any); ok {
+			return task, nil
+		}
+	}
+	if state, err := f.readTaskState(taskID); err == nil {
+		if task, ok := state["signed_task"].(map[string]any); ok {
+			return task, nil
+		}
+	}
+	return nil, errors.New("original signed task unavailable")
 }
 
 func (f Fixture) cancelTask(send sendFunc, origin map[string]any, worker *Worker, requester, cancel map[string]any) error {
 	taskID := fmt.Sprint(cancel["task_id"])
 	reason := fmt.Sprint(cancel["reason"])
-	f.Runtime.Cancel(taskID)
+	originalTask, err := f.originalTaskForReceipt(taskID)
+	if err != nil {
+		return err
+	}
+	if optionalString(originalTask["task_id"]) != taskID {
+		return errors.New("original signed task mismatch")
+	}
+	if _, err := f.transitionTaskState(taskID, "cancelling", optionalString(worker.Descriptor["aid"]), map[string]any{"reason": reason}); err != nil {
+		return errors.New("task completion already committed")
+	}
+	_ = f.Runtime.Cancel(taskID)
 	if err := f.sendTaskEvent(send, map[string]any{
 		"type":    "task.cancelled",
 		"task_id": taskID,
@@ -464,13 +521,14 @@ func (f Fixture) cancelTask(send sendFunc, origin map[string]any, worker *Worker
 	sandbox := map[string]any{"mode": "not-started"}
 	receipt := map[string]any{
 		"task_id":            taskID,
-		"task_digest":        digestHex(cancel),
+		"task_digest":        digestHex(originalTask),
 		"from":               requester["aid"],
 		"origin_zone":        origin["zid"],
 		"executing_zone":     f.Authority["zid"],
 		"to":                 worker.Descriptor["aid"],
 		"status":             "cancelled",
 		"cancel":             cancel,
+		"cancel_digest":      digestHex(cancel),
 		"artifact_refs":      []string{},
 		"artifact_manifests": []map[string]any{},
 		"event_count":        float64(1),
@@ -509,6 +567,87 @@ func (f Fixture) cancelTask(send sendFunc, origin map[string]any, worker *Worker
 		"receipt":      receiptRecord["receipt"],
 	})
 	send(map[string]any{"type": "FED_CANCEL_CLOSE", "task_id": taskID})
+	return nil
+}
+
+func (f Fixture) failTask(send sendFunc, origin map[string]any, worker *Worker, task map[string]any, cause error) error {
+	taskID := optionalString(task["task_id"])
+	if existing, err := f.auditProof(taskID); err == nil {
+		receipt, _ := existing["receipt"].(map[string]any)
+		if optionalString(receipt["status"]) == "failed" {
+			return nil
+		}
+		return errors.New("terminal receipt already committed")
+	}
+	state, _ := f.readTaskState(taskID)
+	if status := optionalString(state["status"]); status != "failed" && status != "failing" {
+		if _, err := f.transitionTaskState(taskID, "failing", optionalString(worker.Descriptor["aid"]), map[string]any{"error": cause.Error()}); err != nil {
+			return err
+		}
+	}
+	if err := f.sendTaskEvent(send, map[string]any{
+		"type":    "task.failed",
+		"task_id": taskID,
+		"by":      worker.Descriptor["aid"],
+		"zone":    f.Authority["zid"],
+		"error":   cause.Error(),
+	}); err != nil {
+		return err
+	}
+	policyScope := taskPolicyScope(worker.Profile, worker.Descriptor, task)
+	policyDigest := digestHex(policyScope)
+	sandbox := map[string]any{"mode": "not-started"}
+	toolName := worker.Profile.Tool
+	if toolName == "" {
+		toolName = "text.echo"
+	}
+	receipt := map[string]any{
+		"task_id":            taskID,
+		"task_digest":        digestHex(task),
+		"from":               task["from"],
+		"origin_zone":        origin["zid"],
+		"executing_zone":     f.Authority["zid"],
+		"to":                 worker.Descriptor["aid"],
+		"status":             "failed",
+		"failure":            map[string]any{"code": "tool_execution_failed", "message": cause.Error()},
+		"artifact_refs":      []string{},
+		"artifact_manifests": []map[string]any{},
+		"event_count":        float64(1),
+		"approvals":          []string{},
+		"approval_grants":    []map[string]any{},
+		"checkpoint_refs":    []string{},
+		"checkpoints":        []map[string]any{},
+		"policy_scope":       policyScope,
+		"policy_digest":      policyDigest,
+		"sandbox":            sandbox,
+		"sandbox_proof":      f.sandboxProof(taskID, worker, sandbox, policyDigest, ""),
+		"tool":               toolName,
+	}
+	if transportProof := f.transportProof(); transportProof != nil {
+		receipt["transport_proof"] = transportProof
+	}
+	signedReceipt := signBody(worker.PrivateKey, receipt)
+	record := map[string]any{
+		"kind":         "go_fed_receipt",
+		"zone":         f.Authority,
+		"worker":       worker.Descriptor,
+		"zone_binding": f.zoneBinding(worker),
+		"receipt":      signedReceipt,
+	}
+	if err := f.appendAudit(record); err != nil {
+		return err
+	}
+	if err := f.writeTaskState(taskID, "failed", worker, map[string]any{"error": cause.Error(), "receipt_digest": digestHex(signedReceipt)}); err != nil {
+		return err
+	}
+	send(map[string]any{
+		"type":         "FED_RECEIPT",
+		"zone":         record["zone"],
+		"worker":       record["worker"],
+		"zone_binding": record["zone_binding"],
+		"receipt":      record["receipt"],
+	})
+	send(map[string]any{"type": "FED_TASK_CLOSE", "task_id": taskID})
 	return nil
 }
 

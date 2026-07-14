@@ -109,6 +109,19 @@ func (f Fixture) retryQueueItem(origin map[string]any, frame map[string]any, ret
 	if retryOf == "" || retryOf == "<nil>" {
 		return "", errors.New("queue retry_of missing")
 	}
+	worker, task, err := f.verifyTaskOpen(taskOpenFrameForVerification(frame))
+	if err != nil {
+		return "", err
+	}
+	taskID := fmt.Sprint(task["task_id"])
+	if taskID == retryOf {
+		return "", errors.New("queue retry task_id must differ from parent")
+	}
+	release, err := acquireProductTaskLock(f.QueueDir, "queue-retry-parent:"+retryOf)
+	if err != nil {
+		return "", err
+	}
+	defer release()
 	parent, err := f.readQueueItem(retryOf)
 	if err != nil {
 		return "", err
@@ -116,14 +129,21 @@ func (f Fixture) retryQueueItem(origin map[string]any, frame map[string]any, ret
 	if optionalString(parent["status"]) != "failed" {
 		return "", errors.New("queue retry parent is not failed: " + retryOf)
 	}
-	worker, task, err := f.verifyTaskOpen(taskOpenFrameForVerification(frame))
-	if err != nil {
-		return "", err
+	if existing, existingErr := f.readQueueItem(taskID); existingErr == nil {
+		if optionalString(existing["retry_of"]) == retryOf {
+			return taskID, nil
+		}
+		return "", errors.New("queue retry task conflict: " + taskID)
+	} else if !errors.Is(existingErr, os.ErrNotExist) {
+		return "", existingErr
 	}
-	taskID := fmt.Sprint(task["task_id"])
-	attempt := 1
-	if parentAttempt, ok := parent["retry_attempt"].(float64); ok {
-		attempt = int(parentAttempt) + 1
+	attempt := intFromMap(parent, "last_retry_attempt") + 1
+	if parentAttempt := intFromMap(parent, "retry_attempt"); attempt <= parentAttempt {
+		attempt = parentAttempt + 1
+	}
+	parent["last_retry_attempt"] = float64(attempt)
+	if err := writeJSONStateFile(filepath.Join(f.QueueDir, url.PathEscape(retryOf)+".json"), parent); err != nil {
+		return "", err
 	}
 	retryAfterAt := time.Now().Add(time.Duration(retryAfterSeconds) * time.Second).UTC().Format(time.RFC3339Nano)
 	requester, _ := frame["requester"].(map[string]any)
@@ -512,11 +532,26 @@ func (f Fixture) drainQueueItem(send sendFunc, taskID, leaseID string) error {
 		parentCheckpoint = checkpointID
 		restoredStateDigest = optionalString(parent["state_digest"])
 	}
-	err = f.executeTask(send, origin, worker, task, parentCheckpoint, restoredStateDigest, nil, true, nil, func(receipt map[string]any) error {
-		extra["receipt_digest"] = digestHex(receipt)
+	err = f.executeTask(send, origin, worker, task, parentCheckpoint, restoredStateDigest, nil, true, nil, nil)
+	if err == nil {
+		if state, stateErr := f.readTaskState(taskID); stateErr == nil {
+			extra["receipt_digest"] = state["receipt_digest"]
+		}
 		return f.writeQueueItem(origin, worker, task, "completed", extra)
-	})
+	}
 	if err != nil {
+		if f.Runtime.WasCancelled(taskID) {
+			if state, stateErr := f.readTaskState(taskID); stateErr == nil {
+				extra["receipt_digest"] = state["receipt_digest"]
+			}
+			return f.writeQueueItem(origin, worker, task, "cancelled", extra)
+		}
+		if receiptErr := f.failTask(send, origin, worker, task, err); receiptErr != nil {
+			err = fmt.Errorf("%v; failure receipt: %w", err, receiptErr)
+		}
+		if state, stateErr := f.readTaskState(taskID); stateErr == nil {
+			extra["receipt_digest"] = state["receipt_digest"]
+		}
 		extra["error"] = err.Error()
 		_ = f.writeQueueItem(origin, worker, task, "failed", extra)
 		return err

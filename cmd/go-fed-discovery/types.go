@@ -108,12 +108,17 @@ type AuditLog struct {
 }
 
 type TaskRuntime struct {
-	mu        sync.Mutex
-	running   map[string]context.CancelFunc
-	cancelled map[string]bool
+	mu         sync.Mutex
+	running    map[string]context.CancelFunc
+	cancelled  map[string]bool
+	committing map[string]bool
+	completed  map[string]bool
 }
 
-var approvalStateMu sync.Mutex
+var (
+	taskStateMu     sync.Mutex
+	approvalStateMu sync.Mutex
+)
 
 type sendFunc func(map[string]any)
 

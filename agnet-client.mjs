@@ -1,0 +1,345 @@
+import { createHash } from "node:crypto";
+import { canonical, verifyFederatedReceipt } from "./asp-core.mjs";
+
+const TERMINAL_EVENT_TYPE = "receipt.committed";
+
+export class AgnetAPIError extends Error {
+  constructor(message, { status = 0, code = "request_failed", details, cause } = {}) {
+    super(message, { cause });
+    this.name = "AgnetAPIError";
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
+}
+
+export function agnetTaskId(piSessionId, toolCallId) {
+  requireNonEmptyString(piSessionId, "piSessionId");
+  requireNonEmptyString(toolCallId, "toolCallId");
+  return `pi:${sha256(`${piSessionId}\0${toolCallId}`)}`;
+}
+
+export function createToolCorrelation({ workspaceId, conversationId, piSessionId, toolCallId }) {
+  for (const [name, value] of Object.entries({ workspaceId, conversationId, piSessionId, toolCallId })) {
+    requireNonEmptyString(value, name);
+  }
+  return {
+    workspace_id: workspaceId,
+    conversation_id: conversationId,
+    pi_session_id: piSessionId,
+    tool_call_id: toolCallId,
+  };
+}
+
+export class AgnetClient {
+  #baseURL;
+  #token;
+  #fetch;
+  #pollIntervalMs;
+  #trustedZones;
+  #maxArtifactBytes;
+
+  constructor({ baseURL, token, trustedZones = [], maxArtifactBytes = 64 * 1024 * 1024, fetch: fetchImplementation = globalThis.fetch, pollIntervalMs = 250, allowInsecureRemote = false }) {
+    if (typeof fetchImplementation !== "function") throw new TypeError("fetch implementation is required");
+    const parsed = new URL(baseURL);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new TypeError("Agnet baseURL must use http or https");
+    if (parsed.protocol === "http:" && !allowInsecureRemote && !isLoopbackHost(parsed.hostname)) {
+      throw new TypeError("Plain HTTP Agnet endpoints must be loopback-only");
+    }
+    if (!Number.isFinite(pollIntervalMs) || pollIntervalMs < 0) throw new TypeError("pollIntervalMs must be non-negative");
+    if (!Number.isSafeInteger(maxArtifactBytes) || maxArtifactBytes <= 0) throw new TypeError("maxArtifactBytes must be a positive safe integer");
+    this.#baseURL = parsed.toString().replace(/\/$/, "");
+    this.#token = token;
+    this.#fetch = fetchImplementation;
+    this.#pollIntervalMs = pollIntervalMs;
+    this.#trustedZones = normalizeTrustedZones(trustedZones);
+    this.#maxArtifactBytes = maxArtifactBytes;
+  }
+
+  createIntent({ workspaceId, conversationId, text }) {
+    requireNonEmptyString(workspaceId, "workspaceId");
+    requireNonEmptyString(conversationId, "conversationId");
+    requireNonEmptyString(text, "text");
+    return {
+      intentId: `intent:sha256:${sha256(`${workspaceId}\0${conversationId}\0${text}`)}`,
+      workspaceId,
+      conversationId,
+      text,
+    };
+  }
+
+  async createTask(input) {
+    const payload = {
+      task_id: input.taskId,
+      to: input.to,
+      intent: input.intent,
+      scope: input.scope,
+      correlation: normalizeCorrelation(input.correlation),
+    };
+    if (input.budget !== undefined) payload.budget = input.budget;
+    if (input.artifactRef !== undefined) payload.artifact_ref = input.artifactRef;
+    if (input.approvalExpiresAt !== undefined) payload.approval_expires_at = input.approvalExpiresAt;
+    return this.#data(await this.#request("/api/v1/tasks", { method: "POST", body: payload }));
+  }
+
+  async execute(taskId) {
+    return this.#data(await this.#request(`/api/v1/tasks/${encodeURIComponent(taskId)}/execute`, { method: "POST", body: {} }));
+  }
+
+  async cancel(taskId, reason = "") {
+    return this.#data(await this.#request(`/api/v1/tasks/${encodeURIComponent(taskId)}/cancel`, { method: "POST", body: { reason } }));
+  }
+
+  async retry(taskId, { taskId: attemptTaskId }) {
+    return this.#data(await this.#request(`/api/v1/tasks/${encodeURIComponent(taskId)}/retry`, { method: "POST", body: { task_id: attemptTaskId } }));
+  }
+
+  async approve({ taskId, actor = "human://local" }) {
+    const payload = await this.#request("/api/approvals/actions", { method: "POST", body: { action: "approve", task_id: taskId, actor } });
+    return payload.approval;
+  }
+
+  async deny({ taskId, actor = "human://local" }) {
+    const payload = await this.#request("/api/approvals/actions", { method: "POST", body: { action: "deny", task_id: taskId, actor } });
+    return payload.approval;
+  }
+
+  async getTask(taskId) {
+    return this.#data(await this.#request(`/api/v1/tasks/${encodeURIComponent(taskId)}`));
+  }
+
+  async getReceipt(taskId) {
+    return this.#data(await this.#request(`/api/v1/tasks/${encodeURIComponent(taskId)}/receipt`));
+  }
+
+  async verifyReceipt(committed) {
+    if (!isRecord(committed) || committed.committed !== true || typeof committed.task_id !== "string" || typeof committed.receipt_digest !== "string") {
+      throw new AgnetAPIError("Receipt is not an Agnet committed receipt", { status: 409, code: "verification_failed" });
+    }
+    if (this.#trustedZones.size === 0) {
+      throw new AgnetAPIError("Local receipt verification requires trustedZones", { status: 409, code: "trust_store_required" });
+    }
+    if (!isRecord(committed.zone) || !isRecord(committed.worker) || !isRecord(committed.zone_binding) || !isRecord(committed.receipt)) {
+      throw new AgnetAPIError("Committed receipt evidence is incomplete", { status: 409, code: "verification_failed" });
+    }
+    const signedTask = isRecord(committed.signed_task) ? committed.signed_task : undefined;
+    try {
+      verifyFederatedReceipt({
+        type: "FED_RECEIPT",
+        zone: committed.zone,
+        worker: committed.worker,
+        zone_binding: committed.zone_binding,
+        receipt: committed.receipt,
+      }, this.#trustedZones, signedTask);
+    } catch (cause) {
+      throw new AgnetAPIError("Local receipt signature or trust verification failed", { status: 409, code: "verification_failed", cause });
+    }
+    const localDigest = sha256(canonical(committed.receipt));
+    if (localDigest !== committed.receipt_digest) {
+      throw new AgnetAPIError("Local receipt digest mismatch", { status: 409, code: "verification_failed" });
+    }
+    const manifests = Array.isArray(committed.receipt.artifact_manifests) ? committed.receipt.artifact_manifests : [];
+    for (const manifest of manifests) {
+      if (!isRecord(manifest) || typeof manifest.uri !== "string" || typeof manifest.sha256 !== "string" || !Number.isSafeInteger(manifest.size) || manifest.size < 0) {
+        throw new AgnetAPIError("Receipt artifact manifest is invalid", { status: 409, code: "verification_failed" });
+      }
+      const stream = await this.getArtifact(committed.task_id, manifest.uri);
+      const observed = await hashArtifactStream(stream, this.#maxArtifactBytes);
+      if (observed.sha256 !== manifest.sha256 || observed.size !== manifest.size) {
+        throw new AgnetAPIError("Local artifact verification failed", { status: 409, code: "verification_failed" });
+      }
+    }
+    return {
+      ...committed,
+      verified: true,
+      verification: {
+        mode: "local",
+        receipt_digest: localDigest,
+        artifact_count: manifests.length,
+      },
+    };
+  }
+
+  async getArtifact(taskId, reference, { signal } = {}) {
+    const uri = typeof reference === "string" ? reference : reference?.uri;
+    requireNonEmptyString(uri, "artifact reference");
+    const path = `/api/artifacts/read?task_id=${encodeURIComponent(taskId)}&uri=${encodeURIComponent(uri)}`;
+    const response = await this.#rawRequest(path, { signal });
+    if (!response.body) throw new AgnetAPIError("Artifact response has no body", { status: 502, code: "empty_artifact" });
+    return response.body;
+  }
+
+  subscribe(taskId, listener, { after = "0", signal, onError } = {}) {
+    requireNonEmptyString(taskId, "taskId");
+    if (typeof listener !== "function") throw new TypeError("listener must be a function");
+    const controller = new AbortController();
+    let stopped = false;
+    const stop = () => {
+      if (stopped) return;
+      stopped = true;
+      controller.abort();
+      signal?.removeEventListener("abort", stop);
+    };
+    if (signal) {
+      if (signal.aborted) stop();
+      else signal.addEventListener("abort", stop, { once: true });
+    }
+    void (async () => {
+      let cursor = String(after);
+      try {
+        while (!stopped) {
+          const payload = await this.#request(`/api/v1/tasks/${encodeURIComponent(taskId)}/events?after=${encodeURIComponent(cursor)}`, { signal: controller.signal });
+          const events = Array.isArray(payload.data) ? payload.data : [];
+          for (const event of events) {
+            if (stopped) break;
+            listener(event);
+            if (event.type === TERMINAL_EVENT_TYPE) {
+              stop();
+              break;
+            }
+          }
+          cursor = String(payload.next_cursor ?? cursor);
+          if (!stopped && events.length === 0) await delay(this.#pollIntervalMs, controller.signal);
+        }
+      } catch (error) {
+        if (!stopped && error?.name !== "AbortError") {
+          if (typeof onError === "function") onError(error);
+          else queueMicrotask(() => { throw error; });
+        }
+      }
+    })();
+    return stop;
+  }
+
+  async #request(path, { method = "GET", body, signal } = {}) {
+    const response = await this.#rawRequest(path, { method, body, signal });
+    if (response.status === 204) return {};
+    try {
+      return await response.json();
+    } catch (cause) {
+      throw new AgnetAPIError("Agnet returned invalid JSON", { status: response.status, code: "invalid_response", cause });
+    }
+  }
+
+  async #rawRequest(path, { method = "GET", body, signal } = {}) {
+    const headers = { accept: "application/json" };
+    if (body !== undefined) headers["content-type"] = "application/json";
+    if (this.#token) headers.authorization = `Bearer ${this.#token}`;
+    let response;
+    try {
+      response = await this.#fetch(`${this.#baseURL}${path}`, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal,
+      });
+    } catch (cause) {
+      if (cause?.name === "AbortError") throw cause;
+      throw new AgnetAPIError("Unable to reach Agnet", { code: "transport_error", cause });
+    }
+    if (response.ok) return response;
+    let payload;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = undefined;
+    }
+    const error = payload?.error;
+    throw new AgnetAPIError(error?.message ?? `Agnet request failed with HTTP ${response.status}`, {
+      status: response.status,
+      code: error?.code ?? "request_failed",
+      details: error?.details,
+    });
+  }
+
+  #data(payload) {
+    if (!payload || typeof payload !== "object" || !("data" in payload)) {
+      throw new AgnetAPIError("Agnet response omitted data", { status: 502, code: "invalid_response" });
+    }
+    return payload.data;
+  }
+}
+
+function normalizeTrustedZones(value) {
+  const descriptors = value instanceof Map ? [...value.values()] : value;
+  if (!Array.isArray(descriptors)) throw new TypeError("trustedZones must be an array or Map");
+  const trusted = new Map();
+  for (const descriptor of descriptors) {
+    if (!isRecord(descriptor) || typeof descriptor.zid !== "string" || descriptor.zid.length === 0) {
+      throw new TypeError("trusted zone descriptor is invalid");
+    }
+    trusted.set(descriptor.zid, descriptor);
+  }
+  return trusted;
+}
+
+async function hashArtifactStream(stream, maxBytes) {
+  const reader = stream.getReader();
+  const hash = createHash("sha256");
+  let size = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      size += chunk.value.byteLength;
+      if (size > maxBytes) {
+        await reader.cancel("artifact exceeds maxArtifactBytes");
+        throw new AgnetAPIError("Artifact exceeds maxArtifactBytes", { status: 409, code: "verification_failed" });
+      }
+      hash.update(chunk.value);
+    }
+    return { sha256: hash.digest("hex"), size };
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeCorrelation(correlation) {
+  if (!correlation || typeof correlation !== "object") return correlation;
+  if ("workspace_id" in correlation) return correlation;
+  return createToolCorrelation({
+    workspaceId: correlation.workspaceId,
+    conversationId: correlation.conversationId,
+    piSessionId: correlation.piSessionId,
+    toolCallId: correlation.toolCallId,
+  });
+}
+
+function isLoopbackHost(hostname) {
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1";
+}
+
+function requireNonEmptyString(value, name) {
+  if (typeof value !== "string" || value.length === 0) throw new TypeError(`${name} must be a non-empty string`);
+}
+
+function sha256(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function delay(milliseconds, signal) {
+  if (milliseconds === 0) return Promise.resolve();
+  if (signal?.aborted) {
+    const error = new Error("Aborted");
+    error.name = "AbortError";
+    return Promise.reject(error);
+  }
+  const settled = Promise.withResolvers();
+  const handleAbort = () => {
+    clearTimeout(timer);
+    const error = new Error("Aborted");
+    error.name = "AbortError";
+    settled.reject(error);
+  };
+  const timer = setTimeout(() => {
+    signal?.removeEventListener("abort", handleAbort);
+    settled.resolve();
+  }, milliseconds);
+  signal?.addEventListener("abort", handleAbort, { once: true });
+  return settled.promise;
+}

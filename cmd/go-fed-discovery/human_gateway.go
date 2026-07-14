@@ -31,16 +31,17 @@ func newHumanGatewayMux(auditPath string, fixture Fixture, humanToken string, li
 		}
 		header := r.Header.Get("Authorization")
 		if !strings.HasPrefix(header, "Bearer ") {
-			http.Error(w, "human gateway token required", http.StatusUnauthorized)
+			writeProductError(w, http.StatusUnauthorized, "unauthorized", "human gateway token required")
 			return false
 		}
 		got := strings.TrimPrefix(header, "Bearer ")
 		if subtle.ConstantTimeCompare([]byte(got), []byte(humanToken)) != 1 {
-			http.Error(w, "human gateway token required", http.StatusUnauthorized)
+			writeProductError(w, http.StatusUnauthorized, "unauthorized", "human gateway token required")
 			return false
 		}
 		return true
 	}
+	registerProductAPIRoutes(mux, fixture, requireWriteToken)
 	runQueueAction := func(action map[string]any) (map[string]any, int, error) {
 		if err := fixture.requireQueueActionGrant(action); err != nil {
 			if auditErr := fixture.recordQueueAction(action, nil, err); auditErr != nil {
@@ -604,7 +605,14 @@ func newHumanGatewayMux(auditPath string, fixture Fixture, humanToken string, li
 		_, _ = w.Write(data)
 	})
 	mux.Handle("/artifacts/", http.StripPrefix("/artifacts/", http.FileServer(http.Dir("artifacts"))))
-	return mux
+	authenticated := http.NewServeMux()
+	authenticated.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if !requireWriteToken(w, r) {
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
+	return authenticated
 
 }
 

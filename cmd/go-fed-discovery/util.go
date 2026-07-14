@@ -115,7 +115,7 @@ func queueLeaseExpired(item map[string]any) bool {
 }
 
 func copyQueueCarryFields(dst, src map[string]any) {
-	for _, key := range []string{"requester_zone_binding", "retry_of", "retry_attempt", "retry_after_at", "resume_checkpoint"} {
+	for _, key := range []string{"requester_zone_binding", "retry_of", "retry_attempt", "retry_after_at", "resume_checkpoint", "product_request_digest", "correlation"} {
 		if value, ok := src[key]; ok {
 			dst[key] = value
 		}

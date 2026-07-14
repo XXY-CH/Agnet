@@ -236,14 +236,26 @@ func TestDockerFailureDoesNotPublishAfterAdapterOrEvidenceFailure(t *testing.T) 
 			if callbacks != 0 {
 				t.Fatalf("callback count = %d", callbacks)
 			}
+			failureReceipts := 0
+			closes := 0
 			for _, frame := range frames {
-				if frame["type"] == "FED_RECEIPT" || frame["type"] == "FED_TASK_CLOSE" {
-					t.Fatalf("promoted frame after failure: %#v", frame)
+				if frame["type"] == "FED_RECEIPT" {
+					receipt, _ := frame["receipt"].(map[string]any)
+					if receipt["status"] != "failed" {
+						t.Fatalf("successful receipt after failure: %#v", frame)
+					}
+					failureReceipts++
+				}
+				if frame["type"] == "FED_TASK_CLOSE" {
+					closes++
 				}
 				event, _ := frame["event"].(map[string]any)
 				if event["type"] == "artifact.created" || event["type"] == "task.completed" {
 					t.Fatalf("success event after failure: %#v", frame)
 				}
+			}
+			if failureReceipts != 1 || closes != 1 {
+				t.Fatalf("failure terminal frames receipts=%d closes=%d frames=%#v", failureReceipts, closes, frames)
 			}
 			if _, err := os.Stat(filepath.Join("artifacts", task["task_id"].(string), "go-summary.md.manifest.json")); !os.IsNotExist(err) {
 				t.Fatalf("result manifest exists after failure: %v", err)
@@ -267,10 +279,22 @@ func TestDockerFailureDoesNotPublishAfterCallbackFailure(t *testing.T) {
 	if _, err := os.Stat(filepath.Join("artifacts", task["task_id"].(string), "go-summary.md.manifest.json")); !os.IsNotExist(err) {
 		t.Fatalf("result manifest exists after callback failure: %v", err)
 	}
+	failureReceipts := 0
+	closes := 0
 	for _, frame := range frames {
-		if frame["type"] == "FED_RECEIPT" || frame["type"] == "FED_TASK_CLOSE" {
-			t.Fatalf("promoted frame after callback failure: %#v", frame)
+		if frame["type"] == "FED_RECEIPT" {
+			receipt, _ := frame["receipt"].(map[string]any)
+			if receipt["status"] != "failed" {
+				t.Fatalf("successful receipt after callback failure: %#v", frame)
+			}
+			failureReceipts++
 		}
+		if frame["type"] == "FED_TASK_CLOSE" {
+			closes++
+		}
+	}
+	if failureReceipts != 1 || closes != 1 {
+		t.Fatalf("callback failure terminal frames receipts=%d closes=%d frames=%#v", failureReceipts, closes, frames)
 	}
 }
 

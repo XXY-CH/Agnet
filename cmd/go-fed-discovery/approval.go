@@ -10,22 +10,6 @@ import (
 	"time"
 )
 
-func (f Fixture) writeTaskState(taskID, status string, worker *Worker, extra map[string]any) error {
-	if f.TaskStateDir == "" {
-		return nil
-	}
-	body := map[string]any{
-		"task_id": taskID,
-		"status":  status,
-		"worker":  worker.Descriptor["aid"],
-	}
-	for key, value := range extra {
-		body[key] = value
-	}
-	// ponytail: one JSON file per task; replace with an indexed store when scheduling needs queries.
-	return writeJSONStateFile(filepath.Join(f.TaskStateDir, url.PathEscape(taskID)+".json"), body)
-}
-
 func approvalExpiresAt(task map[string]any) string {
 	if expiresAt := optionalString(task["approval_expires_at"]); expiresAt != "" {
 		return expiresAt

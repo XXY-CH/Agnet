@@ -126,16 +126,61 @@ func (r *TaskRuntime) Register(taskID string, cancel context.CancelFunc) {
 	}
 }
 
-func (r *TaskRuntime) Cancel(taskID string) {
+func (r *TaskRuntime) Cancel(taskID string) bool {
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.committing[taskID] || r.completed[taskID] {
+		return false
+	}
+	if r.cancelled == nil {
+		r.cancelled = map[string]bool{}
+	}
+	r.cancelled[taskID] = true
+	if cancel := r.running[taskID]; cancel != nil {
+		cancel()
+	}
+	return true
+}
+
+func (r *TaskRuntime) BeginCompletion(taskID string) bool {
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.cancelled[taskID] || r.completed[taskID] || r.committing[taskID] {
+		return false
+	}
+	if r.committing == nil {
+		r.committing = map[string]bool{}
+	}
+	r.committing[taskID] = true
+	return true
+}
+
+func (r *TaskRuntime) FinishCompletion(taskID string) {
 	if r == nil {
 		return
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.cancelled[taskID] = true
-	if cancel := r.running[taskID]; cancel != nil {
-		cancel()
+	delete(r.committing, taskID)
+	if r.completed == nil {
+		r.completed = map[string]bool{}
 	}
+	r.completed[taskID] = true
+}
+
+func (r *TaskRuntime) AbortCompletion(taskID string) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.committing, taskID)
 }
 
 func (r *TaskRuntime) Unregister(taskID string) {

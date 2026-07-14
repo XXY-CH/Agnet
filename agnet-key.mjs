@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { createHash, generateKeyPairSync } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";

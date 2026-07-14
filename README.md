@@ -1,187 +1,252 @@
-# Agnet — Agent Space Protocol (ASP)
+<div align="center">
 
-Agnet is the proof layer for agent work.
+# Agnet
 
-[![Protocol](https://img.shields.io/badge/protocol-v14.11--phase--c-blue)](docs/v14-roadmap.md) [![Tests](https://img.shields.io/badge/tests-531-brightgreen)](#quick-start) [![Go](https://img.shields.io/badge/go-1.26.1-00ADD8)](go.mod)
+### Verifiable infrastructure for agent work
 
-Status: research prototype, local-first, v14 active at `v14.11-phase-c`. The U1-U30 local Swarm foundations are complete; Node has 531/531 passing tests and the Go gates pass. This is a completed local proof kernel, not the Ultimate product.
-Historical baseline: v14.9 cross-netns reachability, v13 active-through `v13.15-protocol`, and v12 closed at `v12.45-protocol`.
+**Agent identity · Signed tasks · Durable Swarms · Portable evidence**
 
-v14.11 closes two scoped local slices: Apple private-workspace isolation proof on Darwin and Phase C U19-U30's Go-local durable Swarm. `FED_SWARM_SCHEDULE` remains a Node serial ready-DAG contract: it deterministically orders signed dependency-ready steps using original input order as the tie rule, executes them serially, and signs `scheduler: { mode: "ready-dag", step_order: [...] }`. Phase C instead proves journal-backed deterministic parallel ready waves on one host. Neither slice claims global distribution, public durable-Swarm completion, real Docker smoke, hardware attestation, or exactly-once worker execution.
+[![Status](https://img.shields.io/badge/status-research_prototype-5B5BD6)](#current-product-surface)
+[![Protocol](https://img.shields.io/badge/ASP-v14.11-0A7EA4)](docs/v14-roadmap.md)
+[![Runtime](https://img.shields.io/badge/runtime-Node.js_%2B_Go-1F6FEB)](#system-architecture)
+[![Go](https://img.shields.io/badge/Go-1.26.1-00ADD8)](go.mod)
+[![License](https://img.shields.io/badge/license-unlicensed-lightgrey)](#license)
 
-## What ASP is
+Agnet is an implementation-backed research project for the **Agent Space Protocol (ASP)**: a portable proof layer that makes agent work discoverable, authorized, inspectable, and independently verifiable.
 
-Agent Space Protocol (ASP) is the narrow accountability layer for agent task execution. It signs tasks, receipts, artifacts, audit entries, sandbox claims, and federation evidence so another verifier can inspect what happened without trusting the original runtime.
+[Quick start](#quick-start) · [Architecture](docs/manual/architecture.md) · [Protocol](docs/manual/protocol.md) · [Current status](docs/implementation-status.md) · [Ultimate vision](docs/agent-space-ultimate-vision.md)
 
-MCP makes tools callable and coordination protocols move work between agents; ASP focuses on the missing proof layer: who requested work, who accepted it, what policy applied, what bytes were produced, and whether the receipt verifies independently.
+</div>
 
-## Architecture
+---
+
+## Product thesis
+
+Agent systems can already call tools and coordinate work. What they usually cannot do is prove—across runtimes and organizational boundaries—**who requested an action, what policy authorized it, what actually ran, which bytes were produced, and whether the result should be trusted**.
+
+Agnet treats that missing accountability layer as a protocol problem.
+
+ASP introduces a narrow waist for agent work:
 
 ```text
-Human Society
-  goals, approvals, governance, legal responsibility
-
-Semantic OS
-  personal lead agents, organizational entry points, task boards
-
-Agent Economy
-  service markets, reputation, quotas, settlement, liability
-
-Agent Swarm Layer
-  dynamic teams, roles, collaboration topology, task DAGs
-
-Trust & Verification Layer
-  identity, credentials, sandbox claims, attestation, audit, verification
-
-Agent Task Fabric
-  signed tasks, event streams, artifacts, receipts, checkpoints
-
-Agent Discovery Layer
-  Agent IDs, capability addressing, semantic recall, reputation ranking
-
-Agent Overlay Network
-  Zones, federation, P2P relay, DHT, edge gateways
-
-Internet Underlay
-  TCP/IP, QUIC, TLS, WebSocket, HTTP, cloud and edge networks
+Agent identity
++ Signed task
++ Event stream
++ Scoped policy
++ Artifact reference
++ Audit receipt
++ Federation evidence
 ```
 
-This repository implements proof-layer primitives across Trust & Verification, Agent Task Fabric, Discovery, and local/federated gateway paths. It does not implement the full economy, global overlay network, or production security boundary.
+The runtime remains free to schedule, route, or execute however it wants. The evidence does not. Tasks, receipts, artifacts, checkpoints, approvals, and Swarm closure records are signed, replayable, and verifier-readable outside the runtime that created them.
 
-## Proof flow
+### What this enables
+
+- **Portable trust** — verify work without trusting the original process or UI.
+- **Accountable delegation** — bind intent, requester, worker, policy, and output into one evidence chain.
+- **Recoverable agent work** — preserve events, checkpoints, artifacts, leases, and retry lineage.
+- **Federated operation** — cross Zone boundaries with explicit identity and trust provenance.
+- **Research without hand-waving** — turn claims about agent coordination into executable protocol fixtures and failure tests.
+
+## System architecture
+
+Agnet separates product surfaces from evidence authority. Go owns the durable local runtime and gateway. Node.js owns compact protocol construction and pure verification. Shared vectors keep both implementations aligned.
+
+```mermaid
+flowchart TB
+    H[Human or Principal Agent] --> HG[Human Gateway / Client]
+    HG --> I[Identity · Intent · Policy]
+    I --> D[Discovery and Capability Evidence]
+    D --> S[Swarm Planner and Scheduler]
+    S --> W[Workers · Tools · Sandboxes]
+    W --> A[Artifacts · Checkpoints · Events]
+    A --> R[Signed Receipts and Swarm Close]
+    R --> J[Audit Journal]
+    R --> V[Independent Verifiers]
+    J --> V
+
+    ASP[Agent Space Protocol] --- I
+    ASP --- D
+    ASP --- S
+    ASP --- R
+
+    Z1[Requester Zone] -. signed federation frames .-> Z2[Worker Zone]
+    Z2 -. verifier-readable evidence .-> V
+```
+
+### Product surfaces
+
+| Surface | Role | Primary implementation |
+| --- | --- | --- |
+| **ASP Core** | Canonical identities, tasks, receipts, artifacts, discovery, Swarm, knowledge, and trust objects | `asp-core.mjs` |
+| **Verifier CLI** | Replays signature, Zone trust, task binding, artifact closure, sandbox, and package proof checks | `asp-verify.mjs` |
+| **Federation reference** | Compact Node.js execution and federation behavior | `federation-gateway.mjs` |
+| **Durable runtime** | TCP/TLS gateway, queueing, approvals, artifacts, Human Gateway, and journal-backed local Swarms | `cmd/go-fed-discovery/` |
+| **TypeScript client SDK** | Authenticated Product API tasks, cursor-resumable events, local receipt trust/signature/task/artifact verification | `agnet/client` |
+| **Packaged daemon** | Thin Node launcher plus OS/CPU-specific native daemon packages for Darwin and Linux | `agnet-daemon.mjs`, `@agnet-ai/daemon-*` |
+| **Reusable Go verification** | Receipt and Swarm output verification without the gateway | `verifier/` |
+| **Interop evidence** | Fixed Node/Go protocol fixtures and adversarial cases | `test-vectors/`, `test/` |
+
+## Current product surface
+
+> **Current baseline:** `v14.11-phase-c-local-foundations`
+> **Maturity:** research prototype with a completed local proof kernel—not a production Agent Net.
+> **Package line:** `0.1.0-dev.3` prerelease; the Human Gateway requires a bearer token whenever its port is enabled.
+
+U1–U30 are complete for the scoped local foundation. The strongest implemented product slice is a same-host, durable Go Swarm backed by an authoritative filesystem journal and OS process locks.
+
+| Layer | Current state | What is real today | Next boundary |
+| --- | --- | --- | --- |
+| **Identity & Trust** | Implemented locally | `aid:` identities, Zone descriptors, credentials, revocation, policy evidence, signed sandbox claims | Production key lifecycle and hardware-backed attestation |
+| **Task Fabric** | Implemented locally | Signed tasks, events, receipts, artifacts, checkpoints, audit chain, queue/resume evidence | Durable remote artifact transport and multi-host recovery |
+| **Discovery** | Implemented locally | `FED_RESOLVE`, evidence-first `FED_QUERY`, capability credentials, trust provenance, labelled routing/reputation signals | Distributed freshness, abuse controls, and interoperable reputation |
+| **Swarm** | Durable same-host kernel complete | Journal authority, leases/fencing, deterministic parallel ready waves, receipt commitment, byte-stable close, output gate, signed disband | Cross-host membership, consensus, and worker lifecycle |
+| **Isolation** | Proof-backed local slice | Local sandbox evidence and Darwin private-workspace proof | Real container/VM/TEE isolation parity |
+| **Knowledge** | Protocol seam complete | Signed query/response frames with source, freshness, license, and query binding | Ingestion, citation/conflict graph, index, and operational gateway |
+| **Human product** | Thin operational surface | Human Gateway for tasks, queue, approvals, audit, artifacts, transcripts, and security posture | Organization identity, intent workspace, explainability, and governed UX |
+| **Economy & Operations** | Research surface | Micro-contract fields, cost/risk signals, and auditable work evidence | Metering, quotas, SLA, disputes, observability, and recovery operations |
+
+The current architectural coverage is estimated at **55–65% of the Ultimate vision**. That number is an inference about layer coverage, not a production-readiness score. See [Implementation Status](docs/implementation-status.md) for the evidence matrix.
+
+## Proof model
+
+Agnet distinguishes **execution** from **commitment**:
+
+- Worker execution is **at least once** and may repeat after failure.
+- A fenced, signed receipt commitment becomes authoritative **once**.
+- Completed, failed, and cancelled receipts bind the original signed task; cancellation also carries a separate cancel digest.
+- `receipt.committed` is exposed only after durable task state and queue projections agree, and no later per-task events are emitted.
+- Artifacts are accepted only when their manifest and bytes match the signed evidence.
+- Views are rebuildable; journals, signed records, and content-addressed bytes remain authoritative.
+- Independent verifiers replay trust and integrity checks without trusting the scheduler.
 
 ```mermaid
 flowchart LR
-  R[Requester] --> T[FED_TASK_OPEN]
-  T -->|Task signed| G[Gateway]
-  G --> E[Execute]
-  E --> W[Worker]
-  W --> F[FED_RECEIPT]
-  F -->|Receipt signed| R
-  R --> V[asp-verify]
-  V --> OK[Verified ✓]
+    T[Signed Task] --> P[Policy + Approval]
+    P --> E[Execution]
+    E --> A[Artifact / Checkpoint]
+    A --> R[Signed Receipt]
+    R --> C[Swarm Close]
+    R --> J[Audit Chain]
+    C --> V[Independent Verification]
+    J --> V
 ```
+
+A typical federated flow:
+
+1. A requester signs a task with an Ed25519-backed `aid:` identity.
+2. `FED_TASK_OPEN` carries the task, requester descriptor, origin Zone, and Zone binding.
+3. The worker verifies identity, Zone trust, policy, task shape, and signature before execution.
+4. Execution emits events, artifacts, optional checkpoints and approvals, then a worker-signed receipt.
+5. `FED_RECEIPT` returns the result with task and artifact bindings.
+6. Swarm completion binds step receipts into a Zone-signed `FED_SWARM_CLOSE`.
+7. Node and Go verifiers independently replay the evidence chain.
 
 ## Quick start
 
+### Run the local proof demo
+
 ```bash
 bash scripts/proof-demo.sh
-node asp-verify.mjs fed-receipt-artifacts state/proof-demo-fed-receipt.json state/proof-demo-trusted-zones.json
-node --test --test-concurrency=1 test/docs-contract.test.mjs
+```
+
+The demo emits verifier-ready task, receipt, trust, and artifact evidence under `state/`.
+
+Verify the receipt and artifact bytes independently:
+
+```bash
+node asp-verify.mjs fed-receipt-artifacts \
+  state/proof-demo-fed-receipt.json \
+  state/proof-demo-trusted-zones.json
+```
+
+### Run the focused verification gates
+
+```bash
 node --test --test-concurrency=1 test/*.test.mjs
 go test ./...
 ```
 
-## What's new in v14
+For gateway setup, TLS/mTLS, Human Gateway flows, and verifier commands, use the [manuals](#documentation).
 
-- Micro-contracts: signed cost, latency, and capability commitments per Swarm step.
-- Multi-signal routing: cost, latency, availability, and reputation labels travel with discovery evidence.
-- Trust chains: Zone delegation records make cross-zone provenance inspectable.
-- Failure migration: failed steps retry once on same-capability replacement workers with signed migration logs.
-- Intent decomposition: `FED_SWARM_PLAN` binds generated Swarm plans to a signed `plan_digest`.
-- Knowledge Gateway: `FED_KNOWLEDGE_QUERY` and `FED_KNOWLEDGE_RESPONSE` bind cited freshness/license results to a signed query digest.
-- Conflict resolution: `FED_SWARM_CLOSE.close.conflict_resolutions` records signed, deterministic same-artifact conflict choices.
-- Cross-netns reachability: trusted private-IP observer evidence records separate network namespace reachability without claiming public `external-host` success.
-- v14.11 / Phase C U19-U30: a Darwin private-workspace proof and a Go-local, journal-authoritative durable Swarm foundation. Its same-host filesystem journal under OS process locks materializes replayable views, records deterministic parallel ready waves and a byte-stable close, gates irreversible signed disband on output verification, and keeps workers at-least-once while only the fenced signed receipt commitment is exactly-once. Node is a pure verifier of fixed offline U29 vectors for this durable format; Live public proof excludes durable Swarm completion and makes no claim of real container smoke, cross-host operation, remote artifact handling, or exactly-once worker execution.
+## Research boundary
 
-## Repo map quicklinks
+Agnet is deliberately explicit about what its evidence proves.
 
-| Read | For |
+### Proven in the current repository
+
+- Cryptographic Agent and Zone identity primitives
+- Signed task, receipt, artifact, checkpoint, and audit evidence
+- Node/Go interoperability through fixed vectors
+- Evidence-first capability discovery and routing signals
+- Same-host durable Swarm recovery and deterministic ready-wave execution
+- Fenced receipt commitment, stable close, output verification, and signed disband
+- Local sandbox claims, signed attestation verification, and Darwin workspace isolation proof
+- Human approval and task/audit/artifact inspection surfaces
+
+### Not claimed
+
+- A production security boundary or globally operated Agent Net
+- Cross-host durable Swarm execution or remote artifact recovery
+- Public P2P/DHT routing, NAT traversal, relay infrastructure, or global discovery
+- Hardware remote attestation, VM isolation, or TEE proof
+- Exactly-once worker execution or exactly-once external side effects
+- Public reputation, marketplace, payment, token, settlement, or insurance systems
+- A complete Semantic OS, operational Knowledge Network, or production control plane
+
+These are roadmap boundaries, not hidden fallbacks. The project favors narrow, testable claims over broad demos that cannot be independently verified.
+
+## Roadmap
+
+```text
+NOW
+  Local proof kernel
+  └─ signed work + durable same-host Swarm + independent verification
+
+NEXT
+  Private Agent Space
+  └─ private multi-host fabric + consensus + trust + knowledge + governance + operations
+
+LATER
+  Public Agent Net
+  └─ public overlay + open discovery + Sybil resistance + external settlement + ecosystem
+```
+
+The long-term direction is documented in [Agent Space Ultimate Vision](docs/agent-space-ultimate-vision.md). The active protocol line is tracked in the [v14 roadmap](docs/v14-roadmap.md). Detailed milestone history belongs in the [changelog](docs/CHANGELOG.md), not in this README.
+
+## Documentation
+
+| Document | Purpose |
 | --- | --- |
-| [Architecture](docs/manual/architecture.md) | Proof layers, data flow, and how Node/Go pieces relate. |
-| [Ultimate vision and remaining programs](docs/agent-space-ultimate-vision.md) | Current architectural coverage, the `[INFERENCE]` 55–65% estimate, and eight dependency-ordered programs still required for the Ultimate product. |
-| [Protocol](docs/manual/protocol.md) | ASP frames: `FED_TASK_OPEN`, `FED_RECEIPT`, `FED_SWARM_*`, `FED_SWARM_PLAN`, discovery, audit, artifacts. |
-| [Verifier CLI](docs/manual/verifier-cli.md) | Full `asp-verify.mjs` command syntax and failure modes. |
-| [Federation](docs/manual/federation.md) | Gateway setup, trusted Zones, TLS/mTLS, cross-zone usage. |
-| [Trust model](docs/manual/trust-model.md) | Identity, credentials, revocation, sandbox proof, attestation. |
-| [Reputation](docs/manual/reputation.md) | `agent_score`, routing signals, and discovery evidence. |
-| [Development](docs/manual/development.md) | Local tests, Go build, contribution workflow. |
-| [Changelog](docs/CHANGELOG.md) | Concise v13.0 through v14.11 history plus the Phase C durability slice. |
+| [Architecture](docs/manual/architecture.md) | Layer model, proof flow, Node/Go ownership, and current boundaries |
+| [Protocol](docs/manual/protocol.md) | ASP frames and protocol behavior |
+| [Verifier CLI](docs/manual/verifier-cli.md) | Independent verification commands and failure modes |
+| [Federation](docs/manual/federation.md) | Gateway, trusted Zones, TLS/mTLS, and cross-Zone operation |
+| [Trust model](docs/manual/trust-model.md) | Identity, credentials, revocation, sandbox, and attestation |
+| [Implementation Status](docs/implementation-status.md) | Current evidence matrix and missing exit conditions |
+| [v14 Roadmap](docs/v14-roadmap.md) | Active protocol milestone |
+| [Ultimate Vision](docs/agent-space-ultimate-vision.md) | Research thesis and long-term Agent Space model |
+| [Changelog](docs/CHANGELOG.md) | Historical releases and completed boundaries |
+| [Development](docs/manual/development.md) | Tests, Go build, and contribution workflow |
 
-## Roadmap status
+## Repository map
 
-| Gate | Status | Evidence | Pending / non-goal |
-| --- | --- | --- | --- |
-| v13.1 hosted/public reachability | Active / pending exit criterion | Verifier-owned `local-interface`, `container-observer`, `cross-netns`, and `external-host` scopes; hosted runner exists | A successful real hosted external-host observer run against a globally routable literal-IP listener is still pending. |
-| v13.2 release trust/SBOM | Complete | `asp-release-trust/v1`, package proof binding, release signer verification | Not CycloneDX/SPDX/SLSA, not registry signing, not package publish. |
-| v13.3 strong sandbox / remote attestation | Active / partially complete | Local-process sandbox proof and signed sandbox attestation verifier | Hardware remote attestation and real container/VM/TEE isolation remain unimplemented and fail closed. |
-| v13.4-v13.15 discovery, scheduling, checkpoints | Complete for current local evidence surface | Semantic discovery, Go parity, audit-backed receipt counts, credential expiry, revocation, labelled `agent_score`, receipt checkpoint verification | No global reputation graph, marketplace, remote feed, or scheduler orchestration beyond scoped primitives. |
-| v14.1 Swarm micro-contracts | Complete | Node and Go close proofs carry signed worker cost/latency/capability commitments | Not pricing, payment, settlement, or SLA enforcement. |
-| v14.2 multi-signal routing | Complete | `discovery_evidence.routing` with cost, latency, availability, and `signals_used` | Not opaque ML routing or remote reputation scoring. |
-| v14.3 cross-zone trust chains | Complete | Signed Zone delegation records and `zone_trust_chain` discovery provenance | Not global PKI, DID-native universal resolution, or universal trust. |
-| v14.4 Task failure migration | Complete | Node and Go Swarm execution can migrate a failed step with signed `migration_log` close evidence | Not invisible retries, model KV restore, or distributed scheduling. |
-| v14.5 Intent Decomposition | Complete | `swarmPlan`, `FED_SWARM_PLAN`, and `plan_digest` evidence are documented in `docs/v14.5-boundary.md` | Not LLM orchestration, automatic candidate selection, or full DAG execution. |
-| v14.6 Knowledge Gateway proto | Complete | `knowledgeQuery`, `FED_KNOWLEDGE_QUERY`, `FED_KNOWLEDGE_RESPONSE`, and `verifyKnowledgeResponse` are documented in `docs/v14.6-boundary.md` | Not a web crawler, semantic cache, vector store, or RAG pipeline. |
-| v14.7 policy/risk routing signals | Complete | `discovery_evidence.routing.policy_match` and `risk_match` feed labelled `agent_score` and `ranking.reasons` evidence | Not a new trust oracle, policy language, marketplace ranker, or opaque ML router. |
-| v14.8 Swarm conflict resolution | Complete | `conflict_resolutions` entries bind artifact ref, candidate steps, chosen worker, reason, digest, and Zone signature | Not voting/quorum, automatic content merge, payment/settlement, or non-local-first arbitration. |
-| v14.9 cross-netns reachability | Complete | `cross-netns` scope verifies trusted observer evidence from a separate netns/VM over a private literal IP | Not public reachability; not hosted external-host completion. |
-| v14.10 Node ready-DAG parity | Complete | Node `FED_SWARM_SCHEDULE` orders dependency-ready steps deterministically and signs exact scheduler evidence | No parallel execution, no resource scheduling, no economic ranking, no LLM scheduling, and no new trust inputs. |
-| v14.11 / Phase C local foundation closure | Complete local proof kernel | Darwin private-workspace proof; Go same-host journal under OS process locks, replayable views, deterministic parallel ready waves, byte-stable close, output verification, and irreversible signed disband | Node is a pure verifier of fixed offline U29 vectors for this durable format. Live public proof excludes durable Swarm completion; no global distribution, real Docker smoke, hardware attestation, cross-host operation, remote artifacts, or exactly-once worker execution. |
+```text
+asp-core.mjs                 ASP protocol primitives
+asp-verify.mjs               Independent Node.js verifier CLI
+federation-gateway.mjs       Node.js federation reference
+cmd/go-fed-discovery/        Durable Go gateway and local Swarm runtime
+verifier/                    Reusable Go verification packages
+test-vectors/                Cross-language protocol fixtures
+test/                        Node.js protocol and documentation tests
+docs/manual/                 Operator and protocol manuals
+scripts/                     Reproducible proof workflows
+```
 
-## Non-claims
+## Contributing
 
-- Agnet is not a production security boundary, public Agent Net, P2P DHT, NAT traversal layer, token economy, or public marketplace.
-- `aid:` Ed25519 identity is canonical here; `did:key` is only a bridge field, not DID document resolution or DID service routing.
-- Local-process sandbox proof and signed attestation evidence are not hardware remote attestation, container namespace isolation, VM isolation, or TEE proof.
+Start with [CONTRIBUTING.md](CONTRIBUTING.md) and [Development](docs/manual/development.md). Protocol changes should include exact failure semantics, cross-language vectors where applicable, and verifier-first tests.
 
-## Protocol reference index
+## License
 
-Detailed milestone history lives in the roadmap and boundary docs; this README keeps the public filenames discoverable without embedding the old long-form changelog. v9 and v10 are closed.
-
-- Roadmaps:
-  `docs/v10-roadmap.md` - closed v10 roadmap. `docs/v11-roadmap.md` - closed v11 roadmap. `docs/v12-roadmap.md` - closed v12 roadmap. `docs/v13-roadmap.md` - closed v13 roadmap.
-  `docs/v14-roadmap.md` - active v14 roadmap.
-- v11 boundaries:
-  `docs/v11.3-boundary.md` - task id token validation boundary. `docs/v11.4-boundary.md` - receipt task digest binding boundary. `docs/v11.5-boundary.md` - optional receipt task evidence verification boundary. `docs/v11.6-boundary.md` - artifact closure task evidence parity boundary.
-  `docs/v11.7-boundary.md` - Go receipt CLI task evidence boundary. `docs/v11.8-boundary.md` - Go-to-Node interop receipt task binding boundary. `docs/v11.9-boundary.md` - Node-to-Go interop receipt task binding boundary. `docs/v11.10-boundary.md` - FED_RECEIPT frame type validation boundary.
-  `docs/v11.11-boundary.md` - FED_TASK_OPEN frame type validation boundary. `docs/v11.12-boundary.md` - FED_SWARM_CLOSE duplicate step validation boundary. `docs/v11.13-boundary.md` - FED_SWARM_CLOSE Swarm identity presence boundary. `docs/v11.14-boundary.md` - FED_SWARM_CLOSE NUL identity validation boundary.
-  `docs/v11.15-boundary.md` - FED_SWARM_CLOSE step task id validation boundary. `docs/v11.16-boundary.md` - FED_SWARM_CLOSE close signature presence boundary. `docs/v11.17-boundary.md` - FED_SWARM_CLOSE close proof presence boundary. `docs/v11.18-boundary.md` - FED_SWARM_CLOSE signing Zone presence boundary.
-  `docs/v11.19-boundary.md` - FED_SWARM_CLOSE step receipt object presence boundary. `docs/v11.20-boundary.md` - FED_SWARM_CLOSE frame object presence boundary. `docs/v11.21-boundary.md` - FED_TASK_OPEN and FED_RECEIPT frame object presence boundary. `docs/v11.22-boundary.md` - FED_TASK_OPEN and FED_RECEIPT Zone descriptor presence boundary.
-  `docs/v11.23-boundary.md` - FED_TASK_OPEN and FED_RECEIPT payload object presence boundary. `docs/v11.24-boundary.md` - Node trusted Zone store presence boundary. `docs/v11.25-boundary.md` - FED_TASK_OPEN worker context presence boundary. `docs/v11.26-boundary.md` - FED_TASK_OPEN and FED_RECEIPT signature presence boundary.
-  `docs/v11.27-boundary.md` - FED_TASK_OPEN worker descriptor identity boundary. `docs/v11.28-boundary.md` - FED_RECEIPT worker descriptor identity boundary. `docs/v11.29-boundary.md` - Node descriptor public key presence boundary. `docs/v11.31-boundary.md` - Node Zone descriptor object presence boundary.
-  `docs/v11.32-boundary.md` - Node did:key input presence boundary. `docs/v11.33-boundary.md` - Node artifact manifest object presence boundary. `docs/v11.34-boundary.md` - Node credential object presence boundary. `docs/v11.35-boundary.md` - Node rotation proof object presence boundary.
-  `docs/v11.36-boundary.md` - Node Zone binding object presence boundary. `docs/v11.37-boundary.md` - Node Zone revocation object presence boundary. `docs/v11.38-boundary.md` - Node trusted Zone file shape boundary. `docs/v11.39-boundary.md` - Node registry file shape boundary.
-  `docs/v11.40-boundary.md` - Node resolveAgent registry context boundary. `docs/v11.41-boundary.md` - Node descriptor body object presence boundary. `docs/v11.42-boundary.md` - Node proof verifier malformed descriptor fail-closed boundary. `docs/v11.43-boundary.md` - Node local artifact URI boundary.
-  `docs/v11.44-boundary.md` - Node local artifact path boundary. `docs/v11.45-boundary.md` - Go artifact digest path boundary. `docs/v11.46-boundary.md` - receipt artifact digest shape boundary. `docs/v11.47-boundary.md` - receipt artifact size shape boundary.
-  `docs/v11.48-boundary.md` - Go artifact media type shape boundary. `docs/v11.49-boundary.md` - Go artifact manifest hash shape boundary. `docs/v11.50-boundary.md` - Go artifact list shape boundary. `docs/v11.51-boundary.md` - Go artifact mirror index shape boundary.
-  `docs/v11.52-boundary.md` - Go artifact mirror index entry boundary. `docs/v11.53-boundary.md` - Go artifact mirror index digest boundary. `docs/v11.54-boundary.md` - Go artifact mirror index digest presence boundary. `docs/v11.55-boundary.md` - Go artifact mirror index manifest hash boundary.
-  `docs/v11.56-boundary.md` - Go artifact mirror index AFP boundary. `docs/v11.57-boundary.md` - Go artifact mirror index size boundary. `docs/v11.58-boundary.md` - Go artifact mirror index media type boundary. `docs/v11.59-boundary.md` - Go artifact mirror index URI boundary.
-  `docs/v11.60-boundary.md` - Go artifact manifest URI boundary. `docs/v11.61-boundary.md` - Go artifact manifest AFP boundary. `docs/v11.62-boundary.md` - Go artifact mirror index AFP type boundary. `docs/v11.63-boundary.md` - Go Swarm dependency list shape boundary.
-  `docs/v11.64-boundary.md` - Go Swarm close step list shape boundary. `docs/v11.65-boundary.md` - Go receipt approval list shape boundary. `docs/v11.66-boundary.md` - Go receipt checkpoint list shape boundary. `docs/v11.67-boundary.md` - Go runtime checkpoint lookup list shape boundary.
-  `docs/v11.68-boundary.md` - Go receipt artifact lookup list shape boundary. `docs/v11.69-boundary.md` - Go FED_SWARM_OPEN after list shape boundary. `docs/v11.70-boundary.md` - Go queue grant scope list shape boundary. `docs/v11.71-boundary.md` - Go task write scope list shape boundary.
-  `docs/v11.72-boundary.md` - Go task data domains list shape boundary. `docs/v11.73-boundary.md` - Go worker approval required list shape boundary. `docs/v11.74-boundary.md` - Go receipt policy scope list shape boundary. `docs/v11.75-boundary.md` - Go receipt policy scope scalar shape boundary.
-  `docs/v11.76-boundary.md` - Go receipt task id token boundary. `docs/v11.77-boundary.md` - Node receipt task id token boundary. `docs/v11.78-boundary.md` - Node receipt artifact URI/ref shape boundary. `docs/v11.79-boundary.md` - public transport receipt proof boundary.
-- v12 boundaries:
-  `docs/v12.0-boundary.md` - public proof bundle manifest boundary. `docs/v12.1-boundary.md` - proof bundle verifier command boundary. `docs/v12.2-boundary.md` - public proof summary bundle verification boundary. `docs/v12.3-boundary.md` - bundle-relative proof file paths boundary.
-  `docs/v12.4-boundary.md` - proof bundle path safety boundary. `docs/v12.5-boundary.md` - proof bundle type gate boundary. `docs/v12.6-boundary.md` - proof bundle manifest object boundary. `docs/v12.7-boundary.md` - proof bundle path preflight boundary.
-  `docs/v12.8-boundary.md` - proof bundle CLI arity boundary. `docs/v12.9-boundary.md` - proof bundle exact CLI arity boundary. `docs/v12.10-boundary.md` - verifier CLI exact arity boundary. `docs/v12.11-boundary.md` - proof bundle public transport gate boundary.
-  `docs/v12.12-boundary.md` - proof bundle transport proof shape boundary. `docs/v12.13-boundary.md` - proof bundle federation transport gate boundary. `docs/v12.14-boundary.md` - proof bundle listen host gate boundary. `docs/v12.15-boundary.md` - proof bundle unspecified host gate boundary.
-  `docs/v12.16-boundary.md` - proof bundle reachability scope boundary. `docs/v12.17-boundary.md` - proof bundle reachability scope ownership boundary. `docs/v12.18-boundary.md` - package artifact proof boundary. `docs/v12.19-boundary.md` - package artifact SHA-256 boundary.
-  `docs/v12.20-boundary.md` - package proof manifest boundary. `docs/v12.21-boundary.md` - package proof digest boundary. `docs/v12.22-boundary.md` - package proof verifier command boundary. `docs/v12.23-boundary.md` - package proof manifest object boundary.
-  `docs/v12.24-boundary.md` - package proof tarball path safety boundary. `docs/v12.25-boundary.md` - package proof manifest-relative tarball boundary. `docs/v12.26-boundary.md` - package proof npm digest verification boundary. `docs/v12.27-boundary.md` - package proof verified metadata output boundary.
-  `docs/v12.28-boundary.md` - package proof filename binding boundary. `docs/v12.29-boundary.md` - package proof file list shape boundary. `docs/v12.30-boundary.md` - package proof manifest filename binding boundary. `docs/v12.31-boundary.md` - package proof identity filename binding boundary.
-  `docs/v12.32-boundary.md` - Go canonical JSON HTML escape parity boundary. `docs/v12.33-boundary.md` - external reachability evidence gate boundary. `docs/v12.34-boundary.md` - external reachability observer boundary. `docs/v12.35-boundary.md` - Docker external reachability observer wrapper boundary.
-  `docs/v12.37-boundary.md` - core substrate recenter boundary. `docs/v12.38-boundary.md` - package proof ASP signature boundary. `docs/v12.39-boundary.md` - package proof trusted signer pin boundary. `docs/v12.40-boundary.md` - trusted signer list shape boundary.
-  `docs/v12.41-boundary.md` - package proof metadata preflight boundary. `docs/v12.42-boundary.md` - package proof identity shape boundary. `docs/v12.43-boundary.md` - package proof byte metadata shape boundary. `docs/v12.44-boundary.md` - package proof signer capability boundary.
-  `docs/v12.45-boundary.md` - latest closed boundary.
-- v13 boundaries:
-  `docs/v13.0-boundary.md` - v13 opening boundary. `docs/v13.15-boundary.md` - v13.15 Node receipt checkpoint verification boundary. `docs/v13.11-boundary.md` - v13.11 audit-backed receipt-count reputation boundary. `docs/v13.12-boundary.md` - v13.12 credential valid_until expiry boundary.
-  `docs/v13.13-boundary.md` - v13.13 authority Zone revocation discovery boundary. `docs/v13.14-boundary.md` - v13.14 multi-signal agent score reputation boundary.
-- v14 boundaries:
-  `docs/v14.0-boundary.md` - v14 opening boundary. `docs/v14.2-boundary.md` - v14.2 multi-signal FED_QUERY routing boundary. `docs/v14.3-boundary.md` - v14.3 cross-zone trust chain boundary. `docs/v14.4-boundary.md` - v14.4 task failure migration boundary. `docs/v14.8-boundary.md` - v14.8 Swarm conflict resolution boundary. `docs/v14.9-boundary.md` - v14.9 cross-netns reachability boundary. `docs/v14.10-boundary.md` - v14.10 Node ready-DAG parity boundary.
-
-## Verifier and proof commands
-
-| Command | Verifies |
-| --- | --- |
-| `asp-verify.mjs fed-receipt` | Signed `FED_RECEIPT` Zone trust, worker identity, and task digest. |
-| `asp-verify.mjs fed-receipt-artifacts` | Receipt task binding plus artifact manifest closure and byte digests. |
-| `asp-verify.mjs proof-bundle` / `proof-bundle <bundle.json> [external-trusted-zones.json]` | Public-listen gateway proof, transport proof, reachability scope, and bundle-relative proof file paths. |
-| `scripts/package-proof.mjs` + `asp-verify.mjs package-proof` | Package proof digest, ASP signature, trusted signer pin, metadata, and package proof tarball path safety. |
-| `asp-verify.mjs sandbox-proof <frame.json> <trusted-zones.json> [required-sandbox-class]` | Signed sandbox class, Zone trust, and fail-closed sandbox claim shape. |
-| `asp-verify.mjs sandbox-attestation <frame.json> <trusted-zones.json> <attestation.json> <trusted-attestors.json>` | Sandbox attestation signer trust, target frame binding, and attestor allow-list. |
-| `scripts/external-reachability-observer.mjs` / `scripts/docker-external-reachability-observer.sh` / `scripts/container-cross-netns-observer.sh` | External reachability evidence using `AGNET_REACHABILITY_OBSERVER_SEED_HEX`, `AGNET_PUBLIC_LISTEN_HOST`, `AGNET_PUBLIC_PROOF_KEEPALIVE_MS`, and private-IP `cross-netns` observation. |
-
-## Contributing and license
-
-Read [CONTRIBUTING.md](CONTRIBUTING.md). No open-source license has been selected yet; until a license is added, default copyright rules apply and contributors should not assume reuse rights beyond repository access.
+No open-source license has been selected. Until a license is added, default copyright rules apply; repository access does not imply permission to reuse, redistribute, or publish the code.

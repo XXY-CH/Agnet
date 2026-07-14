@@ -25,7 +25,7 @@ func main() {
 	port := flag.String("port", "9090", "listen port")
 	wsPort := flag.String("ws-port", "", "optional WebSocket listen port")
 	humanPort := flag.String("human-port", "", "optional Human Gateway HTTP port")
-	humanToken := flag.String("human-token", "", "optional Human Gateway bearer token for write actions")
+	humanToken := flag.String("human-token", "", "required Human Gateway bearer token when --human-port is set")
 	humanActorPolicyPath := flag.String("human-actor-policy", "", "optional Human Gateway actor policy JSON file")
 	tlsCertPath := flag.String("tls-cert", "", "optional federation TCP TLS certificate file")
 	tlsKeyPath := flag.String("tls-key", "", "optional federation TCP TLS key file")
@@ -470,7 +470,17 @@ func serve(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath
 	return serveWithSwarmStateDir(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, tlsClientCAPath, artifactStoreDir, fixturePath, trustPath, swarmStorageRoot, swarmID, "state/go-fed-swarms", runtimeKeys, auditPath, verifier.TrustInputs{})
 }
 
+func validateHumanGatewayConfiguration(humanPort, humanToken string) error {
+	if humanPort != "" && strings.TrimSpace(humanToken) == "" {
+		return errors.New("human gateway token required when human port is enabled")
+	}
+	return nil
+}
+
 func serveWithSwarmStateDir(listenHost, port, wsPort, humanPort, humanToken, humanActorPolicyPath, tlsCertPath, tlsKeyPath, tlsClientCAPath, artifactStoreDir, fixturePath, trustPath, swarmStorageRoot, swarmID, swarmStateDir string, runtimeKeys ManagedRuntimeConfig, auditPath string, outputTrust verifier.TrustInputs) error {
+	if err := validateHumanGatewayConfiguration(humanPort, humanToken); err != nil {
+		return err
+	}
 	fixture, err := loadManagedFixture(fixturePath, runtimeKeys)
 	if err != nil {
 		return err
@@ -534,10 +544,14 @@ func serveWithSwarmStateDir(listenHost, port, wsPort, humanPort, humanToken, hum
 		}
 		go acceptWebSocket(wsListener, fixture, trusted)
 	}
+	humanListenPort := humanPort
 	if humanPort != "" {
 		humanListener, err := net.Listen("tcp", "127.0.0.1:"+humanPort)
 		if err != nil {
 			return err
+		}
+		if addr, ok := humanListener.Addr().(*net.TCPAddr); ok {
+			humanListenPort = strconv.Itoa(addr.Port)
 		}
 		go serveHumanGateway(humanListener, auditPath, fixture, humanToken, listenHost, journal)
 	}
@@ -547,7 +561,7 @@ func serveWithSwarmStateDir(listenHost, port, wsPort, humanPort, humanToken, hum
 			status["ws_port"] = wsPort
 		}
 		if humanPort != "" {
-			status["human_port"] = humanPort
+			status["human_port"] = humanListenPort
 		}
 		data, _ := json.Marshal(status)
 		fmt.Println(string(data))

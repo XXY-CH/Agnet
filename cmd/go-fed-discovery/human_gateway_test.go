@@ -166,3 +166,24 @@ func TestOpenHumanGatewayJournalRejectsInvalidConfiguration(t *testing.T) {
 		t.Fatal("invalid journal seed accepted")
 	}
 }
+
+func TestHumanGatewayRequiresTokenWhenEnabled(t *testing.T) {
+	for _, testCase := range []struct {
+		name    string
+		port    string
+		token   string
+		wantErr bool
+	}{
+		{name: "disabled", port: "", token: "", wantErr: false},
+		{name: "missing", port: "0", token: "", wantErr: true},
+		{name: "blank", port: "0", token: "  ", wantErr: true},
+		{name: "configured", port: "0", token: "product-secret", wantErr: false},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			err := validateHumanGatewayConfiguration(testCase.port, testCase.token)
+			if (err != nil) != testCase.wantErr {
+				t.Fatalf("validateHumanGatewayConfiguration(%q, %q) error=%v", testCase.port, testCase.token, err)
+			}
+		})
+	}
+}
