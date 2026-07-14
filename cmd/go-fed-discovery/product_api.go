@@ -312,23 +312,7 @@ func acquireProductTaskLock(queueDir, taskID string) (func(), error) {
 	if err := os.MkdirAll(lockRoot, 0o700); err != nil {
 		return nil, err
 	}
-	lockPath := filepath.Join(lockRoot, url.PathEscape(taskID)+".lock")
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if err := os.Mkdir(lockPath, 0o700); err == nil {
-			return func() { _ = os.Remove(lockPath) }, nil
-		} else if !errors.Is(err, os.ErrExist) {
-			return nil, err
-		}
-		if info, err := os.Stat(lockPath); err == nil && time.Since(info.ModTime()) > 30*time.Second {
-			_ = os.Remove(lockPath)
-			continue
-		}
-		if !time.Now().Before(deadline) {
-			return nil, errors.New("product task idempotency lock timeout")
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
+	return acquireUnixFileLock(filepath.Join(lockRoot, url.PathEscape(taskID)+".lock"))
 }
 
 func (f Fixture) createProductTask(request productTaskRequest, retry map[string]any) (map[string]any, bool, error) {
@@ -362,7 +346,7 @@ func (f Fixture) createProductTask(request productTaskRequest, retry map[string]
 		} else if statErr != nil {
 			return nil, false, statErr
 		}
-		view, viewErr := f.productTaskView(request.TaskID)
+		view, viewErr := f.productTaskViewLocked(request.TaskID)
 		return view, true, viewErr
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, false, err
@@ -413,11 +397,116 @@ func (f Fixture) createProductTask(request productTaskRequest, retry map[string]
 	if err := f.sendTaskEvent(func(map[string]any) {}, queuedEvent); err != nil {
 		return nil, false, err
 	}
-	view, err := f.productTaskView(request.TaskID)
+	view, err := f.productTaskViewLocked(request.TaskID)
 	return view, false, err
 }
 
 func (f Fixture) productTaskView(taskID string) (map[string]any, error) {
+	release, err := acquireProductTaskLock(f.QueueDir, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	return f.productTaskViewLocked(taskID)
+}
+
+func terminalTaskStatus(status string) bool {
+	return status == "completed" || status == "failed" || status == "cancelled"
+}
+
+func productReceiptNotFound(err error) bool {
+	return errors.Is(err, os.ErrNotExist) || strings.HasPrefix(err.Error(), "audit proof not found:")
+}
+
+func (f Fixture) reconcileProductTerminalReceiptLocked(taskID string) (map[string]any, error) {
+	committed, err := f.productCommittedReceipt(taskID)
+	if err != nil {
+		if productReceiptNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	status := optionalString(committed["status"])
+	receiptDigest := optionalString(committed["receipt_digest"])
+	state, err := f.readTaskState(taskID)
+	if err != nil {
+		return nil, err
+	}
+	item, err := f.readQueueItem(taskID)
+	if err != nil {
+		return nil, err
+	}
+	queueStatus := optionalString(item["status"])
+	queueDigest := optionalString(item["receipt_digest"])
+	if terminalTaskStatus(queueStatus) && (queueStatus != status || queueDigest != "" && queueDigest != receiptDigest) {
+		return nil, errors.New("terminal queue projection conflicts with verified receipt")
+	}
+	current := optionalString(state["status"])
+	currentDigest := optionalString(state["receipt_digest"])
+	if terminalTaskStatus(current) {
+		if current != status || currentDigest != "" && currentDigest != receiptDigest {
+			return nil, errors.New("terminal task state conflicts with verified receipt")
+		}
+	} else {
+		for current != status {
+			next := status
+			if !taskStateTransitionAllowed(current, next) {
+				switch status {
+				case "completed":
+					switch current {
+					case "queued":
+						next = "claimed"
+					case "claimed":
+						next = "running"
+					case "running":
+						next = "completing"
+					}
+				case "cancelled":
+					if current == "queued" || current == "claimed" || current == "running" {
+						next = "cancelling"
+					}
+				}
+			}
+			if !taskStateTransitionAllowed(current, next) {
+				return nil, errors.New("verified receipt conflicts with task state")
+			}
+			extra := map[string]any{}
+			if next == status {
+				extra["receipt_digest"] = receiptDigest
+			}
+			state, err = f.transitionTaskState(taskID, next, optionalString(item["worker"]), extra)
+			if err != nil {
+				return nil, err
+			}
+			current = optionalString(state["status"])
+		}
+		currentDigest = optionalString(state["receipt_digest"])
+	}
+	if currentDigest == "" {
+		state, err = f.transitionTaskState(taskID, status, optionalString(item["worker"]), map[string]any{"receipt_digest": receiptDigest})
+		if err != nil {
+			return nil, err
+		}
+		currentDigest = optionalString(state["receipt_digest"])
+	}
+	if currentDigest != receiptDigest {
+		return nil, errors.New("terminal task digest conflicts with verified receipt")
+	}
+	settled, err := f.terminalProjectionSettled(taskID, status, receiptDigest)
+	if err != nil {
+		return nil, err
+	}
+	if !settled {
+		return nil, errors.New("terminal receipt projection did not settle")
+	}
+	return committed, nil
+}
+
+func (f Fixture) productTaskViewLocked(taskID string) (map[string]any, error) {
+	committed, err := f.reconcileProductTerminalReceiptLocked(taskID)
+	if err != nil {
+		return nil, err
+	}
 	item, err := f.readQueueItem(taskID)
 	if err != nil {
 		return nil, err
@@ -448,38 +537,187 @@ func (f Fixture) productTaskView(taskID string) (map[string]any, error) {
 	} else if !errors.Is(stateErr, os.ErrNotExist) {
 		return nil, stateErr
 	}
+	if committed == nil && terminalTaskStatus(optionalString(view["status"])) {
+		committed, err = f.reconcileProductTerminalReceiptLocked(taskID)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if approval, approvalErr := f.readApprovalState(taskID); approvalErr == nil {
 		view["approval"] = approval
 	} else if !errors.Is(approvalErr, os.ErrNotExist) && f.ApprovalDir != "" {
 		return nil, approvalErr
 	}
-	if record, receiptErr := f.auditProof(taskID); receiptErr == nil {
-		receipt, _ := record["receipt"].(map[string]any)
-		view["receipt_digest"] = digestHex(receipt)
+	if committed != nil {
+		receipt, _ := committed["receipt"].(map[string]any)
+		view["receipt_digest"] = committed["receipt_digest"]
 		view["artifact_refs"] = receipt["artifact_refs"]
-	} else if !strings.Contains(receiptErr.Error(), "not found") && !errors.Is(receiptErr, os.ErrNotExist) {
-		return nil, receiptErr
 	}
 	return view, nil
 }
 
+func (f Fixture) validateProductQueueEvidence(taskID string, item map[string]any, expectedLeaseID string, requireLiveLease bool) (map[string]any, *Worker, map[string]any, error) {
+	if optionalString(item["task_id"]) != taskID {
+		return nil, nil, nil, errors.New("queue task_id does not match requested task")
+	}
+	task, ok := item["task"].(map[string]any)
+	if !ok || optionalString(task["task_id"]) != taskID {
+		return nil, nil, nil, errors.New("queue signed task_id mismatch")
+	}
+	if optionalString(item["task_digest"]) != digestHex(task) {
+		return nil, nil, nil, errors.New("queue task digest mismatch")
+	}
+	origin, originOK := item["origin_zone_descriptor"].(map[string]any)
+	requester, requesterOK := item["requester"].(map[string]any)
+	if !originOK || !requesterOK {
+		return nil, nil, nil, errors.New("queue task ownership evidence missing")
+	}
+	worker, verifiedTask, err := f.verifyTaskOpen(map[string]any{
+		"type":                   "FED_TASK_OPEN",
+		"origin_zone":            origin,
+		"requester":              requester,
+		"requester_zone_binding": item["requester_zone_binding"],
+		"task":                   task,
+	})
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("verify queue task ownership: %w", err)
+	}
+	if optionalString(verifiedTask["task_id"]) != taskID || digestHex(verifiedTask) != optionalString(item["task_digest"]) || optionalString(item["worker"]) != optionalString(worker.Descriptor["aid"]) {
+		return nil, nil, nil, errors.New("queue task ownership binding mismatch")
+	}
+	if expectedLeaseID != "" || requireLiveLease {
+		leaseID := optionalString(item["lease_id"])
+		if optionalString(item["lease_owner"]) != "product://local" || leaseID == "" || expectedLeaseID != "" && leaseID != expectedLeaseID {
+			return nil, nil, nil, errors.New("queue product lease evidence invalid")
+		}
+		if requireLiveLease && queueLeaseExpired(item) {
+			return nil, nil, nil, errors.New("queue product lease expired")
+		}
+	}
+	return origin, worker, verifiedTask, nil
+}
+
+func productClaimStateExtra(item map[string]any) map[string]any {
+	return map[string]any{
+		"lease_id":         item["lease_id"],
+		"lease_owner":      item["lease_owner"],
+		"lease_expires_at": item["lease_expires_at"],
+	}
+}
+
 func (f Fixture) executeProductTask(taskID string) (map[string]any, bool, error) {
+	release, err := acquireProductTaskLock(f.QueueDir, taskID)
+	if err != nil {
+		return nil, false, err
+	}
+	lockHeld := true
+	defer func() {
+		if lockHeld {
+			release()
+		}
+	}()
+	view, err := f.productTaskViewLocked(taskID)
+	if err != nil {
+		return nil, false, err
+	}
 	item, err := f.readQueueItem(taskID)
 	if err != nil {
 		return nil, false, err
 	}
-	view, err := f.productTaskView(taskID)
+	state, err := f.readTaskState(taskID)
 	if err != nil {
 		return nil, false, err
 	}
-	status := optionalString(view["status"])
-	if status != "queued" {
-		if status == "claimed" || status == "running" || status == "completing" || status == "completed" || status == "cancelled" {
+	queueStatus := optionalString(item["status"])
+	journalStatus := optionalString(state["status"])
+	if terminalTaskStatus(queueStatus) || terminalTaskStatus(journalStatus) {
+		if terminalTaskStatus(optionalString(view["status"])) {
 			return view, true, nil
 		}
-		return nil, false, fmt.Errorf("task cannot execute from status %s", status)
+		return nil, false, errors.New("terminal product projections do not agree")
 	}
-	task, _ := item["task"].(map[string]any)
+	_, _, task, err := f.validateProductQueueEvidence(taskID, item, "", false)
+	if err != nil {
+		return nil, false, err
+	}
+
+	switch queueStatus {
+	case "claimed":
+		switch journalStatus {
+		case "queued", "claimed":
+			leaseID := optionalString(item["lease_id"])
+			if leaseID == "" {
+				return nil, false, errors.New("claimed task has no resumable product lease: queue product lease evidence invalid")
+			}
+			if _, _, _, err := f.validateProductQueueEvidence(taskID, item, leaseID, false); err != nil {
+				return nil, false, fmt.Errorf("claimed task has no resumable product lease: %w", err)
+			}
+			if queueLeaseExpired(item) {
+				leaseID, err = f.reclaimQueueItem(taskID, "product://local", 300)
+				if err != nil {
+					return nil, false, fmt.Errorf("reclaim expired product lease: %w", err)
+				}
+				item, err = f.readQueueItem(taskID)
+				if err != nil {
+					return nil, false, err
+				}
+				_, _, task, err = f.validateProductQueueEvidence(taskID, item, leaseID, true)
+				if err != nil {
+					return nil, false, fmt.Errorf("validate reclaimed product lease: %w", err)
+				}
+				if _, err := f.transitionTaskState(taskID, "claimed", optionalString(item["worker"]), productClaimStateExtra(item)); err != nil {
+					return nil, false, err
+				}
+			} else {
+				if _, _, _, err := f.validateProductQueueEvidence(taskID, item, leaseID, true); err != nil {
+					return nil, false, fmt.Errorf("claimed task has no resumable product lease: %w", err)
+				}
+				if journalStatus == "queued" {
+					if _, err := f.transitionTaskState(taskID, "claimed", optionalString(item["worker"]), productClaimStateExtra(item)); err != nil {
+						return nil, false, err
+					}
+				}
+			}
+		case "running", "completing", "failing":
+			view, err = f.failInterruptedProductTaskLocked(taskID, item)
+			return view, true, err
+		default:
+			return nil, false, fmt.Errorf("unsafe product state skew: queue=%s journal=%s", queueStatus, journalStatus)
+		}
+		if f.Runtime.Owns(taskID) {
+			return f.productTaskViewLockedReplay(taskID)
+		}
+		if !f.Runtime.Reserve(taskID) {
+			return f.productTaskViewLockedReplay(taskID)
+		}
+		view, err = f.productTaskViewLocked(taskID)
+		if err != nil {
+			f.Runtime.Release(taskID)
+			return nil, false, err
+		}
+		leaseID := optionalString(item["lease_id"])
+		release()
+		lockHeld = false
+		go f.drainProductTask(taskID, leaseID, task)
+		return view, true, nil
+	case "running", "completing":
+		if f.Runtime.Owns(taskID) && (journalStatus == "running" || journalStatus == "completing") {
+			return view, true, nil
+		}
+		view, err = f.failInterruptedProductTaskLocked(taskID, item)
+		return view, true, err
+	case "queued":
+		if journalStatus == "running" || journalStatus == "completing" || journalStatus == "failing" {
+			view, err = f.failInterruptedProductTaskLocked(taskID, item)
+			return view, true, err
+		}
+		if journalStatus != "queued" {
+			return nil, false, fmt.Errorf("unsafe product state skew: queue=%s journal=%s", queueStatus, journalStatus)
+		}
+	default:
+		return nil, false, fmt.Errorf("task cannot execute from queue status %s", queueStatus)
+	}
+
 	claim := productQueueAction(f, "claim", taskID, task)
 	claim["owner"] = "product://local"
 	claim["lease_seconds"] = float64(300)
@@ -487,13 +725,85 @@ func (f Fixture) executeProductTask(taskID string) (map[string]any, bool, error)
 	if err != nil {
 		return nil, false, err
 	}
-	if _, err := f.transitionTaskState(taskID, "claimed", optionalString(item["worker"]), map[string]any{"lease_id": result["lease_id"], "lease_owner": "product://local"}); err != nil {
+	claimedItem, err := f.readQueueItem(taskID)
+	if err != nil {
+		return nil, false, err
+	}
+	if _, err := f.transitionTaskState(taskID, "claimed", optionalString(item["worker"]), productClaimStateExtra(claimedItem)); err != nil {
 		return nil, false, err
 	}
 	leaseID := optionalString(result["lease_id"])
+	if leaseID == "" || leaseID != optionalString(claimedItem["lease_id"]) {
+		return nil, false, errors.New("claimed product lease result mismatch")
+	}
+	if !f.Runtime.Reserve(taskID) {
+		return nil, false, errors.New("task runtime ownership already reserved")
+	}
+	view, err = f.productTaskViewLocked(taskID)
+	if err != nil {
+		f.Runtime.Release(taskID)
+		return nil, false, err
+	}
+	release()
+	lockHeld = false
 	go f.drainProductTask(taskID, leaseID, task)
-	view, err = f.productTaskView(taskID)
-	return view, false, err
+	return view, false, nil
+}
+
+func (f Fixture) productTaskViewLockedReplay(taskID string) (map[string]any, bool, error) {
+	view, err := f.productTaskViewLocked(taskID)
+	return view, true, err
+}
+
+func (f Fixture) failInterruptedProductTaskLocked(taskID string, item map[string]any) (map[string]any, error) {
+	cause := errors.New("task execution interrupted before durable completion; retry required")
+	if err := f.convergeProductFailureLocked(taskID, optionalString(item["lease_id"]), cause); err != nil {
+		return nil, err
+	}
+	f.Runtime.Release(taskID)
+	return f.productTaskViewLocked(taskID)
+}
+
+func (f Fixture) convergeProductFailureLocked(taskID, expectedLeaseID string, cause error) error {
+	if committed, err := f.productCommittedReceipt(taskID); err == nil {
+		_, reconcileErr := f.reconcileProductTerminalReceiptLocked(taskID)
+		if reconcileErr != nil {
+			return reconcileErr
+		}
+		if optionalString(committed["status"]) == "" {
+			return errors.New("terminal receipt status missing")
+		}
+		return nil
+	} else if !productReceiptNotFound(err) {
+		return err
+	}
+	item, err := f.readQueueItem(taskID)
+	if err != nil {
+		return err
+	}
+	origin, worker, task, err := f.validateProductQueueEvidence(taskID, item, expectedLeaseID, false)
+	if err != nil {
+		return err
+	}
+	if err := f.failTask(func(map[string]any) {}, origin, worker, task, cause); err != nil {
+		return err
+	}
+	committed, err := f.productCommittedReceipt(taskID)
+	if err != nil {
+		return err
+	}
+	item, err = f.readQueueItem(taskID)
+	if err != nil {
+		return err
+	}
+	item["status"] = "failed"
+	item["error"] = cause.Error()
+	item["receipt_digest"] = committed["receipt_digest"]
+	if err := writeJSONStateFile(filepath.Join(f.QueueDir, url.PathEscape(taskID)+".json"), item); err != nil {
+		return err
+	}
+	_, err = f.reconcileProductTerminalReceiptLocked(taskID)
+	return err
 }
 
 func (f Fixture) terminalProjectionSettled(taskID, status, receiptDigest string) (bool, error) {
@@ -542,17 +852,64 @@ func (f Fixture) applyAuthorizedProductQueueAction(action map[string]any) (map[s
 }
 
 func (f Fixture) drainProductTask(taskID, leaseID string, task map[string]any) {
-	action := productQueueAction(f, "drain", taskID, task)
-	action["lease_id"] = leaseID
-	_, _ = f.applyAuthorizedProductQueueAction(action)
+	defer f.Runtime.Release(taskID)
+	release, err := acquireProductTaskLock(f.QueueDir, taskID)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, fmt.Errorf("acquire product drain recovery lock: %w", err))
+		return
+	}
+	item, readErr := f.readQueueItem(taskID)
+	if readErr == nil && optionalString(item["status"]) == "claimed" {
+		_, _, queuedTask, evidenceErr := f.validateProductQueueEvidence(taskID, item, leaseID, true)
+		if evidenceErr == nil && digestHex(queuedTask) == digestHex(task) {
+			release()
+			action := productQueueAction(f, "drain", taskID, queuedTask)
+			action["lease_id"] = leaseID
+			if _, drainErr := f.applyAuthorizedProductQueueAction(action); drainErr == nil {
+				return
+			} else {
+				f.convergeProductDrainFailure(taskID, leaseID, fmt.Errorf("product queue drain failed: %w", drainErr))
+				return
+			}
+		}
+		if evidenceErr != nil {
+			readErr = evidenceErr
+		} else {
+			readErr = errors.New("spawned drain task evidence mismatch")
+		}
+	} else if readErr == nil {
+		readErr = fmt.Errorf("queue item is not claimed: %s", taskID)
+	}
+	cause := fmt.Errorf("product queue drain rejected before execution: %w", readErr)
+	if convergeErr := f.convergeProductFailureLocked(taskID, leaseID, cause); convergeErr != nil {
+		fmt.Fprintln(os.Stderr, fmt.Errorf("converge product drain failure: %w", convergeErr))
+	}
+	release()
+}
+
+func (f Fixture) convergeProductDrainFailure(taskID, leaseID string, cause error) {
+	release, err := acquireProductTaskLock(f.QueueDir, taskID)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, fmt.Errorf("acquire product drain failure lock: %w", err))
+		return
+	}
+	defer release()
+	if err := f.convergeProductFailureLocked(taskID, leaseID, cause); err != nil {
+		fmt.Fprintln(os.Stderr, fmt.Errorf("converge product drain failure: %w", err))
+	}
 }
 
 func (f Fixture) cancelProductTask(taskID, reason string) (map[string]any, bool, error) {
+	release, err := acquireProductTaskLock(f.QueueDir, taskID)
+	if err != nil {
+		return nil, false, err
+	}
+	defer release()
 	item, err := f.readQueueItem(taskID)
 	if err != nil {
 		return nil, false, err
 	}
-	view, err := f.productTaskView(taskID)
+	view, err := f.productTaskViewLocked(taskID)
 	if err != nil {
 		return nil, false, err
 	}
@@ -588,7 +945,7 @@ func (f Fixture) cancelProductTask(taskID, reason string) (map[string]any, bool,
 	if err := writeJSONStateFile(filepath.Join(f.QueueDir, url.PathEscape(taskID)+".json"), item); err != nil {
 		return nil, false, err
 	}
-	view, err = f.productTaskView(taskID)
+	view, err = f.productTaskViewLocked(taskID)
 	return view, false, err
 }
 
@@ -658,21 +1015,30 @@ func (f Fixture) productCommittedReceipt(taskID string) (map[string]any, error) 
 	if err != nil {
 		return nil, err
 	}
+	if optionalString(item["task_id"]) != taskID {
+		return nil, errors.New("queue task_id does not match requested task")
+	}
+	task, ok := item["task"].(map[string]any)
+	if !ok {
+		return nil, errors.New("receipt signed task missing")
+	}
+	if optionalString(task["task_id"]) != taskID {
+		return nil, errors.New("signed task_id does not match requested task")
+	}
+	if optionalString(item["task_digest"]) != digestHex(task) {
+		return nil, errors.New("queue task digest mismatch")
+	}
 	record, err := f.auditProof(taskID)
 	if err != nil {
 		return nil, err
 	}
 	receipt, _ := record["receipt"].(map[string]any)
-	status := optionalString(receipt["status"])
-	if status == "" {
-		status = optionalString(item["status"])
+	if optionalString(receipt["task_id"]) != taskID {
+		return nil, errors.New("receipt task_id does not match requested task")
 	}
+	status := optionalString(receipt["status"])
 	if status != "completed" && status != "failed" && status != "cancelled" {
 		return nil, errors.New("receipt terminal status invalid")
-	}
-	task, ok := item["task"].(map[string]any)
-	if !ok {
-		return nil, errors.New("receipt signed task missing")
 	}
 	if err := verifyReceiptRecord(record, f.ArtifactStoreDir, task); err != nil {
 		return nil, err
@@ -693,7 +1059,15 @@ func (f Fixture) productCommittedReceipt(taskID string) (map[string]any, error) 
 }
 
 func (f Fixture) productTaskEvents(taskID string, after int) ([]map[string]any, int, error) {
+	release, err := acquireProductTaskLock(f.QueueDir, taskID)
+	if err != nil {
+		return nil, after, err
+	}
+	defer release()
 	if _, err := f.readQueueItem(taskID); err != nil {
+		return nil, after, err
+	}
+	if _, err := f.reconcileProductTerminalReceiptLocked(taskID); err != nil {
 		return nil, after, err
 	}
 	entries, err := readAuditEntriesOrEmpty(f.Audit.Path)

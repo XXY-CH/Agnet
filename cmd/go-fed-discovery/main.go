@@ -507,6 +507,15 @@ func serveWithSwarmStateDir(listenHost, port, wsPort, humanPort, humanToken, hum
 	fixture.ArtifactStoreDir = artifactStoreDir
 	fixture.LiveTranscriptDir = liveTranscriptDirForAudit(auditPath)
 	fixture.Runtime = &TaskRuntime{running: map[string]context.CancelFunc{}, cancelled: map[string]bool{}}
+	releaseProductDaemonLock, err := acquireProductDaemonLock(fixture.QueueDir)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := releaseProductDaemonLock(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		}
+	}()
 	trusted, err := loadTrustedZones(trustPath)
 	if err != nil {
 		return err

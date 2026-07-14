@@ -4,6 +4,7 @@ import (
 	"agnet/internal/managedkey"
 	"context"
 	"crypto/ed25519"
+	"os"
 	"regexp"
 	"sync"
 )
@@ -21,6 +22,7 @@ type Fixture struct {
 	AuthorityGenerationPin WorkerGenerationPin         `json:"authority_generation_pin"`
 	Audit                  *AuditLog                   `json:"-"`
 	TaskStateDir           string                      `json:"-"`
+	taskStateFault         taskStateFaultInjector      `json:"-"`
 	QueueDir               string                      `json:"-"`
 	ApprovalDir            string                      `json:"-"`
 	ArtifactStoreDir       string                      `json:"-"`
@@ -102,9 +104,11 @@ type TrustStore struct {
 }
 
 type AuditLog struct {
-	Path string
-	Head string
-	mu   sync.Mutex
+	Path      string
+	Head      string
+	mu        sync.Mutex
+	syncFile  func(*os.File) error
+	writeFile func(*os.File, []byte) (int, error)
 }
 
 type TaskRuntime struct {

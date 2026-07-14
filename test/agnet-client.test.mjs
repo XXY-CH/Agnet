@@ -124,6 +124,19 @@ test("AgnetClient subscription resumes by cursor and stops at a terminal receipt
   assert.deepEqual(cursors, ["0", "2"]);
 });
 
+test("AgnetClient subscription reports transport AbortError not caused by stop", async () => {
+  const transportAbort = new Error("transport aborted independently");
+  transportAbort.name = "AbortError";
+  const client = new AgnetClient({
+    baseURL: "http://127.0.0.1:1",
+    fetch: async () => { throw transportAbort; },
+  });
+  const observed = await new Promise((resolve) => {
+    client.subscribe("pi:stream-abort", () => {}, { onError: resolve });
+  });
+  assert.equal(observed, transportAbort);
+});
+
 test("AgnetClient preserves typed API failures", async () => {
   await withServer((_request, response) => {
     json(response, 409, { error: { code: "idempotency_conflict", message: "task already exists" } });
@@ -142,7 +155,7 @@ test("agnetTaskId is deterministic and separates session/tool pairs", () => {
   assert.match(agnetTaskId("session-a", "call-a"), /^pi:[0-9a-f]{64}$/);
 });
 
-test("AgnetClient verifies receipt trust, signature, task binding, and artifact bytes locally", async () => {
+test("AgnetClient verifies receipt trust, signature, task binding, and artifact bytes locally", async (t) => {
   const originKey = generateKeyPairSync("ed25519").privateKey;
   const workerZoneKey = generateKeyPairSync("ed25519").privateKey;
   const workerKey = generateKeyPairSync("ed25519").privateKey;
@@ -167,6 +180,7 @@ test("AgnetClient verifies receipt trust, signature, task binding, and artifact 
     origin_zone: origin.zid,
     executing_zone: workerZone.zid,
     to: worker.aid,
+    status: "completed",
     artifact_refs: [artifactURI],
     artifact_manifests: [manifest],
     result_artifact: { uri: artifactURI, sha256: manifest.sha256, manifest_hash: manifest.manifest_hash },
@@ -188,9 +202,11 @@ test("AgnetClient verifies receipt trust, signature, task binding, and artifact 
     signed_task: signedTask,
     receipt: signedReceipt,
   };
+  let artifactReads = 0;
   await withServer((request, response) => {
     const url = new URL(request.url, "http://local");
     if (url.pathname === "/api/artifacts/read") {
+      artifactReads += 1;
       response.writeHead(200, { "content-type": manifest.media_type });
       response.end(artifactBytes);
       return;
@@ -202,6 +218,40 @@ test("AgnetClient verifies receipt trust, signature, task binding, and artifact 
     assert.equal(verified.verified, true);
     assert.equal(verified.verification.mode, "local");
     assert.equal(verified.verification.artifact_count, 1);
+
+    await t.test("rejects a relabeled wrapper task_id before fetching artifacts", async () => {
+      const relabeled = structuredClone(committed);
+      relabeled.task_id = "pi:relabeled";
+      const readsBeforeVerification = artifactReads;
+      await assert.rejects(client.verifyReceipt(relabeled), (error) => error instanceof AgnetAPIError && error.code === "verification_failed");
+      assert.equal(artifactReads, readsBeforeVerification);
+    });
+
+    await t.test("rejects a missing signed_task before fetching artifacts", async () => {
+      const missingSignedTask = structuredClone(committed);
+      delete missingSignedTask.signed_task;
+      const readsBeforeVerification = artifactReads;
+      await assert.rejects(client.verifyReceipt(missingSignedTask), (error) => error instanceof AgnetAPIError && error.code === "verification_failed");
+      assert.equal(artifactReads, readsBeforeVerification);
+    });
+
+    await t.test("rejects a signed receipt without terminal status before fetching artifacts", async () => {
+      const missingStatus = structuredClone(committed);
+      const { signature: _signature, status: _status, ...unsignedReceipt } = missingStatus.receipt;
+      missingStatus.receipt = { ...unsignedReceipt, signature: signObject(worker.privateKey, unsignedReceipt) };
+      missingStatus.receipt_digest = createHash("sha256").update(canonical(missingStatus.receipt)).digest("hex");
+      const readsBeforeVerification = artifactReads;
+      await assert.rejects(client.verifyReceipt(missingStatus), (error) => error instanceof AgnetAPIError && error.code === "verification_failed");
+      assert.equal(artifactReads, readsBeforeVerification);
+    });
+
+    await t.test("rejects a relabeled wrapper status before fetching artifacts", async () => {
+      const relabeled = structuredClone(committed);
+      relabeled.status = "failed";
+      const readsBeforeVerification = artifactReads;
+      await assert.rejects(client.verifyReceipt(relabeled), (error) => error instanceof AgnetAPIError && error.code === "verification_failed");
+      assert.equal(artifactReads, readsBeforeVerification);
+    });
 
     const tampered = structuredClone(committed);
     tampered.receipt.signature = `${tampered.receipt.signature}tampered`;

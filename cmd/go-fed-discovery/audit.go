@@ -251,7 +251,25 @@ func writeJSONStateFile(path string, body any) error {
 	return atomicWriteFile(path, append(data, '\n'), 0o644)
 }
 
+type atomicWriteParentOps struct {
+	open  func(string) (*os.File, error)
+	sync  func(*os.File) error
+	close func(*os.File) error
+}
+
+func defaultAtomicWriteParentOps() atomicWriteParentOps {
+	return atomicWriteParentOps{
+		open:  os.Open,
+		sync:  func(file *os.File) error { return file.Sync() },
+		close: func(file *os.File) error { return file.Close() },
+	}
+}
+
 func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	return atomicWriteFileWithParentOps(path, data, perm, defaultAtomicWriteParentOps())
+}
+
+func atomicWriteFileWithParentOps(path string, data []byte, perm os.FileMode, parentOps atomicWriteParentOps) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -285,9 +303,15 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	if err := os.Rename(tempPath, path); err != nil {
 		return err
 	}
-	if dirFile, err := os.Open(dir); err == nil {
-		_ = dirFile.Sync()
-		_ = dirFile.Close()
+	dirFile, err := parentOps.open(dir)
+	if err != nil {
+		return fmt.Errorf("open atomic write parent directory: %w", err)
+	}
+	if err := parentOps.sync(dirFile); err != nil {
+		return errors.Join(fmt.Errorf("sync atomic write parent directory: %w", err), parentOps.close(dirFile))
+	}
+	if err := parentOps.close(dirFile); err != nil {
+		return fmt.Errorf("close atomic write parent directory: %w", err)
 	}
 	cleanup = false
 	return nil
@@ -409,6 +433,20 @@ func openAuditLog(path string) (*AuditLog, error) {
 	return audit, nil
 }
 
+func (a *AuditLog) syncAuditFile(file *os.File) error {
+	if a.syncFile != nil {
+		return a.syncFile(file)
+	}
+	return file.Sync()
+}
+
+func closeAuditFile(file *os.File, operation string, operationErr error) error {
+	if closeErr := file.Close(); closeErr != nil {
+		return errors.Join(operationErr, fmt.Errorf("close %s: %w", operation, closeErr))
+	}
+	return operationErr
+}
+
 func (a *AuditLog) Append(record map[string]any) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -424,33 +462,97 @@ func (a *AuditLog) Append(record map[string]any) error {
 		return err
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+
+	head := a.Head
+	created := false
 	entries, err := readAuditEntries(a.Path)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
+		created = true
 	} else {
-		head, err := auditHead(entries)
+		head, err = auditHead(entries)
 		if err != nil {
 			return err
 		}
-		a.Head = head
 	}
-	entry, err := auditEntry(a.Head, record)
+	entry, err := auditEntry(head, record)
 	if err != nil {
 		return err
 	}
-	file, err := os.OpenFile(a.Path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
 	data, err := json.Marshal(entry)
 	if err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintln(file, string(data)); err != nil {
+	data = append(data, '\n')
+	file, err := os.OpenFile(a.Path, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0o644)
+	if err != nil {
 		return err
+	}
+	priorOffset, err := file.Seek(0, io.SeekEnd)
+	if err != nil {
+		return closeAuditFile(file, "audit file after seek failure", err)
+	}
+	rollback := func(cause error) error {
+		var rollbackErr error
+		if err := file.Truncate(priorOffset); err != nil {
+			rollbackErr = fmt.Errorf("truncate failed audit append: %w", err)
+		}
+		if err := a.syncAuditFile(file); err != nil {
+			rollbackErr = errors.Join(rollbackErr, fmt.Errorf("sync failed audit rollback: %w", err))
+		}
+		if err := file.Close(); err != nil {
+			rollbackErr = errors.Join(rollbackErr, fmt.Errorf("close failed audit rollback: %w", err))
+		}
+		if created {
+			if err := os.Remove(a.Path); err != nil && !errors.Is(err, os.ErrNotExist) {
+				rollbackErr = errors.Join(rollbackErr, fmt.Errorf("remove failed audit file: %w", err))
+			}
+			dir, err := os.Open(filepath.Dir(a.Path))
+			if err != nil {
+				rollbackErr = errors.Join(rollbackErr, fmt.Errorf("open audit parent for rollback: %w", err))
+			} else {
+				if err := dir.Sync(); err != nil {
+					rollbackErr = errors.Join(rollbackErr, fmt.Errorf("sync audit parent rollback: %w", err))
+				}
+				if err := dir.Close(); err != nil {
+					rollbackErr = errors.Join(rollbackErr, fmt.Errorf("close audit parent rollback: %w", err))
+				}
+			}
+		}
+		return errors.Join(cause, rollbackErr)
+	}
+	written := 0
+	if a.writeFile != nil {
+		written, err = a.writeFile(file, data)
+	} else {
+		written, err = file.Write(data)
+	}
+	if err == nil && written != len(data) {
+		err = io.ErrShortWrite
+	}
+	if err != nil {
+		return rollback(fmt.Errorf("write audit entry: %w", err))
+	}
+	if err := a.syncAuditFile(file); err != nil {
+		return rollback(fmt.Errorf("sync audit file: %w", err))
+	}
+	if created {
+		dir, err := os.Open(filepath.Dir(a.Path))
+		if err != nil {
+			return rollback(fmt.Errorf("open audit parent directory: %w", err))
+		}
+		if err := a.syncAuditFile(dir); err != nil {
+			closeErr := dir.Close()
+			return rollback(errors.Join(fmt.Errorf("sync audit parent directory: %w", err), closeErr))
+		}
+		if err := dir.Close(); err != nil {
+			return rollback(fmt.Errorf("close audit parent directory: %w", err))
+		}
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close audit file: %w", err)
 	}
 	a.Head = fmt.Sprint(entry["hash"])
 	return nil

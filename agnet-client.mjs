@@ -119,10 +119,18 @@ export class AgnetClient {
     if (this.#trustedZones.size === 0) {
       throw new AgnetAPIError("Local receipt verification requires trustedZones", { status: 409, code: "trust_store_required" });
     }
-    if (!isRecord(committed.zone) || !isRecord(committed.worker) || !isRecord(committed.zone_binding) || !isRecord(committed.receipt)) {
+    if (!isRecord(committed.zone) || !isRecord(committed.worker) || !isRecord(committed.zone_binding) || !isRecord(committed.signed_task) || !isRecord(committed.receipt)) {
       throw new AgnetAPIError("Committed receipt evidence is incomplete", { status: 409, code: "verification_failed" });
     }
-    const signedTask = isRecord(committed.signed_task) ? committed.signed_task : undefined;
+    const signedTask = committed.signed_task;
+    const taskId = committed.task_id;
+    if (committed.receipt.task_id !== taskId || signedTask.task_id !== taskId) {
+      throw new AgnetAPIError("Committed receipt task identity mismatch", { status: 409, code: "verification_failed" });
+    }
+    const signedStatus = committed.receipt.status;
+    if ((signedStatus !== "completed" && signedStatus !== "failed" && signedStatus !== "cancelled") || committed.status !== signedStatus) {
+      throw new AgnetAPIError("Committed receipt terminal status mismatch", { status: 409, code: "verification_failed" });
+    }
     try {
       verifyFederatedReceipt({
         type: "FED_RECEIPT",
@@ -143,7 +151,7 @@ export class AgnetClient {
       if (!isRecord(manifest) || typeof manifest.uri !== "string" || typeof manifest.sha256 !== "string" || !Number.isSafeInteger(manifest.size) || manifest.size < 0) {
         throw new AgnetAPIError("Receipt artifact manifest is invalid", { status: 409, code: "verification_failed" });
       }
-      const stream = await this.getArtifact(committed.task_id, manifest.uri);
+      const stream = await this.getArtifact(taskId, manifest.uri);
       const observed = await hashArtifactStream(stream, this.#maxArtifactBytes);
       if (observed.sha256 !== manifest.sha256 || observed.size !== manifest.size) {
         throw new AgnetAPIError("Local artifact verification failed", { status: 409, code: "verification_failed" });
@@ -202,7 +210,7 @@ export class AgnetClient {
           if (!stopped && events.length === 0) await delay(this.#pollIntervalMs, controller.signal);
         }
       } catch (error) {
-        if (!stopped && error?.name !== "AbortError") {
+        if (!stopped) {
           if (typeof onError === "function") onError(error);
           else queueMicrotask(() => { throw error; });
         }

@@ -38,13 +38,13 @@ export interface TaskView {
 export interface CommittedReceipt {
   committed: true;
   task_id: string;
-  status: string;
+  status: "completed" | "failed" | "cancelled";
   receipt_digest: string;
   audit_hash: string;
   zone: Record<string, unknown>;
   worker: Record<string, unknown>;
   zone_binding: Record<string, unknown>;
-  signed_task?: Record<string, unknown>;
+  signed_task: Record<string, unknown>;
   receipt: Record<string, unknown> & { artifact_refs?: string[]; artifact_manifests?: Array<Record<string, unknown>> };
 }
 

@@ -241,6 +241,21 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		if resultErr == nil || f.Runtime.WasCancelled(taskID) || errors.Is(resultErr, context.Canceled) {
 			return
 		}
+		if record, receiptErr := f.auditProof(taskID); receiptErr == nil {
+			receipt, _ := record["receipt"].(map[string]any)
+			if !terminalTaskStatus(optionalString(receipt["status"])) {
+				resultErr = errors.Join(resultErr, errors.New("verify terminal receipt after execution error: receipt terminal status invalid"))
+				return
+			}
+			if receiptErr := verifyReceiptRecord(record, f.ArtifactStoreDir, task); receiptErr != nil {
+				resultErr = errors.Join(resultErr, fmt.Errorf("verify terminal receipt after execution error: %w", receiptErr))
+			}
+			return
+		} else if !productReceiptNotFound(receiptErr) {
+			resultErr = errors.Join(resultErr, fmt.Errorf("verify terminal receipt after execution error: %w", receiptErr))
+			return
+		}
+
 		if receiptErr := f.failTask(send, origin, worker, task, resultErr); receiptErr != nil {
 			resultErr = fmt.Errorf("%v; failure receipt: %w", resultErr, receiptErr)
 		}
@@ -456,6 +471,8 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 	if err := f.appendAudit(receiptRecord); err != nil {
 		return err
 	}
+	f.Runtime.FinishCompletion(taskID)
+	completionFinished = true
 	if err := f.writeTaskState(taskID, "completed", worker, map[string]any{"receipt_digest": digestHex(signedReceipt)}); err != nil {
 		return err
 	}
@@ -467,8 +484,6 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		"receipt":      receiptRecord["receipt"],
 	})
 	send(map[string]any{"type": "FED_TASK_CLOSE", "task_id": taskID})
-	f.Runtime.FinishCompletion(taskID)
-	completionFinished = true
 	return nil
 }
 

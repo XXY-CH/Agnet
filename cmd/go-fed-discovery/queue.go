@@ -519,7 +519,24 @@ func (f Fixture) drainQueueItem(send sendFunc, taskID, leaseID string) error {
 	}
 	extra := map[string]any{"origin_zone_descriptor": origin, "requester": requester, "task": task, "lease_owner": item["lease_owner"], "lease_id": item["lease_id"], "lease_expires_at": item["lease_expires_at"]}
 	copyQueueCarryFields(extra, item)
-	if err := f.writeQueueItem(origin, worker, task, "running", extra); err != nil {
+	if optionalString(extra["lease_owner"]) == "product://local" {
+		if err := func() error {
+			release, err := acquireProductTaskLock(f.QueueDir, taskID)
+			if err != nil {
+				return err
+			}
+			defer release()
+			if err := f.writeQueueItem(origin, worker, task, "running", extra); err != nil {
+				return err
+			}
+			if _, err := f.transitionTaskState(taskID, "running", optionalString(worker.Descriptor["aid"]), map[string]any{"signed_task": task}); err != nil {
+				return err
+			}
+			return nil
+		}(); err != nil {
+			return err
+		}
+	} else if err := f.writeQueueItem(origin, worker, task, "running", extra); err != nil {
 		return err
 	}
 	var parentCheckpoint any
@@ -540,6 +557,29 @@ func (f Fixture) drainQueueItem(send sendFunc, taskID, leaseID string) error {
 		return f.writeQueueItem(origin, worker, task, "completed", extra)
 	}
 	if err != nil {
+		if optionalString(extra["lease_owner"]) == "product://local" {
+			recovered, recoveryErr := func() (bool, error) {
+				release, lockErr := acquireProductTaskLock(f.QueueDir, taskID)
+				if lockErr != nil {
+					return false, lockErr
+				}
+				defer release()
+				if _, receiptErr := f.productCommittedReceipt(taskID); receiptErr != nil {
+					if productReceiptNotFound(receiptErr) {
+						return false, nil
+					}
+					return false, receiptErr
+				}
+				_, reconcileErr := f.reconcileProductTerminalReceiptLocked(taskID)
+				return reconcileErr == nil, reconcileErr
+			}()
+			if recoveryErr != nil {
+				return errors.Join(err, fmt.Errorf("reconcile committed product receipt: %w", recoveryErr))
+			}
+			if recovered {
+				return nil
+			}
+		}
 		if f.Runtime.WasCancelled(taskID) {
 			if state, stateErr := f.readTaskState(taskID); stateErr == nil {
 				extra["receipt_digest"] = state["receipt_digest"]
@@ -553,7 +593,9 @@ func (f Fixture) drainQueueItem(send sendFunc, taskID, leaseID string) error {
 			extra["receipt_digest"] = state["receipt_digest"]
 		}
 		extra["error"] = err.Error()
-		_ = f.writeQueueItem(origin, worker, task, "failed", extra)
+		if queueErr := f.writeQueueItem(origin, worker, task, "failed", extra); queueErr != nil {
+			return fmt.Errorf("%v; persist failed queue item: %w", err, queueErr)
+		}
 		return err
 	}
 	return nil

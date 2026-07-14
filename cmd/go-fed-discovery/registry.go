@@ -114,12 +114,57 @@ func verifyManagedDescriptor(loaded managedkey.LoadedIdentity, descriptor map[st
 	return nil
 }
 
+func (r *TaskRuntime) Reserve(taskID string) bool {
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.running == nil {
+		r.running = map[string]context.CancelFunc{}
+	}
+	if _, exists := r.running[taskID]; exists {
+		return false
+	}
+	if r.cancelled == nil {
+		r.cancelled = map[string]bool{}
+	}
+	r.running[taskID] = nil
+	r.cancelled[taskID] = false
+	return true
+}
+
+func (r *TaskRuntime) Owns(taskID string) bool {
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, exists := r.running[taskID]
+	return exists
+}
+
+func (r *TaskRuntime) Release(taskID string) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.running, taskID)
+	if cancelled, reserved := r.cancelled[taskID]; reserved && !cancelled {
+		delete(r.cancelled, taskID)
+	}
+}
+
 func (r *TaskRuntime) Register(taskID string, cancel context.CancelFunc) {
 	if r == nil {
 		return
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.running == nil {
+		r.running = map[string]context.CancelFunc{}
+	}
 	r.running[taskID] = cancel
 	if r.cancelled[taskID] {
 		cancel()
@@ -189,6 +234,10 @@ func (r *TaskRuntime) Unregister(taskID string) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if cancelled, reserved := r.cancelled[taskID]; reserved && !cancelled {
+		r.running[taskID] = nil
+		return
+	}
 	delete(r.running, taskID)
 }
 

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 const productAPITestToken = "product-test-token"
@@ -592,6 +595,136 @@ func TestProductAPICreateAndRetryAreAtomicallyIdempotent(t *testing.T) {
 	}
 }
 
+func TestProductAPIExecuteIsAtomicallyIdempotent(t *testing.T) {
+	harness := newProductAPITestHarness(t)
+	const attempts = 16
+	taskID := "pi:task-atomic-execute"
+	status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", productTaskPayload(taskID, harness.worker, "execute once"), true)
+	if status != http.StatusCreated {
+		t.Fatalf("create status=%d payload=%#v", status, payload)
+	}
+
+	responses := harness.concurrentRequests(t, attempts, "/api/v1/tasks/"+taskID+"/execute", map[string]any{})
+	accepted, replayed := 0, 0
+	leaseIDs := map[string]bool{}
+	for _, response := range responses {
+		if response.err != nil {
+			t.Fatal(response.err)
+		}
+		switch response.status {
+		case http.StatusAccepted:
+			accepted++
+		case http.StatusOK:
+			if response.payload["replayed"] != true {
+				t.Fatalf("non-replayed duplicate execute response: %#v", response.payload)
+			}
+			replayed++
+		default:
+			t.Fatalf("atomic execute status=%d payload=%#v", response.status, response.payload)
+		}
+		leaseID := optionalString(responseData(t, response.payload)["lease_id"])
+		if leaseID == "" {
+			t.Fatalf("execute response missing lease: %#v", response.payload)
+		}
+		leaseIDs[leaseID] = true
+	}
+	if accepted != 1 || replayed != attempts-1 || len(leaseIDs) != 1 {
+		t.Fatalf("execute outcomes: accepted=%d replayed=%d leases=%#v", accepted, replayed, leaseIDs)
+	}
+
+	status, _, payload = harness.request(t, http.MethodPost, "/api/v1/tasks/"+taskID+"/execute", map[string]any{}, true)
+	if status != http.StatusOK || payload["replayed"] != true || !leaseIDs[optionalString(responseData(t, payload)["lease_id"])] {
+		t.Fatalf("later execute status=%d payload=%#v", status, payload)
+	}
+	entries, err := readAuditEntries(harness.fixture.Audit.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims := 0
+	for _, entry := range entries {
+		record, _ := entry["record"].(map[string]any)
+		if record["kind"] == "go_queue_action" && record["action"] == "claim" && record["task_id"] == taskID && record["status"] == "ok" {
+			claims++
+		}
+	}
+	if claims != 1 {
+		t.Fatalf("successful claim count=%d", claims)
+	}
+
+	waitForProductTaskStatus(t, harness, taskID, "completed")
+	entries, err = readAuditEntries(harness.fixture.Audit.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipts := 0
+	for _, entry := range entries {
+		record, _ := entry["record"].(map[string]any)
+		receipt, _ := record["receipt"].(map[string]any)
+		if record["kind"] == "go_fed_receipt" && receipt["task_id"] == taskID {
+			receipts++
+		}
+	}
+	if receipts != 1 {
+		t.Fatalf("execute receipt count=%d", receipts)
+	}
+}
+
+func TestProductAPICancelIsAtomicallyIdempotent(t *testing.T) {
+	harness := newProductAPITestHarness(t)
+	const attempts = 16
+	taskID := "pi:task-atomic-cancel"
+	status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", productTaskPayload(taskID, harness.worker, "cancel once"), true)
+	if status != http.StatusCreated {
+		t.Fatalf("create status=%d payload=%#v", status, payload)
+	}
+
+	request := map[string]any{"reason": "one cancellation"}
+	responses := harness.concurrentRequests(t, attempts, "/api/v1/tasks/"+taskID+"/cancel", request)
+	winners, replayed := 0, 0
+	receiptDigests := map[string]bool{}
+	for _, response := range responses {
+		if response.err != nil {
+			t.Fatal(response.err)
+		}
+		if response.status != http.StatusOK {
+			t.Fatalf("atomic cancel status=%d payload=%#v", response.status, response.payload)
+		}
+		if response.payload["replayed"] == true {
+			replayed++
+		} else {
+			winners++
+		}
+		cancelled := responseData(t, response.payload)
+		if cancelled["status"] != "cancelled" || optionalString(cancelled["receipt_digest"]) == "" {
+			t.Fatalf("cancel response=%#v", response.payload)
+		}
+		receiptDigests[optionalString(cancelled["receipt_digest"])] = true
+	}
+	if winners != 1 || replayed != attempts-1 || len(receiptDigests) != 1 {
+		t.Fatalf("cancel outcomes: winners=%d replayed=%d receipts=%#v", winners, replayed, receiptDigests)
+	}
+
+	status, _, payload = harness.request(t, http.MethodPost, "/api/v1/tasks/"+taskID+"/cancel", request, true)
+	if status != http.StatusOK || payload["replayed"] != true || !receiptDigests[optionalString(responseData(t, payload)["receipt_digest"])] {
+		t.Fatalf("later cancel status=%d payload=%#v", status, payload)
+	}
+	entries, err := readAuditEntries(harness.fixture.Audit.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipts := 0
+	for _, entry := range entries {
+		record, _ := entry["record"].(map[string]any)
+		receipt, _ := record["receipt"].(map[string]any)
+		if record["kind"] == "go_fed_receipt" && receipt["task_id"] == taskID && receipt["status"] == "cancelled" {
+			receipts++
+		}
+	}
+	if receipts != 1 {
+		t.Fatalf("cancel receipt count=%d", receipts)
+	}
+}
+
 func TestProductTaskStateJournalIsDurableAndTerminal(t *testing.T) {
 	harness := newProductAPITestHarness(t)
 	taskID := "pi:task-durable-state"
@@ -681,6 +814,861 @@ func TestProductTaskStateJournalIsDurableAndTerminal(t *testing.T) {
 	}
 }
 
+func prepareProductRecoveryState(t *testing.T, harness productAPITestHarness, taskID, state string) (map[string]any, string) {
+	t.Helper()
+	status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", productTaskPayload(taskID, harness.worker, "durability recovery"), true)
+	if status != http.StatusCreated {
+		t.Fatalf("create status=%d payload=%#v", status, payload)
+	}
+	item, err := harness.fixture.readQueueItem(taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, _ := item["task"].(map[string]any)
+	claim := productQueueAction(harness.fixture, "claim", taskID, task)
+	claim["owner"] = "product://local"
+	claim["lease_seconds"] = float64(300)
+	claimed, err := harness.fixture.applyAuthorizedProductQueueAction(claim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaseID := optionalString(claimed["lease_id"])
+	if _, err := harness.fixture.transitionTaskState(taskID, "claimed", harness.worker, map[string]any{"lease_id": leaseID, "lease_owner": "product://local"}); err != nil {
+		t.Fatal(err)
+	}
+	if state == "claimed" {
+		return task, leaseID
+	}
+	item, err = harness.fixture.readQueueItem(taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item["status"] = "running"
+	if err := writeJSONStateFile(filepath.Join(harness.fixture.QueueDir, taskID+".json"), item); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := harness.fixture.transitionTaskState(taskID, "running", harness.worker, map[string]any{"signed_task": task}); err != nil {
+		t.Fatal(err)
+	}
+	if state == "completing" {
+		if _, err := harness.fixture.transitionTaskState(taskID, "completing", harness.worker, map[string]any{}); err != nil {
+			t.Fatal(err)
+		}
+	} else if state == "failing" {
+		if _, err := harness.fixture.transitionTaskState(taskID, "failing", harness.worker, map[string]any{"error": "interrupted failure"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return task, leaseID
+}
+
+func TestProductAPIReservesRuntimeBeforeLaunchingDrain(t *testing.T) {
+	harness := newProductAPITestHarness(t)
+	taskID := "pi:task-launch-reservation"
+	status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", productTaskPayload(taskID, harness.worker, "reserve before launch"), true)
+	if status != http.StatusCreated {
+		t.Fatalf("create status=%d payload=%#v", status, payload)
+	}
+	type result struct {
+		view     map[string]any
+		replayed bool
+		err      error
+	}
+	harness.fixture.Runtime.mu.Lock()
+	done := make(chan result, 1)
+	go func() {
+		view, replayed, err := harness.fixture.executeProductTask(taskID)
+		done <- result{view: view, replayed: replayed, err: err}
+	}()
+	select {
+	case got := <-done:
+		harness.fixture.Runtime.mu.Unlock()
+		t.Fatalf("execute returned before runtime ownership reservation: %#v", got)
+	case <-time.After(100 * time.Millisecond):
+		harness.fixture.Runtime.mu.Unlock()
+	}
+	got := <-done
+	if got.err != nil || got.replayed {
+		t.Fatalf("execute result=%#v", got)
+	}
+	waitForProductTaskStatus(t, harness, taskID, "completed")
+	deadline := time.Now().Add(time.Second)
+	owned := true
+	for owned && time.Now().Before(deadline) {
+		harness.fixture.Runtime.mu.Lock()
+		_, owned = harness.fixture.Runtime.running[taskID]
+		harness.fixture.Runtime.mu.Unlock()
+		if owned {
+			time.Sleep(time.Millisecond)
+		}
+	}
+	if owned {
+		t.Fatal("runtime ownership was not cleared after drain")
+	}
+}
+
+func TestProductTaskLockReleaseIsIdempotent(t *testing.T) {
+	queueDir := t.TempDir()
+	const taskID = "double-release"
+	firstRelease, err := acquireProductTaskLock(queueDir, taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstRelease()
+	secondRelease, err := acquireProductTaskLock(queueDir, taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer secondRelease()
+	firstRelease()
+	lockPath := filepath.Join(queueDir, ".product-task-locks", taskID+".lock")
+	if _, err := os.Stat(lockPath); err != nil {
+		t.Fatalf("old owner release removed current owner lock: %v", err)
+	}
+}
+
+func TestProductTaskLockDoesNotStealOldLiveLock(t *testing.T) {
+	queueDir := t.TempDir()
+	const taskID = "old-live-owner"
+	release, err := acquireProductTaskLock(queueDir, taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lockPath := filepath.Join(queueDir, ".product-task-locks", taskID+".lock")
+	old := time.Now().Add(-time.Minute)
+	if err := os.Chtimes(lockPath, old, old); err != nil {
+		release()
+		t.Fatal(err)
+	}
+	acquired := make(chan func(), 1)
+	errs := make(chan error, 1)
+	go func() {
+		nextRelease, acquireErr := acquireProductTaskLock(queueDir, taskID)
+		if acquireErr != nil {
+			errs <- acquireErr
+			return
+		}
+		acquired <- nextRelease
+	}()
+	select {
+	case nextRelease := <-acquired:
+		nextRelease()
+		t.Fatal("old live lock was stolen by age")
+	case err := <-errs:
+		t.Fatalf("contending lock failed: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	release()
+	select {
+	case nextRelease := <-acquired:
+		nextRelease()
+	case err := <-errs:
+		t.Fatalf("contending lock failed after release: %v", err)
+	case <-time.After(time.Second):
+		t.Fatal("contending lock did not acquire after release")
+	}
+}
+
+func TestTaskStateJournalFirstCreateSyncsParentOrRollsBack(t *testing.T) {
+	failure := errors.New("injected task journal parent sync failure")
+	failed := false
+	fixture := Fixture{
+		TaskStateDir: t.TempDir(),
+		taskStateFault: func(point taskStateFaultPoint, transition map[string]any) error {
+			if point == taskStateFaultParentSync && !failed {
+				failed = true
+				return failure
+			}
+			return nil
+		},
+	}
+	const taskID = "pi:first-create-parent-sync"
+	if _, err := fixture.transitionTaskState(taskID, "queued", "worker", map[string]any{}); !errors.Is(err, failure) {
+		t.Fatalf("transition error=%v; want parent sync failure", err)
+	}
+	transitions, err := readTaskStateTransitions(taskStateJournalPath(fixture.TaskStateDir, taskID))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+	if len(transitions) != 0 {
+		t.Fatalf("failed first append remained accepted: %#v", transitions)
+	}
+	fixture.taskStateFault = nil
+	state, err := fixture.transitionTaskState(taskID, "queued", "worker", map[string]any{})
+	if err != nil || state["status"] != "queued" {
+		t.Fatalf("retry state=%#v err=%v", state, err)
+	}
+}
+func TestProductAPIReservedDrainStartsAfterExecuteReleasesTaskLock(t *testing.T) {
+	harness := newProductAPITestHarness(t)
+	taskID := "pi:task-drain-after-unlock"
+	status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", productTaskPayload(taskID, harness.worker, "launch after unlock"), true)
+	if status != http.StatusCreated {
+		t.Fatalf("create status=%d payload=%#v", status, payload)
+	}
+	type result struct {
+		view     map[string]any
+		replayed bool
+		err      error
+	}
+	harness.fixture.Runtime.mu.Lock()
+	done := make(chan result, 1)
+	go func() {
+		view, replayed, err := harness.fixture.executeProductTask(taskID)
+		done <- result{view: view, replayed: replayed, err: err}
+	}()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		item, err := harness.fixture.readQueueItem(taskID)
+		if err == nil && optionalString(item["status"]) == "claimed" {
+			break
+		}
+		if time.Now().After(deadline) {
+			harness.fixture.Runtime.mu.Unlock()
+			t.Fatalf("execute did not reach runtime reservation: item=%#v err=%v", item, err)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := os.MkdirAll(harness.fixture.ApprovalDir, 0o700); err != nil {
+		harness.fixture.Runtime.mu.Unlock()
+		t.Fatal(err)
+	}
+	approvalPath := filepath.Join(harness.fixture.ApprovalDir, taskID+".json")
+	if err := unix.Mkfifo(approvalPath, 0o600); err != nil {
+		harness.fixture.Runtime.mu.Unlock()
+		t.Fatal(err)
+	}
+	harness.fixture.Runtime.mu.Unlock()
+	// Keep final view construction blocked long enough for an incorrectly
+	// launched drain to contend on the still-held kernel lock.
+	time.Sleep(100 * time.Millisecond)
+	if err := os.WriteFile(approvalPath, []byte(`{"task_id":"pi:task-drain-after-unlock","status":"pending"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := <-done
+	if err := os.Remove(approvalPath); err != nil {
+		t.Fatal(err)
+	}
+	if got.err != nil || got.replayed {
+		t.Fatalf("execute result=%#v", got)
+	}
+	waitForProductTaskStatus(t, harness, taskID, "completed")
+}
+
+func TestProductAPIRestartRecoveryResumesClaimedAndFailsUnsafeWork(t *testing.T) {
+	t.Run("claimed product lease resumes", func(t *testing.T) {
+		harness := newProductAPITestHarness(t)
+		taskID := "pi:task-recover-claimed"
+		_, leaseID := prepareProductRecoveryState(t, harness, taskID, "claimed")
+		harness.fixture.Runtime = &TaskRuntime{running: map[string]context.CancelFunc{}, cancelled: map[string]bool{}}
+		view, replayed, err := harness.fixture.executeProductTask(taskID)
+		if err != nil || !replayed || optionalString(view["lease_id"]) != leaseID {
+			t.Fatalf("recovery view=%#v replayed=%v err=%v", view, replayed, err)
+		}
+		waitForProductTaskStatus(t, harness, taskID, "completed")
+	})
+	for _, abandonedStatus := range []string{"running", "completing"} {
+		t.Run(abandonedStatus, func(t *testing.T) {
+			harness := newProductAPITestHarness(t)
+			taskID := "pi:task-recover-" + abandonedStatus
+			prepareProductRecoveryState(t, harness, taskID, abandonedStatus)
+			harness.fixture.Runtime = &TaskRuntime{running: map[string]context.CancelFunc{}, cancelled: map[string]bool{}}
+			view, replayed, err := harness.fixture.executeProductTask(taskID)
+			if err != nil || !replayed || view["status"] != "failed" || optionalString(view["receipt_digest"]) == "" {
+				t.Fatalf("recovery view=%#v replayed=%v err=%v", view, replayed, err)
+			}
+			committed, err := harness.fixture.productCommittedReceipt(taskID)
+			if err != nil {
+				t.Fatalf("failure receipt did not verify: %v", err)
+			}
+			state, stateErr := harness.fixture.readTaskState(taskID)
+			queueItem, queueErr := harness.fixture.readQueueItem(taskID)
+			if stateErr != nil || queueErr != nil {
+				t.Fatalf("state err=%v queue err=%v", stateErr, queueErr)
+			}
+			if committed["status"] != "failed" || state["receipt_digest"] != committed["receipt_digest"] || queueItem["status"] != "failed" || queueItem["receipt_digest"] != committed["receipt_digest"] {
+				t.Fatalf("receipt=%#v state=%#v queue=%#v", committed, state, queueItem)
+			}
+			retry, replayed, err := harness.fixture.retryProductTask(taskID, taskID+"-retry")
+			if err != nil || replayed || retry["status"] != "queued" || retry["retry_of"] != taskID {
+				t.Fatalf("retry=%#v replayed=%v err=%v", retry, replayed, err)
+			}
+		})
+	}
+}
+
+func mustJSONLine(t *testing.T, value any) []byte {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return append(data, '\n')
+}
+
+func rewriteTaskJournal(t *testing.T, fixture Fixture, taskID string, count int) {
+	t.Helper()
+	journalPath := taskStateJournalPath(fixture.TaskStateDir, taskID)
+	transitions, err := readTaskStateTransitions(journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(transitions) < count {
+		t.Fatalf("transitions=%#v", transitions)
+	}
+	var journal []byte
+	for _, transition := range transitions[:count] {
+		journal = append(journal, mustJSONLine(t, transition)...)
+	}
+	if err := os.WriteFile(journalPath, journal, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeJSONStateFile(taskStateProjectionPath(fixture.TaskStateDir, taskID), projectTaskState(transitions[:count])); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestProductAPIRestartRecoveryUsesPersistedQueueStateBeforeJournalProjection(t *testing.T) {
+	t.Run("claimed queue with queued journal resumes", func(t *testing.T) {
+		harness := newProductAPITestHarness(t)
+		taskID := "pi:task-skew-claimed-queued"
+		_, leaseID := prepareProductRecoveryState(t, harness, taskID, "claimed")
+		rewriteTaskJournal(t, harness.fixture, taskID, 1)
+		harness.fixture.Runtime = &TaskRuntime{running: map[string]context.CancelFunc{}, cancelled: map[string]bool{}}
+		view, replayed, err := harness.fixture.executeProductTask(taskID)
+		if err != nil || !replayed || optionalString(view["lease_id"]) != leaseID {
+			t.Fatalf("recovery view=%#v replayed=%v err=%v", view, replayed, err)
+		}
+		waitForProductTaskStatus(t, harness, taskID, "completed")
+	})
+
+	t.Run("running queue with claimed journal fails without rejected drain", func(t *testing.T) {
+		harness := newProductAPITestHarness(t)
+		taskID := "pi:task-skew-running-claimed"
+		prepareProductRecoveryState(t, harness, taskID, "running")
+		rewriteTaskJournal(t, harness.fixture, taskID, 2)
+		harness.fixture.Runtime = &TaskRuntime{running: map[string]context.CancelFunc{}, cancelled: map[string]bool{}}
+		if !harness.fixture.Runtime.Reserve(taskID) {
+			t.Fatal("reserve stale drain ownership")
+		}
+		view, replayed, err := harness.fixture.executeProductTask(taskID)
+		if err != nil || !replayed || view["status"] != "failed" {
+			t.Fatalf("recovery view=%#v replayed=%v err=%v", view, replayed, err)
+		}
+		if harness.fixture.Runtime.Owns(taskID) {
+			t.Fatal("unsafe skew launched a drain")
+		}
+	})
+
+	t.Run("claimed skew rejects invalid queue task evidence", func(t *testing.T) {
+		harness := newProductAPITestHarness(t)
+		taskID := "pi:task-skew-invalid-evidence"
+		prepareProductRecoveryState(t, harness, taskID, "claimed")
+		item, err := harness.fixture.readQueueItem(taskID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		item["task_digest"] = strings.Repeat("0", 64)
+		if err := writeJSONStateFile(filepath.Join(harness.fixture.QueueDir, taskID+".json"), item); err != nil {
+			t.Fatal(err)
+		}
+		rewriteTaskJournal(t, harness.fixture, taskID, 1)
+		if _, replayed, err := harness.fixture.executeProductTask(taskID); err == nil || replayed {
+			t.Fatalf("invalid evidence replayed=%v err=%v", replayed, err)
+		}
+		if harness.fixture.Runtime.Owns(taskID) {
+			t.Fatal("invalid evidence launched a drain")
+		}
+	})
+}
+
+func TestTaskStateClaimedSelfTransitionOnlyAllowsLeaseRotation(t *testing.T) {
+	harness := newProductAPITestHarness(t)
+	taskID := "pi:task-reject-claimed-self-transition"
+	_, leaseID := prepareProductRecoveryState(t, harness, taskID, "claimed")
+	_, err := harness.fixture.transitionTaskState(taskID, "claimed", harness.worker, map[string]any{
+		"lease_id":         "lease:sha256:replacement",
+		"lease_owner":      "product://local",
+		"lease_expires_at": time.Now().Add(time.Minute).UTC().Format(time.RFC3339Nano),
+		"error":            "not a lease renewal field",
+	})
+	if err == nil || !strings.Contains(err.Error(), "task state transition invalid") {
+		t.Fatalf("arbitrary claimed self-transition err=%v", err)
+	}
+	state, err := harness.fixture.readTaskState(taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state["status"] != "claimed" || optionalString(state["lease_id"]) != leaseID || state["revision"] != float64(2) {
+		t.Fatalf("rejected transition changed state: %#v", state)
+	}
+}
+
+func TestProductAPIExpiredClaimedLeaseRecovery(t *testing.T) {
+	for _, testCase := range []struct {
+		name         string
+		journalCount int
+	}{
+		{name: "queued journal", journalCount: 1},
+		{name: "claimed journal", journalCount: 2},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			harness := newProductAPITestHarness(t)
+			taskID := "pi:task-expired-" + strings.ReplaceAll(testCase.name, " ", "-")
+			_, oldLeaseID := prepareProductRecoveryState(t, harness, taskID, "claimed")
+			rewriteTaskJournal(t, harness.fixture, taskID, testCase.journalCount)
+			item, err := harness.fixture.readQueueItem(taskID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			item["lease_expires_at"] = time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano)
+			if err := writeJSONStateFile(filepath.Join(harness.fixture.QueueDir, taskID+".json"), item); err != nil {
+				t.Fatal(err)
+			}
+			harness.fixture.Runtime = &TaskRuntime{running: map[string]context.CancelFunc{}, cancelled: map[string]bool{}}
+			view, replayed, err := harness.fixture.executeProductTask(taskID)
+			if err != nil || !replayed {
+				t.Fatalf("recovery view=%#v replayed=%v err=%v", view, replayed, err)
+			}
+			newLeaseID := optionalString(view["lease_id"])
+			if newLeaseID == "" || newLeaseID == oldLeaseID {
+				t.Fatalf("lease was not rotated: old=%q view=%#v", oldLeaseID, view)
+			}
+			waitForProductTaskStatus(t, harness, taskID, "completed")
+			transitions, err := readTaskStateTransitions(taskStateJournalPath(harness.fixture.TaskStateDir, taskID))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if testCase.journalCount == 2 {
+				renewal := transitions[2]
+				extra, _ := renewal["extra"].(map[string]any)
+				if renewal["from"] != "claimed" || renewal["to"] != "claimed" || optionalString(extra["lease_id"]) != newLeaseID {
+					t.Fatalf("claimed lease renewal transition=%#v", renewal)
+				}
+			}
+		})
+	}
+
+	t.Run("running journal converges to verified failure", func(t *testing.T) {
+		harness := newProductAPITestHarness(t)
+		taskID := "pi:task-expired-running"
+		_, oldLeaseID := prepareProductRecoveryState(t, harness, taskID, "running")
+		item, err := harness.fixture.readQueueItem(taskID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		item["status"] = "claimed"
+		item["lease_expires_at"] = time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano)
+		if err := writeJSONStateFile(filepath.Join(harness.fixture.QueueDir, taskID+".json"), item); err != nil {
+			t.Fatal(err)
+		}
+		harness.fixture.Runtime = &TaskRuntime{running: map[string]context.CancelFunc{}, cancelled: map[string]bool{}}
+		view, replayed, err := harness.fixture.executeProductTask(taskID)
+		if err != nil || !replayed || view["status"] != "failed" || optionalString(view["receipt_digest"]) == "" {
+			t.Fatalf("recovery view=%#v replayed=%v err=%v", view, replayed, err)
+		}
+		if optionalString(view["lease_id"]) != oldLeaseID {
+			t.Fatalf("unsafe running skew rotated lease: old=%q view=%#v", oldLeaseID, view)
+		}
+		committed, err := harness.fixture.productCommittedReceipt(taskID)
+		if err != nil || committed["status"] != "failed" {
+			t.Fatalf("committed=%#v err=%v", committed, err)
+		}
+	})
+}
+
+func TestProductAPIUnsafeAdjacentPreterminalSkewsBecomeVerifiedFailures(t *testing.T) {
+	for _, testCase := range []struct {
+		name          string
+		preparedState string
+		queueStatus   string
+		journalCount  int
+	}{
+		{name: "claimed queue running journal", preparedState: "running", queueStatus: "claimed", journalCount: 3},
+		{name: "claimed queue completing journal", preparedState: "completing", queueStatus: "claimed", journalCount: 4},
+		{name: "claimed queue failing journal", preparedState: "failing", queueStatus: "claimed", journalCount: 4},
+		{name: "running queue queued journal", preparedState: "running", queueStatus: "running", journalCount: 1},
+		{name: "queued queue running journal", preparedState: "running", queueStatus: "queued", journalCount: 3},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			harness := newProductAPITestHarness(t)
+			taskID := "pi:task-skew-" + strings.ReplaceAll(testCase.name, " ", "-")
+			prepareProductRecoveryState(t, harness, taskID, testCase.preparedState)
+			item, err := harness.fixture.readQueueItem(taskID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			item["status"] = testCase.queueStatus
+			if err := writeJSONStateFile(filepath.Join(harness.fixture.QueueDir, taskID+".json"), item); err != nil {
+				t.Fatal(err)
+			}
+			rewriteTaskJournal(t, harness.fixture, taskID, testCase.journalCount)
+			harness.fixture.Runtime = &TaskRuntime{running: map[string]context.CancelFunc{}, cancelled: map[string]bool{}}
+			view, replayed, err := harness.fixture.executeProductTask(taskID)
+			if err != nil || !replayed || view["status"] != "failed" || optionalString(view["receipt_digest"]) == "" {
+				t.Fatalf("recovery view=%#v replayed=%v err=%v", view, replayed, err)
+			}
+			committed, err := harness.fixture.productCommittedReceipt(taskID)
+			if err != nil || committed["status"] != "failed" {
+				t.Fatalf("committed=%#v err=%v", committed, err)
+			}
+		})
+	}
+}
+
+func TestProductAPIDrainFailureConvergesToOneDurableFailure(t *testing.T) {
+	harness := newProductAPITestHarness(t)
+	taskID := "pi:task-drain-rejection"
+	task, leaseID := prepareProductRecoveryState(t, harness, taskID, "running")
+	if !harness.fixture.Runtime.Reserve(taskID) {
+		t.Fatal("reserve runtime")
+	}
+	harness.fixture.drainProductTask(taskID, leaseID, task)
+	committed, err := harness.fixture.productCommittedReceipt(taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := harness.fixture.readQueueItem(taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if committed["status"] != "failed" || item["status"] != "failed" || item["receipt_digest"] != committed["receipt_digest"] {
+		t.Fatalf("receipt=%#v queue=%#v", committed, item)
+	}
+	entries, err := readAuditEntries(harness.fixture.Audit.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipts := 0
+	for _, entry := range entries {
+		record, _ := entry["record"].(map[string]any)
+		receipt, _ := record["receipt"].(map[string]any)
+		if optionalString(receipt["task_id"]) == taskID {
+			receipts++
+		}
+	}
+	if receipts != 1 {
+		t.Fatalf("terminal receipts=%d", receipts)
+	}
+}
+
+func TestProductCommittedReceiptRejectsUnboundDurableEvidence(t *testing.T) {
+	t.Run("signed receipt status omitted", func(t *testing.T) {
+		harness := newProductAPITestHarness(t)
+		taskID := "pi:task-receipt-status-omitted"
+		status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", productTaskPayload(taskID, harness.worker, "receipt status required"), true)
+		if status != http.StatusCreated {
+			t.Fatalf("create status=%d payload=%#v", status, payload)
+		}
+		status, _, payload = harness.request(t, http.MethodPost, "/api/v1/tasks/"+taskID+"/execute", map[string]any{}, true)
+		if status != http.StatusAccepted {
+			t.Fatalf("execute status=%d payload=%#v", status, payload)
+		}
+		waitForProductTaskStatus(t, harness, taskID, "completed")
+		record, err := harness.fixture.auditProof(taskID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		delete(record, "audit_hash")
+		receipt, _ := record["receipt"].(map[string]any)
+		delete(receipt, "signature")
+		delete(receipt, "status")
+		record["receipt"] = signBody(harness.fixture.Workers[0].PrivateKey, receipt)
+		entry, err := auditEntry(auditZeroHash, record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(harness.fixture.Audit.Path, mustJSONLine(t, entry), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := harness.fixture.productCommittedReceipt(taskID); err == nil || !strings.Contains(err.Error(), "terminal status") {
+			t.Fatalf("omitted signed status err=%v", err)
+		}
+	})
+
+	for _, testCase := range []struct {
+		name   string
+		mutate func(map[string]any)
+	}{
+		{name: "misfiled queue task id", mutate: func(item map[string]any) { item["task_id"] = "pi:task-other" }},
+		{name: "stored queue task digest", mutate: func(item map[string]any) { item["task_digest"] = strings.Repeat("f", 64) }},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			harness := newProductAPITestHarness(t)
+			taskID := "pi:task-receipt-unbound-" + strings.ReplaceAll(testCase.name, " ", "-")
+			status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", productTaskPayload(taskID, harness.worker, "bind receipt evidence"), true)
+			if status != http.StatusCreated {
+				t.Fatalf("create status=%d payload=%#v", status, payload)
+			}
+			status, _, payload = harness.request(t, http.MethodPost, "/api/v1/tasks/"+taskID+"/execute", map[string]any{}, true)
+			if status != http.StatusAccepted {
+				t.Fatalf("execute status=%d payload=%#v", status, payload)
+			}
+			waitForProductTaskStatus(t, harness, taskID, "completed")
+			item, err := harness.fixture.readQueueItem(taskID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			testCase.mutate(item)
+			if err := writeJSONStateFile(filepath.Join(harness.fixture.QueueDir, taskID+".json"), item); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := harness.fixture.productCommittedReceipt(taskID); err == nil {
+				t.Fatal("unbound durable evidence accepted")
+			}
+		})
+	}
+}
+
+func rollTaskJournalBackBeforeTerminal(t *testing.T, harness productAPITestHarness, taskID string) {
+	t.Helper()
+	journalPath := taskStateJournalPath(harness.fixture.TaskStateDir, taskID)
+	journal, err := os.ReadFile(journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := bytes.Split(bytes.TrimSpace(journal), []byte("\n"))
+	kept := make([][]byte, 0, len(lines))
+	for _, line := range lines {
+		var transition map[string]any
+		if err := json.Unmarshal(line, &transition); err != nil {
+			t.Fatal(err)
+		}
+		if terminalTaskStatus(optionalString(transition["to"])) {
+			break
+		}
+		kept = append(kept, line)
+	}
+	if err := os.WriteFile(journalPath, append(bytes.Join(kept, []byte("\n")), '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	transitions, err := readTaskStateTransitions(journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projection := projectTaskState(transitions)
+	if err := writeJSONStateFile(taskStateProjectionPath(harness.fixture.TaskStateDir, taskID), projection); err != nil {
+		t.Fatal(err)
+	}
+	queueItem, err := harness.fixture.readQueueItem(taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	queueItem["status"] = projection["status"]
+	delete(queueItem, "receipt_digest")
+	if err := writeJSONStateFile(filepath.Join(harness.fixture.QueueDir, taskID+".json"), queueItem); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestProductAPIReconcilesVerifiedReceiptBeforeTaskAndEventResponses(t *testing.T) {
+	for _, responseKind := range []string{"task", "events"} {
+		t.Run(responseKind, func(t *testing.T) {
+			harness := newProductAPITestHarness(t)
+			taskID := "pi:task-reconcile-" + responseKind
+			status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", productTaskPayload(taskID, harness.worker, "reconcile receipt"), true)
+			if status != http.StatusCreated {
+				t.Fatalf("create status=%d payload=%#v", status, payload)
+			}
+			status, _, payload = harness.request(t, http.MethodPost, "/api/v1/tasks/"+taskID+"/execute", map[string]any{}, true)
+			if status != http.StatusAccepted {
+				t.Fatalf("execute status=%d payload=%#v", status, payload)
+			}
+			waitForProductTaskStatus(t, harness, taskID, "completed")
+			committed, err := harness.fixture.productCommittedReceipt(taskID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rollTaskJournalBackBeforeTerminal(t, harness, taskID)
+			path := "/api/v1/tasks/" + taskID
+			if responseKind == "events" {
+				path += "/events?after=0"
+			}
+			status, _, payload = harness.request(t, http.MethodGet, path, nil, true)
+			if status != http.StatusOK {
+				t.Fatalf("response status=%d payload=%#v", status, payload)
+			}
+			state, stateErr := harness.fixture.readTaskState(taskID)
+			queueItem, queueErr := harness.fixture.readQueueItem(taskID)
+			if stateErr != nil || queueErr != nil {
+				t.Fatalf("state err=%v queue err=%v", stateErr, queueErr)
+			}
+			if state["status"] != "completed" || state["receipt_digest"] != committed["receipt_digest"] || queueItem["status"] != "completed" || queueItem["receipt_digest"] != committed["receipt_digest"] {
+				t.Fatalf("state=%#v queue=%#v receipt=%#v", state, queueItem, committed)
+			}
+		})
+	}
+}
+
+func TestProductAPIReconcilesVerifiedCancelledReceiptAfterRollback(t *testing.T) {
+	for _, responseKind := range []string{"task", "events"} {
+		t.Run(responseKind, func(t *testing.T) {
+			harness := newProductAPITestHarness(t)
+			taskID := "pi:task-reconcile-cancelled-" + responseKind
+			status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", productTaskPayload(taskID, harness.worker, "reconcile cancelled receipt"), true)
+			if status != http.StatusCreated {
+				t.Fatalf("create status=%d payload=%#v", status, payload)
+			}
+			status, _, payload = harness.request(t, http.MethodPost, "/api/v1/tasks/"+taskID+"/cancel", map[string]any{"reason": "cancel before execution"}, true)
+			if status != http.StatusOK || responseData(t, payload)["status"] != "cancelled" {
+				t.Fatalf("cancel status=%d payload=%#v", status, payload)
+			}
+			committed, err := harness.fixture.productCommittedReceipt(taskID)
+			if err != nil || committed["status"] != "cancelled" {
+				t.Fatalf("committed=%#v err=%v", committed, err)
+			}
+			rollTaskJournalBackBeforeTerminal(t, harness, taskID)
+			path := "/api/v1/tasks/" + taskID
+			if responseKind == "events" {
+				path += "/events?after=0"
+			}
+			status, _, payload = harness.request(t, http.MethodGet, path, nil, true)
+			if status != http.StatusOK {
+				t.Fatalf("response status=%d payload=%#v", status, payload)
+			}
+			if responseKind == "events" {
+				events, _ := payload["data"].([]any)
+				terminal := 0
+				for _, value := range events {
+					event, _ := value.(map[string]any)
+					committedPayload, _ := event["payload"].(map[string]any)
+					if event["type"] == "receipt.committed" && committedPayload["status"] == "cancelled" {
+						terminal++
+					}
+				}
+				if terminal != 1 {
+					t.Fatalf("cancelled terminal events=%#v", events)
+				}
+			}
+			state, stateErr := harness.fixture.readTaskState(taskID)
+			queueItem, queueErr := harness.fixture.readQueueItem(taskID)
+			if stateErr != nil || queueErr != nil {
+				t.Fatalf("state err=%v queue err=%v", stateErr, queueErr)
+			}
+			if state["status"] != "cancelled" || state["receipt_digest"] != committed["receipt_digest"] || queueItem["status"] != "cancelled" || queueItem["receipt_digest"] != committed["receipt_digest"] {
+				t.Fatalf("state=%#v queue=%#v receipt=%#v", state, queueItem, committed)
+			}
+			transitions, err := readTaskStateTransitions(taskStateJournalPath(harness.fixture.TaskStateDir, taskID))
+			if err != nil {
+				t.Fatal(err)
+			}
+			states := make([]string, 0, len(transitions))
+			for _, transition := range transitions {
+				states = append(states, optionalString(transition["to"]))
+			}
+			if strings.Join(states, ",") != "queued,cancelling,cancelled" {
+				t.Fatalf("recovered cancellation transitions=%v", states)
+			}
+		})
+	}
+}
+
+func TestProductAPIDoesNotReconcileUnverifiedOrConflictingReceipt(t *testing.T) {
+	t.Run("unverified", func(t *testing.T) {
+		harness := newProductAPITestHarness(t)
+		taskID := "pi:task-unverified-receipt"
+		task, _ := prepareProductRecoveryState(t, harness, taskID, "running")
+		forged := map[string]any{"task_id": taskID, "task_digest": digestHex(task), "status": "failed", "artifact_refs": []string{}, "artifact_manifests": []map[string]any{}, "signature": "invalid"}
+		if err := harness.fixture.appendAudit(map[string]any{"kind": "go_fed_receipt", "zone": harness.fixture.Authority, "worker": harness.fixture.Workers[0].Descriptor, "zone_binding": harness.fixture.zoneBinding(&harness.fixture.Workers[0]), "receipt": forged}); err != nil {
+			t.Fatal(err)
+		}
+		status, _, _ := harness.request(t, http.MethodGet, "/api/v1/tasks/"+taskID, nil, true)
+		if status == http.StatusOK {
+			t.Fatal("unverified receipt was accepted")
+		}
+		state, err := harness.fixture.readTaskState(taskID)
+		if err != nil || state["status"] != "running" || optionalString(state["receipt_digest"]) != "" {
+			t.Fatalf("unverified receipt repaired state=%#v err=%v", state, err)
+		}
+	})
+	t.Run("conflicting terminal digest", func(t *testing.T) {
+		harness := newProductAPITestHarness(t)
+		taskID := "pi:task-conflicting-terminal-digest"
+		status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", productTaskPayload(taskID, harness.worker, "preserve digest"), true)
+		if status != http.StatusCreated {
+			t.Fatalf("create status=%d payload=%#v", status, payload)
+		}
+		status, _, payload = harness.request(t, http.MethodPost, "/api/v1/tasks/"+taskID+"/execute", map[string]any{}, true)
+		if status != http.StatusAccepted {
+			t.Fatalf("execute status=%d payload=%#v", status, payload)
+		}
+		waitForProductTaskStatus(t, harness, taskID, "completed")
+		if _, err := harness.fixture.transitionTaskState(taskID, "completed", harness.worker, map[string]any{"receipt_digest": "sha256:conflicting"}); err != nil {
+			t.Fatal(err)
+		}
+		queueItem, err := harness.fixture.readQueueItem(taskID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		queueItem["receipt_digest"] = "sha256:queue-conflicting"
+		if err := writeJSONStateFile(filepath.Join(harness.fixture.QueueDir, taskID+".json"), queueItem); err != nil {
+			t.Fatal(err)
+		}
+		status, _, _ = harness.request(t, http.MethodGet, "/api/v1/tasks/"+taskID, nil, true)
+		if status == http.StatusOK {
+			t.Fatal("conflicting terminal digest was accepted")
+		}
+		state, err := harness.fixture.readTaskState(taskID)
+		queueItem, queueErr := harness.fixture.readQueueItem(taskID)
+		if err != nil || queueErr != nil || state["receipt_digest"] != "sha256:conflicting" || queueItem["receipt_digest"] != "sha256:queue-conflicting" {
+			t.Fatalf("terminal digest overwritten state=%#v queue=%#v stateErr=%v queueErr=%v", state, queueItem, err, queueErr)
+		}
+	})
+}
+
+func TestProductTaskStateJournalRecoversOnlyUnterminatedFinalRecord(t *testing.T) {
+	t.Run("unterminated", func(t *testing.T) {
+		harness := newProductAPITestHarness(t)
+		taskID := "pi:task-torn-journal"
+		status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", productTaskPayload(taskID, harness.worker, "recover torn journal"), true)
+		if status != http.StatusCreated {
+			t.Fatalf("create status=%d payload=%#v", status, payload)
+		}
+		journalPath := taskStateJournalPath(harness.fixture.TaskStateDir, taskID)
+		original, err := os.ReadFile(journalPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		torn := append(append([]byte{}, original...), []byte(`{"format":"agnet-task-state-transition/v1"`)...)
+		if err := os.WriteFile(journalPath, torn, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		status, _, payload = harness.request(t, http.MethodGet, "/api/v1/tasks/"+taskID, nil, true)
+		if status != http.StatusOK || responseData(t, payload)["status"] != "queued" {
+			t.Fatalf("torn response status=%d payload=%#v", status, payload)
+		}
+		recovered, err := os.ReadFile(journalPath)
+		if err != nil || !bytes.Equal(recovered, original) {
+			t.Fatalf("recovered=%q want=%q err=%v", recovered, original, err)
+		}
+	})
+	t.Run("newline terminated malformed", func(t *testing.T) {
+		harness := newProductAPITestHarness(t)
+		taskID := "pi:task-malformed-journal"
+		status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", productTaskPayload(taskID, harness.worker, "reject malformed journal"), true)
+		if status != http.StatusCreated {
+			t.Fatalf("create status=%d payload=%#v", status, payload)
+		}
+		journalPath := taskStateJournalPath(harness.fixture.TaskStateDir, taskID)
+		original, err := os.ReadFile(journalPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		malformed := append(append([]byte{}, original...), []byte("{not-json}\n")...)
+		if err := os.WriteFile(journalPath, malformed, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		status, _, _ = harness.request(t, http.MethodGet, "/api/v1/tasks/"+taskID, nil, true)
+		if status != http.StatusInternalServerError {
+			t.Fatalf("malformed status=%d", status)
+		}
+		unchanged, err := os.ReadFile(journalPath)
+		if err != nil || !bytes.Equal(unchanged, malformed) {
+			t.Fatalf("malformed journal changed=%q err=%v", unchanged, err)
+		}
+	})
+}
+
 func TestProductAPIFailureCommitsOneDurableTerminalReceipt(t *testing.T) {
 	harness := newProductAPITestHarnessWithWorker(t, func(profile *WorkerProfile) {
 		profile.Tool = "external.stdio"
@@ -718,6 +1706,28 @@ func TestProductAPIFailureCommitsOneDurableTerminalReceipt(t *testing.T) {
 		t.Fatalf("failure receipt=%#v", committed)
 	}
 
+	entries, err := readAuditEntries(harness.fixture.Audit.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receiptRecords := 0
+	var durableRecord map[string]any
+	for _, entry := range entries {
+		record, _ := entry["record"].(map[string]any)
+		durableReceipt, _ := record["receipt"].(map[string]any)
+		if optionalString(record["kind"]) == "go_fed_receipt" && optionalString(durableReceipt["task_id"]) == taskID {
+			receiptRecords++
+			durableRecord = record
+		}
+	}
+	if receiptRecords != 1 {
+		t.Fatalf("durable terminal receipt records=%d", receiptRecords)
+	}
+	signedTask, _ := committed["signed_task"].(map[string]any)
+	if err := verifyReceiptRecord(durableRecord, harness.fixture.ArtifactStoreDir, signedTask); err != nil {
+		t.Fatalf("verify durable failure receipt: %v", err)
+	}
+
 	queueSettled := false
 	for time.Now().Before(deadline) {
 		item, itemErr := harness.fixture.readQueueItem(taskID)
@@ -745,6 +1755,72 @@ func TestProductAPIFailureCommitsOneDurableTerminalReceipt(t *testing.T) {
 	}
 	if terminal != 1 {
 		t.Fatalf("failure terminal events=%#v", events)
+	}
+}
+
+func TestProductAPICommittedReceiptSurvivesCompletedStateAppendFailure(t *testing.T) {
+	harness := newProductAPITestHarness(t)
+	const taskID = "pi:task-completed-state-append-failure"
+	status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", productTaskPayload(taskID, harness.worker, "recover committed completion"), true)
+	if status != http.StatusCreated {
+		t.Fatalf("create status=%d payload=%#v", status, payload)
+	}
+	failed := false
+	harness.fixture.taskStateFault = func(point taskStateFaultPoint, transition map[string]any) error {
+		if point == taskStateFaultWrite && optionalString(transition["to"]) == "completed" && !failed {
+			failed = true
+			return errors.New("injected completed state append failure")
+		}
+		return nil
+	}
+	if _, replayed, err := harness.fixture.executeProductTask(taskID); err != nil || replayed {
+		t.Fatalf("execute replayed=%v err=%v", replayed, err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	var state, item map[string]any
+	var committed map[string]any
+	for time.Now().Before(deadline) {
+		committed, _ = harness.fixture.productCommittedReceipt(taskID)
+		state, _ = harness.fixture.readTaskState(taskID)
+		item, _ = harness.fixture.readQueueItem(taskID)
+		if committed != nil && optionalString(state["status"]) == "completed" && optionalString(item["status"]) == "completed" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !failed {
+		t.Fatal("completed state append fault was not exercised")
+	}
+	if committed == nil || committed["status"] != "completed" || state["receipt_digest"] != committed["receipt_digest"] || item["receipt_digest"] != committed["receipt_digest"] {
+		t.Fatalf("receipt=%#v state=%#v queue=%#v", committed, state, item)
+	}
+	entries, err := readAuditEntries(harness.fixture.Audit.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipts := 0
+	for _, entry := range entries {
+		record, _ := entry["record"].(map[string]any)
+		receipt, _ := record["receipt"].(map[string]any)
+		if optionalString(record["kind"]) == "go_fed_receipt" && optionalString(receipt["task_id"]) == taskID {
+			receipts++
+		}
+	}
+	if receipts != 1 {
+		t.Fatalf("durable terminal receipts=%d", receipts)
+	}
+	events, _, err := harness.fixture.productTaskEvents(taskID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	terminalEvents := 0
+	for _, event := range events {
+		if optionalString(event["type"]) == "receipt.committed" {
+			terminalEvents++
+		}
+	}
+	if terminalEvents != 1 {
+		t.Fatalf("terminal events=%#v", events)
 	}
 }
 

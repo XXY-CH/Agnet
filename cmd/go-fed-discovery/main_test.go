@@ -17,12 +17,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -513,6 +516,196 @@ func TestArtifactStoreIndexRejectsInvalidURI(t *testing.T) {
 	_, err := readArtifactStoreIndex(path)
 	if err == nil || !strings.Contains(err.Error(), "artifact mirror index invalid") {
 		t.Fatalf("got %v, want artifact mirror index invalid", err)
+	}
+}
+
+func TestAuditAppendSyncFailureLeavesHeadUnchanged(t *testing.T) {
+	for _, testCase := range []struct {
+		name   string
+		failAt int
+	}{
+		{name: "file sync", failAt: 1},
+		{name: "new file parent sync", failAt: 2},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "audit.log")
+			if testCase.failAt == 1 {
+				seed := &AuditLog{Path: path, Head: auditZeroHash}
+				if err := seed.Append(map[string]any{"kind": "seed"}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			calls := 0
+			audit := &AuditLog{
+				Path: path,
+				Head: auditZeroHash,
+				syncFile: func(file *os.File) error {
+					calls++
+					if calls == testCase.failAt {
+						return errors.New("injected audit sync failure")
+					}
+					return file.Sync()
+				},
+			}
+			err := audit.Append(map[string]any{"kind": "event"})
+			if err == nil || !strings.Contains(err.Error(), "injected audit sync failure") {
+				t.Fatalf("append err=%v", err)
+			}
+			if audit.Head != auditZeroHash {
+				t.Fatalf("head advanced after failed durable commit: %s", audit.Head)
+			}
+			if calls < testCase.failAt {
+				t.Fatalf("sync calls=%d want at least %d", calls, testCase.failAt)
+			}
+			entries, readErr := readAuditEntries(path)
+			if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+				t.Fatal(readErr)
+			}
+			wantEntries := 0
+			if testCase.failAt == 1 {
+				wantEntries = 1
+			}
+			if len(entries) != wantEntries {
+				t.Fatalf("failed append remained accepted after reopen: entries=%#v", entries)
+			}
+			if _, reopenErr := openAuditLog(path); reopenErr != nil {
+				t.Fatalf("reopen after failed append: %v", reopenErr)
+			}
+		})
+	}
+}
+
+func TestAuditAppendRetryAfterFirstParentSyncFailureRepeatsBarrier(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.log")
+	parentSyncs := 0
+	audit := &AuditLog{
+		Path: path,
+		Head: auditZeroHash,
+		syncFile: func(file *os.File) error {
+			info, err := file.Stat()
+			if err != nil {
+				return err
+			}
+			if info.IsDir() {
+				parentSyncs++
+				if parentSyncs == 1 {
+					return errors.New("injected first parent sync failure")
+				}
+			}
+			return file.Sync()
+		},
+	}
+	if err := audit.Append(map[string]any{"kind": "event"}); err == nil {
+		t.Fatal("first append succeeded despite parent sync failure")
+	}
+	if err := audit.Append(map[string]any{"kind": "event"}); err != nil {
+		t.Fatalf("retry append: %v", err)
+	}
+	if parentSyncs != 2 {
+		t.Fatalf("parent syncs=%d; retry skipped first-file parent barrier", parentSyncs)
+	}
+	entries, err := readAuditEntries(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0]["record"].(map[string]any)["kind"] != "event" {
+		t.Fatalf("retry entries=%#v", entries)
+	}
+}
+
+func TestAuditAppendWriteFailureRollsBackDisk(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.log")
+	failure := errors.New("injected audit write failure")
+	audit := &AuditLog{
+		Path: path,
+		Head: auditZeroHash,
+		writeFile: func(file *os.File, data []byte) (int, error) {
+			written, err := file.Write(data[:len(data)/2])
+			if err != nil {
+				return written, err
+			}
+			return written, failure
+		},
+	}
+	if err := audit.Append(map[string]any{"kind": "event"}); !errors.Is(err, failure) {
+		t.Fatalf("append error=%v; want write failure", err)
+	}
+	entries, err := readAuditEntries(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("partially written audit entry remained accepted: %#v", entries)
+	}
+	if _, err := openAuditLog(path); err != nil {
+		t.Fatalf("reopen after write rollback: %v", err)
+	}
+}
+
+func TestAtomicWriteFilePropagatesParentDirectoryErrors(t *testing.T) {
+	failure := errors.New("injected parent directory failure")
+	for _, testCase := range []struct {
+		name   string
+		mutate func(*atomicWriteParentOps)
+	}{
+		{name: "open", mutate: func(ops *atomicWriteParentOps) {
+			ops.open = func(string) (*os.File, error) { return nil, failure }
+		}},
+		{name: "sync", mutate: func(ops *atomicWriteParentOps) {
+			ops.sync = func(*os.File) error { return failure }
+		}},
+		{name: "close", mutate: func(ops *atomicWriteParentOps) {
+			ops.close = func(file *os.File) error {
+				if err := file.Close(); err != nil {
+					return err
+				}
+				return failure
+			}
+		}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			ops := defaultAtomicWriteParentOps()
+			testCase.mutate(&ops)
+			err := atomicWriteFileWithParentOps(filepath.Join(t.TempDir(), "state.json"), []byte("{}\n"), 0o600, ops)
+			if !errors.Is(err, failure) {
+				t.Fatalf("atomic write error=%v; want parent %s failure", err, testCase.name)
+			}
+		})
+	}
+}
+
+func TestAuditAppendCrossProcessChain(t *testing.T) {
+	const childEnv = "AGNET_AUDIT_APPEND_CHILD"
+	if os.Getenv(childEnv) != "" {
+		audit := &AuditLog{Path: os.Getenv("AGNET_AUDIT_APPEND_PATH"), Head: auditZeroHash}
+		if err := audit.Append(map[string]any{"kind": "child", "index": os.Getenv(childEnv)}); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	path := filepath.Join(t.TempDir(), "audit.log")
+	children := make([]*exec.Cmd, 2)
+	for index := range children {
+		children[index] = exec.Command(os.Args[0], "-test.run=^TestAuditAppendCrossProcessChain$")
+		children[index].Env = append(os.Environ(), childEnv+"="+strconv.Itoa(index), "AGNET_AUDIT_APPEND_PATH="+path)
+		if err := children[index].Start(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, child := range children {
+		if err := child.Wait(); err != nil {
+			t.Fatalf("audit append child: %v", err)
+		}
+	}
+	entries, err := readAuditEntries(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != len(children) {
+		t.Fatalf("entries=%d want=%d", len(entries), len(children))
+	}
+	if _, err := auditHead(entries); err != nil {
+		t.Fatalf("cross-process audit chain: %v", err)
 	}
 }
 
@@ -2766,5 +2959,45 @@ func TestGoSignsNodeManagedGeneration(t *testing.T) {
 	}
 	if err := verifyMapSignature(publicKey, signed, "signature"); err != nil {
 		t.Fatalf("Go signature from Node PKCS8 managed generation did not verify: %v", err)
+	}
+}
+
+func TestServeFederationOnlyAcquiresProductDaemonLockBeforeCoordinatorRecovery(t *testing.T) {
+	fixturePath, runtimeKeys := managedRuntimeFixture(t, managedkey.KeyTypeSeed)
+	root := t.TempDir()
+	auditPath := filepath.Join(root, "audit.log")
+	release, err := acquireProductDaemonLock(queueDirForAudit(auditPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	invalidSwarmStateDir := filepath.Join(root, "not-a-directory")
+	if err := os.WriteFile(invalidSwarmStateDir, []byte("file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err = serveWithSwarmStateDir("127.0.0.1", "0", "", "", "", "", "", "", "", "", fixturePath, "", "", "", invalidSwarmStateDir, runtimeKeys, auditPath, verifier.TrustInputs{})
+	if err == nil || !strings.Contains(err.Error(), "product daemon already running") {
+		t.Fatalf("federation-only serve bypassed Product lock: %v", err)
+	}
+}
+
+func TestProductDaemonLockLifecycleAndExclusion(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "product-queue")
+	releaseFirst, err := acquireProductDaemonLock(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := acquireProductDaemonLock(root); err == nil || !strings.Contains(err.Error(), "already running") {
+		t.Fatalf("second daemon lock err=%v", err)
+	}
+	if err := releaseFirst(); err != nil {
+		t.Fatal(err)
+	}
+	releaseNext, err := acquireProductDaemonLock(root)
+	if err != nil {
+		t.Fatalf("reacquire after release: %v", err)
+	}
+	if err := releaseNext(); err != nil {
+		t.Fatal(err)
 	}
 }
