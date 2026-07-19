@@ -1,6 +1,6 @@
 {
   "name": "agnet",
-  "version": "0.1.0-dev.3",
+  "version": "0.1.0-dev.6",
   "type": "module",
   "license": "UNLICENSED",
   "engines": {
@@ -26,10 +26,10 @@
     "test:platform": "npm run build:package && node --test test/platform-package.test.mjs"
   },
   "optionalDependencies": {
-    "@agnet-ai/daemon-darwin-arm64": "0.1.0-dev.3",
-    "@agnet-ai/daemon-darwin-x64": "0.1.0-dev.3",
-    "@agnet-ai/daemon-linux-arm64": "0.1.0-dev.3",
-    "@agnet-ai/daemon-linux-x64": "0.1.0-dev.3"
+    "@agnet-ai/daemon-darwin-arm64": "0.1.0-dev.6",
+    "@agnet-ai/daemon-darwin-x64": "0.1.0-dev.6",
+    "@agnet-ai/daemon-linux-arm64": "0.1.0-dev.6",
+    "@agnet-ai/daemon-linux-x64": "0.1.0-dev.6"
   },
   "files": [
     "asp-core.mjs",

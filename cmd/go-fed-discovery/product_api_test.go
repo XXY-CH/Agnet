@@ -194,8 +194,11 @@ func productTaskPayload(taskID, worker, intent string) map[string]any {
 		"correlation": map[string]any{
 			"workspace_id":    "workspace-1",
 			"conversation_id": "conversation-1",
-			"pi_session_id":   "pi-session-1",
+			"session_id":      "session-1",
+			"run_id":          "run-1",
 			"tool_call_id":    "tool-call-1",
+			"task_id":         taskID,
+			"payload_digest":  "sha256:" + strings.Repeat("a", 64),
 		},
 	}
 }
@@ -260,6 +263,45 @@ func TestProductAPICreatesTasksIdempotently(t *testing.T) {
 	if status != http.StatusConflict || payload["error"] == nil {
 		t.Fatalf("conflicting create status=%d payload=%#v", status, payload)
 	}
+
+	payloadConflict := productTaskPayload("pi:task-create", harness.worker, "summarize the workspace")
+	payloadCorrelation := payloadConflict["correlation"].(map[string]any)
+	payloadCorrelation["payload_digest"] = "sha256:" + strings.Repeat("b", 64)
+	status, _, payload = harness.request(t, http.MethodPost, "/api/v1/tasks", payloadConflict, true)
+	if status != http.StatusConflict || payload["error"] == nil {
+		t.Fatalf("changed payload conflict status=%d payload=%#v", status, payload)
+	}
+}
+
+func TestProductAPIRequiresFullCorrelationAndAuthenticatesCapabilities(t *testing.T) {
+	harness := newProductAPITestHarness(t)
+	request := productTaskPayload("pi:task-correlation", harness.worker, "bind full correlation")
+	correlation, ok := request["correlation"].(map[string]any)
+	if !ok {
+		t.Fatal("product task test payload has no correlation")
+	}
+	correlation["task_id"] = "pi:task-correlation"
+	correlation["run_id"] = "run-1"
+	correlation["payload_digest"] = "sha256:" + strings.Repeat("a", 64)
+
+	status, _, _ := harness.request(t, http.MethodGet, "/api/v1/capabilities", nil, false)
+	if status != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated capability status = %d, want %d", status, http.StatusUnauthorized)
+	}
+	status, _, payload := harness.request(t, http.MethodGet, "/api/v1/capabilities", nil, true)
+	if status != http.StatusOK {
+		t.Fatalf("capabilities status=%d payload=%#v", status, payload)
+	}
+	capabilities := responseData(t, payload)
+	if capabilities["package_version"] != "0.1.0-dev.6" || capabilities["product_api"] != "agnet.product-api/v1" {
+		t.Fatalf("capabilities = %#v", capabilities)
+	}
+
+	delete(correlation, "payload_digest")
+	status, _, payload = harness.request(t, http.MethodPost, "/api/v1/tasks", request, true)
+	if status != http.StatusUnprocessableEntity || payload["error"] == nil {
+		t.Fatalf("missing correlation field status=%d payload=%#v", status, payload)
+	}
 }
 
 func TestProductAPIExecutesAndStreamsVerifiedReceipt(t *testing.T) {
@@ -289,6 +331,11 @@ func TestProductAPIExecutesAndStreamsVerifiedReceipt(t *testing.T) {
 	}
 	if receiptData["status"] != "completed" {
 		t.Fatalf("receipt wrapper = %#v", receiptData)
+	}
+	signedTask, _ := receiptData["signed_task"].(map[string]any)
+	receipt, _ := receiptData["receipt"].(map[string]any)
+	if digestHex(signedTask["correlation"]) != digestHex(receipt["correlation"]) {
+		t.Fatalf("receipt correlation is not bound to signed task: %#v", receiptData)
 	}
 
 	var queueItem map[string]any
@@ -725,6 +772,117 @@ func TestProductAPICancelIsAtomicallyIdempotent(t *testing.T) {
 	}
 }
 
+func TestProductAPICancelRecoversCancellationIntentAfterDurableFaults(t *testing.T) {
+	for _, testCase := range []struct {
+		name  string
+		inject func(*Fixture) error
+	}{
+		{
+			name: "cancellation event audit append",
+			inject: func(fixture *Fixture) error {
+				failed := false
+				fixture.Audit.syncFile = func(file *os.File) error {
+					if !failed {
+						failed = true
+						return errors.New("injected cancellation event audit sync failure")
+					}
+					return file.Sync()
+				}
+				return nil
+			},
+		},
+		{
+			name: "cancellation receipt audit append",
+			inject: func(fixture *Fixture) error {
+				syncs := 0
+				fixture.Audit.syncFile = func(file *os.File) error {
+					syncs++
+					if syncs == 2 {
+						return errors.New("injected cancellation receipt audit sync failure")
+					}
+					return file.Sync()
+				}
+				return nil
+			},
+		},
+		{
+			name: "post-receipt task state settlement",
+			inject: func(fixture *Fixture) error {
+				failed := false
+				fixture.taskStateFault = func(point taskStateFaultPoint, transition map[string]any) error {
+					if !failed && point == taskStateFaultWrite && optionalString(transition["to"]) == "cancelled" {
+						failed = true
+						return errors.New("injected cancelled task state write failure")
+					}
+					return nil
+				}
+				return nil
+			},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			harness := newProductAPITestHarness(t)
+			taskID := "pi:task-cancel-recovery-" + strings.ReplaceAll(testCase.name, " ", "-")
+			status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", productTaskPayload(taskID, harness.worker, "recover cancellation intent"), true)
+			if status != http.StatusCreated {
+				t.Fatalf("create status=%d payload=%#v", status, payload)
+			}
+			if err := testCase.inject(&harness.fixture); err != nil {
+				t.Fatal(err)
+			}
+
+			if view, replayed, err := harness.fixture.cancelProductTask(taskID, "initial cancellation"); err == nil || replayed || view != nil {
+				t.Fatalf("first cancel view=%#v replayed=%v err=%v", view, replayed, err)
+			}
+			harness.fixture.Audit.syncFile = nil
+			harness.fixture.taskStateFault = nil
+
+			view, _, err := harness.fixture.cancelProductTask(taskID, "later request must resume original intent")
+			if err != nil || optionalString(view["status"]) != "cancelled" || optionalString(view["receipt_digest"]) == "" {
+				t.Fatalf("recovered cancel view=%#v err=%v", view, err)
+			}
+			third, replayed, err := harness.fixture.cancelProductTask(taskID, "third cancellation is idempotent")
+			if err != nil || !replayed || optionalString(third["receipt_digest"]) != optionalString(view["receipt_digest"]) {
+				t.Fatalf("idempotent cancel view=%#v replayed=%v err=%v", third, replayed, err)
+			}
+
+			committed, err := harness.fixture.productCommittedReceipt(taskID)
+			if err != nil || optionalString(committed["status"]) != "cancelled" || optionalString(committed["receipt_digest"]) != optionalString(view["receipt_digest"]) {
+				t.Fatalf("committed receipt=%#v err=%v", committed, err)
+			}
+			receipt, _ := committed["receipt"].(map[string]any)
+			cancel, _ := receipt["cancel"].(map[string]any)
+			if optionalString(cancel["reason"]) != "initial cancellation" {
+				t.Fatalf("recovered receipt lost original cancellation intent: %#v", receipt)
+			}
+			state, stateErr := harness.fixture.readTaskState(taskID)
+			item, queueErr := harness.fixture.readQueueItem(taskID)
+			if stateErr != nil || queueErr != nil || optionalString(state["status"]) != "cancelled" || optionalString(state["receipt_digest"]) != optionalString(committed["receipt_digest"]) || optionalString(item["status"]) != "cancelled" || optionalString(item["receipt_digest"]) != optionalString(committed["receipt_digest"]) {
+				t.Fatalf("state=%#v stateErr=%v queue=%#v queueErr=%v", state, stateErr, item, queueErr)
+			}
+			entries, err := readAuditEntries(harness.fixture.Audit.Path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			receipts, events := 0, 0
+			for _, entry := range entries {
+				record, _ := entry["record"].(map[string]any)
+				receipt, _ := record["receipt"].(map[string]any)
+				if optionalString(record["kind"]) == "go_fed_receipt" && optionalString(receipt["task_id"]) == taskID && optionalString(receipt["status"]) == "cancelled" {
+					receipts++
+				}
+				event, _ := record["event"].(map[string]any)
+				if optionalString(record["kind"]) == "go_fed_event" && optionalString(event["task_id"]) == taskID && optionalString(event["type"]) == "task.cancelled" {
+					events++
+				}
+			}
+			if receipts != 1 || events != 1 {
+				t.Fatalf("cancelled receipts=%d events=%d", receipts, events)
+			}
+		})
+	}
+}
+
 func TestProductTaskStateJournalIsDurableAndTerminal(t *testing.T) {
 	harness := newProductAPITestHarness(t)
 	taskID := "pi:task-durable-state"
@@ -1094,6 +1252,147 @@ func TestProductAPIRestartRecoveryResumesClaimedAndFailsUnsafeWork(t *testing.T)
 				t.Fatalf("retry=%#v replayed=%v err=%v", retry, replayed, err)
 			}
 		})
+	}
+}
+
+func TestProductAPIRetryReceiptRebindsCorrelationToRetryTask(t *testing.T) {
+	harness := newProductAPITestHarness(t)
+	parentID := "pi:task-retry-correlation-parent"
+	prepareProductRecoveryState(t, harness, parentID, "running")
+	parent, replayed, err := harness.fixture.executeProductTask(parentID)
+	if err != nil || !replayed || parent["status"] != "failed" {
+		t.Fatalf("parent recovery result=%#v replayed=%v err=%v", parent, replayed, err)
+	}
+
+	retryID := parentID + "-retry"
+	retry, replayed, err := harness.fixture.retryProductTask(parentID, retryID)
+	if err != nil || replayed || retry["task_id"] != retryID || retry["retry_of"] != parentID || intFromMap(retry, "retry_attempt") != 1 {
+		t.Fatalf("retry=%#v replayed=%v err=%v", retry, replayed, err)
+	}
+	if _, replayed, err = harness.fixture.executeProductTask(retryID); err != nil || replayed {
+		t.Fatalf("retry execute replayed=%v err=%v", replayed, err)
+	}
+	waitForProductTaskStatus(t, harness, retryID, "completed")
+
+	status, _, payload := harness.request(t, http.MethodGet, "/api/v1/tasks/"+retryID+"/receipt", nil, true)
+	if status != http.StatusOK {
+		t.Fatalf("retry receipt status=%d payload=%#v", status, payload)
+	}
+	committed := responseData(t, payload)
+	if optionalString(committed["task_id"]) != retryID {
+		t.Fatalf("committed task_id=%#v", committed["task_id"])
+	}
+	signedTask, ok := committed["signed_task"].(map[string]any)
+	if !ok || optionalString(signedTask["task_id"]) != retryID {
+		t.Fatalf("signed task=%#v", committed["signed_task"])
+	}
+	receipt, ok := committed["receipt"].(map[string]any)
+	if !ok || optionalString(receipt["task_id"]) != retryID {
+		t.Fatalf("receipt=%#v", committed["receipt"])
+	}
+	for label, value := range map[string]any{
+		"request":     retry["correlation"],
+		"signed task": signedTask["correlation"],
+		"receipt":     receipt["correlation"],
+	} {
+		correlation, ok := value.(map[string]any)
+		if !ok || optionalString(correlation["task_id"]) != retryID {
+			t.Fatalf("%s correlation=%#v", label, value)
+		}
+	}
+	queueItem, err := harness.fixture.readQueueItem(retryID)
+	if err != nil || optionalString(queueItem["retry_of"]) != parentID || intFromMap(queueItem, "retry_attempt") != 1 {
+		t.Fatalf("retry queue item=%#v err=%v", queueItem, err)
+	}
+}
+func TestProductAPIRetryRejectsCorruptQueueCorrelationWithoutCreatingAttempt(t *testing.T) {
+	harness := newProductAPITestHarness(t)
+	parentID := "pi:task-retry-corrupt-parent"
+	status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", productTaskPayload(parentID, harness.worker, "retry me"), true)
+	if status != http.StatusCreated {
+		t.Fatalf("create status=%d payload=%#v", status, payload)
+	}
+	parent, err := harness.fixture.readQueueItem(parentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent["status"] = "failed"
+	parent["error"] = "simulated failure"
+	parent["correlation"] = map[string]any{"task_id": parentID}
+	if err := writeJSONStateFile(filepath.Join(harness.fixture.QueueDir, parentID+".json"), parent); err != nil {
+		t.Fatal(err)
+	}
+	if err := harness.fixture.writeTaskState(parentID, "failed", &harness.fixture.Workers[0], map[string]any{"error": "simulated failure"}); err != nil {
+		t.Fatal(err)
+	}
+	auditBefore, err := readAuditEntries(harness.fixture.Audit.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentBefore := digestHex(parent)
+	retryID := parentID + "-retry"
+	if retry, replayed, retryErr := harness.fixture.retryProductTask(parentID, retryID); retryErr == nil || replayed || retry != nil {
+		t.Fatalf("corrupt retry=%#v replayed=%v err=%v", retry, replayed, retryErr)
+	}
+	if _, err := harness.fixture.readQueueItem(retryID); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("corrupt retry queue err=%v", err)
+	}
+	if _, err := harness.fixture.readTaskState(retryID); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("corrupt retry state err=%v", err)
+	}
+	auditAfter, err := readAuditEntries(harness.fixture.Audit.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(auditAfter) != len(auditBefore) {
+		t.Fatalf("corrupt retry created signed audit task: before=%d after=%d", len(auditBefore), len(auditAfter))
+	}
+	parentAfter, err := harness.fixture.readQueueItem(parentID)
+	if err != nil || digestHex(parentAfter) != parentBefore {
+		t.Fatalf("corrupt retry mutated parent=%#v err=%v", parentAfter, err)
+	}
+}
+
+func TestProductAPICreateProductTaskRejectsInvalidInternalRequestWithoutPersisting(t *testing.T) {
+	harness := newProductAPITestHarness(t)
+	taskID := "pi:task-invalid-internal"
+	request := productTaskRequest{
+		TaskID: taskID,
+		To:     harness.worker,
+		Intent: "reject before signing",
+		Scope: map[string]any{
+			"network":      false,
+			"write":        []any{},
+			"data_domains": []any{"workspace"},
+		},
+		Correlation: map[string]any{
+			"workspace_id":    "workspace-1",
+			"conversation_id": "conversation-1",
+			"session_id":      "session-1",
+			"tool_call_id":    "tool-call-1",
+			"task_id":         taskID,
+			"payload_digest":  "sha256:" + strings.Repeat("a", 64),
+		},
+	}
+	auditBefore, err := readAuditEntries(harness.fixture.Audit.Path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+	if task, replayed, createErr := harness.fixture.createProductTask(request, nil); createErr == nil || replayed || task != nil {
+		t.Fatalf("invalid internal create task=%#v replayed=%v err=%v", task, replayed, createErr)
+	}
+	if _, err := harness.fixture.readQueueItem(taskID); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("invalid internal create queue err=%v", err)
+	}
+	if _, err := harness.fixture.readTaskState(taskID); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("invalid internal create state err=%v", err)
+	}
+	auditAfter, err := readAuditEntries(harness.fixture.Audit.Path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+	if len(auditAfter) != len(auditBefore) {
+		t.Fatalf("invalid internal create signed audit task: before=%d after=%d", len(auditBefore), len(auditAfter))
 	}
 }
 
@@ -1861,5 +2160,222 @@ func TestLegacyTaskStateMigrationCreatesReplayableGenesis(t *testing.T) {
 	}
 	if genesis["from"] != "" || genesis["to"] != "running" || genesis["migration_source_digest"] != digestHex(legacy) {
 		t.Fatalf("migration genesis=%#v", genesis)
+	}
+}
+
+type productDurableSnapshot struct {
+	queue          []byte
+	stateJournal   []byte
+	stateProjection []byte
+	audit          []byte
+	artifactEntries int
+}
+
+func snapshotProductDurables(t *testing.T, fixture Fixture, taskID string) productDurableSnapshot {
+	t.Helper()
+	read := func(path string) []byte {
+		data, err := os.ReadFile(path)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Fatal(err)
+		}
+		return data
+	}
+	entries, err := os.ReadDir(fixture.ArtifactStoreDir)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+	return productDurableSnapshot{
+		queue:           read(filepath.Join(fixture.QueueDir, taskID+".json")),
+		stateJournal:    read(taskStateJournalPath(fixture.TaskStateDir, taskID)),
+		stateProjection: read(taskStateProjectionPath(fixture.TaskStateDir, taskID)),
+		audit:           read(fixture.Audit.Path),
+		artifactEntries: len(entries),
+	}
+}
+
+func assertProductDurablesUnchanged(t *testing.T, fixture Fixture, taskID string, want productDurableSnapshot) {
+	t.Helper()
+	if got := snapshotProductDurables(t, fixture, taskID); !bytes.Equal(got.queue, want.queue) || !bytes.Equal(got.stateJournal, want.stateJournal) || !bytes.Equal(got.stateProjection, want.stateProjection) || !bytes.Equal(got.audit, want.audit) || got.artifactEntries != want.artifactEntries {
+		t.Fatalf("durables changed: got=%#v want=%#v", got, want)
+	}
+}
+
+func invalidateSignedProductTaskCorrelation(t *testing.T, fixture Fixture, taskID string) {
+	t.Helper()
+	item, err := fixture.readQueueItem(taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, ok := item["task"].(map[string]any)
+	if !ok {
+		t.Fatalf("queue signed task=%#v", item["task"])
+	}
+	unsigned := map[string]any{}
+	for key, value := range task {
+		if key != "signature" {
+			unsigned[key] = value
+		}
+	}
+	correlation, ok := unsigned["correlation"].(map[string]any)
+	if !ok {
+		t.Fatalf("signed correlation=%#v", unsigned["correlation"])
+	}
+	correlation, err = cloneProductCorrelation(correlation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(correlation, "run_id")
+	unsigned["correlation"] = correlation
+	signedTask := signBody(fixture.AuthorityPrivateKey, unsigned)
+	item["task"] = signedTask
+	item["task_digest"] = digestHex(signedTask)
+	item["correlation"] = correlation
+	if err := writeJSONStateFile(filepath.Join(fixture.QueueDir, taskID+".json"), item); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func prepareFailedProductParent(t *testing.T, harness productAPITestHarness, taskID string) {
+	t.Helper()
+	status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", productTaskPayload(taskID, harness.worker, "retry me"), true)
+	if status != http.StatusCreated {
+		t.Fatalf("create status=%d payload=%#v", status, payload)
+	}
+	item, err := harness.fixture.readQueueItem(taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item["status"] = "failed"
+	item["error"] = "simulated failure"
+	if err := writeJSONStateFile(filepath.Join(harness.fixture.QueueDir, taskID+".json"), item); err != nil {
+		t.Fatal(err)
+	}
+	if err := harness.fixture.writeTaskState(taskID, "failed", &harness.fixture.Workers[0], map[string]any{"error": "simulated failure"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestProductAPIRejectsInvalidSignedCorrelationBeforeEveryDurableEffect(t *testing.T) {
+	for _, testCase := range []struct {
+		name   string
+		prepare func(t *testing.T, harness productAPITestHarness, taskID string)
+		invoke  func(t *testing.T, harness productAPITestHarness, taskID string)
+	}{
+		{
+			name: "execute",
+			invoke: func(t *testing.T, harness productAPITestHarness, taskID string) {
+				if view, replayed, err := harness.fixture.executeProductTask(taskID); err == nil || replayed || view != nil {
+					t.Fatalf("execute view=%#v replayed=%v err=%v", view, replayed, err)
+				}
+			},
+		},
+		{
+			name: "failure convergence",
+			invoke: func(t *testing.T, harness productAPITestHarness, taskID string) {
+				if err := harness.fixture.convergeProductFailureLocked(taskID, "", errors.New("injected failure")); err == nil {
+					t.Fatal("failure convergence accepted invalid correlation")
+				}
+			},
+		},
+		{
+			name: "drain",
+			prepare: func(t *testing.T, harness productAPITestHarness, taskID string) {
+				if _, err := harness.fixture.claimQueueItem(taskID, "product://local", 300); err != nil {
+					t.Fatal(err)
+				}
+			},
+			invoke: func(t *testing.T, harness productAPITestHarness, taskID string) {
+				item, err := harness.fixture.readQueueItem(taskID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				task, _ := item["task"].(map[string]any)
+				harness.fixture.drainProductTask(taskID, optionalString(item["lease_id"]), task)
+			},
+		},
+		{
+			name: "cancel",
+			invoke: func(t *testing.T, harness productAPITestHarness, taskID string) {
+				if view, replayed, err := harness.fixture.cancelProductTask(taskID, "reject invalid evidence"); err == nil || replayed || view != nil {
+					t.Fatalf("cancel view=%#v replayed=%v err=%v", view, replayed, err)
+				}
+			},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			harness := newProductAPITestHarness(t)
+			taskID := "pi:task-invalid-signed-correlation-" + strings.ReplaceAll(testCase.name, " ", "-")
+			status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", productTaskPayload(taskID, harness.worker, "reject invalid evidence"), true)
+			if status != http.StatusCreated {
+				t.Fatalf("create status=%d payload=%#v", status, payload)
+			}
+			if testCase.prepare != nil {
+				testCase.prepare(t, harness, taskID)
+			}
+			invalidateSignedProductTaskCorrelation(t, harness.fixture, taskID)
+			before := snapshotProductDurables(t, harness.fixture, taskID)
+			testCase.invoke(t, harness, taskID)
+			assertProductDurablesUnchanged(t, harness.fixture, taskID, before)
+		})
+	}
+}
+
+func TestProductAPIRetryLeavesNoAttemptEffectsOnInvalidOrFailedChild(t *testing.T) {
+	t.Run("invalid direct retry id", func(t *testing.T) {
+		harness := newProductAPITestHarness(t)
+		parentID := "pi:task-retry-invalid-direct"
+		prepareFailedProductParent(t, harness, parentID)
+		before := snapshotProductDurables(t, harness.fixture, parentID)
+		if retry, replayed, err := harness.fixture.retryProductTask(parentID, "invalid retry id"); err == nil || replayed || retry != nil {
+			t.Fatalf("retry=%#v replayed=%v err=%v", retry, replayed, err)
+		}
+		assertProductDurablesUnchanged(t, harness.fixture, parentID, before)
+	})
+
+	t.Run("injected child creation failure", func(t *testing.T) {
+		harness := newProductAPITestHarness(t)
+		parentID := "pi:task-retry-child-failure"
+		childID := parentID + "-child"
+		prepareFailedProductParent(t, harness, parentID)
+		before := snapshotProductDurables(t, harness.fixture, parentID)
+		harness.fixture.taskStateFault = func(point taskStateFaultPoint, transition map[string]any) error {
+			if point == taskStateFaultWrite && optionalString(transition["task_id"]) == childID && optionalString(transition["to"]) == "queued" {
+				return errors.New("injected child state failure")
+			}
+			return nil
+		}
+		if retry, replayed, err := harness.fixture.retryProductTask(parentID, childID); err == nil || replayed || retry != nil {
+			t.Fatalf("retry=%#v replayed=%v err=%v", retry, replayed, err)
+		}
+		assertProductDurablesUnchanged(t, harness.fixture, parentID, before)
+		if _, err := harness.fixture.readQueueItem(childID); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("failed child queue err=%v", err)
+		}
+		if _, err := harness.fixture.readTaskState(childID); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("failed child state err=%v", err)
+		}
+	})
+}
+
+func TestProductAPIRetryReconstructsAttemptFromDurableChildAfterParentMetadataLoss(t *testing.T) {
+	harness := newProductAPITestHarness(t)
+	parentID := "pi:task-retry-reconstruct-parent"
+	prepareFailedProductParent(t, harness, parentID)
+	firstID := parentID + "-first"
+	first, replayed, err := harness.fixture.retryProductTask(parentID, firstID)
+	if err != nil || replayed || intFromMap(first, "retry_attempt") != 1 {
+		t.Fatalf("first retry=%#v replayed=%v err=%v", first, replayed, err)
+	}
+	parent, err := harness.fixture.readQueueItem(parentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(parent, "last_retry_attempt")
+	if err := writeJSONStateFile(filepath.Join(harness.fixture.QueueDir, parentID+".json"), parent); err != nil {
+		t.Fatal(err)
+	}
+	second, replayed, err := harness.fixture.retryProductTask(parentID, parentID+"-second")
+	if err != nil || replayed || intFromMap(second, "retry_attempt") != 2 {
+		t.Fatalf("reconstructed retry=%#v replayed=%v err=%v", second, replayed, err)
 	}
 }

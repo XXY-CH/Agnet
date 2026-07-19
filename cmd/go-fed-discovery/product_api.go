@@ -16,6 +16,19 @@ import (
 
 const productAPIMaxBodyBytes = 1 << 20
 
+const productAPIPackageVersion = "0.1.0-dev.6"
+const productAPIIdentifier = "agnet.product-api/v1"
+
+var productAPICapabilities = []string{
+	"task.create",
+	"task.execute",
+	"task.cancel",
+	"receipt.get",
+	"receipt.verify",
+	"evidence.replay",
+	"evidence.subscribe",
+}
+
 type productTaskRequest struct {
 	TaskID            string         `json:"task_id"`
 	To                string         `json:"to"`
@@ -36,6 +49,21 @@ type productCancelRequest struct {
 }
 
 func registerProductAPIRoutes(mux *http.ServeMux, fixture Fixture, requireWriteToken func(http.ResponseWriter, *http.Request) bool) {
+	mux.HandleFunc("/api/v1/capabilities", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeProductError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		if !requireWriteToken(w, r) {
+			return
+		}
+		writeProductData(w, http.StatusOK, map[string]any{
+			"package_name":    "agnet",
+			"package_version": productAPIPackageVersion,
+			"product_api":     productAPIIdentifier,
+			"capabilities":    productAPICapabilities,
+		}, false)
+	})
 	mux.HandleFunc("/api/v1/tasks", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/tasks" {
 			writeProductError(w, http.StatusNotFound, "not_found", "resource not found")
@@ -253,11 +281,8 @@ func validateProductTaskRequest(request productTaskRequest) error {
 			}
 		}
 	}
-	for _, key := range []string{"workspace_id", "conversation_id", "pi_session_id", "tool_call_id"} {
-		value := optionalString(request.Correlation[key])
-		if value == "" || len(value) > 256 {
-			return errors.New("task correlation " + key + " is required")
-		}
+	if err := validateProductCorrelation(request.TaskID, request.Correlation); err != nil {
+		return err
 	}
 	if request.ArtifactRef != "" && (len(request.ArtifactRef) > 2048 || hasSwarmDelimiter(request.ArtifactRef)) {
 		return errors.New("task artifact_ref invalid")
@@ -268,6 +293,35 @@ func validateProductTaskRequest(request productTaskRequest) error {
 		}
 	}
 	return nil
+}
+
+func validateProductCorrelation(taskID string, correlation map[string]any) error {
+	for _, key := range []string{"workspace_id", "conversation_id", "session_id", "run_id", "tool_call_id", "task_id", "payload_digest"} {
+		value := optionalString(correlation[key])
+		if value == "" || len(value) > 256 {
+			return errors.New("task correlation " + key + " is required")
+		}
+	}
+	if optionalString(correlation["task_id"]) != taskID {
+		return errors.New("task correlation task_id does not match task_id")
+	}
+	payloadDigest := optionalString(correlation["payload_digest"])
+	if !strings.HasPrefix(payloadDigest, "sha256:") || len(payloadDigest) != len("sha256:")+64 || !isHexDigest(strings.TrimPrefix(payloadDigest, "sha256:")) {
+		return errors.New("task correlation payload_digest invalid")
+	}
+	return nil
+}
+
+func cloneProductCorrelation(correlation map[string]any) (map[string]any, error) {
+	data, err := json.Marshal(correlation)
+	if err != nil {
+		return nil, err
+	}
+	clone := map[string]any{}
+	if err := json.Unmarshal(data, &clone); err != nil {
+		return nil, err
+	}
+	return clone, nil
 }
 
 func isProductStringArray(value any) bool {
@@ -316,6 +370,9 @@ func acquireProductTaskLock(queueDir, taskID string) (func(), error) {
 }
 
 func (f Fixture) createProductTask(request productTaskRequest, retry map[string]any) (map[string]any, bool, error) {
+	if err := validateProductTaskRequest(request); err != nil {
+		return nil, false, err
+	}
 	release, err := acquireProductTaskLock(f.QueueDir, request.TaskID)
 	if err != nil {
 		return nil, false, err
@@ -387,7 +444,7 @@ func (f Fixture) createProductTask(request productTaskRequest, retry map[string]
 		stateExtra["retry_attempt"] = retry["retry_attempt"]
 	}
 	if _, err := f.transitionTaskState(request.TaskID, "queued", fmt.Sprint(workerID), stateExtra); err != nil {
-		return nil, false, err
+		return nil, false, f.rollbackProductTaskCreation(request.TaskID, err)
 	}
 	queuedEvent := map[string]any{"type": "task.queued", "task_id": request.TaskID, "by": requester["aid"], "zone": f.Authority["zid"]}
 	if retry != nil {
@@ -395,10 +452,24 @@ func (f Fixture) createProductTask(request productTaskRequest, retry map[string]
 		queuedEvent["retry_attempt"] = retry["retry_attempt"]
 	}
 	if err := f.sendTaskEvent(func(map[string]any) {}, queuedEvent); err != nil {
-		return nil, false, err
+		return nil, false, f.rollbackProductTaskCreation(request.TaskID, err)
 	}
 	view, err := f.productTaskViewLocked(request.TaskID)
 	return view, false, err
+}
+
+func (f Fixture) rollbackProductTaskCreation(taskID string, cause error) error {
+	var cleanupErr error
+	for _, path := range []string{
+		filepath.Join(f.QueueDir, url.PathEscape(taskID)+".json"),
+		taskStateJournalPath(f.TaskStateDir, taskID),
+		taskStateProjectionPath(f.TaskStateDir, taskID),
+	} {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("remove failed product task creation state: %w", err))
+		}
+	}
+	return errors.Join(cause, cleanupErr)
 }
 
 func (f Fixture) productTaskView(taskID string) (map[string]any, error) {
@@ -585,6 +656,14 @@ func (f Fixture) validateProductQueueEvidence(taskID string, item map[string]any
 	if optionalString(verifiedTask["task_id"]) != taskID || digestHex(verifiedTask) != optionalString(item["task_digest"]) || optionalString(item["worker"]) != optionalString(worker.Descriptor["aid"]) {
 		return nil, nil, nil, errors.New("queue task ownership binding mismatch")
 	}
+	queueCorrelation, queueCorrelationOK := item["correlation"].(map[string]any)
+	taskCorrelation, taskCorrelationOK := verifiedTask["correlation"].(map[string]any)
+	if !queueCorrelationOK || !taskCorrelationOK || digestHex(queueCorrelation) != digestHex(taskCorrelation) {
+		return nil, nil, nil, errors.New("queue correlation does not match signed task")
+	}
+	if err := validateProductCorrelation(taskID, taskCorrelation); err != nil {
+		return nil, nil, nil, fmt.Errorf("queue signed task correlation invalid: %w", err)
+	}
 	if expectedLeaseID != "" || requireLiveLease {
 		leaseID := optionalString(item["lease_id"])
 		if optionalString(item["lease_owner"]) != "product://local" || leaseID == "" || expectedLeaseID != "" && leaseID != expectedLeaseID {
@@ -616,15 +695,19 @@ func (f Fixture) executeProductTask(taskID string) (map[string]any, bool, error)
 			release()
 		}
 	}()
-	view, err := f.productTaskViewLocked(taskID)
-	if err != nil {
-		return nil, false, err
-	}
 	item, err := f.readQueueItem(taskID)
 	if err != nil {
 		return nil, false, err
 	}
 	state, err := f.readTaskState(taskID)
+	if err != nil {
+		return nil, false, err
+	}
+	_, _, task, err := f.validateProductQueueEvidence(taskID, item, "", false)
+	if err != nil {
+		return nil, false, err
+	}
+	view, err := f.productTaskViewLocked(taskID)
 	if err != nil {
 		return nil, false, err
 	}
@@ -635,10 +718,6 @@ func (f Fixture) executeProductTask(taskID string) (map[string]any, bool, error)
 			return view, true, nil
 		}
 		return nil, false, errors.New("terminal product projections do not agree")
-	}
-	_, _, task, err := f.validateProductQueueEvidence(taskID, item, "", false)
-	if err != nil {
-		return nil, false, err
 	}
 
 	switch queueStatus {
@@ -909,6 +988,13 @@ func (f Fixture) cancelProductTask(taskID, reason string) (map[string]any, bool,
 	if err != nil {
 		return nil, false, err
 	}
+	origin, worker, task, err := f.validateProductQueueEvidence(taskID, item, "", false)
+	if err != nil {
+		return nil, false, err
+	}
+	if _, err := f.reconcileProductTerminalReceiptLocked(taskID); err != nil {
+		return nil, false, err
+	}
 	view, err := f.productTaskViewLocked(taskID)
 	if err != nil {
 		return nil, false, err
@@ -920,12 +1006,9 @@ func (f Fixture) cancelProductTask(taskID, reason string) (map[string]any, bool,
 	if status == "completed" || status == "failed" {
 		return nil, false, fmt.Errorf("%s task cannot be cancelled", status)
 	}
-	requester, _ := item["requester"].(map[string]any)
-	task, _ := item["task"].(map[string]any)
-	origin, _ := item["origin_zone_descriptor"].(map[string]any)
-	worker := f.workerByAlias(optionalString(task["to"]))
-	if requester == nil || origin == nil || worker == nil {
-		return nil, false, errors.New("task cancellation evidence unavailable")
+	requester := map[string]any{"aid": optionalString(task["from"])}
+	if requester["aid"] == "" {
+		return nil, false, errors.New("task cancellation requester missing from verified task")
 	}
 	cancelBody := map[string]any{
 		"task_id":   taskID,
@@ -935,7 +1018,7 @@ func (f Fixture) cancelProductTask(taskID, reason string) (map[string]any, bool,
 		"issued_at": time.Now().UTC().Format(time.RFC3339Nano),
 	}
 	cancel := signBody(f.AuthorityPrivateKey, cancelBody)
-	if err := f.cancelTask(func(map[string]any) {}, origin, worker, requester, cancel); err != nil {
+	if err := f.cancelTaskWithOriginal(func(map[string]any) {}, origin, worker, requester, cancel, task); err != nil {
 		return nil, false, err
 	}
 	item["status"] = "cancelled"
@@ -950,6 +1033,9 @@ func (f Fixture) cancelProductTask(taskID, reason string) (map[string]any, bool,
 }
 
 func (f Fixture) retryProductTask(parentID, taskID string) (map[string]any, bool, error) {
+	if err := validateTaskID(taskID); err != nil {
+		return nil, false, err
+	}
 	if taskID == parentID {
 		return nil, false, errors.New("retry task_id must differ from parent")
 	}
@@ -962,6 +1048,18 @@ func (f Fixture) retryProductTask(parentID, taskID string) (map[string]any, bool
 	if err != nil {
 		return nil, false, err
 	}
+	_, _, parentTask, err := f.validateProductQueueEvidence(parentID, parent, "", false)
+	if err != nil {
+		return nil, false, err
+	}
+	correlation, ok := parentTask["correlation"].(map[string]any)
+	if !ok {
+		return nil, false, errors.New("retry parent signed correlation missing")
+	}
+	correlationCopy, err := cloneProductCorrelation(correlation)
+	if err != nil {
+		return nil, false, err
+	}
 	parentView, err := f.productTaskView(parentID)
 	if err != nil {
 		return nil, false, err
@@ -971,32 +1069,24 @@ func (f Fixture) retryProductTask(parentID, taskID string) (map[string]any, bool
 	}
 	attempt := 0
 	if existing, existingErr := f.readQueueItem(taskID); existingErr == nil {
-		if optionalString(existing["retry_of"]) != parentID {
-			return nil, false, errProductTaskConflict
+		_, _, existingTask, evidenceErr := f.validateProductQueueEvidence(taskID, existing, "", false)
+		if evidenceErr != nil {
+			return nil, false, evidenceErr
 		}
 		attempt = intFromMap(existing, "retry_attempt")
-		if attempt < 1 {
-			return nil, false, errors.New("retry attempt missing")
+		if optionalString(existing["retry_of"]) != parentID || optionalString(existingTask["retry_of"]) != parentID || intFromMap(existingTask, "retry_attempt") != attempt || attempt < 1 {
+			return nil, false, errProductTaskConflict
 		}
 	} else if !errors.Is(existingErr, os.ErrNotExist) {
 		return nil, false, existingErr
 	} else {
-		attempt = intFromMap(parent, "last_retry_attempt") + 1
-		if parentAttempt := intFromMap(parent, "retry_attempt"); attempt <= parentAttempt {
-			attempt = parentAttempt + 1
-		}
-		parent["last_retry_attempt"] = float64(attempt)
-		if err := writeJSONStateFile(filepath.Join(f.QueueDir, url.PathEscape(parentID)+".json"), parent); err != nil {
+		attempt, err = f.nextProductRetryAttempt(parentID)
+		if err != nil {
 			return nil, false, err
 		}
 	}
-	parentTask, _ := parent["task"].(map[string]any)
-	correlation, _ := parent["correlation"].(map[string]any)
-	correlationCopy := map[string]any{}
-	for key, value := range correlation {
-		correlationCopy[key] = value
-	}
 	correlationCopy["attempt"] = float64(attempt)
+	correlationCopy["task_id"] = taskID
 	request := productTaskRequest{
 		TaskID:            taskID,
 		To:                optionalString(parentTask["to"]),
@@ -1007,7 +1097,47 @@ func (f Fixture) retryProductTask(parentID, taskID string) (map[string]any, bool
 	}
 	request.Scope, _ = parentTask["scope"].(map[string]any)
 	request.Budget, _ = parentTask["budget"].(map[string]any)
+	if err := validateProductTaskRequest(request); err != nil {
+		return nil, false, err
+	}
 	return f.createProductTask(request, map[string]any{"retry_of": parentID, "retry_attempt": float64(attempt)})
+}
+
+func (f Fixture) nextProductRetryAttempt(parentID string) (int, error) {
+	entries, err := os.ReadDir(f.QueueDir)
+	if err != nil {
+		return 0, err
+	}
+	maxAttempt := 0
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(f.QueueDir, entry.Name()))
+		if err != nil {
+			return 0, err
+		}
+		item := map[string]any{}
+		if err := json.Unmarshal(data, &item); err != nil {
+			return 0, err
+		}
+		if optionalString(item["retry_of"]) != parentID {
+			continue
+		}
+		childID := optionalString(item["task_id"])
+		_, _, task, err := f.validateProductQueueEvidence(childID, item, "", false)
+		if err != nil {
+			return 0, fmt.Errorf("validate durable retry child: %w", err)
+		}
+		attempt := intFromMap(item, "retry_attempt")
+		if childID == parentID || attempt < 1 || optionalString(task["retry_of"]) != parentID || intFromMap(task, "retry_attempt") != attempt {
+			return 0, errors.New("durable retry child lineage invalid")
+		}
+		if attempt > maxAttempt {
+			maxAttempt = attempt
+		}
+	}
+	return maxAttempt + 1, nil
 }
 
 func (f Fixture) productCommittedReceipt(taskID string) (map[string]any, error) {
@@ -1039,6 +1169,14 @@ func (f Fixture) productCommittedReceipt(taskID string) (map[string]any, error) 
 	status := optionalString(receipt["status"])
 	if status != "completed" && status != "failed" && status != "cancelled" {
 		return nil, errors.New("receipt terminal status invalid")
+	}
+	taskCorrelation, ok := task["correlation"].(map[string]any)
+	if !ok || validateProductCorrelation(taskID, taskCorrelation) != nil {
+		return nil, errors.New("signed task correlation invalid")
+	}
+	receiptCorrelation, ok := receipt["correlation"].(map[string]any)
+	if !ok || validateProductCorrelation(taskID, receiptCorrelation) != nil || digestHex(taskCorrelation) != digestHex(receiptCorrelation) {
+		return nil, errors.New("receipt correlation does not match signed task")
 	}
 	if err := verifyReceiptRecord(record, f.ArtifactStoreDir, task); err != nil {
 		return nil, err

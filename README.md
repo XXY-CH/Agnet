@@ -91,7 +91,7 @@ flowchart TB
 
 > **Current baseline:** `v14.11-phase-c-local-foundations`
 > **Maturity:** research prototype with a completed local proof kernel—not a production Agent Net.
-> **Package line:** `0.1.0-dev.3` prerelease; the Human Gateway requires a bearer token whenever its port is enabled.
+> **Package line:** `0.1.0-dev.6` prerelease; the Human Gateway requires a bearer token whenever its port is enabled.
 
 U1–U30 are complete for the scoped local foundation. The strongest implemented product slice is a same-host, durable Go Swarm backed by an authoritative filesystem journal and OS process locks.
 

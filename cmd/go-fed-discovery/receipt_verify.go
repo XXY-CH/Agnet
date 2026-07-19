@@ -87,6 +87,17 @@ func verifyReceiptRecord(record map[string]any, artifactStoreDir string, signedT
 	if len(signedTasks) > 0 && digestHex(signedTasks[0]) != optionalString(receipt["task_digest"]) {
 		return errors.New("receipt task_digest mismatch")
 	}
+	if len(signedTasks) > 0 {
+		if correlation, ok := signedTasks[0]["correlation"].(map[string]any); ok {
+			if err := validateProductCorrelation(optionalString(receipt["task_id"]), correlation); err != nil {
+				return errors.New("signed task correlation invalid")
+			}
+			receiptCorrelation, ok := receipt["correlation"].(map[string]any)
+			if !ok || validateProductCorrelation(optionalString(receipt["task_id"]), receiptCorrelation) != nil || digestHex(correlation) != digestHex(receiptCorrelation) {
+				return errors.New("receipt correlation does not match signed task")
+			}
+		}
+	}
 	if receipt["to"] != worker["aid"] {
 		return errors.New("receipt worker mismatch")
 	}

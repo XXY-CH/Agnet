@@ -417,6 +417,9 @@ func (f Fixture) executeTask(send sendFunc, origin map[string]any, worker *Worke
 		"sandbox_proof":      sandboxProof,
 		"tool":               toolName,
 	}
+	if correlation, ok := task["correlation"].(map[string]any); ok {
+		receipt["correlation"] = correlation
+	}
 	if containerEvidence != nil {
 		receipt["container_profile"] = containerProfile
 		receipt["container_generation_digest"] = containerEvidence["generation_digest"]
@@ -501,28 +504,90 @@ func (f Fixture) originalTaskForReceipt(taskID string) (map[string]any, error) {
 	return nil, errors.New("original signed task unavailable")
 }
 
+func (f Fixture) cancellationEventCommitted(taskID, cancelDigest string) (bool, error) {
+	if f.Audit == nil {
+		return false, errors.New("audit log unavailable")
+	}
+	entries, err := readAuditEntries(f.Audit.Path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if _, err := auditHead(entries); err != nil {
+		return false, err
+	}
+	for _, entry := range entries {
+		record, _ := entry["record"].(map[string]any)
+		if optionalString(record["kind"]) != "go_fed_event" {
+			continue
+		}
+		event, _ := record["event"].(map[string]any)
+		if optionalString(event["type"]) != "task.cancelled" || optionalString(event["task_id"]) != taskID {
+			continue
+		}
+		if recordedDigest := optionalString(event["cancel_digest"]); recordedDigest == "" || recordedDigest == cancelDigest {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (f Fixture) cancelTask(send sendFunc, origin map[string]any, worker *Worker, requester, cancel map[string]any) error {
 	taskID := fmt.Sprint(cancel["task_id"])
-	reason := fmt.Sprint(cancel["reason"])
 	originalTask, err := f.originalTaskForReceipt(taskID)
 	if err != nil {
 		return err
 	}
-	if optionalString(originalTask["task_id"]) != taskID {
+	return f.cancelTaskWithOriginal(send, origin, worker, requester, cancel, originalTask)
+}
+
+func (f Fixture) cancelTaskWithOriginal(send sendFunc, origin map[string]any, worker *Worker, requester, cancel, originalTask map[string]any) error {
+	taskID := fmt.Sprint(cancel["task_id"])
+	if originalTask == nil || optionalString(originalTask["task_id"]) != taskID {
 		return errors.New("original signed task mismatch")
 	}
-	if _, err := f.transitionTaskState(taskID, "cancelling", optionalString(worker.Descriptor["aid"]), map[string]any{"reason": reason}); err != nil {
-		return errors.New("task completion already committed")
-	}
-	_ = f.Runtime.Cancel(taskID)
-	if err := f.sendTaskEvent(send, map[string]any{
-		"type":    "task.cancelled",
-		"task_id": taskID,
-		"by":      requester["aid"],
-		"worker":  worker.Descriptor["aid"],
-		"reason":  reason,
-	}); err != nil {
+	state, err := f.readTaskState(taskID)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
+	}
+	if optionalString(state["status"]) == "cancelling" {
+		persisted, ok := state["cancel"].(map[string]any)
+		if !ok {
+			if persistedReason := optionalString(state["reason"]); persistedReason != "" && persistedReason != optionalString(cancel["reason"]) {
+				return errors.New("cancellation intent unavailable")
+			}
+		} else {
+			if optionalString(persisted["task_id"]) != taskID {
+				return errors.New("persisted cancellation task mismatch")
+			}
+			cancel = persisted
+		}
+	} else {
+		reason := optionalString(cancel["reason"])
+		if _, err := f.transitionTaskState(taskID, "cancelling", optionalString(worker.Descriptor["aid"]), map[string]any{"reason": reason, "cancel": cancel}); err != nil {
+			return errors.New("task completion already committed")
+		}
+	}
+	reason := optionalString(cancel["reason"])
+	cancelDigest := digestHex(cancel)
+	_ = f.Runtime.Cancel(taskID)
+	eventCommitted, err := f.cancellationEventCommitted(taskID, cancelDigest)
+	if err != nil {
+		return err
+	}
+	if !eventCommitted {
+		if err := f.sendTaskEvent(send, map[string]any{
+			"type":          "task.cancelled",
+			"task_id":       taskID,
+			"by":            requester["aid"],
+			"worker":        worker.Descriptor["aid"],
+			"reason":        reason,
+			"cancel_digest": cancelDigest,
+		}); err != nil {
+			return err
+		}
 	}
 	policyScope := map[string]any{
 		"network":           false,
@@ -543,7 +608,7 @@ func (f Fixture) cancelTask(send sendFunc, origin map[string]any, worker *Worker
 		"to":                 worker.Descriptor["aid"],
 		"status":             "cancelled",
 		"cancel":             cancel,
-		"cancel_digest":      digestHex(cancel),
+		"cancel_digest":      cancelDigest,
 		"artifact_refs":      []string{},
 		"artifact_manifests": []map[string]any{},
 		"event_count":        float64(1),
@@ -556,6 +621,9 @@ func (f Fixture) cancelTask(send sendFunc, origin map[string]any, worker *Worker
 		"sandbox":            sandbox,
 		"sandbox_proof":      f.sandboxProof(taskID, worker, sandbox, policyDigest, ""),
 		"tool":               "none",
+	}
+	if correlation, ok := originalTask["correlation"].(map[string]any); ok {
+		receipt["correlation"] = correlation
 	}
 	if transportProof := f.transportProof(); transportProof != nil {
 		receipt["transport_proof"] = transportProof
@@ -637,6 +705,9 @@ func (f Fixture) failTask(send sendFunc, origin map[string]any, worker *Worker, 
 		"sandbox":            sandbox,
 		"sandbox_proof":      f.sandboxProof(taskID, worker, sandbox, policyDigest, ""),
 		"tool":               toolName,
+	}
+	if correlation, ok := task["correlation"].(map[string]any); ok {
+		receipt["correlation"] = correlation
 	}
 	if transportProof := f.transportProof(); transportProof != nil {
 		receipt["transport_proof"] = transportProof

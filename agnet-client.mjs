@@ -13,22 +13,26 @@ export class AgnetAPIError extends Error {
   }
 }
 
-export function agnetTaskId(piSessionId, toolCallId) {
-  requireNonEmptyString(piSessionId, "piSessionId");
+export function agnetTaskId(sessionId, toolCallId) {
+  requireNonEmptyString(sessionId, "sessionId");
   requireNonEmptyString(toolCallId, "toolCallId");
-  return `pi:${sha256(`${piSessionId}\0${toolCallId}`)}`;
+  return `agent:${sha256(`${sessionId}\0${toolCallId}`)}`;
 }
 
-export function createToolCorrelation({ workspaceId, conversationId, piSessionId, toolCallId }) {
-  for (const [name, value] of Object.entries({ workspaceId, conversationId, piSessionId, toolCallId })) {
+export function createToolCorrelation({ workspaceId, conversationId, sessionId, runId, toolCallId, taskId = agnetTaskId(sessionId, toolCallId), payloadDigest }) {
+  for (const [name, value] of Object.entries({ workspaceId, conversationId, sessionId, runId, toolCallId, taskId, payloadDigest })) {
     requireNonEmptyString(value, name);
   }
-  return {
+  if (!/^sha256:[a-f0-9]{64}$/.test(payloadDigest)) throw new TypeError("payloadDigest must be a sha256 digest");
+  return Object.freeze({
     workspace_id: workspaceId,
     conversation_id: conversationId,
-    pi_session_id: piSessionId,
+    session_id: sessionId,
+    run_id: runId,
     tool_call_id: toolCallId,
-  };
+    task_id: taskId,
+    payload_digest: payloadDigest,
+  });
 }
 
 export class AgnetClient {
@@ -68,13 +72,28 @@ export class AgnetClient {
     };
   }
 
+  async handshake({ packageVersion, productApi, capabilities }) {
+    requireNonEmptyString(packageVersion, "packageVersion");
+    requireNonEmptyString(productApi, "productApi");
+    if (!Array.isArray(capabilities) || capabilities.some((capability) => typeof capability !== "string" || capability.length === 0)) {
+      throw new TypeError("capabilities must be a non-empty string array");
+    }
+    const advertised = this.#data(await this.#request("/api/v1/capabilities"));
+    if (!isRecord(advertised) || advertised.package_name !== "agnet" || advertised.package_version !== packageVersion || advertised.product_api !== productApi || !sameStringList(advertised.capabilities, capabilities)) {
+      throw new AgnetAPIError("Agnet capability handshake does not match the required contract", { status: 409, code: "capability_mismatch", details: advertised });
+    }
+    return Object.freeze({ packageName: advertised.package_name, packageVersion: advertised.package_version, productApi: advertised.product_api, capabilities: Object.freeze([...advertised.capabilities]) });
+  }
+
   async createTask(input) {
+    const correlation = normalizeCorrelation(input.correlation);
+    if (correlation.task_id !== input.taskId) throw new TypeError("correlation.task_id must match taskId");
     const payload = {
       task_id: input.taskId,
       to: input.to,
       intent: input.intent,
       scope: input.scope,
-      correlation: normalizeCorrelation(input.correlation),
+      correlation,
     };
     if (input.budget !== undefined) payload.budget = input.budget;
     if (input.artifactRef !== undefined) payload.artifact_ref = input.artifactRef;
@@ -112,6 +131,12 @@ export class AgnetClient {
     return this.#data(await this.#request(`/api/v1/tasks/${encodeURIComponent(taskId)}/receipt`));
   }
 
+  async replay(taskId, after = 0) {
+    requireNonEmptyString(taskId, "taskId");
+    if (!Number.isSafeInteger(after) || after < 0) throw new TypeError("replay cursor must be a non-negative safe integer");
+    return this.#replayBatch(taskId, String(after));
+  }
+
   async verifyReceipt(committed) {
     if (!isRecord(committed) || committed.committed !== true || typeof committed.task_id !== "string" || typeof committed.receipt_digest !== "string") {
       throw new AgnetAPIError("Receipt is not an Agnet committed receipt", { status: 409, code: "verification_failed" });
@@ -131,6 +156,8 @@ export class AgnetClient {
     if ((signedStatus !== "completed" && signedStatus !== "failed" && signedStatus !== "cancelled") || committed.status !== signedStatus) {
       throw new AgnetAPIError("Committed receipt terminal status mismatch", { status: 409, code: "verification_failed" });
     }
+    assertReceiptCorrelation(committed);
+    const artifacts = receiptArtifactPairs(committed.receipt);
     try {
       verifyFederatedReceipt({
         type: "FED_RECEIPT",
@@ -146,12 +173,8 @@ export class AgnetClient {
     if (localDigest !== committed.receipt_digest) {
       throw new AgnetAPIError("Local receipt digest mismatch", { status: 409, code: "verification_failed" });
     }
-    const manifests = Array.isArray(committed.receipt.artifact_manifests) ? committed.receipt.artifact_manifests : [];
-    for (const manifest of manifests) {
-      if (!isRecord(manifest) || typeof manifest.uri !== "string" || typeof manifest.sha256 !== "string" || !Number.isSafeInteger(manifest.size) || manifest.size < 0) {
-        throw new AgnetAPIError("Receipt artifact manifest is invalid", { status: 409, code: "verification_failed" });
-      }
-      const stream = await this.getArtifact(taskId, manifest.uri);
+    for (const { reference, manifest } of artifacts) {
+      const stream = await this.getArtifact(taskId, reference);
       const observed = await hashArtifactStream(stream, this.#maxArtifactBytes);
       if (observed.sha256 !== manifest.sha256 || observed.size !== manifest.size) {
         throw new AgnetAPIError("Local artifact verification failed", { status: 409, code: "verification_failed" });
@@ -163,7 +186,7 @@ export class AgnetClient {
       verification: {
         mode: "local",
         receipt_digest: localDigest,
-        artifact_count: manifests.length,
+        artifact_count: artifacts.length,
       },
     };
   }
@@ -175,6 +198,22 @@ export class AgnetClient {
     const response = await this.#rawRequest(path, { signal });
     if (!response.body) throw new AgnetAPIError("Artifact response has no body", { status: 502, code: "empty_artifact" });
     return response.body;
+  }
+
+  async #replayBatch(taskId, after, signal) {
+    const afterCursor = replayCursor(after, "replay cursor");
+    const payload = await this.#request(`/api/v1/tasks/${encodeURIComponent(taskId)}/events?after=${encodeURIComponent(afterCursor)}`, { signal });
+    if (!isRecord(payload) || !Array.isArray(payload.data)) throw invalidReplayResponse("Agnet returned replay data that is not an array");
+    const nextCursor = replayCursor(payload.next_cursor ?? afterCursor, "next replay cursor");
+    let previousCursor = afterCursor;
+    for (const event of payload.data) {
+      if (!isRecord(event) || !Number.isSafeInteger(event.cursor) || event.cursor <= previousCursor || event.cursor > nextCursor || typeof event.type !== "string" || event.type.length === 0 || typeof event.verified !== "boolean" || !isRecord(event.payload) || event.payload.task_id !== taskId) {
+        throw invalidReplayResponse("Agnet returned an invalid replay event");
+      }
+      previousCursor = event.cursor;
+    }
+    if (nextCursor < afterCursor || payload.data.length > 0 && nextCursor === afterCursor) throw invalidReplayResponse("Agnet returned a nonprogressing replay cursor");
+    return Object.freeze({ events: Object.freeze([...payload.data]), nextCursor });
   }
 
   subscribe(taskId, listener, { after = "0", signal, onError } = {}) {
@@ -196,21 +235,21 @@ export class AgnetClient {
       let cursor = String(after);
       try {
         while (!stopped) {
-          const payload = await this.#request(`/api/v1/tasks/${encodeURIComponent(taskId)}/events?after=${encodeURIComponent(cursor)}`, { signal: controller.signal });
-          const events = Array.isArray(payload.data) ? payload.data : [];
-          for (const event of events) {
+          const batch = await this.#replayBatch(taskId, cursor, controller.signal);
+          for (const event of batch.events) {
             if (stopped) break;
-            listener(event);
+            await listener(event);
             if (event.type === TERMINAL_EVENT_TYPE) {
               stop();
               break;
             }
           }
-          cursor = String(payload.next_cursor ?? cursor);
-          if (!stopped && events.length === 0) await delay(this.#pollIntervalMs, controller.signal);
+          cursor = String(batch.nextCursor);
+          if (!stopped && batch.events.length === 0) await delay(this.#pollIntervalMs, controller.signal);
         }
       } catch (error) {
         if (!stopped) {
+          stop();
           if (typeof onError === "function") onError(error);
           else queueMicrotask(() => { throw error; });
         }
@@ -298,8 +337,19 @@ async function hashArtifactStream(stream, maxBytes) {
     }
     return { sha256: hash.digest("hex"), size };
   } finally {
+
     reader.releaseLock();
   }
+}
+
+function replayCursor(value, label) {
+  const cursor = typeof value === "string" || typeof value === "number" ? Number(value) : Number.NaN;
+  if (!Number.isSafeInteger(cursor) || cursor < 0) throw invalidReplayResponse(`${label} must be a non-negative safe integer`);
+  return cursor;
+}
+
+function invalidReplayResponse(message) {
+  return new AgnetAPIError(message, { status: 502, code: "invalid_response" });
 }
 
 function isRecord(value) {
@@ -307,13 +357,56 @@ function isRecord(value) {
 }
 
 function normalizeCorrelation(correlation) {
-  if (!correlation || typeof correlation !== "object") return correlation;
-  if ("workspace_id" in correlation) return correlation;
+  if (!correlation || typeof correlation !== "object") throw new TypeError("correlation is required");
+  if ("workspace_id" in correlation) return validateCorrelation(correlation);
   return createToolCorrelation({
     workspaceId: correlation.workspaceId,
     conversationId: correlation.conversationId,
-    piSessionId: correlation.piSessionId,
+    sessionId: correlation.sessionId,
+    runId: correlation.runId,
     toolCallId: correlation.toolCallId,
+    taskId: correlation.taskId,
+    payloadDigest: correlation.payloadDigest,
+  });
+}
+
+function validateCorrelation(correlation) {
+  for (const field of ["workspace_id", "conversation_id", "session_id", "run_id", "tool_call_id", "task_id", "payload_digest"]) {
+    requireNonEmptyString(correlation[field], `correlation.${field}`);
+  }
+  if (!/^sha256:[a-f0-9]{64}$/.test(correlation.payload_digest)) throw new TypeError("correlation.payload_digest must be a sha256 digest");
+  return Object.freeze({ workspace_id: correlation.workspace_id, conversation_id: correlation.conversation_id, session_id: correlation.session_id, run_id: correlation.run_id, tool_call_id: correlation.tool_call_id, task_id: correlation.task_id, payload_digest: correlation.payload_digest });
+}
+
+function sameStringList(actual, expected) {
+  return Array.isArray(actual) && actual.length === expected.length && actual.every((value, index) => value === expected[index]);
+}
+
+function assertReceiptCorrelation(committed) {
+  try {
+    const taskCorrelation = validateCorrelation(committed.signed_task.correlation);
+    const receiptCorrelation = validateCorrelation(committed.receipt.correlation);
+    if (taskCorrelation.task_id !== committed.task_id || receiptCorrelation.task_id !== committed.task_id || !sameStringList(Object.values(taskCorrelation), Object.values(receiptCorrelation))) {
+      throw new Error("receipt correlation does not match the signed task");
+    }
+  } catch (cause) {
+    throw new AgnetAPIError("Committed receipt correlation binding mismatch", { status: 409, code: "verification_failed", cause });
+  }
+}
+
+function receiptArtifactPairs(receipt) {
+  const references = receipt.artifact_refs;
+  const manifests = receipt.artifact_manifests;
+  if (references === undefined && manifests === undefined) return [];
+  if (!Array.isArray(references) || !Array.isArray(manifests) || references.length !== manifests.length) {
+    throw new AgnetAPIError("Receipt artifact refs and manifests must be equal-length arrays", { status: 409, code: "verification_failed" });
+  }
+  return references.map((reference, index) => {
+    const manifest = manifests[index];
+    if (typeof reference !== "string" || reference.length === 0 || !isRecord(manifest) || manifest.uri !== reference || typeof manifest.sha256 !== "string" || !Number.isSafeInteger(manifest.size) || manifest.size < 0) {
+      throw new AgnetAPIError("Receipt artifact manifest is invalid", { status: 409, code: "verification_failed" });
+    }
+    return Object.freeze({ reference, manifest: Object.freeze({ uri: manifest.uri, sha256: manifest.sha256, size: manifest.size }) });
   });
 }
 

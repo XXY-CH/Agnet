@@ -71,7 +71,7 @@ test("AgnetClient maps the stable product contract without exposing journal path
       to: "agent://worker",
       intent: intent.text,
       scope: { network: false, write: [], data_domains: ["workspace"] },
-      correlation: { workspace_id: "workspace-1", conversation_id: "conversation-1", pi_session_id: "session-1", tool_call_id: "call-1" },
+      correlation: { workspace_id: "workspace-1", conversation_id: "conversation-1", session_id: "session-1", run_id: "run-1", tool_call_id: "call-1", task_id: "pi:task", payload_digest: `sha256:${"a".repeat(64)}` },
     });
     assert.equal(task.status, "queued");
     assert.equal((await client.execute("pi:task")).status, "claimed");
@@ -88,8 +88,11 @@ test("AgnetClient maps the stable product contract without exposing journal path
   assert.deepEqual(requests[0].body.correlation, {
     workspace_id: "workspace-1",
     conversation_id: "conversation-1",
-    pi_session_id: "session-1",
+    session_id: "session-1",
+    run_id: "run-1",
     tool_call_id: "call-1",
+    task_id: "pi:task",
+    payload_digest: `sha256:${"a".repeat(64)}`,
   });
   assert.ok(requests.every((request) => !JSON.stringify(request).includes("journal")));
 });
@@ -124,6 +127,81 @@ test("AgnetClient subscription resumes by cursor and stops at a terminal receipt
   assert.deepEqual(cursors, ["0", "2"]);
 });
 
+test("AgnetClient rejects malformed replay batches before delivery", async (t) => {
+  const valid = { cursor: 5, type: "task.started", verified: false, payload: { task_id: "pi:replay-invalid" } };
+  const cases = [
+    ["non-array data", { data: {}, next_cursor: "5" }],
+    ["unsafe cursor", { data: [{ ...valid, cursor: Number.MAX_SAFE_INTEGER + 1 }], next_cursor: String(Number.MAX_SAFE_INTEGER + 1) }],
+    ["duplicate cursor", { data: [valid, { ...valid }], next_cursor: "6" }],
+    ["decreasing cursor", { data: [{ ...valid, cursor: 6 }, valid], next_cursor: "6" }],
+    ["cursor at or before after", { data: [{ ...valid, cursor: 4 }], next_cursor: "5" }],
+    ["cursor beyond next bound", { data: [{ ...valid, cursor: 6 }], next_cursor: "5" }],
+    ["nonprogressing next cursor", { data: [valid], next_cursor: "4" }],
+    ["regressing empty next cursor", { data: [], next_cursor: "3" }],
+    ["cross-task payload", { data: [{ ...valid, payload: { task_id: "pi:other-task" } }], next_cursor: "5" }],
+    ["malformed event", { data: [{ ...valid, type: "" }], next_cursor: "5" }],
+  ];
+  for (const [name, payload] of cases) {
+    await t.test(name, async () => {
+      await withServer((_request, response) => json(response, 200, payload), async (baseURL) => {
+        const client = new AgnetClient({ baseURL });
+        await assert.rejects(client.replay("pi:replay-invalid", 4), (error) => error instanceof AgnetAPIError && error.code === "invalid_response");
+      });
+    });
+  }
+});
+
+test("AgnetClient subscription stops on its first invalid replay batch and preserves the typed cause", async () => {
+  let requests = 0;
+  let deliveries = 0;
+  await withServer((_request, response) => {
+    requests += 1;
+    json(response, 200, { data: [{ cursor: 1, type: "task.started", verified: false, payload: { task_id: "pi:wrong-task" } }], next_cursor: "1" });
+  }, async (baseURL) => {
+    const client = new AgnetClient({ baseURL, pollIntervalMs: 1 });
+    const error = await new Promise((resolve) => {
+      client.subscribe("pi:subscription-task", () => { deliveries += 1; }, { onError: resolve });
+    });
+    assert.ok(error instanceof AgnetAPIError);
+    assert.equal(error.code, "invalid_response");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  assert.equal(deliveries, 0);
+  assert.equal(requests, 1);
+});
+
+test("AgnetClient subscription rejects a regressing empty cursor without polling again", async () => {
+  const cursors = [];
+  let deliveries = 0;
+  let errors = 0;
+  await withServer((request, response) => {
+    const url = new URL(request.url, "http://local");
+    cursors.push(url.searchParams.get("after"));
+    json(response, 200, { data: [], next_cursor: "3" });
+  }, async (baseURL) => {
+    const client = new AgnetClient({ baseURL, pollIntervalMs: 1 });
+    let resolveError;
+    const error = new Promise((resolve) => { resolveError = resolve; });
+    const stop = client.subscribe("pi:subscription-regressing-empty", () => { deliveries += 1; }, {
+      after: "4",
+      onError: (cause) => {
+        errors += 1;
+        resolveError(cause);
+      },
+    });
+    const outcome = await Promise.race([
+      error,
+      new Promise((resolve) => setTimeout(() => resolve(null), 25)),
+    ]);
+    stop();
+    assert.ok(outcome instanceof AgnetAPIError);
+    assert.equal(outcome.code, "invalid_response");
+  });
+  assert.equal(errors, 1);
+  assert.equal(deliveries, 0);
+  assert.deepEqual(cursors, ["4"]);
+});
+
 test("AgnetClient subscription reports transport AbortError not caused by stop", async () => {
   const transportAbort = new Error("transport aborted independently");
   transportAbort.name = "AbortError";
@@ -143,7 +221,7 @@ test("AgnetClient preserves typed API failures", async () => {
   }, async (baseURL) => {
     const client = new AgnetClient({ baseURL });
     await assert.rejects(
-      client.createTask({ taskId: "pi:duplicate", to: "agent://worker", intent: "x", scope: {}, correlation: { workspace_id: "w", conversation_id: "c", pi_session_id: "s", tool_call_id: "t" } }),
+      client.createTask({ taskId: "agent:duplicate", to: "agent://worker", intent: "x", scope: {}, correlation: { workspace_id: "w", conversation_id: "c", session_id: "s", run_id: "r", tool_call_id: "t", task_id: "agent:duplicate", payload_digest: `sha256:${"a".repeat(64)}` } }),
       (error) => error instanceof AgnetAPIError && error.status === 409 && error.code === "idempotency_conflict",
     );
   });
@@ -152,7 +230,45 @@ test("AgnetClient preserves typed API failures", async () => {
 test("agnetTaskId is deterministic and separates session/tool pairs", () => {
   assert.equal(agnetTaskId("session-a", "call-a"), agnetTaskId("session-a", "call-a"));
   assert.notEqual(agnetTaskId("session-a", "call-a"), agnetTaskId("session-b", "call-a"));
-  assert.match(agnetTaskId("session-a", "call-a"), /^pi:[0-9a-f]{64}$/);
+  assert.match(agnetTaskId("session-a", "call-a"), /^agent:[0-9a-f]{64}$/);
+});
+
+test("AgnetClient requires the exact authenticated capability contract and replays a cursor batch", async () => {
+  const requests = [];
+  await withServer((request, response) => {
+    requests.push({ url: request.url, authorization: request.headers.authorization });
+    if (request.url === "/api/v1/capabilities") {
+      json(response, 200, { data: { package_name: "agnet", package_version: "0.1.0-dev.6", product_api: "agnet.product-api/v1", capabilities: ["task.create", "task.execute", "task.cancel", "receipt.get", "receipt.verify", "evidence.replay", "evidence.subscribe"] } });
+      return;
+    }
+    if (request.url === "/api/v1/tasks/pi%3Areplay/events?after=4") {
+      json(response, 200, { data: [{ cursor: 5, type: "task.started", verified: false, payload: { task_id: "pi:replay" } }], next_cursor: "5" });
+      return;
+    }
+    response.writeHead(404).end();
+  }, async (baseURL) => {
+    const client = new AgnetClient({ baseURL, token: "secret" });
+    await client.handshake({ packageVersion: "0.1.0-dev.6", productApi: "agnet.product-api/v1", capabilities: ["task.create", "task.execute", "task.cancel", "receipt.get", "receipt.verify", "evidence.replay", "evidence.subscribe"] });
+    const replay = await client.replay("pi:replay", 4);
+    assert.deepEqual(replay, { events: [{ cursor: 5, type: "task.started", verified: false, payload: { task_id: "pi:replay" } }], nextCursor: 5 });
+  });
+  assert.deepEqual(requests.map((request) => request.authorization), ["Bearer secret", "Bearer secret"]);
+});
+
+test("AgnetClient rejects a receipt whose signed task and receipt disagree on full correlation", async () => {
+  const originKey = generateKeyPairSync("ed25519").privateKey;
+  const workerZoneKey = generateKeyPairSync("ed25519").privateKey;
+  const workerKey = generateKeyPairSync("ed25519").privateKey;
+  const origin = zoneFromPrivateKey("zone://origin-correlation", originKey);
+  const workerZone = zoneFromPrivateKey("zone://worker-correlation", workerZoneKey);
+  const worker = agentFromPrivateKey("agent://worker/correlation", workerKey, { allow_network: false }, ["asp+local://worker"], ["workspace.read"]);
+  const correlation = { workspace_id: "workspace", conversation_id: "conversation", session_id: "session", run_id: "run", tool_call_id: "tool", task_id: "pi:correlation", payload_digest: `sha256:${"a".repeat(64)}` };
+  const signedTask = { task_id: "pi:correlation", from: "aid:requester", to: worker.alias, intent: "read", correlation, signature: "request-signature" };
+  const receiptBody = { task_id: signedTask.task_id, task_digest: createHash("sha256").update(canonical(signedTask)).digest("hex"), from: signedTask.from, origin_zone: origin.zid, executing_zone: workerZone.zid, to: worker.aid, status: "cancelled", correlation: { ...correlation, run_id: "other-run" }, artifact_refs: [], artifact_manifests: [], event_count: 0, approvals: [], checkpoint_refs: [], checkpoints: [] };
+  const signedReceipt = { ...receiptBody, signature: signObject(worker.privateKey, receiptBody) };
+  const committed = { committed: true, task_id: signedTask.task_id, status: "cancelled", receipt_digest: createHash("sha256").update(canonical(signedReceipt)).digest("hex"), audit_hash: "audit-hash", zone: workerZone.descriptor, worker: worker.descriptor, zone_binding: zoneBinding(workerZone, worker.descriptor), signed_task: signedTask, receipt: signedReceipt };
+  const client = new AgnetClient({ baseURL: "http://127.0.0.1:1", trustedZones: [origin.descriptor, workerZone.descriptor] });
+  await assert.rejects(client.verifyReceipt(committed), (error) => error instanceof AgnetAPIError && error.code === "verification_failed");
 });
 
 test("AgnetClient verifies receipt trust, signature, task binding, and artifact bytes locally", async (t) => {
@@ -162,7 +278,7 @@ test("AgnetClient verifies receipt trust, signature, task binding, and artifact 
   const origin = zoneFromPrivateKey("zone://origin", originKey);
   const workerZone = zoneFromPrivateKey("zone://worker", workerZoneKey);
   const worker = agentFromPrivateKey("agent://worker/tool", workerKey, { allow_network: false }, ["asp+local://worker"], ["workspace.read"]);
-  const signedTask = { task_id: "pi:local-verify", from: "aid:requester", to: worker.alias, intent: "read", signature: "request-signature" };
+  const signedTask = { task_id: "pi:local-verify", from: "aid:requester", to: worker.alias, intent: "read", correlation: { workspace_id: "workspace", conversation_id: "conversation", session_id: "session", run_id: "run", tool_call_id: "tool", task_id: "pi:local-verify", payload_digest: `sha256:${"a".repeat(64)}` }, signature: "request-signature" };
   const artifactBytes = Buffer.from("locally verified artifact", "utf8");
   const artifactURI = "artifact://local/pi:local-verify/result.txt";
   const manifestBody = {
@@ -188,6 +304,7 @@ test("AgnetClient verifies receipt trust, signature, task binding, and artifact 
     approvals: [],
     checkpoint_refs: [],
     checkpoints: [],
+    correlation: signedTask.correlation,
   };
   const signedReceipt = { ...receiptBody, signature: signObject(worker.privateKey, receiptBody) };
   const committed = {
@@ -256,6 +373,28 @@ test("AgnetClient verifies receipt trust, signature, task binding, and artifact 
     const tampered = structuredClone(committed);
     tampered.receipt.signature = `${tampered.receipt.signature}tampered`;
     await assert.rejects(client.verifyReceipt(tampered), (error) => error instanceof AgnetAPIError && error.code === "verification_failed");
+
+    await t.test("rejects signed artifact refs without manifests before fetching artifacts", async () => {
+      const missingManifests = structuredClone(committed);
+      const { signature: _signature, artifact_manifests: _manifests, result_artifact: _resultArtifact, ...unsignedReceipt } = missingManifests.receipt;
+      const unsignedCancelledReceipt = { ...unsignedReceipt, status: "cancelled" };
+      missingManifests.status = "cancelled";
+      missingManifests.receipt = { ...unsignedCancelledReceipt, signature: signObject(worker.privateKey, unsignedCancelledReceipt) };
+      missingManifests.receipt_digest = createHash("sha256").update(canonical(missingManifests.receipt)).digest("hex");
+      const readsBeforeVerification = artifactReads;
+      await assert.rejects(client.verifyReceipt(missingManifests), (error) => error instanceof AgnetAPIError && error.code === "verification_failed");
+      assert.equal(artifactReads, readsBeforeVerification);
+    });
+
+    await t.test("rejects signed receipt artifact manifest cardinality mismatches before fetching artifacts", async () => {
+      const extraManifests = structuredClone(committed);
+      const { signature: _signature, ...unsignedReceipt } = extraManifests.receipt;
+      extraManifests.receipt = { ...unsignedReceipt, artifact_manifests: [manifest, manifest], signature: signObject(worker.privateKey, { ...unsignedReceipt, artifact_manifests: [manifest, manifest] }) };
+      extraManifests.receipt_digest = createHash("sha256").update(canonical(extraManifests.receipt)).digest("hex");
+      const readsBeforeVerification = artifactReads;
+      await assert.rejects(client.verifyReceipt(extraManifests), (error) => error instanceof AgnetAPIError && error.code === "verification_failed");
+      assert.equal(artifactReads, readsBeforeVerification);
+    });
   });
 });
 

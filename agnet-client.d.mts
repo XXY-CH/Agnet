@@ -1,8 +1,11 @@
 export interface ToolCorrelation {
   workspace_id: string;
   conversation_id: string;
-  pi_session_id: string;
+  session_id: string;
+  run_id: string;
   tool_call_id: string;
+  task_id: string;
+  payload_digest: string;
   attempt?: number;
 }
 
@@ -82,8 +85,11 @@ export interface CreateTaskInput {
   correlation: ToolCorrelation | {
     workspaceId: string;
     conversationId: string;
-    piSessionId: string;
+    sessionId: string;
+    runId: string;
     toolCallId: string;
+    taskId: string;
+    payloadDigest: string;
   };
   budget?: Record<string, unknown>;
   artifactRef?: string;
@@ -103,17 +109,21 @@ export class AgnetAPIError extends Error {
   constructor(message: string, options?: { status?: number; code?: string; details?: unknown; cause?: unknown });
 }
 
-export function agnetTaskId(piSessionId: string, toolCallId: string): string;
+export function agnetTaskId(sessionId: string, toolCallId: string): string;
 export function createToolCorrelation(input: {
   workspaceId: string;
   conversationId: string;
-  piSessionId: string;
+  sessionId: string;
+  runId: string;
   toolCallId: string;
+  taskId?: string;
+  payloadDigest: string;
 }): ToolCorrelation;
 
 export class AgnetClient {
   constructor(options: AgnetClientOptions);
   createIntent(input: { workspaceId: string; conversationId: string; text: string }): ProductIntent;
+  handshake(input: { packageVersion: string; productApi: "agnet.product-api/v1"; capabilities: readonly string[] }): Promise<{ packageName: "agnet"; packageVersion: string; productApi: "agnet.product-api/v1"; capabilities: readonly string[] }>;
   createTask(input: CreateTaskInput): Promise<TaskView>;
   execute(taskId: string): Promise<TaskView>;
   cancel(taskId: string, reason?: string): Promise<TaskView>;
@@ -122,6 +132,7 @@ export class AgnetClient {
   deny(input: { taskId: string; actor?: string }): Promise<Record<string, unknown>>;
   getTask(taskId: string): Promise<TaskView>;
   getReceipt(taskId: string): Promise<CommittedReceipt>;
+  replay(taskId: string, after?: number): Promise<{ events: readonly AgnetTaskEvent[]; nextCursor: number }>;
   verifyReceipt(receipt: CommittedReceipt): Promise<VerifiedReceipt>;
   getArtifact(taskId: string, reference: string | { uri: string }, options?: { signal?: AbortSignal }): Promise<ReadableStream<Uint8Array>>;
   subscribe(taskId: string, listener: (event: AgnetTaskEvent) => void, options?: SubscriptionOptions): () => void;
