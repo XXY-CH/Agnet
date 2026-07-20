@@ -526,6 +526,13 @@ func (f Fixture) drainQueueItem(send sendFunc, taskID, leaseID string) error {
 				return err
 			}
 			defer release()
+			scope, ok := task["scope"].(map[string]any)
+			if !ok {
+				return errors.New("product task scope missing at drain boundary")
+			}
+			if err := validateProductScopeExpiry(scope, time.Now().UTC()); err != nil {
+				return err
+			}
 			if err := f.writeQueueItem(origin, worker, task, "running", extra); err != nil {
 				return err
 			}

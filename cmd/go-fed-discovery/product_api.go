@@ -16,7 +16,7 @@ import (
 
 const productAPIMaxBodyBytes = 1 << 20
 
-const productAPIPackageVersion = "0.1.0-dev.6"
+const productAPIPackageVersion = "0.1.0-dev.7"
 const productAPIIdentifier = "agnet.product-api/v1"
 
 var productAPICapabilities = []string{
@@ -40,12 +40,17 @@ type productTaskRequest struct {
 	ApprovalExpiresAt string         `json:"approval_expires_at,omitempty"`
 }
 
+type productBoundTaskRequest struct {
+	Correlation map[string]any `json:"correlation"`
+}
+
 type productRetryRequest struct {
 	TaskID string `json:"task_id"`
 }
 
 type productCancelRequest struct {
-	Reason string `json:"reason"`
+	Reason      string         `json:"reason"`
+	Correlation map[string]any `json:"correlation"`
 }
 
 func registerProductAPIRoutes(mux *http.ServeMux, fixture Fixture, requireWriteToken func(http.ResponseWriter, *http.Request) bool) {
@@ -136,11 +141,12 @@ func registerProductAPIRoutes(mux *http.ServeMux, fixture Fixture, requireWriteT
 			if !requireWriteToken(w, r) {
 				return
 			}
-			if err := decodeOptionalEmptyProductJSON(r); err != nil {
+			var request productBoundTaskRequest
+			if err := decodeProductJSON(r, &request); err != nil {
 				writeProductError(w, http.StatusBadRequest, "invalid_request", err.Error())
 				return
 			}
-			view, replayed, err := fixture.executeProductTask(taskID)
+			view, replayed, err := fixture.executeBoundProductTask(taskID, request.Correlation)
 			if err != nil {
 				writeProductStateError(w, err)
 				return
@@ -159,7 +165,7 @@ func registerProductAPIRoutes(mux *http.ServeMux, fixture Fixture, requireWriteT
 				writeProductError(w, http.StatusBadRequest, "invalid_request", err.Error())
 				return
 			}
-			view, replayed, err := fixture.cancelProductTask(taskID, request.Reason)
+			view, replayed, err := fixture.cancelBoundProductTask(taskID, request.Reason, request.Correlation)
 			if err != nil {
 				writeProductStateError(w, err)
 				return
@@ -228,6 +234,8 @@ func registerProductAPIRoutes(mux *http.ServeMux, fixture Fixture, requireWriteT
 }
 
 var errProductTaskConflict = errors.New("product task idempotency conflict")
+var errProductBindingMismatch = errors.New("product task binding mismatch")
+var errProductScopeExpired = errors.New("product task scope expired")
 
 func decodeProductJSON(r *http.Request, target any) error {
 	decoder := json.NewDecoder(io.LimitReader(r.Body, productAPIMaxBodyBytes+1))
@@ -281,8 +289,20 @@ func validateProductTaskRequest(request productTaskRequest) error {
 			}
 		}
 	}
+	if err := validateProductScopeExpiry(request.Scope, time.Now().UTC()); err != nil {
+		return err
+	}
 	if err := validateProductCorrelation(request.TaskID, request.Correlation); err != nil {
 		return err
+	}
+	expectedOperationDigest := "sha256:" + digestHex(map[string]any{
+		"target":         request.To,
+		"intent":         request.Intent,
+		"scope":          request.Scope,
+		"payload_digest": request.Correlation["payload_digest"],
+	})
+	if optionalString(request.Correlation["operation_digest"]) != expectedOperationDigest {
+		return errors.New("task correlation operation_digest does not bind target, intent, scope, and payload")
 	}
 	if request.ArtifactRef != "" && (len(request.ArtifactRef) > 2048 || hasSwarmDelimiter(request.ArtifactRef)) {
 		return errors.New("task artifact_ref invalid")
@@ -295,8 +315,27 @@ func validateProductTaskRequest(request productTaskRequest) error {
 	return nil
 }
 
+func validateProductScopeExpiry(scope map[string]any, now time.Time) error {
+	value, exists := scope["expires_at"]
+	if !exists {
+		return nil
+	}
+	expiresAt, ok := value.(string)
+	if !ok || expiresAt == "" {
+		return errors.New("task scope expires_at invalid")
+	}
+	expires, err := time.Parse(time.RFC3339Nano, expiresAt)
+	if err != nil {
+		return errors.New("task scope expires_at invalid")
+	}
+	if !expires.After(now) {
+		return fmt.Errorf("%w: expires_at=%s", errProductScopeExpired, expiresAt)
+	}
+	return nil
+}
+
 func validateProductCorrelation(taskID string, correlation map[string]any) error {
-	for _, key := range []string{"workspace_id", "conversation_id", "session_id", "run_id", "tool_call_id", "task_id", "payload_digest"} {
+	for _, key := range []string{"workspace_id", "conversation_id", "session_id", "run_id", "tool_call_id", "task_id", "payload_digest", "operation_digest"} {
 		value := optionalString(correlation[key])
 		if value == "" || len(value) > 256 {
 			return errors.New("task correlation " + key + " is required")
@@ -308,6 +347,10 @@ func validateProductCorrelation(taskID string, correlation map[string]any) error
 	payloadDigest := optionalString(correlation["payload_digest"])
 	if !strings.HasPrefix(payloadDigest, "sha256:") || len(payloadDigest) != len("sha256:")+64 || !isHexDigest(strings.TrimPrefix(payloadDigest, "sha256:")) {
 		return errors.New("task correlation payload_digest invalid")
+	}
+	operationDigest := optionalString(correlation["operation_digest"])
+	if !strings.HasPrefix(operationDigest, "sha256:") || len(operationDigest) != len("sha256:")+64 || !isHexDigest(strings.TrimPrefix(operationDigest, "sha256:")) {
+		return errors.New("task correlation operation_digest invalid")
 	}
 	return nil
 }
@@ -588,6 +631,7 @@ func (f Fixture) productTaskViewLocked(taskID string) (map[string]any, error) {
 		"status":      optionalString(item["status"]),
 		"worker":      item["worker"],
 		"intent":      task["intent"],
+		"to":          task["to"],
 		"scope":       task["scope"],
 		"correlation": item["correlation"],
 	}
@@ -684,7 +728,29 @@ func productClaimStateExtra(item map[string]any) map[string]any {
 	}
 }
 
+func validateExpectedProductCorrelation(taskID string, expected map[string]any, task map[string]any) error {
+	if err := validateProductCorrelation(taskID, expected); err != nil {
+		return fmt.Errorf("%w: expected task correlation invalid: %v", errProductBindingMismatch, err)
+	}
+	actual, ok := task["correlation"].(map[string]any)
+	if !ok || validateProductCorrelation(taskID, actual) != nil || digestHex(actual) != digestHex(expected) {
+		return fmt.Errorf("%w: durable task correlation does not match expected binding", errProductBindingMismatch)
+	}
+	return nil
+}
+
+func (f Fixture) executeBoundProductTask(taskID string, expected map[string]any) (map[string]any, bool, error) {
+	if expected == nil {
+		return nil, false, fmt.Errorf("%w: expected task correlation is required", errProductBindingMismatch)
+	}
+	return f.executeProductTaskWithExpected(taskID, expected)
+}
+
 func (f Fixture) executeProductTask(taskID string) (map[string]any, bool, error) {
+	return f.executeProductTaskWithExpected(taskID, nil)
+}
+
+func (f Fixture) executeProductTaskWithExpected(taskID string, expected map[string]any) (map[string]any, bool, error) {
 	release, err := acquireProductTaskLock(f.QueueDir, taskID)
 	if err != nil {
 		return nil, false, err
@@ -707,6 +773,11 @@ func (f Fixture) executeProductTask(taskID string) (map[string]any, bool, error)
 	if err != nil {
 		return nil, false, err
 	}
+	if expected != nil {
+		if err := validateExpectedProductCorrelation(taskID, expected, task); err != nil {
+			return nil, false, err
+		}
+	}
 	view, err := f.productTaskViewLocked(taskID)
 	if err != nil {
 		return nil, false, err
@@ -718,6 +789,13 @@ func (f Fixture) executeProductTask(taskID string) (map[string]any, bool, error)
 			return view, true, nil
 		}
 		return nil, false, errors.New("terminal product projections do not agree")
+	}
+	scope, ok := task["scope"].(map[string]any)
+	if !ok {
+		return nil, false, errors.New("verified task scope missing")
+	}
+	if err := validateProductScopeExpiry(scope, time.Now().UTC()); err != nil {
+		return nil, false, err
 	}
 
 	switch queueStatus {
@@ -978,7 +1056,18 @@ func (f Fixture) convergeProductDrainFailure(taskID, leaseID string, cause error
 	}
 }
 
+func (f Fixture) cancelBoundProductTask(taskID, reason string, expected map[string]any) (map[string]any, bool, error) {
+	if expected == nil {
+		return nil, false, fmt.Errorf("%w: expected task correlation is required", errProductBindingMismatch)
+	}
+	return f.cancelProductTaskWithExpected(taskID, reason, expected)
+}
+
 func (f Fixture) cancelProductTask(taskID, reason string) (map[string]any, bool, error) {
+	return f.cancelProductTaskWithExpected(taskID, reason, nil)
+}
+
+func (f Fixture) cancelProductTaskWithExpected(taskID, reason string, expected map[string]any) (map[string]any, bool, error) {
 	release, err := acquireProductTaskLock(f.QueueDir, taskID)
 	if err != nil {
 		return nil, false, err
@@ -991,6 +1080,11 @@ func (f Fixture) cancelProductTask(taskID, reason string) (map[string]any, bool,
 	origin, worker, task, err := f.validateProductQueueEvidence(taskID, item, "", false)
 	if err != nil {
 		return nil, false, err
+	}
+	if expected != nil {
+		if err := validateExpectedProductCorrelation(taskID, expected, task); err != nil {
+			return nil, false, err
+		}
 	}
 	if _, err := f.reconcileProductTerminalReceiptLocked(taskID); err != nil {
 		return nil, false, err
@@ -1314,6 +1408,14 @@ func writeProductLookupError(w http.ResponseWriter, err error) {
 func writeProductStateError(w http.ResponseWriter, err error) {
 	if errors.Is(err, os.ErrNotExist) {
 		writeProductError(w, http.StatusNotFound, "not_found", "task not found")
+		return
+	}
+	if errors.Is(err, errProductBindingMismatch) {
+		writeProductError(w, http.StatusConflict, "binding_mismatch", err.Error())
+		return
+	}
+	if errors.Is(err, errProductScopeExpired) {
+		writeProductError(w, http.StatusConflict, "scope_expired", err.Error())
 		return
 	}
 	if errors.Is(err, errProductTaskConflict) || strings.Contains(err.Error(), "cannot") || strings.Contains(err.Error(), "not failed") || strings.Contains(err.Error(), "not queued") || strings.Contains(err.Error(), "completion already committed") {

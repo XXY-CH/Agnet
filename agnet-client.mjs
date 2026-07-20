@@ -19,11 +19,12 @@ export function agnetTaskId(sessionId, toolCallId) {
   return `agent:${sha256(`${sessionId}\0${toolCallId}`)}`;
 }
 
-export function createToolCorrelation({ workspaceId, conversationId, sessionId, runId, toolCallId, taskId = agnetTaskId(sessionId, toolCallId), payloadDigest }) {
-  for (const [name, value] of Object.entries({ workspaceId, conversationId, sessionId, runId, toolCallId, taskId, payloadDigest })) {
+export function createToolCorrelation({ workspaceId, conversationId, sessionId, runId, toolCallId, taskId = agnetTaskId(sessionId, toolCallId), payloadDigest, operationDigest }) {
+  for (const [name, value] of Object.entries({ workspaceId, conversationId, sessionId, runId, toolCallId, taskId, payloadDigest, operationDigest })) {
     requireNonEmptyString(value, name);
   }
   if (!/^sha256:[a-f0-9]{64}$/.test(payloadDigest)) throw new TypeError("payloadDigest must be a sha256 digest");
+  if (!/^sha256:[a-f0-9]{64}$/.test(operationDigest)) throw new TypeError("operationDigest must be a sha256 digest");
   return Object.freeze({
     workspace_id: workspaceId,
     conversation_id: conversationId,
@@ -32,6 +33,7 @@ export function createToolCorrelation({ workspaceId, conversationId, sessionId, 
     tool_call_id: toolCallId,
     task_id: taskId,
     payload_digest: payloadDigest,
+    operation_digest: operationDigest,
   });
 }
 
@@ -101,12 +103,16 @@ export class AgnetClient {
     return this.#data(await this.#request("/api/v1/tasks", { method: "POST", body: payload }));
   }
 
-  async execute(taskId) {
-    return this.#data(await this.#request(`/api/v1/tasks/${encodeURIComponent(taskId)}/execute`, { method: "POST", body: {} }));
+  async execute(taskId, correlation) {
+    const expected = normalizeCorrelation(correlation);
+    if (expected.task_id !== taskId) throw new TypeError("correlation.task_id must match taskId");
+    return this.#data(await this.#request(`/api/v1/tasks/${encodeURIComponent(taskId)}/execute`, { method: "POST", body: { correlation: expected } }));
   }
 
-  async cancel(taskId, reason = "") {
-    return this.#data(await this.#request(`/api/v1/tasks/${encodeURIComponent(taskId)}/cancel`, { method: "POST", body: { reason } }));
+  async cancel(taskId, reason = "", correlation) {
+    const expected = normalizeCorrelation(correlation);
+    if (expected.task_id !== taskId) throw new TypeError("correlation.task_id must match taskId");
+    return this.#data(await this.#request(`/api/v1/tasks/${encodeURIComponent(taskId)}/cancel`, { method: "POST", body: { reason, correlation: expected } }));
   }
 
   async retry(taskId, { taskId: attemptTaskId }) {
@@ -206,9 +212,14 @@ export class AgnetClient {
     if (!isRecord(payload) || !Array.isArray(payload.data)) throw invalidReplayResponse("Agnet returned replay data that is not an array");
     const nextCursor = replayCursor(payload.next_cursor ?? afterCursor, "next replay cursor");
     let previousCursor = afterCursor;
-    for (const event of payload.data) {
+    let terminalSeen = false;
+    for (const [index, event] of payload.data.entries()) {
       if (!isRecord(event) || !Number.isSafeInteger(event.cursor) || event.cursor <= previousCursor || event.cursor > nextCursor || typeof event.type !== "string" || event.type.length === 0 || typeof event.verified !== "boolean" || !isRecord(event.payload) || event.payload.task_id !== taskId) {
         throw invalidReplayResponse("Agnet returned an invalid replay event");
+      }
+      if (event.type === TERMINAL_EVENT_TYPE) {
+        if (terminalSeen || index !== payload.data.length - 1) throw invalidReplayResponse("Agnet returned events after a terminal receipt");
+        terminalSeen = true;
       }
       previousCursor = event.cursor;
     }
@@ -367,15 +378,17 @@ function normalizeCorrelation(correlation) {
     toolCallId: correlation.toolCallId,
     taskId: correlation.taskId,
     payloadDigest: correlation.payloadDigest,
+    operationDigest: correlation.operationDigest,
   });
 }
 
 function validateCorrelation(correlation) {
-  for (const field of ["workspace_id", "conversation_id", "session_id", "run_id", "tool_call_id", "task_id", "payload_digest"]) {
+  for (const field of ["workspace_id", "conversation_id", "session_id", "run_id", "tool_call_id", "task_id", "payload_digest", "operation_digest"]) {
     requireNonEmptyString(correlation[field], `correlation.${field}`);
   }
   if (!/^sha256:[a-f0-9]{64}$/.test(correlation.payload_digest)) throw new TypeError("correlation.payload_digest must be a sha256 digest");
-  return Object.freeze({ workspace_id: correlation.workspace_id, conversation_id: correlation.conversation_id, session_id: correlation.session_id, run_id: correlation.run_id, tool_call_id: correlation.tool_call_id, task_id: correlation.task_id, payload_digest: correlation.payload_digest });
+  if (!/^sha256:[a-f0-9]{64}$/.test(correlation.operation_digest)) throw new TypeError("correlation.operation_digest must be a sha256 digest");
+  return Object.freeze({ workspace_id: correlation.workspace_id, conversation_id: correlation.conversation_id, session_id: correlation.session_id, run_id: correlation.run_id, tool_call_id: correlation.tool_call_id, task_id: correlation.task_id, payload_digest: correlation.payload_digest, operation_digest: correlation.operation_digest });
 }
 
 function sameStringList(actual, expected) {
@@ -388,6 +401,19 @@ function assertReceiptCorrelation(committed) {
     const receiptCorrelation = validateCorrelation(committed.receipt.correlation);
     if (taskCorrelation.task_id !== committed.task_id || receiptCorrelation.task_id !== committed.task_id || !sameStringList(Object.values(taskCorrelation), Object.values(receiptCorrelation))) {
       throw new Error("receipt correlation does not match the signed task");
+    }
+    const signedTask = committed.signed_task;
+    requireNonEmptyString(signedTask.to, "signed_task.to");
+    requireNonEmptyString(signedTask.intent, "signed_task.intent");
+    if (!isRecord(signedTask.scope)) throw new TypeError("signed_task.scope must be an object");
+    const expectedOperationDigest = `sha256:${sha256(canonical({
+      target: signedTask.to,
+      intent: signedTask.intent,
+      scope: signedTask.scope,
+      payload_digest: taskCorrelation.payload_digest,
+    }))}`;
+    if (taskCorrelation.operation_digest !== expectedOperationDigest) {
+      throw new Error("signed task operation digest does not bind target, intent, scope, and payload");
     }
   } catch (cause) {
     throw new AgnetAPIError("Committed receipt correlation binding mismatch", { status: 409, code: "verification_failed", cause });

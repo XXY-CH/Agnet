@@ -66,19 +66,24 @@ test("AgnetClient maps the stable product contract without exposing journal path
     const client = new AgnetClient({ baseURL, token: "secret" });
     const intent = client.createIntent({ workspaceId: "workspace-1", conversationId: "conversation-1", text: "inspect" });
     assert.match(intent.intentId, /^intent:sha256:[0-9a-f]{64}$/);
+    const target = "agent://worker";
+    const scope = { network: false, write: [], data_domains: ["workspace"] };
+    const payloadDigest = `sha256:${"a".repeat(64)}`;
+    const operationDigest = `sha256:${createHash("sha256").update(canonical({ target, intent: intent.text, scope, payload_digest: payloadDigest })).digest("hex")}`;
+    const toolCorrelation = { workspace_id: "workspace-1", conversation_id: "conversation-1", session_id: "session-1", run_id: "run-1", tool_call_id: "call-1", task_id: "pi:task", payload_digest: payloadDigest, operation_digest: operationDigest };
     const task = await client.createTask({
       taskId: "pi:task",
-      to: "agent://worker",
+      to: target,
       intent: intent.text,
-      scope: { network: false, write: [], data_domains: ["workspace"] },
-      correlation: { workspace_id: "workspace-1", conversation_id: "conversation-1", session_id: "session-1", run_id: "run-1", tool_call_id: "call-1", task_id: "pi:task", payload_digest: `sha256:${"a".repeat(64)}` },
+      scope,
+      correlation: toolCorrelation,
     });
     assert.equal(task.status, "queued");
-    assert.equal((await client.execute("pi:task")).status, "claimed");
+    assert.equal((await client.execute("pi:task", toolCorrelation)).status, "claimed");
     assert.equal((await client.getTask("pi:task")).status, "completed");
     assert.equal((await client.approve({ taskId: "pi:task", actor: "human://local" })).status, "approved");
     assert.equal((await client.deny({ taskId: "pi:task", actor: "human://local" })).status, "denied");
-    assert.equal((await client.cancel("pi:task", "user cancelled")).status, "cancelled");
+    assert.equal((await client.cancel("pi:task", "user cancelled", toolCorrelation)).status, "cancelled");
     assert.equal((await client.retry("pi:task", { taskId: "pi:task:attempt:2" })).retry_of, "pi:task");
     const receipt = await client.getReceipt("pi:task");
     assert.equal(receipt.committed, true);
@@ -93,7 +98,10 @@ test("AgnetClient maps the stable product contract without exposing journal path
     tool_call_id: "call-1",
     task_id: "pi:task",
     payload_digest: `sha256:${"a".repeat(64)}`,
+    operation_digest: `sha256:${createHash("sha256").update(canonical({ target: "agent://worker", intent: "inspect", scope: { network: false, write: [], data_domains: ["workspace"] }, payload_digest: `sha256:${"a".repeat(64)}` })).digest("hex")}`,
   });
+  assert.deepEqual(requests[1].body.correlation, requests[0].body.correlation);
+  assert.deepEqual(requests[5].body.correlation, requests[0].body.correlation);
   assert.ok(requests.every((request) => !JSON.stringify(request).includes("journal")));
 });
 
@@ -129,6 +137,7 @@ test("AgnetClient subscription resumes by cursor and stops at a terminal receipt
 
 test("AgnetClient rejects malformed replay batches before delivery", async (t) => {
   const valid = { cursor: 5, type: "task.started", verified: false, payload: { task_id: "pi:replay-invalid" } };
+  const terminal = { ...valid, type: "receipt.committed" };
   const cases = [
     ["non-array data", { data: {}, next_cursor: "5" }],
     ["unsafe cursor", { data: [{ ...valid, cursor: Number.MAX_SAFE_INTEGER + 1 }], next_cursor: String(Number.MAX_SAFE_INTEGER + 1) }],
@@ -140,6 +149,8 @@ test("AgnetClient rejects malformed replay batches before delivery", async (t) =
     ["regressing empty next cursor", { data: [], next_cursor: "3" }],
     ["cross-task payload", { data: [{ ...valid, payload: { task_id: "pi:other-task" } }], next_cursor: "5" }],
     ["malformed event", { data: [{ ...valid, type: "" }], next_cursor: "5" }],
+    ["event after terminal", { data: [terminal, { ...valid, cursor: 6 }], next_cursor: "6" }],
+    ["duplicate terminal", { data: [terminal, { ...terminal, cursor: 6 }], next_cursor: "6" }],
   ];
   for (const [name, payload] of cases) {
     await t.test(name, async () => {
@@ -221,7 +232,7 @@ test("AgnetClient preserves typed API failures", async () => {
   }, async (baseURL) => {
     const client = new AgnetClient({ baseURL });
     await assert.rejects(
-      client.createTask({ taskId: "agent:duplicate", to: "agent://worker", intent: "x", scope: {}, correlation: { workspace_id: "w", conversation_id: "c", session_id: "s", run_id: "r", tool_call_id: "t", task_id: "agent:duplicate", payload_digest: `sha256:${"a".repeat(64)}` } }),
+      client.createTask({ taskId: "agent:duplicate", to: "agent://worker", intent: "x", scope: {}, correlation: { workspace_id: "w", conversation_id: "c", session_id: "s", run_id: "r", tool_call_id: "t", task_id: "agent:duplicate", payload_digest: `sha256:${"a".repeat(64)}`, operation_digest: `sha256:${"b".repeat(64)}` } }),
       (error) => error instanceof AgnetAPIError && error.status === 409 && error.code === "idempotency_conflict",
     );
   });
@@ -238,7 +249,7 @@ test("AgnetClient requires the exact authenticated capability contract and repla
   await withServer((request, response) => {
     requests.push({ url: request.url, authorization: request.headers.authorization });
     if (request.url === "/api/v1/capabilities") {
-      json(response, 200, { data: { package_name: "agnet", package_version: "0.1.0-dev.6", product_api: "agnet.product-api/v1", capabilities: ["task.create", "task.execute", "task.cancel", "receipt.get", "receipt.verify", "evidence.replay", "evidence.subscribe"] } });
+      json(response, 200, { data: { package_name: "agnet", package_version: "0.1.0-dev.7", product_api: "agnet.product-api/v1", capabilities: ["task.create", "task.execute", "task.cancel", "receipt.get", "receipt.verify", "evidence.replay", "evidence.subscribe"] } });
       return;
     }
     if (request.url === "/api/v1/tasks/pi%3Areplay/events?after=4") {
@@ -248,7 +259,7 @@ test("AgnetClient requires the exact authenticated capability contract and repla
     response.writeHead(404).end();
   }, async (baseURL) => {
     const client = new AgnetClient({ baseURL, token: "secret" });
-    await client.handshake({ packageVersion: "0.1.0-dev.6", productApi: "agnet.product-api/v1", capabilities: ["task.create", "task.execute", "task.cancel", "receipt.get", "receipt.verify", "evidence.replay", "evidence.subscribe"] });
+    await client.handshake({ packageVersion: "0.1.0-dev.7", productApi: "agnet.product-api/v1", capabilities: ["task.create", "task.execute", "task.cancel", "receipt.get", "receipt.verify", "evidence.replay", "evidence.subscribe"] });
     const replay = await client.replay("pi:replay", 4);
     assert.deepEqual(replay, { events: [{ cursor: 5, type: "task.started", verified: false, payload: { task_id: "pi:replay" } }], nextCursor: 5 });
   });
@@ -262,8 +273,12 @@ test("AgnetClient rejects a receipt whose signed task and receipt disagree on fu
   const origin = zoneFromPrivateKey("zone://origin-correlation", originKey);
   const workerZone = zoneFromPrivateKey("zone://worker-correlation", workerZoneKey);
   const worker = agentFromPrivateKey("agent://worker/correlation", workerKey, { allow_network: false }, ["asp+local://worker"], ["workspace.read"]);
-  const correlation = { workspace_id: "workspace", conversation_id: "conversation", session_id: "session", run_id: "run", tool_call_id: "tool", task_id: "pi:correlation", payload_digest: `sha256:${"a".repeat(64)}` };
-  const signedTask = { task_id: "pi:correlation", from: "aid:requester", to: worker.alias, intent: "read", correlation, signature: "request-signature" };
+  const payloadDigest = `sha256:${"a".repeat(64)}`;
+  const scope = {};
+  const intent = "read";
+  const operationDigest = `sha256:${createHash("sha256").update(canonical({ target: worker.alias, intent, scope, payload_digest: payloadDigest })).digest("hex")}`;
+  const correlation = { workspace_id: "workspace", conversation_id: "conversation", session_id: "session", run_id: "run", tool_call_id: "tool", task_id: "pi:correlation", payload_digest: payloadDigest, operation_digest: operationDigest };
+  const signedTask = { task_id: "pi:correlation", from: "aid:requester", to: worker.alias, intent, scope, correlation, signature: "request-signature" };
   const receiptBody = { task_id: signedTask.task_id, task_digest: createHash("sha256").update(canonical(signedTask)).digest("hex"), from: signedTask.from, origin_zone: origin.zid, executing_zone: workerZone.zid, to: worker.aid, status: "cancelled", correlation: { ...correlation, run_id: "other-run" }, artifact_refs: [], artifact_manifests: [], event_count: 0, approvals: [], checkpoint_refs: [], checkpoints: [] };
   const signedReceipt = { ...receiptBody, signature: signObject(worker.privateKey, receiptBody) };
   const committed = { committed: true, task_id: signedTask.task_id, status: "cancelled", receipt_digest: createHash("sha256").update(canonical(signedReceipt)).digest("hex"), audit_hash: "audit-hash", zone: workerZone.descriptor, worker: worker.descriptor, zone_binding: zoneBinding(workerZone, worker.descriptor), signed_task: signedTask, receipt: signedReceipt };
@@ -278,7 +293,11 @@ test("AgnetClient verifies receipt trust, signature, task binding, and artifact 
   const origin = zoneFromPrivateKey("zone://origin", originKey);
   const workerZone = zoneFromPrivateKey("zone://worker", workerZoneKey);
   const worker = agentFromPrivateKey("agent://worker/tool", workerKey, { allow_network: false }, ["asp+local://worker"], ["workspace.read"]);
-  const signedTask = { task_id: "pi:local-verify", from: "aid:requester", to: worker.alias, intent: "read", correlation: { workspace_id: "workspace", conversation_id: "conversation", session_id: "session", run_id: "run", tool_call_id: "tool", task_id: "pi:local-verify", payload_digest: `sha256:${"a".repeat(64)}` }, signature: "request-signature" };
+  const payloadDigest = `sha256:${"a".repeat(64)}`;
+  const scope = {};
+  const intent = "read";
+  const operationDigest = `sha256:${createHash("sha256").update(canonical({ target: worker.alias, intent, scope, payload_digest: payloadDigest })).digest("hex")}`;
+  const signedTask = { task_id: "pi:local-verify", from: "aid:requester", to: worker.alias, intent, scope, correlation: { workspace_id: "workspace", conversation_id: "conversation", session_id: "session", run_id: "run", tool_call_id: "tool", task_id: "pi:local-verify", payload_digest: payloadDigest, operation_digest: operationDigest }, signature: "request-signature" };
   const artifactBytes = Buffer.from("locally verified artifact", "utf8");
   const artifactURI = "artifact://local/pi:local-verify/result.txt";
   const manifestBody = {
@@ -335,6 +354,19 @@ test("AgnetClient verifies receipt trust, signature, task binding, and artifact 
     assert.equal(verified.verified, true);
     assert.equal(verified.verification.mode, "local");
     assert.equal(verified.verification.artifact_count, 1);
+
+    await t.test("rejects a validly signed receipt whose operation digest is semantically false", async () => {
+      const forged = structuredClone(committed);
+      forged.signed_task.correlation.operation_digest = `sha256:${"b".repeat(64)}`;
+      forged.receipt.correlation.operation_digest = `sha256:${"b".repeat(64)}`;
+      const { signature: _signature, ...unsignedReceipt } = forged.receipt;
+      unsignedReceipt.task_digest = createHash("sha256").update(canonical(forged.signed_task)).digest("hex");
+      forged.receipt = { ...unsignedReceipt, signature: signObject(worker.privateKey, unsignedReceipt) };
+      forged.receipt_digest = createHash("sha256").update(canonical(forged.receipt)).digest("hex");
+      const readsBeforeVerification = artifactReads;
+      await assert.rejects(client.verifyReceipt(forged), (error) => error instanceof AgnetAPIError && error.code === "verification_failed");
+      assert.equal(artifactReads, readsBeforeVerification);
+    });
 
     await t.test("rejects a relabeled wrapper task_id before fetching artifacts", async () => {
       const relabeled = structuredClone(committed);

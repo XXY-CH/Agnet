@@ -65,6 +65,9 @@ func newProductAPITestHarnessWithWorker(t *testing.T, configure func(*WorkerProf
 
 func (h productAPITestHarness) request(t *testing.T, method, path string, body any, authenticated bool) (int, http.Header, map[string]any) {
 	t.Helper()
+	if authenticated {
+		body = h.boundProductActionBody(t, path, body)
+	}
 	var reader io.Reader
 	if body != nil {
 		encoded, err := json.Marshal(body)
@@ -101,6 +104,41 @@ func (h productAPITestHarness) request(t *testing.T, method, path string, body a
 	return response.StatusCode, response.Header, payload
 }
 
+func (h productAPITestHarness) boundProductActionBody(t *testing.T, path string, body any) any {
+	t.Helper()
+	if !strings.HasSuffix(path, "/execute") && !strings.HasSuffix(path, "/cancel") {
+		return body
+	}
+	payload, ok := body.(map[string]any)
+	if !ok {
+		return body
+	}
+	if _, exists := payload["correlation"]; exists {
+		return body
+	}
+	parts := strings.Split(strings.TrimPrefix(path, "/api/v1/tasks/"), "/")
+	if len(parts) != 2 {
+		t.Fatalf("invalid product action path %q", path)
+	}
+	item, err := h.fixture.readQueueItem(parts[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	correlation, ok := item["correlation"].(map[string]any)
+	if !ok {
+		t.Fatal("product queue item has no correlation")
+	}
+	bound := make(map[string]any, len(payload)+1)
+	for key, value := range payload {
+		bound[key] = value
+	}
+	bound["correlation"], err = cloneProductCorrelation(correlation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bound
+}
+
 type concurrentProductResponse struct {
 	status  int
 	payload map[string]any
@@ -109,6 +147,7 @@ type concurrentProductResponse struct {
 
 func (h productAPITestHarness) concurrentRequests(t *testing.T, count int, path string, body any) []concurrentProductResponse {
 	t.Helper()
+	body = h.boundProductActionBody(t, path, body)
 	encoded, err := json.Marshal(body)
 	if err != nil {
 		t.Fatal(err)
@@ -182,25 +221,44 @@ func (h productAPITestHarness) concurrentRetryRequests(t *testing.T, parentID st
 }
 
 func productTaskPayload(taskID, worker, intent string) map[string]any {
-	return map[string]any{
-		"task_id": taskID,
-		"to":      worker,
-		"intent":  intent,
-		"scope": map[string]any{
-			"network":      false,
-			"write":        []any{},
-			"data_domains": []any{"workspace"},
-		},
-		"correlation": map[string]any{
-			"workspace_id":    "workspace-1",
-			"conversation_id": "conversation-1",
-			"session_id":      "session-1",
-			"run_id":          "run-1",
-			"tool_call_id":    "tool-call-1",
-			"task_id":         taskID,
-			"payload_digest":  "sha256:" + strings.Repeat("a", 64),
-		},
+	scope := map[string]any{
+		"network":      false,
+		"write":        []any{},
+		"data_domains": []any{"workspace"},
 	}
+	payloadDigest := "sha256:" + strings.Repeat("a", 64)
+	correlation := map[string]any{
+		"workspace_id":    "workspace-1",
+		"conversation_id": "conversation-1",
+		"session_id":      "session-1",
+		"run_id":          "run-1",
+		"tool_call_id":    "tool-call-1",
+		"task_id":         taskID,
+		"payload_digest":  payloadDigest,
+		"operation_digest": "sha256:" + digestHex(map[string]any{
+			"target":         worker,
+			"intent":         intent,
+			"scope":          scope,
+			"payload_digest": payloadDigest,
+		}),
+	}
+	return map[string]any{
+		"task_id":     taskID,
+		"to":          worker,
+		"intent":      intent,
+		"scope":       scope,
+		"correlation": correlation,
+	}
+}
+
+func rebindProductTaskOperation(payload map[string]any) {
+	correlation := payload["correlation"].(map[string]any)
+	correlation["operation_digest"] = "sha256:" + digestHex(map[string]any{
+		"target":         payload["to"],
+		"intent":         payload["intent"],
+		"scope":          payload["scope"],
+		"payload_digest": correlation["payload_digest"],
+	})
 }
 
 func responseData(t *testing.T, payload map[string]any) map[string]any {
@@ -267,6 +325,7 @@ func TestProductAPICreatesTasksIdempotently(t *testing.T) {
 	payloadConflict := productTaskPayload("pi:task-create", harness.worker, "summarize the workspace")
 	payloadCorrelation := payloadConflict["correlation"].(map[string]any)
 	payloadCorrelation["payload_digest"] = "sha256:" + strings.Repeat("b", 64)
+	rebindProductTaskOperation(payloadConflict)
 	status, _, payload = harness.request(t, http.MethodPost, "/api/v1/tasks", payloadConflict, true)
 	if status != http.StatusConflict || payload["error"] == nil {
 		t.Fatalf("changed payload conflict status=%d payload=%#v", status, payload)
@@ -293,7 +352,7 @@ func TestProductAPIRequiresFullCorrelationAndAuthenticatesCapabilities(t *testin
 		t.Fatalf("capabilities status=%d payload=%#v", status, payload)
 	}
 	capabilities := responseData(t, payload)
-	if capabilities["package_version"] != "0.1.0-dev.6" || capabilities["product_api"] != "agnet.product-api/v1" {
+	if capabilities["package_version"] != "0.1.0-dev.7" || capabilities["product_api"] != "agnet.product-api/v1" {
 		t.Fatalf("capabilities = %#v", capabilities)
 	}
 
@@ -301,6 +360,114 @@ func TestProductAPIRequiresFullCorrelationAndAuthenticatesCapabilities(t *testin
 	status, _, payload = harness.request(t, http.MethodPost, "/api/v1/tasks", request, true)
 	if status != http.StatusUnprocessableEntity || payload["error"] == nil {
 		t.Fatalf("missing correlation field status=%d payload=%#v", status, payload)
+	}
+
+	request = productTaskPayload("pi:task-correlation", harness.worker, "bind full correlation")
+	correlation = request["correlation"].(map[string]any)
+	correlation["operation_digest"] = "sha256:" + strings.Repeat("b", 64)
+	status, _, payload = harness.request(t, http.MethodPost, "/api/v1/tasks", request, true)
+	if status != http.StatusUnprocessableEntity || payload["error"] == nil {
+		t.Fatalf("forged operation binding status=%d payload=%#v", status, payload)
+	}
+	status, _, _ = harness.request(t, http.MethodGet, "/api/v1/tasks/pi:task-correlation", nil, true)
+	if status != http.StatusNotFound {
+		t.Fatalf("forged operation binding persisted task status=%d", status)
+	}
+
+	for _, testCase := range []struct {
+		name      string
+		taskID    string
+		expiresAt any
+	}{
+		{name: "malformed", taskID: "pi:task-scope-malformed", expiresAt: "tomorrow"},
+		{name: "expired", taskID: "pi:task-scope-expired", expiresAt: time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano)},
+	} {
+		t.Run("scope "+testCase.name, func(t *testing.T) {
+			request := productTaskPayload(testCase.taskID, harness.worker, "reject invalid scope")
+			request["scope"].(map[string]any)["expires_at"] = testCase.expiresAt
+			rebindProductTaskOperation(request)
+			status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", request, true)
+			if status != http.StatusUnprocessableEntity || payload["error"] == nil {
+				t.Fatalf("scope %s status=%d payload=%#v", testCase.name, status, payload)
+			}
+			status, _, _ = harness.request(t, http.MethodGet, "/api/v1/tasks/"+testCase.taskID, nil, true)
+			if status != http.StatusNotFound {
+				t.Fatalf("scope %s persisted task status=%d", testCase.name, status)
+			}
+		})
+	}
+
+}
+
+func TestProductAPIRejectsScopeThatExpiresBeforeExecution(t *testing.T) {
+	harness := newProductAPITestHarness(t)
+	taskID := "pi:task-scope-expires-before-execute"
+	expiresAt := time.Now().Add(150 * time.Millisecond).UTC()
+	request := productTaskPayload(taskID, harness.worker, "expire before execution")
+	request["scope"].(map[string]any)["expires_at"] = expiresAt.Format(time.RFC3339Nano)
+	rebindProductTaskOperation(request)
+	status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", request, true)
+	if status != http.StatusCreated {
+		t.Fatalf("create status=%d payload=%#v", status, payload)
+	}
+	time.Sleep(time.Until(expiresAt) + 25*time.Millisecond)
+
+	status, _, payload = harness.request(t, http.MethodPost, "/api/v1/tasks/"+taskID+"/execute", map[string]any{}, true)
+	if status != http.StatusConflict {
+		t.Fatalf("expired execute status=%d payload=%#v", status, payload)
+	}
+	errorPayload, _ := payload["error"].(map[string]any)
+	if errorPayload["code"] != "scope_expired" {
+		t.Fatalf("expired execute error=%#v", payload)
+	}
+	status, _, payload = harness.request(t, http.MethodGet, "/api/v1/tasks/"+taskID, nil, true)
+	if status != http.StatusOK || responseData(t, payload)["status"] != "queued" {
+		t.Fatalf("expired execute mutated task status=%d payload=%#v", status, payload)
+	}
+}
+
+func TestProductQueueDrainRechecksScopeExpiryAtEffectBoundary(t *testing.T) {
+	harness := newProductAPITestHarness(t)
+	taskID := "pi:task-scope-expires-before-drain"
+	expiresAt := time.Now().Add(150 * time.Millisecond).UTC()
+	request := productTaskPayload(taskID, harness.worker, "expire at drain boundary")
+	request["scope"].(map[string]any)["expires_at"] = expiresAt.Format(time.RFC3339Nano)
+	rebindProductTaskOperation(request)
+	status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", request, true)
+	if status != http.StatusCreated {
+		t.Fatalf("create status=%d payload=%#v", status, payload)
+	}
+	item, err := harness.fixture.readQueueItem(taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, _ := item["task"].(map[string]any)
+	claim := productQueueAction(harness.fixture, "claim", taskID, task)
+	claim["owner"] = "product://local"
+	claim["lease_seconds"] = float64(300)
+	claimed, err := harness.fixture.applyAuthorizedProductQueueAction(claim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaseID := optionalString(claimed["lease_id"])
+	if _, err := harness.fixture.transitionTaskState(taskID, "claimed", harness.worker, map[string]any{
+		"lease_id": leaseID, "lease_owner": "product://local",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Until(expiresAt) + 25*time.Millisecond)
+
+	drain := productQueueAction(harness.fixture, "drain", taskID, task)
+	drain["lease_id"] = leaseID
+	if _, err := harness.fixture.applyAuthorizedProductQueueAction(drain); !errors.Is(err, errProductScopeExpired) {
+		t.Fatalf("expired drain error=%v", err)
+	}
+	state, err := harness.fixture.readTaskState(taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state["status"] != "claimed" {
+		t.Fatalf("expired drain mutated task state=%#v", state)
 	}
 }
 
@@ -310,6 +477,15 @@ func TestProductAPIExecutesAndStreamsVerifiedReceipt(t *testing.T) {
 	status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", productTaskPayload(taskID, harness.worker, "hello from Pi"), true)
 	if status != http.StatusCreated {
 		t.Fatalf("create status=%d payload=%#v", status, payload)
+	}
+
+	status, _, payload = harness.request(t, http.MethodPost, "/api/v1/tasks/"+taskID+"/execute", map[string]any{"correlation": nil}, true)
+	if status != http.StatusConflict {
+		t.Fatalf("unbound execute status=%d payload=%#v", status, payload)
+	}
+	status, _, payload = harness.request(t, http.MethodGet, "/api/v1/tasks/"+taskID, nil, true)
+	if status != http.StatusOK || responseData(t, payload)["status"] != "queued" {
+		t.Fatalf("unbound execute mutated task status=%d payload=%#v", status, payload)
 	}
 
 	status, _, payload = harness.request(t, http.MethodPost, "/api/v1/tasks/"+taskID+"/execute", map[string]any{}, true)
@@ -418,6 +594,15 @@ func TestProductAPICancelsQueuedTaskWithReceipt(t *testing.T) {
 	status, _, payload := harness.request(t, http.MethodPost, "/api/v1/tasks", productTaskPayload(taskID, harness.worker, "do not run"), true)
 	if status != http.StatusCreated {
 		t.Fatalf("create status=%d payload=%#v", status, payload)
+	}
+
+	status, _, payload = harness.request(t, http.MethodPost, "/api/v1/tasks/"+taskID+"/cancel", map[string]any{"reason": "unbound", "correlation": nil}, true)
+	if status != http.StatusConflict {
+		t.Fatalf("unbound cancel status=%d payload=%#v", status, payload)
+	}
+	status, _, payload = harness.request(t, http.MethodGet, "/api/v1/tasks/"+taskID, nil, true)
+	if status != http.StatusOK || responseData(t, payload)["status"] != "queued" {
+		t.Fatalf("unbound cancel mutated task status=%d payload=%#v", status, payload)
 	}
 
 	status, _, payload = harness.request(t, http.MethodPost, "/api/v1/tasks/"+taskID+"/cancel", map[string]any{"reason": "user aborted streaming"}, true)
@@ -774,7 +959,7 @@ func TestProductAPICancelIsAtomicallyIdempotent(t *testing.T) {
 
 func TestProductAPICancelRecoversCancellationIntentAfterDurableFaults(t *testing.T) {
 	for _, testCase := range []struct {
-		name  string
+		name   string
 		inject func(*Fixture) error
 	}{
 		{
@@ -2164,10 +2349,10 @@ func TestLegacyTaskStateMigrationCreatesReplayableGenesis(t *testing.T) {
 }
 
 type productDurableSnapshot struct {
-	queue          []byte
-	stateJournal   []byte
+	queue           []byte
+	stateJournal    []byte
 	stateProjection []byte
-	audit          []byte
+	audit           []byte
 	artifactEntries int
 }
 
@@ -2257,7 +2442,7 @@ func prepareFailedProductParent(t *testing.T, harness productAPITestHarness, tas
 
 func TestProductAPIRejectsInvalidSignedCorrelationBeforeEveryDurableEffect(t *testing.T) {
 	for _, testCase := range []struct {
-		name   string
+		name    string
 		prepare func(t *testing.T, harness productAPITestHarness, taskID string)
 		invoke  func(t *testing.T, harness productAPITestHarness, taskID string)
 	}{

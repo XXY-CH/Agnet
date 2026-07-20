@@ -6,7 +6,7 @@ const packageJSON = JSON.parse(await readFile(new URL("../package.json", import.
 
 test("Agnet publishes a versioned client and daemon dependency surface", () => {
   assert.equal(packageJSON.name, "agnet");
-  assert.equal(packageJSON.version, "0.1.0-dev.6");
+  assert.equal(packageJSON.version, "0.1.0-dev.7");
   assert.equal(packageJSON.engines.node, ">=22.0.0");
   assert.equal(packageJSON.exports["./client"].import, "./agnet-client.mjs");
   assert.equal(packageJSON.exports["./client"].types, "./agnet-client.d.mts");
@@ -18,7 +18,7 @@ test("Agnet publishes a versioned client and daemon dependency surface", () => {
 
 test("Agnet client declaration publishes handshake, replay, and full correlation bindings", async () => {
   const declaration = await readFile(new URL("../agnet-client.d.mts", import.meta.url), "utf8");
-  for (const member of ["run_id", "task_id", "payload_digest", "handshake(", "replay(taskId"]) {
+  for (const member of ["workspace_id", "conversation_id", "run_id", "task_id", "payload_digest", "operation_digest", "execute(taskId: string, correlation: ToolCorrelation)", "cancel(taskId: string, reason: string | undefined, correlation: ToolCorrelation)", "handshake(", "replay(taskId"]) {
     assert.match(declaration, new RegExp(member.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
 });

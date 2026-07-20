@@ -6,6 +6,7 @@ export interface ToolCorrelation {
   tool_call_id: string;
   task_id: string;
   payload_digest: string;
+  operation_digest: string;
   attempt?: number;
 }
 
@@ -17,16 +18,17 @@ export interface ProductIntent {
 }
 
 export interface TaskScope {
-  network?: boolean;
-  write?: string[];
-  data_domains?: string[];
-  expires_at?: string;
+  readonly network?: boolean;
+  readonly write?: readonly string[];
+  readonly data_domains?: readonly string[];
+  readonly expires_at?: string;
 }
 
 export interface TaskView {
   task_id: string;
   status: "queued" | "claimed" | "running" | "completing" | "cancelling" | "failing" | "completed" | "failed" | "cancelled";
   worker?: string;
+  to?: string;
   intent?: string;
   scope?: TaskScope;
   correlation?: ToolCorrelation;
@@ -90,6 +92,7 @@ export interface CreateTaskInput {
     toolCallId: string;
     taskId: string;
     payloadDigest: string;
+    operationDigest: string;
   };
   budget?: Record<string, unknown>;
   artifactRef?: string;
@@ -118,6 +121,7 @@ export function createToolCorrelation(input: {
   toolCallId: string;
   taskId?: string;
   payloadDigest: string;
+  operationDigest: string;
 }): ToolCorrelation;
 
 export class AgnetClient {
@@ -125,8 +129,8 @@ export class AgnetClient {
   createIntent(input: { workspaceId: string; conversationId: string; text: string }): ProductIntent;
   handshake(input: { packageVersion: string; productApi: "agnet.product-api/v1"; capabilities: readonly string[] }): Promise<{ packageName: "agnet"; packageVersion: string; productApi: "agnet.product-api/v1"; capabilities: readonly string[] }>;
   createTask(input: CreateTaskInput): Promise<TaskView>;
-  execute(taskId: string): Promise<TaskView>;
-  cancel(taskId: string, reason?: string): Promise<TaskView>;
+  execute(taskId: string, correlation: ToolCorrelation): Promise<TaskView>;
+  cancel(taskId: string, reason: string | undefined, correlation: ToolCorrelation): Promise<TaskView>;
   retry(taskId: string, input: { taskId: string }): Promise<TaskView>;
   approve(input: { taskId: string; actor?: string }): Promise<Record<string, unknown>>;
   deny(input: { taskId: string; actor?: string }): Promise<Record<string, unknown>>;
