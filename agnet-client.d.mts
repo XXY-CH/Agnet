@@ -84,6 +84,7 @@ export interface CreateTaskInput {
   to: string;
   intent: string;
   scope: TaskScope;
+  payload: Record<string, unknown>;
   correlation: ToolCorrelation | {
     workspaceId: string;
     conversationId: string;

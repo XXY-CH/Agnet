@@ -71,11 +71,13 @@ test("AgnetClient maps the stable product contract without exposing journal path
     const payloadDigest = `sha256:${"a".repeat(64)}`;
     const operationDigest = `sha256:${createHash("sha256").update(canonical({ target, intent: intent.text, scope, payload_digest: payloadDigest })).digest("hex")}`;
     const toolCorrelation = { workspace_id: "workspace-1", conversation_id: "conversation-1", session_id: "session-1", run_id: "run-1", tool_call_id: "call-1", task_id: "pi:task", payload_digest: payloadDigest, operation_digest: operationDigest };
+    const taskPayload = { message: "inspect workspace", context: { workspaceId: "workspace-1" } };
     const task = await client.createTask({
       taskId: "pi:task",
       to: target,
       intent: intent.text,
       scope,
+      payload: taskPayload,
       correlation: toolCorrelation,
     });
     assert.equal(task.status, "queued");
@@ -100,6 +102,7 @@ test("AgnetClient maps the stable product contract without exposing journal path
     payload_digest: `sha256:${"a".repeat(64)}`,
     operation_digest: `sha256:${createHash("sha256").update(canonical({ target: "agent://worker", intent: "inspect", scope: { network: false, write: [], data_domains: ["workspace"] }, payload_digest: `sha256:${"a".repeat(64)}` })).digest("hex")}`,
   });
+  assert.deepEqual(requests[0].body.payload, { message: "inspect workspace", context: { workspaceId: "workspace-1" } });
   assert.deepEqual(requests[1].body.correlation, requests[0].body.correlation);
   assert.deepEqual(requests[5].body.correlation, requests[0].body.correlation);
   assert.ok(requests.every((request) => !JSON.stringify(request).includes("journal")));
@@ -232,7 +235,7 @@ test("AgnetClient preserves typed API failures", async () => {
   }, async (baseURL) => {
     const client = new AgnetClient({ baseURL });
     await assert.rejects(
-      client.createTask({ taskId: "agent:duplicate", to: "agent://worker", intent: "x", scope: {}, correlation: { workspace_id: "w", conversation_id: "c", session_id: "s", run_id: "r", tool_call_id: "t", task_id: "agent:duplicate", payload_digest: `sha256:${"a".repeat(64)}`, operation_digest: `sha256:${"b".repeat(64)}` } }),
+      client.createTask({ taskId: "agent:duplicate", to: "agent://worker", intent: "x", scope: {}, payload: { message: "duplicate" }, correlation: { workspace_id: "w", conversation_id: "c", session_id: "s", run_id: "r", tool_call_id: "t", task_id: "agent:duplicate", payload_digest: `sha256:${"a".repeat(64)}`, operation_digest: `sha256:${"b".repeat(64)}` } }),
       (error) => error instanceof AgnetAPIError && error.status === 409 && error.code === "idempotency_conflict",
     );
   });

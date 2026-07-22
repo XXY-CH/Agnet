@@ -407,6 +407,7 @@ func runExternalTool(parent context.Context, profile WorkerProfile, task, origin
 		"task_id": task["task_id"],
 		"intent":  task["intent"],
 		"to":      task["to"],
+		"payload": task["payload"],
 		"origin":  origin["zid"],
 		"tool":    profile.Tool,
 	}
@@ -415,34 +416,23 @@ func runExternalTool(parent context.Context, profile WorkerProfile, task, origin
 		return ToolResult{}, nil, err
 	}
 	cmd.Stdin = bytes.NewReader(data)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return ToolResult{}, nil, err
-	}
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	var output bytes.Buffer
+	writers := []io.Writer{&output}
 	liveWriter, closeLive, err := newLiveTranscriptWriter(liveTranscriptDir, fmt.Sprint(task["task_id"]))
 	if err != nil {
 		return ToolResult{}, nil, err
 	}
 	defer closeLive()
-	if err := cmd.Start(); err != nil {
-		return ToolResult{}, nil, err
-	}
-	var output bytes.Buffer
-	writers := []io.Writer{&output}
 	if liveWriter != nil {
 		writers = append(writers, liveWriter)
 	}
-	copyDone := make(chan error, 1)
-	go func() {
-		_, err := io.Copy(io.MultiWriter(writers...), stdout)
-		copyDone <- err
-	}()
-	err = cmd.Wait()
-	if copyErr := <-copyDone; copyErr != nil && err == nil {
-		err = copyErr
+	cmd.Stdout = io.MultiWriter(writers...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		return ToolResult{}, nil, err
 	}
+	err = cmd.Wait()
 	if ctx.Err() == context.Canceled {
 		return ToolResult{}, nil, errors.New("external tool cancelled")
 	}

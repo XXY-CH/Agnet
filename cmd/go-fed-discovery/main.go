@@ -26,6 +26,7 @@ func main() {
 	wsPort := flag.String("ws-port", "", "optional WebSocket listen port")
 	humanPort := flag.String("human-port", "", "optional Human Gateway HTTP port")
 	humanToken := flag.String("human-token", "", "required Human Gateway bearer token when --human-port is set")
+	humanTokenFile := flag.String("human-token-file", "", "private 0600 file containing the Human Gateway bearer token")
 	humanActorPolicyPath := flag.String("human-actor-policy", "", "optional Human Gateway actor policy JSON file")
 	tlsCertPath := flag.String("tls-cert", "", "optional federation TCP TLS certificate file")
 	tlsKeyPath := flag.String("tls-key", "", "optional federation TCP TLS key file")
@@ -210,7 +211,12 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	if err := serveWithSwarmStateDir(*listenHost, *port, *wsPort, *humanPort, *humanToken, *humanActorPolicyPath, *tlsCertPath, *tlsKeyPath, *tlsClientCAPath, *artifactStoreDir, *fixturePath, *trustPath, *swarmStorageRoot, *swarmID, *swarmStateDir, runtimeKeys, *auditPath, outputTrust); err != nil {
+	resolvedHumanToken, err := resolveHumanGatewayToken(*humanToken, *humanTokenFile)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if err := serveWithSwarmStateDir(*listenHost, *port, *wsPort, *humanPort, resolvedHumanToken, *humanActorPolicyPath, *tlsCertPath, *tlsKeyPath, *tlsClientCAPath, *artifactStoreDir, *fixturePath, *trustPath, *swarmStorageRoot, *swarmID, *swarmStateDir, runtimeKeys, *auditPath, outputTrust); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

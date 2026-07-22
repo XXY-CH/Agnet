@@ -34,6 +34,7 @@ type productTaskRequest struct {
 	To                string         `json:"to"`
 	Intent            string         `json:"intent"`
 	Scope             map[string]any `json:"scope"`
+	Payload           map[string]any `json:"payload"`
 	Budget            map[string]any `json:"budget,omitempty"`
 	Correlation       map[string]any `json:"correlation"`
 	ArtifactRef       string         `json:"artifact_ref,omitempty"`
@@ -292,8 +293,15 @@ func validateProductTaskRequest(request productTaskRequest) error {
 	if err := validateProductScopeExpiry(request.Scope, time.Now().UTC()); err != nil {
 		return err
 	}
+	if request.Payload == nil {
+		return errors.New("task payload is required")
+	}
 	if err := validateProductCorrelation(request.TaskID, request.Correlation); err != nil {
 		return err
+	}
+	expectedPayloadDigest := "sha256:" + digestHex(request.Payload)
+	if optionalString(request.Correlation["payload_digest"]) != expectedPayloadDigest {
+		return errors.New("task correlation payload_digest does not match payload")
 	}
 	expectedOperationDigest := "sha256:" + digestHex(map[string]any{
 		"target":         request.To,
@@ -387,6 +395,7 @@ func productRequestMap(request productTaskRequest) map[string]any {
 		"to":          request.To,
 		"intent":      request.Intent,
 		"scope":       request.Scope,
+		"payload":     request.Payload,
 		"correlation": request.Correlation,
 	}
 	if request.Budget != nil {
@@ -1181,10 +1190,12 @@ func (f Fixture) retryProductTask(parentID, taskID string) (map[string]any, bool
 	}
 	correlationCopy["attempt"] = float64(attempt)
 	correlationCopy["task_id"] = taskID
+	payload, _ := parentTask["payload"].(map[string]any)
 	request := productTaskRequest{
 		TaskID:            taskID,
 		To:                optionalString(parentTask["to"]),
 		Intent:            optionalString(parentTask["intent"]),
+		Payload:           payload,
 		Correlation:       correlationCopy,
 		ArtifactRef:       optionalString(parentTask["artifact_ref"]),
 		ApprovalExpiresAt: optionalString(parentTask["approval_expires_at"]),

@@ -90,11 +90,13 @@ export class AgnetClient {
   async createTask(input) {
     const correlation = normalizeCorrelation(input.correlation);
     if (correlation.task_id !== input.taskId) throw new TypeError("correlation.task_id must match taskId");
+    if (!isRecord(input.payload)) throw new TypeError("payload must be an object");
     const payload = {
       task_id: input.taskId,
       to: input.to,
       intent: input.intent,
       scope: input.scope,
+      payload: input.payload,
       correlation,
     };
     if (input.budget !== undefined) payload.budget = input.budget;

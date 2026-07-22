@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -157,6 +158,49 @@ func TestRunExternalToolStagesTranscriptWithoutArtifactPublication(t *testing.T)
 	}
 	if _, err := os.Stat("artifacts"); !os.IsNotExist(err) {
 		t.Fatalf("tool execution published artifact before task success: %v", err)
+	}
+}
+
+func TestRunExternalToolReceivesExactPayloadInStdin(t *testing.T) {
+	t.Chdir(t.TempDir())
+	marker := filepath.Join(t.TempDir(), "external-stdin.json")
+	profile := WorkerProfile{
+		Tool:        "external.stdio",
+		ToolCommand: []string{"/bin/sh", "-c", `tmp=$1; cat > "$tmp"; printf '{"text":"external result"}'`, "sh", marker},
+	}
+	payload := map[string]any{
+		"message": "hello",
+		"nested": map[string]any{
+			"flag": true,
+			"tags": []any{"alpha", "beta"},
+		},
+	}
+	task := map[string]any{
+		"task_id": "tool_result_external_payload",
+		"intent":  "test staging",
+		"to":      "agent://test/worker",
+		"payload": payload,
+	}
+	result, _, err := runExternalTool(context.Background(), profile, task, map[string]any{"zid": "zone://test"}, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(result.Result), "external result"; got != want {
+		t.Fatalf("result = %q, want %q", got, want)
+	}
+	stdinData, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdin map[string]any
+	if err := json.Unmarshal(stdinData, &stdin); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(stdin["payload"], payload) {
+		t.Fatalf("stdin payload = %#v, want %#v", stdin["payload"], payload)
+	}
+	if got, want := stdin["task_id"], task["task_id"]; got != want {
+		t.Fatalf("stdin task_id = %#v, want %#v", got, want)
 	}
 }
 

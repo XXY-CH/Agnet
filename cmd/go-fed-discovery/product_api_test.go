@@ -226,7 +226,12 @@ func productTaskPayload(taskID, worker, intent string) map[string]any {
 		"write":        []any{},
 		"data_domains": []any{"workspace"},
 	}
-	payloadDigest := "sha256:" + strings.Repeat("a", 64)
+	payload := map[string]any{
+		"task_id": taskID,
+		"worker":  worker,
+		"intent":  intent,
+	}
+	payloadDigest := "sha256:" + digestHex(payload)
 	correlation := map[string]any{
 		"workspace_id":    "workspace-1",
 		"conversation_id": "conversation-1",
@@ -247,6 +252,7 @@ func productTaskPayload(taskID, worker, intent string) map[string]any {
 		"to":          worker,
 		"intent":      intent,
 		"scope":       scope,
+		"payload":     payload,
 		"correlation": correlation,
 	}
 }
@@ -310,6 +316,17 @@ func TestProductAPICreatesTasksIdempotently(t *testing.T) {
 	if created["status"] != "queued" || created["intent"] != "summarize the workspace" {
 		t.Fatalf("created task = %#v", created)
 	}
+	item, err := harness.fixture.readQueueItem("pi:task-create")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, ok := item["task"].(map[string]any)
+	if !ok {
+		t.Fatalf("queue task = %#v", item["task"])
+	}
+	if got, want := digestHex(task["payload"]), digestHex(request["payload"]); got != want {
+		t.Fatalf("queue payload digest = %s, want %s", got, want)
+	}
 
 	status, _, payload = harness.request(t, http.MethodPost, "/api/v1/tasks", request, true)
 	if status != http.StatusOK || payload["replayed"] != true {
@@ -323,8 +340,9 @@ func TestProductAPICreatesTasksIdempotently(t *testing.T) {
 	}
 
 	payloadConflict := productTaskPayload("pi:task-create", harness.worker, "summarize the workspace")
+	payloadConflict["payload"].(map[string]any)["variant"] = "idempotency-binding"
 	payloadCorrelation := payloadConflict["correlation"].(map[string]any)
-	payloadCorrelation["payload_digest"] = "sha256:" + strings.Repeat("b", 64)
+	payloadCorrelation["payload_digest"] = "sha256:" + digestHex(payloadConflict["payload"])
 	rebindProductTaskOperation(payloadConflict)
 	status, _, payload = harness.request(t, http.MethodPost, "/api/v1/tasks", payloadConflict, true)
 	if status != http.StatusConflict || payload["error"] == nil {
@@ -341,7 +359,7 @@ func TestProductAPIRequiresFullCorrelationAndAuthenticatesCapabilities(t *testin
 	}
 	correlation["task_id"] = "pi:task-correlation"
 	correlation["run_id"] = "run-1"
-	correlation["payload_digest"] = "sha256:" + strings.Repeat("a", 64)
+	correlation["payload_digest"] = "sha256:" + digestHex(request["payload"])
 
 	status, _, _ := harness.request(t, http.MethodGet, "/api/v1/capabilities", nil, false)
 	if status != http.StatusUnauthorized {
@@ -356,10 +374,18 @@ func TestProductAPIRequiresFullCorrelationAndAuthenticatesCapabilities(t *testin
 		t.Fatalf("capabilities = %#v", capabilities)
 	}
 
-	delete(correlation, "payload_digest")
+	request = productTaskPayload("pi:task-correlation", harness.worker, "bind full correlation")
+	delete(request, "payload")
 	status, _, payload = harness.request(t, http.MethodPost, "/api/v1/tasks", request, true)
 	if status != http.StatusUnprocessableEntity || payload["error"] == nil {
-		t.Fatalf("missing correlation field status=%d payload=%#v", status, payload)
+		t.Fatalf("missing payload status=%d payload=%#v", status, payload)
+	}
+
+	request = productTaskPayload("pi:task-correlation", harness.worker, "bind full correlation")
+	request["payload"].(map[string]any)["variant"] = "digest-mismatch"
+	status, _, payload = harness.request(t, http.MethodPost, "/api/v1/tasks", request, true)
+	if status != http.StatusUnprocessableEntity || payload["error"] == nil {
+		t.Fatalf("payload digest mismatch status=%d payload=%#v", status, payload)
 	}
 
 	request = productTaskPayload("pi:task-correlation", harness.worker, "bind full correlation")
@@ -1550,13 +1576,18 @@ func TestProductAPICreateProductTaskRejectsInvalidInternalRequestWithoutPersisti
 			"write":        []any{},
 			"data_domains": []any{"workspace"},
 		},
+		Payload: map[string]any{
+			"task_id": taskID,
+			"worker":  harness.worker,
+			"intent":  "reject before signing",
+		},
 		Correlation: map[string]any{
 			"workspace_id":    "workspace-1",
 			"conversation_id": "conversation-1",
 			"session_id":      "session-1",
 			"tool_call_id":    "tool-call-1",
 			"task_id":         taskID,
-			"payload_digest":  "sha256:" + strings.Repeat("a", 64),
+			"payload_digest":  "sha256:" + digestHex(map[string]any{"task_id": taskID, "worker": harness.worker, "intent": "reject before signing"}),
 		},
 	}
 	auditBefore, err := readAuditEntries(harness.fixture.Audit.Path)
