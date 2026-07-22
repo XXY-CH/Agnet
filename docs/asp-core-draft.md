@@ -1,10 +1,12 @@
 # ASP Core Draft
 
-Status: Draft 0, implementation-backed.
+Status: Draft 0, implementation-backed ASP v14 compatibility surface.
 
-ASP Core is the narrow proof layer of Agent Space Protocol. It defines the minimum objects a third party needs to verify an agent task: identity, signed task, receipt, artifacts, and audit evidence.
+ASP Core is the narrow proof layer implemented by the current local-first repository. It defines the minimum objects a third party needs to verify a governed Agent task: identity, signed task, Receipt, Artifacts, and audit evidence.
 
-This draft describes the local-first prototype at `v14.10-protocol`. It is not a full Agent Space product spec.
+AFP — Agnet Fabric Protocol — is the future transport-neutral sovereign Agent Fabric documented in `docs/afp-v1-design.md`. AFP reuses the proven ASP task/event/Artifact/checkpoint/Receipt/fence semantics where applicable, but ASP frames, `asp-*` fields, vectors, and CLIs are not silently relabelled as AFP wire objects.
+
+This draft describes the local-first prototype at `v14.10-protocol`. It is not an AFP v1 specification or a full Agent Internet product spec.
 Previous public draft baseline: local-first prototype at `v13.15-protocol`; v12 public baseline: local-first prototype at `v12.45-protocol`.
 
 ## Scope

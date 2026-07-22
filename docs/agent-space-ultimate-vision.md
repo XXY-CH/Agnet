@@ -1,79 +1,79 @@
-# Agent Space 终极构想
+# Agnet Agent Internet — Ultimate Vision
 
-状态：Vision Draft 0  
-关系：本文描述长期终局，不作为第一版实现范围。可落地版本见 `docs/agent-space-architecture.md`。
+状态：Vision Draft 1 — Web3-native repositioning
+关系：本文描述长期终局和 AFP 方向；当前可验证实现边界见 `docs/implementation-status.md`，AFP v1 design gate 见 `docs/afp-v1-design.md`。
 
-## Current status (2026-07-13)
+## Current status (2026-07-22)
 
-The 30-unit local foundation slice is complete: U1-U30 now provide a local proof kernel spanning signed transport/task/receipt/artifact/reachability evidence and the Phase C Go-local durable Swarm. The durable Swarm uses a same-host filesystem journal under OS process locks, replayable views, deterministic parallel ready waves, a byte-stable close, output verification, and irreversible signed disband. Workers remain at-least-once; only the fenced signed receipt commitment is exactly-once. Node is a pure verifier of fixed offline U29 vectors for this durable format.
+U1–U30 provide a completed local proof kernel: signed task/event/Artifact/checkpoint semantics, a same-host durable Swarm, replayable views, deterministic parallel ready waves, byte-stable close, output verification, and irreversible signed disband. Worker execution remains at least once; the fenced signed Receipt commitment is the sole exactly-once authority. Node independently verifies fixed offline U29 vectors.
 
-The current proof boundary is intentionally narrower than the vision: live public proof covers transport/task/receipt/artifact/reachability, not durable Swarm completion. The completed slice does not claim globally distributed operation, public durable-Swarm completion, real Docker smoke, hardware attestation, cross-host operation, remote artifact handling, or exactly-once worker execution.
+The implementation does **not** yet prove AFP v1, public delivery, remote task recovery, cross-host Swarm, relay custody, DHT/P2P discovery, hardware attestation, or settlement. ASP v14 remains the implemented local-first wire surface; AFP is the future transport-neutral protocol family.
 
-[INFERENCE] full Ultimate is ~55-65% complete. This is an architectural-coverage estimate, not a production-readiness metric: the proof kernel spans much of the narrow waist, while every distributed, economic, human-facing, and operational layer below remains incomplete.
+The 30-unit local foundation slice is complete. [INFERENCE] full Ultimate is ~55-65% complete; the revised estimate remains architectural coverage rather than production readiness.
+
+[INFERENCE] Architectural coverage remains ~55–65% of the Ultimate vision. This is not a production-readiness estimate: the evidence narrow waist is mature locally, while the sovereign delivery, distributed, economic, governance, and operational programs remain incomplete.
 
 ### Remaining programs, in dependency order
 
 | # | Program | Why it follows | Exit criterion |
 | --- | --- | --- | --- |
-| 1 | Public overlay and reachability | Extends the scoped local transport proof before workloads can leave one host/Zone. | Independent, globally routable multi-zone reachability evidence; relay/NAT policy; observable routing failure semantics. |
-| 2 | Distributed discovery and reputation | Needs public topology before capability and reputation information can be safely propagated. | Interoperable distributed capability discovery, freshness/revocation propagation, reputation provenance, and abuse/Sybil controls. |
-| 3 | Remote task fabric and artifact plane | Needs discovered peers and routable Zones before remote work can be recovered and audited. | Multi-host task/event recovery, durable remote artifact references and retrieval, and end-to-end receipt/artifact verification. |
-| 4 | Cross-host Swarm coordination | Builds on a remote fabric; the completed Phase C journal remains explicitly same-host. | Membership, leases/fencing, recovery, deterministic scheduling, and close/disband evidence across independent hosts. |
-| 5 | Hardware-backed trust and isolation | Cross-host execution needs stronger evidence than local sandbox claims. | Hardware-backed attestation or equivalent verifiable isolation evidence, distributed revocation, and production key lifecycle. |
-| 6 | Knowledge network | Requires trusted remote work and artifacts before knowledge can be attributed and reused. | Ingestion, citation/conflict graph, semantic index, source reputation, freshness, and license-policy enforcement. |
-| 7 | Semantic OS and human governance | Requires task, trust, and knowledge evidence that people and organizations can inspect and control. | Intent workspace, explainability, approvals, revocation, organizational policy, and accountable human-facing workflow. |
-| 8 | Economy, governance, and production operations | Depends on measurable work, trust, human controls, and a stable distributed fabric. | Metering, quotas, settlement, disputes, governance controls, observability, incident response, and production SLOs. |
+| AF0 | AFP protocol freeze | A public system cannot safely emerge from implicit ASP-to-Direct reinterpretation. | Schemas, domain separation, capability/custody/settlement invariants, threat model, and vectors are ratified. |
+| AF1 | Sovereign Core | Establishes a Zone-free Agent principal before public infrastructure. | Two independent operators complete one invited Direct task with a verifiable Artifact and Receipt. |
+| AF2 | Async mailbox and custody | Remote work needs offline delivery and cancellation/expiry ordering. | Relay custody cannot forge delivery, acceptance, execution, or Receipt. |
+| AF3–AF4 | P2P reachability, discovery, and offers | Delivery must work before unknown peers can safely meet. | Direct/relayed routes, provenance-labelled discovery, abuse controls, and bounded offer negotiation work. |
+| AF5 | Direct Swarm | Reuses remote task, fence, receipt, close, and disband semantics without mandatory Zones. | A chartered multi-host Direct Swarm preserves one terminal lineage under its declared failure model. |
+| U31–U68 | Governed/Private profile | Organizations still need zero-egress, consensus, private knowledge, governance, and operations. | Hardened private multi-host deployment consumes AFP common semantics without becoming the identity root. |
+| AF6–AF7 | Settlement and product convergence | Economy depends on verifiable resource facts; UX depends on explicit assurance. | Pluggable settlement binds commitments without changing task semantics; users see every edge's assurance profile. |
+
+The prior dependency framing remains historically valid inside the reordered AFP program: Public overlay and reachability; Distributed discovery and reputation; Remote task fabric and artifact plane; Cross-host Swarm coordination; Hardware-backed trust and isolation; Knowledge network; Semantic OS and human governance; Economy, governance, and production operations.
 
 ## 1. 终极目标
 
-Agent Space 的终局不是一个 Agent 聊天平台，也不是一个更复杂的 API 网关。
+Agnet 的终局不是 Agent 聊天平台、API gateway、单一链上的市场，或“带签名的 HTTP”。
 
-它的终极目标是：在现有 Internet 之上，形成一个面向 Agent 的独立逻辑网络，让 Agent 能够以身份、能力、任务、信任和经济约束为基础，自主发现、协商、协作、验证和结算。
+它是在现有 Internet 之上形成一层 **Agent Internet**：独立 Agent 以主权身份、能力授权、可验证任务、内容绑定 Artifact、可替换交付基础设施和可编程结算为基础，自主发现、协商、协作、验证和结算。
 
-如果传统 Internet 连接的是主机、网页和人类应用，那么终局 Agent Space 连接的是：
+传统 Internet 连接主机、网页和人类应用；Agent Internet 连接：
 
-- Agent 身份
-- Agent 能力
-- Agent 任务
-- Agent 组织
-- Agent 记忆
-- Agent 信任
-- Agent 劳动
+- Agent identity
+- Agent capability and bounded authority
+- intent, offer, task, and event lineage
+- Artifact and checkpoint evidence
+- relay/mailbox custody
+- trust, governance, and human control
+- measured machine labour and settlement facts
 
-它不是替代 Internet，而是在 Internet 之上长出一层 Agent 社会的基础设施。
+它不是替代 Internet，而是在其上构建可独立验证、可替换基础设施承载的 Agent 社会基础设施。
 
 ## 2. 终局形态
 
-终局 Agent Space 是一个多层 overlay civilization：
-
 ```text
 Human Society
-  人类目标、审批、治理、法律责任
+  intent · approval · governance · legal responsibility
 
 Semantic OS
-  个人主理 Agent、组织入口、任务看板、意图界面
+  principal Agent · workspaces · explanation · assurance UX
 
-Agent Economy
-  服务市场、信誉、保险、配额、结算、责任边界
+Settlement and Economy
+  offers · budgets · metering · escrow/credit · disputes · liability
 
 Agent Swarm Layer
-  动态组队、角色分配、协作拓扑、任务 DAG
+  temporary charters · roles · DAGs · fencing · close/disband
 
-Trust & Verification Layer
-  身份、凭证、沙箱、远程证明、审计、共识验证
+AFP Trust & Evidence Fabric
+  aid · grants · tasks · events · Artifacts · Receipts · verification
 
-Agent Task Fabric
-  signed task、event stream、artifact、receipt、checkpoint
+Discovery and Delivery
+  capability queries · signed offers · encrypted mailboxes · relays · DHT hints
 
-Agent Discovery Layer
-  Agent ID、能力寻址、语义召回、信誉排序、局部路由
-
-Agent Overlay Network
-  Zone、Federation、P2P relay、DHT、edge gateway
+Reusable Peer Substrate
+  local IPC · HTTPS/QUIC · libp2p discovery/relay/pubsub
 
 Internet Underlay
-  TCP/IP、QUIC、TLS、WebSocket、HTTP、云、边缘网络
+  TCP/IP · QUIC · TLS · WebSocket · HTTP · cloud and edge networks
 ```
+
+AFP is not a new IP layer. It is the authority and evidence narrow waist above a replaceable peer substrate.
 
 ## 3. 从 Web 到 Agent Space 的范式变化
 
@@ -110,55 +110,25 @@ Agent Space 发现能力
 
 ## 4. 独立性的终局含义
 
-终局 Agent Space 仍然复用 Internet 的物理和传输能力，但在以下方面独立：
-
 ### 4.1 身份独立
 
-Agent 不依附于域名、IP、云厂商账号或某个应用平台。
-
-Agent 拥有长期 Agent ID、公钥、能力档案、历史 receipt、信誉轨迹和可撤销凭证。
+Agent 不依附于域名、IP、云厂商账号、平台账户、Zone 或链账户。`aid:` 是 canonical identity；Zone、域名、relay、wallet 与 marketplace 都只是可增减绑定。
 
 ### 4.2 寻址独立
 
-人类和 Agent 不再主要通过 URL 找服务，而是通过：
-
-- Agent ID
-- capability query
-- intent query
-- trust requirement
-- policy constraint
-
-寻找合适执行者。
-
-`agent://` 是身份入口，`capability://` 是能力入口，向量语义是发现信号，不是最终身份。
+身份、内容、mailbox、intent 与 route 必须分离。内容以 digest/manifest 独立验证；mailbox 可随 endpoint 或 relay 迁移；intent query 只暴露策略允许的需求约束；发现结果不产生授权。
 
 ### 4.3 协作独立
 
-Agent 不再依赖同步 HTTP 请求链条，而是通过任务、事件、产物和审计凭证协作。
-
-长任务、失败恢复、人类审批、状态流、断点续传、产物引用成为协议原生能力。
+Agent 不依赖同步 HTTP request chain。它们通过持久的 Task、causal Event、Artifact、checkpoint、encrypted mailbox handoff、Receipt 和 close/disband 证据协作。离线、重启、路由迁移、失败重试与取消必须有可验证的顺序语义。
 
 ### 4.4 信任独立
 
-信任不再只依赖 HTTPS 证书、平台账号或云厂商边界。
-
-终局信任来自：
-
-- 密码学身份
-- 可验证凭证
-- 任务级权限
-- 沙箱隔离
-- 远程证明
-- 动态信誉
-- 多方验证
-- 审计 receipt
-- 可撤销授权
+信任不是 TLS 登录后开放端口，也不是单一 reputation score。它组合 cryptographic identity、selected trust profile、attenuated capability grant、local policy、sandbox/attestation、Receipt、revocation 和 independent verification。身份提供责任连续性；能力提供可衰减的每次操作授权。
 
 ### 4.5 经济独立
 
-Agent 之间可以进行机器级资源交换：算力、工具、数据、推理、验证、存储、出口代理、专家能力。
-
-但终局经济不是一上来就上链。它应从组织账单、配额、服务等级、保险池和责任边界演化，再进入跨组织自动结算。
+机器劳动的预算和结算不应依赖某个平台账本。AFP 将 delivery custody、storage epoch、execution、verification 等资源事实绑定到 Receipt/commitment，再由可替换的企业账本、credit、payment channel、stablecoin 或其他 adapter 结算。区块链、Token、staking 和 marketplace 是可选实现，不是身份或执行前提。
 
 ## 5. 语义寻址的终局
 
@@ -345,33 +315,27 @@ Revocation     出问题后如何撤销
 
 ## 11. 终局协议族
 
-长期可以形成一组 Agent Space RFC：
+AFP 不是对当前 ASP 文件、向量和 frame 的即时重命名。ASP v14 是已实现的 local-first proof compatibility surface；AF0 之后才冻结 AFP 规范族。
 
 ```text
-ASP-001 Agent Identity
-ASP-002 Agent Manifest
-ASP-003 Signed Task Envelope
-ASP-004 Event Stream
-ASP-005 Artifact Reference
-ASP-006 Policy Scope
-ASP-007 Audit Receipt
-ASP-008 Federation Gateway
-ASP-009 Transport Binding
-ASP-010 MCP / A2A Compatibility
+AFP-001 Sovereign Agent Identity and Descriptor
+AFP-002 Capability Advertisement, Intent Query, and Signed Offer
+AFP-003 Attenuated Capability Grant
+AFP-004 Task, Event, Checkpoint, and Causal Replay
+AFP-005 Context-bound Artifact Manifest and Access Grant
+AFP-006 Mailbox Envelope, Custody, Cancellation, and Expiry
+AFP-007 Receipt, Fence, Close, and Independent Verification
+AFP-008 Direct, Governed, and A2A Assurance Profiles
+AFP-009 Peer-Substrate and Transport Bindings
 
-ASP-101 Semantic Discovery
-ASP-102 Capability Credential
-ASP-103 Reputation Graph
-ASP-104 Swarm Contract
-ASP-105 Checkpoint & Migration
-ASP-106 Knowledge Gateway
-ASP-107 Verification Protocol
-ASP-108 Agent Economy
-ASP-109 Dispute Resolution
-ASP-110 Human Governance
+AFP-101 Distributed Discovery and Anti-abuse
+AFP-102 Direct Swarm Charter and Authority
+AFP-103 Metering and Settlement Commitments
+AFP-104 Dispute, Recovery, and Reputation Provenance
+AFP-105 Knowledge and Human Governance
 ```
 
-第一组是可落地内核。第二组是终局演化方向。
+每个规范都必须声明 domain separation、版本协商、downgrade behavior、privacy disclosure、failure semantics 与跨语言 vectors。没有这些证据，概念名称不是协议。
 
 ## 12. 终局风险
 
@@ -396,39 +360,32 @@ Agent Space 的风险不是传统网络风险的简单延伸。
 
 ## 13. 终局判断标准
 
-Agent Space 终局是否成立，不看它是否使用 HTTP，也不看它是否完全 P2P。
+Agent Internet 是否成立，不由是否使用 HTTP、是否完全 P2P、是否有 Token 或是否运行在某条链上决定。
 
 它成立的标志是：
 
-1. Agent 有独立身份，而不是附属于某个 URL。
-2. Agent 可以基于能力和信任被发现。
-3. Agent 之间通过任务和事件协作，而不是普通请求响应。
-4. 长任务可以暂停、恢复、迁移、审计。
-5. 产物可以被引用、验证、复用。
-6. 权限是任务级、上下文级、可撤销的。
-7. Zone 可以联邦，而不是依赖单一平台。
-8. 人类可以表达意图、审批风险、追责结果。
-9. Agent 劳动可以被度量、验证和治理。
-10. 错误、欺骗和失控有隔离与补救机制。
+1. Agent 拥有不依附 URL、Zone、relay、平台或链账户的主权身份。
+2. identity、content、mailbox、intent 与 route 相互独立且可验证。
+3. discovery 只提供候选和证据，不成为信任、授权或身份权威。
+4. capability grant 可衰减、可撤销、受资源/成本/时间约束；连接本身不授予执行权限。
+5. 异步 delivery、relay custody、acceptance、cancellation 与 expiry 有可验证的单调顺序。
+6. Task、Artifact、Receipt、close 和 settlement facts 可独立验证、重放和争议处理。
+7. Zone 可以增加治理，但不拥有 Agent 的 global identity；Direct 与 governed profile 不可静默降级。
+8. 人类可以表达 intent、审批风险、理解 assurance、撤销权限并处理争议。
+9. Agent 劳动可度量、可约束、可结算，且结算 rail 可以替换。
+10. 失败、欺骗、Sybil、资源耗尽、隐私泄露和 authority fork 有明确拒绝或 contested 行为。
 
 ## 14. 北极星
 
-传统 Internet 的窄腰是 IP。
-
-Agent Space 的窄腰应是：
+传统 Internet 的窄腰是 IP；Agent Internet 的逻辑窄腰是 AFP evidence and authority fabric：
 
 ```text
-Agent identity
-+ Signed task
-+ Event stream
-+ Scoped policy
-+ Artifact reference
-+ Audit receipt
-+ Federation
+aid
++ capability grant
++ signed task and causal events
++ context-bound Artifact
++ fence-selected Receipt
++ optional mailbox custody and settlement commitment
 ```
 
-终局 Agent Space 不是“所有 Agent 都连在一起聊天”。
-
-它是一个让机器劳动可以被发现、授权、执行、验证、追责和治理的网络空间。
-
-这是 Agent 时代真正需要的基础设施。
+终局不是“所有 Agent 都连在一起聊天”。它是一个让机器劳动能在可替换基础设施上被发现、受限授权、执行、验证、结算、追责和治理的网络空间。

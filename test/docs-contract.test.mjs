@@ -34,6 +34,36 @@ test("product README presents the product surface and authoritative documentatio
   assert.doesNotMatch(readme, /docs\/v12\.45-boundary\.md/);
 });
 
+test("AFP v1 design separates the sovereign target from implemented ASP wire semantics", async () => {
+  const [readme, design, protocol, status, publicPlan, privatePlan] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("docs/afp-v1-design.md", "utf8"),
+    readFile("docs/manual/protocol.md", "utf8"),
+    readFile("docs/implementation-status.md", "utf8"),
+    readFile(".compound-engineering/work/2026-07-13-sovereign-public-agent-net-plan.md", "utf8"),
+    readFile(".compound-engineering/work/2026-07-13-private-ultimate-agent-space-plan.md", "utf8"),
+  ]);
+
+  assert.match(readme, /Agnet Fabric Protocol \(AFP\)/);
+  assert.match(readme, /ASP v14 remains the implemented local-first wire surface/);
+  assert.match(readme, /docs\/afp-v1-design\.md/);
+  assert.match(design, /# AFP v1 — Agnet Fabric Protocol/);
+  assert.match(design, /transport-neutral/);
+  assert.match(design, /U1–U30 remain valid/);
+  assert.match(design, /not a replacement for TCP\/IP, QUIC, or libp2p/);
+  assert.match(design, /`afp:sha256:<digest>` Artifact fingerprint is a legacy optional \*\*ASP v14 manifest field\*\*/);
+  assert.match(protocol, /AFP design names such as .*are not valid current wire frames/);
+  assert.match(status, /no AFP wire protocol, P2P DHT, public relay/);
+  assert.match(publicPlan, /U30 --> AF0/);
+  assert.match(publicPlan, /AF0 --> U31/);
+  assert.match(publicPlan, /AF5 --> AF6/);
+  assert.match(publicPlan, /AF7 -\. shared assurance UX contract; not a U59 prerequisite \.-> U59/);
+  assert.match(privatePlan, /AF0 is serial and must close before U31/);
+  assert.match(privatePlan, /U55 --> U59/);
+  assert.match(privatePlan, /U58 --> U59/);
+  assert.match(privatePlan, /U62 --> U59/);
+});
+
 test("ASP Core draft documents the narrow implemented proof layer", async () => {
   const text = await readFile("docs/asp-core-draft.md", "utf8");
 

@@ -1,6 +1,8 @@
-# Protocol reference
+# Protocol reference — implemented ASP v14
 
-ASP frames are newline-delimited JSON objects on the prototype federation transports. Frame verification is intentionally fail-closed: wrong frame type, missing object fields, malformed ids, untrusted Zones, or invalid signatures reject before later field reads.
+This reference describes the **implemented ASP v14** wire surface. ASP frames are newline-delimited JSON objects on prototype governed federation transports. Frame verification is intentionally fail-closed: wrong frame type, missing object fields, malformed ids, untrusted Zones, or invalid signatures reject before later field reads.
+
+It is not an AFP v1 specification. AFP — Agnet Fabric Protocol — is the transport-neutral sovereign Agent Fabric target documented in [`docs/afp-v1-design.md`](../afp-v1-design.md). AFP will preserve the proven task, event, Artifact, checkpoint, receipt, fence, close, and verifier semantics where applicable; it will not silently reinterpret an existing `FED_*` frame, `asp-*` artifact field, vector, or CLI as an AFP object.
 
 ## Common objects
 
@@ -11,6 +13,12 @@ ASP frames are newline-delimited JSON objects on the prototype federation transp
 | Zone binding | `zone`, `alias`, `aid`, `signature` | Binds an Agent alias and AID to a Zone. |
 | Signed task | `task_id`, `from`, `to`, `intent`, `scope`, `budget`, `signature` | `task_id` matches `^[A-Za-z0-9._:-]{1,128}$`. |
 | Artifact manifest | `uri`, `sha256`, `size`, optional `media_type`, `afp`, `manifest_hash` | Local URI form is `artifact://local/<task-id>/<name>`. |
+
+### AFP migration boundary
+
+Current `FED_*` frames require the governed federation context described below. AFP's future Direct profile must instead bind a selected trust profile, authenticated peer, explicit capability grant, delivery/custody lineage, and local policy decision. A failed governed verification must never retry as Direct traffic by removing Zone evidence.
+
+AFP design names such as `IntentQuery`, `Offer`, `CapabilityGrant`, `MailboxEnvelope`, `CustodyReceipt`, and `SettlementCommit` are not valid current wire frames. See the AFP design document for their planned invariants.
 
 ## `FED_TASK_OPEN`
 

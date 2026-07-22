@@ -1,17 +1,19 @@
-# Agent Space Implementation Status
+# Agnet Agent Internet Implementation Status
 
-状态：v14 active at v14.11 / Phase C
+状态：v14 active at v14.11 / Phase C; AFP v1 design gate pending
 当前代码基线：`v14.11-phase-c-local-foundations`
 历史状态：v12 closed at v12.45
 上一代码基线：`v12.45-closeout-alignment`
 历史代码基线：`v13.1-reachability-scope`
-
 v13 关闭基线：`v13.15-node-receipt-checkpoint-verification`
 
-当前基线由 v14.11 和 Phase C 共同定义：Darwin private-workspace isolation proof 是已完成的 scoped slice；U1-U30 local-swarm-foundations 是已完成的 Go-local proof kernel。Node suite 为 531/531，Go gates pass。Live public proof remains transport/task/receipt/artifact/reachability only; durable Swarm proof is offline U29 vector verification in Node.
+当前基线由 ASP v14.11 和 Phase C 共同定义：Darwin private-workspace isolation proof 是已完成的 scoped slice；U1-U30 local-swarm-foundations 是已完成的 Go-local proof kernel。Node suite 为 531/531，Go gates pass。Live public proof remains transport/task/receipt/artifact/reachability only; durable Swarm proof is offline U29 vector verification in Node.
+
 ## 一句话
 
-v14.0 opens the next local-first milestone above the v13 proof core: deeper Agent Overlay Network, stronger Agent Swarm Layer, and Multi-signal routing. v14 stays local-first: no P2P DHT, no token economy, no public marketplace, and no production global Agent Net claim.
+Agnet's target is AFP — the sovereign, verifiable coordination and settlement fabric for the Agent Internet. The repository currently proves only its **ASP v14 local-first evidence core**. AFP v1's sovereign delivery, capability grants, mailbox custody, peer substrate, public discovery, and settlement adapters are design commitments, not shipped behavior.
+
+The current baseline remains local-first: no AFP wire protocol, P2P DHT, public relay, public marketplace, token economy, or production global Agent Net claim. See `docs/afp-v1-design.md` for the target contract and `.compound-engineering/work/2026-07-13-sovereign-public-agent-net-plan.md` for the reordered requirements plan.
 
 v14.1 Swarm micro-contract implementation is active in Node and Go: before each Swarm step executes, the selected worker emits a signed `micro_contract: "ok"` commitment with declared token/seconds cost estimate, capability proof, policy digest, contract digest, and worker signature; `FED_SWARM_CLOSE.close.micro_contracts` carries one contract per step and Node `verifySwarmClose` rejects tampered micro-contract signatures.
 v14.2 Multi-signal FED_QUERY routing is complete in Node and Go: `discovery_evidence.routing` now exposes `cost_score`, `latency_score`, `availability_score`, and `signals_used`; `agent_score.total` includes those routing scores while missing descriptor or audit evidence stays neutral instead of inventing advantage.
@@ -50,18 +52,20 @@ The completed Apple sub-slice is `v14.11-apple-private-workspace-proof`: one age
 
 ## 距离 Ultimate
 
-下表将已验证的本地 proof kernel 与终局产品分开；`Implemented` 仅指本仓库当前证据面，不推断生产部署。
+下表将已验证的 ASP v14 local proof kernel 与 AFP/Agent Internet target 分开；`Implemented` 仅指本仓库当前证据面，不推断生产部署或 AFP wire compatibility。
 
 | Layer | Status | Current evidence | Remaining exit condition |
 | --- | --- | --- | --- |
-| Overlay | Partial | Local TCP, TLS/mTLS, WebSocket edge path, and scoped reachability evidence | Public multi-zone routing, relay/NAT traversal, and a distributed overlay with operational SLOs. |
-| Discovery | Partial | Local registry, `FED_RESOLVE`, evidence-first `FED_QUERY`, trust provenance, and local reputation signals | Distributed capability/reputation graph, freshness propagation, abuse controls, and interoperable discovery. |
-| Task Fabric | Implemented | Signed tasks, events, receipts, artifacts, checkpoints, audit, queue/resume evidence | Remote durable artifact plane and multi-host recovery semantics. |
-| Swarm | Partial | Local Swarm proof plus Phase C same-host journal, leases, receipt commitment, ready waves, close, and disband | Cross-host membership, coordination, recovery, and observable worker lifecycle. |
+| **AFP common contract** | Design gate pending | U1-U30 provide reusable task/event/Artifact/Receipt/fence semantics | AF0 freezes canonical AFP objects, profile separation, capability/custody/settlement rules, threat model, and vectors. |
+| **Sovereign identity & grants** | Partial | `aid:` local identity and signed policy/approval evidence | Zone-free Direct descriptor exchange, attenuated CapabilityGrant, key continuity, and downgrade tests. |
+| Overlay | Partial | Local TCP, TLS/mTLS, WebSocket edge path, and scoped reachability evidence | Encrypted mailbox, relay custody, direct/relayed reachability, reusable P2P substrate, and operational limits. |
+| Discovery | Partial | Local registry, `FED_RESOLVE`, evidence-first `FED_QUERY`, trust provenance, and local reputation signals | Privacy-bounded capability queries, signed offers, distributed freshness, abuse controls, and provenance-only reputation. |
+| Task Fabric | Implemented locally | Signed tasks, events, receipts, Artifacts, checkpoints, audit, queue/resume evidence | Direct remote artifact plane, mailbox handoff, and multi-host recovery semantics. |
+| Swarm | Partial | Local Swarm proof plus Phase C same-host journal, leases, receipt commitment, ready waves, close, and disband | Task-scoped Direct Swarm and governed cross-host membership, coordination, recovery, and observable worker lifecycle. |
 | Trust | Partial | `aid:` identity, credentials, revocation, scoped policy, sandbox claims, and signed attestation verification | Hardware-backed attestation, production isolation evidence, distributed revocation, and stronger key lifecycle. |
 | Knowledge | Partial | Signed local `FED_KNOWLEDGE_QUERY` / `FED_KNOWLEDGE_RESPONSE` seam with source, freshness, and license fields | Ingestion, citation/conflict graph, semantic index, source reputation, and license automation. |
-| Semantic OS / Human | Missing | Thin local Human Gateway, approvals, and task views are proof-adjacent only | Intent workspace, explainability, organization controls, approvals, revocation, and accountable UX. |
-| Economy / Governance / Ops | Missing | Declared micro-contract fields and audit evidence only | Metering, quotas, settlement, disputes, governance, observability, incident response, and production SLOs. |
+| Semantic OS / Human | Missing | Thin local Human Gateway, approvals, and task views are proof-adjacent only | Intent workspace, explainability, assurance-aware Direct/governed/A2A UX, revocation, and accountable workflow. |
+| Economy / Governance / Ops | Missing | Declared micro-contract fields and audit evidence only | Metering, budgets, settlement adapters, disputes, governance, observability, incident response, and production SLOs. |
 
 ## 能力矩阵
 

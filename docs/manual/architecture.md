@@ -1,59 +1,56 @@
 # Architecture
 
-Agnet implements the Agent Space Protocol (ASP) as a local-first proof layer for agent work. The repository is intentionally narrow: it proves signed tasks, execution receipts, artifact evidence, audit records, sandbox claims, and federation trust boundaries without claiming to be a production Agent Net.
+Agnet is the sovereign, verifiable coordination and settlement fabric for the Agent Internet. **AFP — Agnet Fabric Protocol** is its transport-neutral target architecture. The repository currently implements **ASP v14**, a local-first proof layer that validates signed tasks, execution receipts, Artifact evidence, audit records, sandbox claims, and governed federation boundaries.
+
+AFP does not replace TCP/IP, QUIC, TLS, HTTP, or libp2p. Those layers move bytes and establish paths. AFP defines Agent-level identity, capability-bound authority, task lineage, mailbox custody, Artifact context, receipt finality, and optional settlement facts.
 
 ## Layer map
 
 ```text
-Human Society
-  goals, approvals, governance, legal responsibility
+Product / Semantic OS
+  principal intent, approvals, explainability, operator controls
 
-Semantic OS
-  personal lead agents, organizational entry points, task boards
+Economy and settlement adapters
+  offers, budgets, metering, escrow or credit authorization, charges, disputes
 
-Agent Economy
-  service markets, reputation, quotas, settlement, liability
+AFP evidence and authority fabric
+  aid, descriptor, capability grant, task, event, artifact, receipt, fence
+  mailbox custody, cancellation, replay, settlement commitment
 
-Agent Swarm Layer
-  dynamic teams, roles, collaboration topology, task DAGs
+Discovery and delivery plane
+  capability query, signed offer, encrypted mailbox, relay, DHT route hints
 
-Trust & Verification Layer
-  identity, credentials, sandbox claims, attestation, audit, verification
+Reusable peer substrate
+  local IPC, HTTPS/QUIC adapters, libp2p discovery/relay/pubsub
 
-Agent Task Fabric
-  signed tasks, event streams, artifacts, receipts, checkpoints
-
-Agent Discovery Layer
-  Agent IDs, capability addressing, semantic recall, reputation ranking
-
-Agent Overlay Network
-  Zones, federation, P2P relay, DHT, edge gateways
-
-Internet Underlay
+Internet underlay
   TCP/IP, QUIC, TLS, WebSocket, HTTP, cloud and edge networks
 ```
 
-ASP is the narrow waist across the middle layers. A runtime may schedule, route, or execute however it wants, but the proof layer must still leave verifier-readable evidence.
+ASP v14 is the implemented predecessor proof surface inside AFP's evidence-and-authority layer. It is not yet AFP v1. No current frame, artifact prefix, CLI, package name, or vector is silently relabelled as AFP.
 
 ## Implemented surfaces
 
 | Layer | Implemented in this repo | Main files |
 | --- | --- | --- |
-| Trust & Verification | `aid:` identities, Zone descriptors, signatures, credentials, revocation, sandbox proof, sandbox attestation, package/release trust | `asp-core.mjs`, `asp-verify.mjs`, `test/capability-credential.test.mjs`, `test/revocation.test.mjs`, `test/sandbox-proof.test.mjs`, `test/release-trust.test.mjs` |
-| Agent Task Fabric | `FED_TASK_OPEN`, signed receipts, artifacts, checkpoints, audit hash chain, queue/resume evidence | `federation-gateway.mjs`, `cmd/go-fed-discovery/main.go`, `test-vectors/`, `verifier/` |
-| Agent Discovery | `FED_RESOLVE`, evidence-first `FED_QUERY`, credentials, reputation, routing signals, cross-zone trust provenance | `federation-gateway.mjs`, `test/go-fed-discovery.test.mjs`, `test/zone-registry.test.mjs` |
-| Agent Swarm Layer | `FED_SWARM_OPEN`, serial Node `FED_SWARM_SCHEDULE`, `FED_SWARM_CLOSE`, micro-contracts, dependency-ready scheduling, migration logs, and Go-local Phase C durable journal/lease/receipt/close/disband proof | `federation-gateway.mjs`, `cmd/go-fed-discovery/main.go`, `test/go-fed-discovery.test.mjs` |
-| Overlay edge | Local TCP federation, optional WebSocket/Human Gateway paths, TLS/mTLS on the Go listener | `cmd/go-fed-discovery/main.go`, `scripts/public-node-proof.mjs` |
+| ASP v14 proof core | `aid:` identities, Zone descriptors, signatures, credentials, revocation, sandbox proof, sandbox attestation, package/release trust | `asp-core.mjs`, `asp-verify.mjs`, `test/capability-credential.test.mjs`, `test/revocation.test.mjs`, `test/sandbox-proof.test.mjs`, `test/release-trust.test.mjs` |
+| Agent task evidence | `FED_TASK_OPEN`, signed receipts, Artifacts, checkpoints, audit hash chain, queue/resume evidence | `federation-gateway.mjs`, `cmd/go-fed-discovery/main.go`, `test-vectors/`, `verifier/` |
+| Governed discovery | `FED_RESOLVE`, evidence-first `FED_QUERY`, credentials, reputation, routing signals, cross-Zone trust provenance | `federation-gateway.mjs`, `test/go-fed-discovery.test.mjs`, `test/zone-registry.test.mjs` |
+| Local Swarm | `FED_SWARM_OPEN`, serial Node `FED_SWARM_SCHEDULE`, `FED_SWARM_CLOSE`, micro-contracts, dependency-ready scheduling, migration logs, and Go-local Phase C durable journal/lease/receipt/close/disband proof | `federation-gateway.mjs`, `cmd/go-fed-discovery/main.go`, `test/go-fed-discovery.test.mjs` |
+| Local transport edge | Local TCP federation, optional WebSocket/Human Gateway paths, TLS/mTLS on the Go listener | `cmd/go-fed-discovery/main.go`, `scripts/public-node-proof.mjs` |
+| AFP v1 target | Sovereign delivery, capability grants, relay custody, public discovery, Direct Swarm, and settlement adapters | `docs/afp-v1-design.md` |
 
-## Proof flow
+## Current proof flow
 
 1. A requester signs a task body with an Ed25519 `aid:` descriptor.
-2. The task crosses a Zone boundary as `FED_TASK_OPEN`, including the origin Zone, requester descriptor, requester Zone binding, and signed task.
+2. In the implemented governed profile, the task crosses a Zone boundary as `FED_TASK_OPEN`, including the origin Zone, requester descriptor, requester Zone binding, and signed task.
 3. The worker verifies Zone trust, descriptor identity, task signature, task id shape, and policy before work is accepted.
-4. Execution emits events, artifacts, optional approvals/checkpoints/sandbox evidence, and a worker-signed receipt.
-5. A receipt returns as `FED_RECEIPT`; verifiers check frame type, Zone trust, worker identity, Zone binding, receipt signature, `task_digest`, artifact manifests, and optional checkpoints.
+4. Execution emits events, Artifacts, optional approvals/checkpoints/sandbox evidence, and a worker-signed receipt.
+5. A receipt returns as `FED_RECEIPT`; verifiers check frame type, Zone trust, worker identity, Zone binding, receipt signature, `task_digest`, Artifact manifests, and optional checkpoints.
 6. Swarm closes bind step receipts into a Zone-signed `FED_SWARM_CLOSE`; v14 also binds micro-contracts and failure migration logs.
 7. CLI verifiers (`asp-verify.mjs` and Go flags) replay the checks without trusting the original runtime.
+
+AFP's sovereign Direct profile will preserve task, event, Artifact, receipt, fence, and verifier meanings while replacing the mandatory Zone binding with explicit peer authentication, selected trust profile, capability grant, and delivery/custody evidence.
 
 ## Node and Go relationship
 
@@ -67,12 +64,14 @@ Phase C U19-U30 is complete for the Go-local runtime. Its same-host filesystem j
 Node is a pure verifier of fixed offline U29 vectors for this durable format. Live public proof excludes durable Swarm completion; Phase C makes no claim of real container smoke, cross-host operation, remote artifact handling, or exactly-once worker execution.
 
 
-## Remaining layers
+## Remaining layers and ordered target programs
 
-The implemented proof surfaces are not an implementation of every layer in the map. The remaining dependency order is: public overlay and reachability; distributed discovery and reputation; remote task fabric and artifact plane; cross-host Swarm coordination; hardware-backed trust and isolation; knowledge network; Semantic OS and human governance; economy, governance, and production operations. Each later layer must consume verifier-readable task, receipt, artifact, and audit evidence rather than replace it.
+The next architecture step is not a public launch. It is **AF0**, the AFP v1 design freeze: canonical schemas, domain separation, downgrade rules, threat/economic model, and compatibility vectors.
 
-`FED_SWARM_SCHEDULE` stays serial in Node. Phase C's parallel ready waves belong only to the Go same-host journal runtime. Live public proof is transport/task/receipt/artifact/reachability; Node's durable Swarm proof is fixed offline U29 vectors.
+After AF0, the sovereign path is ordered as: invited Direct work; asynchronous encrypted mailbox and relay custody; direct/relayed reachability on a reusable peer substrate; privacy-bounded capability discovery and signed offers; task-scoped Direct Swarm; settlement adapters; assurance-aware product convergence.
 
-## What is deliberately outside
+The U31–U68 program remains the governed/private profile. It consumes AFP's common schema decisions and retains its strict private endpoint, consensus, attestation, organization, and zero-egress constraints. It is not a prerequisite for an Agent to own an `aid:` or complete an invited Direct task.
 
-ASP does not implement a global overlay, production deployment boundary, public discovery graph, token economy, DID-native resolver, automatic decomposer, or real hardware/container attestation. Those may consume ASP receipts later, but they are not current repo capabilities.
+## What is deliberately outside the current implementation
+
+The repository does not yet implement AFP v1, public P2P/DHT routing, encrypted relay custody, capability grants, public discovery, Direct Swarm, settlement, a global reputation graph, production deployment, or real hardware/container attestation. These later layers may consume ASP v14 receipts, but current local proof claims do not imply their completion.

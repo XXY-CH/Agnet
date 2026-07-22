@@ -1,14 +1,18 @@
-# Agent Net Gap
+# Agent Net Gap — Archived v10.23 Assessment
 
-状态：v10.23 assessment
+状态：Historical assessment; not a current architecture, roadmap, or capability source.
 
-## 一句话
+This document records the v10.23 view of the repository. It predates the completed U1–U30 local proof kernel, the Product runtime hardening, and the AFP repositioning.
 
-当前项目是 Agent Net 的 protocol seed，不是 Agent Net 产品。
+For current material, use:
 
-它已经抓住了真正 Agent Net 的底层骨架：identity with a narrow Ed25519 `did:key` bridge、Node/Go artifact manifest evidence and local verification CLI、minimal AFP `afp:sha256:<sha256>` strings、Node/Go receipt verification CLIs、one-receipt local artifact closure verification、implementation-backed ASP Core draft、reusable Go `FED_RECEIPT` verifier package、one-command local proof demo with verifier-ready receipt/trust files、verified Docker proof demo、local public-listen resolve/query proof、signed task、policy、artifact、receipt、audit、federation、Node/Go bidirectional task interop、Go federation explicit bind host primitive、shared `FED_TASK_OPEN` / `FED_RECEIPT` conformance fixtures，以及 Go 侧最小 explicit Swarm DAG seed、single ordered complete audit-backed Zone-signed Swarm close proof tied to same-audit receipts、delimiter-safe Swarm ids 和同 audit Swarm dependency step/receipt verification。
+- `README.md` for product positioning and proved boundaries;
+- `docs/afp-v1-design.md` for the Agnet Fabric Protocol target;
+- `docs/implementation-status.md` for implemented evidence;
+- `docs/agent-space-ultimate-vision.md` for the Agent Internet end state; and
+- `.compound-engineering/work/2026-07-13-sovereign-public-agent-net-plan.md` for reordered sovereign/public requirements.
 
-它还缺产品面、运行面、部署面、多人协作面和真实工具执行面。
+The historical analysis below is retained for provenance only.
 
 ## 离真正 Agent Net 还有多远
 
